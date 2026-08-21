@@ -128,7 +128,6 @@ const getAttachmentUrls = (request: any) =>
     new Set(
       [
         request?.imageUrl,
-        request?.evidencePhotos,
         request?.photos,
         request?.attachments?.urls,
         request?.attachments,
@@ -422,10 +421,6 @@ export function AIRequestDetails({
         throw new Error("The AI request did not enter the in-progress state.");
       }
 
-      queryClient.setQueryData(
-        aiRequestKeys.detail(workflowId),
-        authoritativeRequest,
-      );
       await invalidateWorkflow();
       await onRefresh().catch(() => undefined);
       setEarlyStartVisible(false);
@@ -754,7 +749,7 @@ export function AIRequestDetails({
             textRole="title"
             style={{ color: colors.textPrimary, marginTop: 24 }}
           >
-            Attachments
+            AI Request Attachments
           </Text>
           {attachments.length > 0 ? (
             <ScrollView

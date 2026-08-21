@@ -101,6 +101,7 @@ const structuredCopy = (eventType, metadata = {}) => {
   const event = normalizedEvent(eventType);
   const animal = animalLabel(metadata);
   const service = serviceLabel(metadata.serviceType || metadata.type);
+  const isReInsemination = metadata.requestKind === "re_insemination";
   const technician = sanitizeNotificationText(
     metadata.technicianName || metadata.actorName || "The technician",
   );
@@ -118,26 +119,44 @@ const structuredCopy = (eventType, metadata = {}) => {
         ? `${urgent ? "An urgent" : "A new"} request is available in ${location}. Open it to review the details and claim the visit.`
         : `${urgent ? "An urgent" : "A new"} request is available. Open it to review the details and claim the visit.`,
     },
+    re_insemination_requested: {
+      title: `Re-insemination request for ${animal}`,
+      message: `${farmer} requested another AI service after the previous attempt was confirmed unsuccessful. Open it to review the details and schedule the visit.`,
+    },
     service_request_accepted: {
       title: `${service} request accepted`,
       message: `${technician} accepted the request for ${animal}. A visit time will be added next.`,
     },
     service_visit_scheduled: {
-      title: `${service} visit scheduled`,
-      message: `The visit for ${animal} is scheduled for ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`,
+      title: isReInsemination
+        ? "Re-insemination scheduled"
+        : `${service} visit scheduled`,
+      message: isReInsemination
+        ? `Your re-insemination request for ${animal} has been scheduled for ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`
+        : `The visit for ${animal} is scheduled for ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`,
     },
     service_visit_rescheduled: {
-      title: `${service} visit rescheduled`,
-      message: `The visit for ${animal} was moved to ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`,
+      title: isReInsemination
+        ? "Re-insemination rescheduled"
+        : `${service} visit rescheduled`,
+      message: isReInsemination
+        ? `Your re-insemination visit for ${animal} was moved to ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`
+        : `The visit for ${animal} was moved to ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`,
     },
     service_started: {
-      title: `${service} started`,
-      message: `${technician} started the service for ${animal}.`,
+      title: isReInsemination ? "Re-insemination started" : `${service} started`,
+      message: isReInsemination
+        ? `${technician} started the re-insemination service for ${animal}.`
+        : `${technician} started the service for ${animal}.`,
     },
     service_completed: {
-      title: `${service} completed`,
+      title: isReInsemination
+        ? "Re-insemination completed"
+        : `${service} completed`,
       message:
-        service === "AI service"
+        isReInsemination
+          ? `The re-insemination service for ${animal} is complete. Continue monitoring the animal; a technician must confirm any reproductive outcome.`
+          : service === "AI service"
           ? `The AI service for ${animal} is complete. Continue monitoring the animal; a technician must confirm any reproductive outcome.`
           : `The health assistance for ${animal} is complete. Open the record to review the diagnosis and treatment.`,
     },
@@ -185,6 +204,10 @@ const structuredCopy = (eventType, metadata = {}) => {
       title: "Observation submitted",
       message: `Your observation for ${animal} was sent to a technician for review.`,
     },
+    farmer_observation_reported: {
+      title: `Breeding observation recorded for ${animal}`,
+      message: `${farmer} submitted a breeding observation. Follow the existing breeding schedule when professional follow-up becomes due.`,
+    },
     technician_review_required: {
       title: "Observation needs review",
       message: `${farmer} submitted a breeding observation for ${animal}. Open it to choose the appropriate follow-up.`,
@@ -196,6 +219,10 @@ const structuredCopy = (eventType, metadata = {}) => {
     pregnancy_not_confirmed: {
       title: `Pregnancy not confirmed for ${animal}`,
       message: "The latest check did not confirm pregnancy. Open the breeding record to review the next step.",
+    },
+    return_to_heat_confirmed: {
+      title: "Return to heat confirmed",
+      message: `A technician confirmed that ${animal} returned to heat after insemination.`,
     },
     continuation_recheck_due: {
       title: "Pregnancy follow-up due",

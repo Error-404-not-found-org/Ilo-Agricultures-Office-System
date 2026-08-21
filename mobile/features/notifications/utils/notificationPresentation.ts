@@ -136,11 +136,19 @@ export const presentNotification = (item: NotificationData) => {
     String(item.metadata?.urgency || "").toLowerCase(),
   );
   const templates: Record<string, { title: string; body: string }> = {
-    service_request_submitted: {
-      title: `${urgent ? "Urgent health assistance" : service} request for ${animal}`,
-      body: item.metadata?.location
-        ? `${urgent ? "An urgent" : "A new"} request is available in ${stripSeedPrefix(item.metadata.location)}. Open it to review the details and claim the visit.`
-        : `${urgent ? "An urgent" : "A new"} request is available. Open it to review the details and claim the visit.`,
+ service_request_submitted: {
+  title: urgent
+    ? "Urgent health assistance request"
+    : `New ${service.toLowerCase()} request`,
+  body: item.metadata?.location
+    ? `${actor} submitted a request for animal ${animal} in ${stripSeedPrefix(
+        item.metadata.location,
+      )}. Open the request to review the details.`
+    : `${actor} submitted a request for animal ${animal}. Open the request to review the details.`,
+},
+    re_insemination_requested: {
+      title: `Re-insemination request for ${animal}`,
+      body: `${actor} requested another AI service after the previous attempt was confirmed unsuccessful. Open it to review the details and schedule the visit.`,
     },
     field_ai_recorded: {
       title: `AI service recorded for ${animal}`,
@@ -184,6 +192,10 @@ export const presentNotification = (item: NotificationData) => {
       title: "Observation submitted",
       body: `Your observation for ${animal} was sent to the technician for review.`,
     },
+    farmer_observation_reported: {
+      title: `Breeding observation recorded for ${animal}`,
+      body: "The farmer observation was recorded. Follow the existing breeding schedule when professional follow-up becomes due.",
+    },
     technician_review_required: {
       title: "Observation needs review",
       body: `A farmer submitted a breeding observation for ${animal}.`,
@@ -195,6 +207,10 @@ export const presentNotification = (item: NotificationData) => {
     pregnancy_not_confirmed: {
       title: `Pregnancy not confirmed for ${animal}`,
       body: "The latest check did not confirm pregnancy. Review the animal’s breeding record for next steps.",
+    },
+    return_to_heat_confirmed: {
+      title: "Return to heat confirmed",
+      body: `A technician confirmed that ${animal} returned to heat after insemination.`,
     },
     continuation_recheck_due: {
       title: "Pregnancy follow-up due",
@@ -244,10 +260,32 @@ export const getNotificationTarget = (
       params: { id: String(taskId) },
     };
   }
+  const resolvedReturnToHeatRecordId =
+    eventKey(item) === "return_to_heat_confirmed"
+      ? value(item, "inseminationId")
+      : null;
+  const resolvedReturnToHeatAnimalId = value(item, "animalId");
+  if (
+    resolvedReturnToHeatRecordId &&
+    resolvedReturnToHeatAnimalId &&
+    role === "farmer"
+  ) {
+    return {
+      pathname: "/(farmer)/animal-record-detail",
+      params: {
+        animalId: String(resolvedReturnToHeatAnimalId),
+        sourceId: String(resolvedReturnToHeatRecordId),
+        sourceKind: "insemination",
+        recordId: String(resolvedReturnToHeatRecordId),
+        recordType: "insemination",
+      },
+    };
+  }
   const requestId =
     value(item, "requestId") ||
     (item.linkType === "request" ? item.relatedId : null) ||
-    (["ai-request", "health-request"].includes(String(item.type))
+    (!item.linkType &&
+    ["ai-request", "health-request"].includes(String(item.type))
       ? item.relatedId
       : null);
   if (requestId) {
@@ -295,6 +333,10 @@ export const getNotificationTarget = (
       params: {
         id: String(recordId),
         animalId: animalId ? String(animalId) : undefined,
+        sourceId: String(value(item, "sourceId") || recordId),
+        sourceKind: String(value(item, "sourceKind") || ""),
+        recordId: String(recordId),
+        recordType: String(value(item, "recordType") || ""),
       },
     };
   }

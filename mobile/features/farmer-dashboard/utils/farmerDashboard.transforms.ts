@@ -1,4 +1,5 @@
 import type { AIRequest, HealthRequest } from "@/types";
+import { isFarmerBreedingObservationReminderDay } from "../../breeding/utils/breedingObservationPresentation.ts";
 import type {
   FarmerActivity,
   FarmerActivityPresentation,
@@ -135,22 +136,28 @@ const toAttentionItem = (milestone: FarmerMilestone): FarmerAttentionItem | null
   const animalReference = formatAnimalReference(milestone.animal);
   const isPregnancyCheck = milestone.type === "pd_check";
   const isCalving = milestone.type === "calving";
-  const hasVerificationTask = Boolean(milestone.taskId) &&
-    ["awaiting_confirmation", "pending", "in_progress"].includes(
-      String(milestone.status || "").toLowerCase(),
-    );
+  const hasFarmerObservation = Boolean(
+    milestone.farmerObservation?.reportType,
+  );
+  const daysPostAI = milestone.pregnancyReadiness?.daysPostAI;
+
+  // Farmer Home represents work the Farmer can perform now. Pregnancy checks
+  // and submitted observations remain visible in the detail/tracker surfaces.
+  if (isPregnancyCheck) return null;
+  if (
+    milestone.type === "heat_check" &&
+    (hasFarmerObservation ||
+      !isFarmerBreedingObservationReminderDay(daysPostAI))
+  ) {
+    return null;
+  }
+
   const urgency: FarmerAttentionItem["urgency"] =
-    hasVerificationTask
-      ? "awaiting"
-      : isCalving && daysLeft !== null && daysLeft <= 0
-        ? "due_today"
-        : daysLeft !== null && daysLeft < 0
+    daysLeft !== null && daysLeft < 0
       ? "overdue"
       : daysLeft === 0
         ? "due_today"
-        : isPregnancyCheck && milestone.pregnancyReadiness?.isEligible !== true
-          ? "awaiting"
-          : "actionable";
+        : "actionable";
 
   let displayTitle = milestone.title || "Breeding action";
   let displaySubtitle = animalReference;
@@ -159,36 +166,12 @@ const toAttentionItem = (milestone: FarmerMilestone): FarmerAttentionItem | null
   let actionKind: FarmerAttentionItem["actionKind"] = "view_animal";
 
   if (milestone.type === "heat_check") {
-    displayTitle = "Breeding Follow-up";
-    displaySubtitle = daysLeft === 0
-      ? `${animalReference} · Due today`
-      : daysLeft !== null && daysLeft < 0
-        ? `${animalReference} · Follow-up window open`
-        : `${animalReference}${daysLeft !== null ? ` · Due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : ""}`;
-    guidance = hasVerificationTask
-      ? "Breeding signs reported. Awaiting technician review."
-      : "Check whether this animal returned to heat.";
-    actionLabel = hasVerificationTask ? "View Animal" : "Report Signs";
-    actionKind = hasVerificationTask ? "view_animal" : "report_signs";
-  } else if (isPregnancyCheck) {
-    if (hasVerificationTask) {
-      displayTitle = "Pregnancy check requested";
-      displaySubtitle = `${animalReference} · Awaiting technician confirmation`;
-      guidance = "A technician verification task is already active.";
-    } else if (milestone.pregnancyReadiness?.isEligible) {
-      displayTitle = "Pregnancy Confirmation Due";
-      displaySubtitle = `${animalReference} · Available now`;
-      guidance = "A technician can now perform the pregnancy check.";
-      actionLabel = "Request Technician Check";
-      actionKind = "request_pregnancy_check";
-    } else {
-      displayTitle = "Pregnancy Confirmation";
-      displaySubtitle = daysLeft !== null && daysLeft > 0
-        ? `${animalReference} · Available in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
-        : `${animalReference} · Not yet available`;
-      guidance = milestone.pregnancyReadiness?.reason ||
-        "The technician pregnancy check is not yet available.";
-    }
+    const elapsedDays = Number(daysPostAI);
+    displayTitle = `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} after insemination`;
+    displaySubtitle = animalReference;
+    guidance = "Has your animal returned to heat?";
+    actionLabel = "Give Update";
+    actionKind = "report_signs";
   } else if (isCalving) {
     if (daysLeft !== null && daysLeft < 0) {
       displayTitle = "Past Expected Calving Date";

@@ -67,14 +67,7 @@ type BirthMetric = {
   value: string;
 };
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  const { colors } = useTheme();
-  return (
-    <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
-      {children}
-    </Text>
-  );
-}
+
 
 function SectionSurface({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
@@ -90,44 +83,7 @@ function SectionSurface({ children }: { children: React.ReactNode }) {
   );
 }
 
-function InfoRow({
-  label,
-  value,
-  long = false,
-  muted = false,
-  showDivider = true,
-}: DisplayRow & { muted?: boolean; showDivider?: boolean }) {
-  const { colors } = useTheme();
-  return (
-    <View
-      style={[
-        styles.infoRow,
-        showDivider && {
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: colors.border,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          muted ? styles.metadataLabel : styles.infoLabel,
-          { color: muted ? colors.textMuted : colors.textSecondary },
-        ]}
-      >
-        {label}
-      </Text>
-      <Text
-        selectable={long}
-        style={[
-          muted ? styles.metadataValue : styles.infoValue,
-          { color: muted ? colors.textSecondary : colors.textPrimary },
-        ]}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
+
 
 function Rows({
   rows,
@@ -136,17 +92,38 @@ function Rows({
   rows: (DisplayRow | null)[];
   muted?: boolean;
 }) {
+  const { colors } = useTheme();
   const visibleRows = rows.filter((row): row is DisplayRow => Boolean(row));
   return (
     <>
-      {visibleRows.map((row, index) => (
-        <InfoRow
-          key={`${row.label}-${index}`}
-          {...row}
-          muted={muted}
-          showDivider={index < visibleRows.length - 1}
-        />
-      ))}
+      {visibleRows.map((row, index) => {
+        const showDivider = index < visibleRows.length - 1;
+        return (
+          <View
+            key={`${row.label}-${index}`}
+            style={[
+              { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 16, gap: 16 },
+              showDivider && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            ]}
+          >
+            <Text
+              textRole={muted ? "caption" : "body"}
+              color={muted ? "muted" : "secondary"}
+              style={{ flexShrink: 0, maxWidth: "45%" }}
+            >
+              {row.label}
+            </Text>
+            <Text
+              selectable={row.long}
+              textRole={muted ? "body" : "bodyStrong"}
+              color={muted ? "secondary" : "primary"}
+              style={{ flex: 1, textAlign: "right" }}
+            >
+              {row.value}
+            </Text>
+          </View>
+        );
+      })}
     </>
   );
 }
@@ -271,7 +248,7 @@ function EvidenceSection({
   return (
     <View style={styles.sectionBlock}>
       <View style={styles.headingGroup}>
-        <SectionHeading>{title}</SectionHeading>
+        <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>{title}</Text>
         <Text style={[styles.sectionCaption, { color: colors.textSecondary }]}>
           {attachments.length} saved{" "}
           {attachments.length === 1 ? "photo" : "photos"}
@@ -626,7 +603,7 @@ export function TechnicianOfficialRecordContent({
 
       {eventDate || entryDate ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>Important dates</SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Important dates</Text>
           <SectionSurface>
             {eventDate ? (
               <DateItem
@@ -653,7 +630,7 @@ export function TechnicianOfficialRecordContent({
       {record.type === "ai" &&
       (hasValue(details.outcome) || visibleAiRows > 0) ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>Insemination details</SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Insemination details</Text>
           <SectionSurface>
             {hasValue(details.outcome) ? (
               <PrimaryResult
@@ -670,7 +647,7 @@ export function TechnicianOfficialRecordContent({
       {record.type === "pregnancy" &&
       (hasValue(details.outcome) || visiblePregnancyRows > 0) ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>Pregnancy confirmation</SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Pregnancy confirmation</Text>
           <SectionSurface>
             {hasValue(details.outcome) ? (
               <PrimaryResult
@@ -689,7 +666,7 @@ export function TechnicianOfficialRecordContent({
         visibleCalvingRows > 0 ||
         birthMetrics.length > 0) ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>Birth outcome</SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Birth outcome</Text>
           <SectionSurface>
             {hasValue(details.calvingOutcome) ? (
               <PrimaryResult
@@ -707,11 +684,11 @@ export function TechnicianOfficialRecordContent({
       {record.type === "calving" &&
       (livingCalves.length > 0 || nonLivingCalves.length > 0) ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>
             {livingCalves.length === 1
               ? "Registered calf"
               : "Registered calves"}
-          </SectionHeading>
+          </Text>
 
           {livingCalves.map((calf, index) => (
             <View
@@ -783,7 +760,7 @@ export function TechnicianOfficialRecordContent({
 
       {record.type === "health" && visibleHealthRows > 0 ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>Health service details</SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Health service details</Text>
           <SectionSurface>
             <Rows rows={healthRows} />
           </SectionSurface>
@@ -797,7 +774,7 @@ export function TechnicianOfficialRecordContent({
 
       {hasValue(details.technicianNote) ? (
         <View style={styles.sectionBlock}>
-          <SectionHeading>Technician notes</SectionHeading>
+          <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Technician notes</Text>
           <View
             style={[
               styles.notesSurface,
@@ -814,7 +791,7 @@ export function TechnicianOfficialRecordContent({
       ) : null}
 
       <View style={styles.sectionBlock}>
-        <SectionHeading>Additional details</SectionHeading>
+        <Text textRole="title" style={{ marginTop: 24, marginBottom: 12 }}>Additional details</Text>
         <SectionSurface>
           <Rows rows={additionalRows} muted />
         </SectionSurface>

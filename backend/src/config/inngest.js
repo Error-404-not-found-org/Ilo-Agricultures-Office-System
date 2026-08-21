@@ -10,6 +10,7 @@ import { Config } from "../models/config.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { sendPushNotification } from "../lib/push-notifications.js";
 import { getLegacyPregnancyReminderRelevance } from "../services/pregnancy-reminder-relevance.service.js";
+import { HEAT_RETURN_MONITORING_POLICY, isTerminalAIAttempt, getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
 import { ENV } from "./env.js";
 
 export const inngest = new Inngest({
@@ -56,7 +57,7 @@ const handleUserSync = async ({ event }) => {
       email,
       name: name || "New User",
       imageUrl: image_url || "",
-      role, 
+      role,
       isVerified,
     });
     console.log(`Created new ${role} from Clerk signup: ${email}`);
@@ -106,90 +107,112 @@ const onInseminationApproved = inngest.createFunction(
     await connectDB();
     const { inseminationId, animalId, farmerId } = event.data;
 
-    // --- STEP 1: DAY 18 (HEAT DETECTION) ---
-    await step.sleep("wait-for-heat-window", "18 days");
-
-    const stillRelevant18 = await step.run("check-relevance-18", async () => {
+    const baseDate = await step.run("fetch-insemination-date", async () => {
       const ins = await Insemination.findById(inseminationId);
-      return ins && ins.status === "done" && ins.isSuccess === null;
+      if (!ins) return null;
+      return ins.inseminationDate || ins.createdAt;
     });
 
-    if (stillRelevant18) {
-      await step.run("send-heat-reminder", async () => {
-        const animal = await Animal.findById(animalId);
-        const title = "Watch for signs of heat";
-        const body = `It has been 18 days since the AI service for ${animal?.earTag || 'your animal'}. For the next 3 days, watch for standing heat, mounting behavior, or unusual restlessness.`;
+    if (!baseDate) return;
 
-        await Notification.create({
-          recipientId: farmerId,
-          senderId: "000000000000000000000000",
-          type: "system",
-          relatedId: animalId,
-          title,
-          message: body,
-        });
+    // Use canonical domain logic
+    const dates = getHeatReturnMonitoringDates(baseDate);
 
-        const farmer = await User.findById(farmerId);
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
+    // --- STEP 1: DAY 18 (HEAT DETECTION) ---
+    if (dates.observationWindowStartDate > new Date()) {
+      await step.sleepUntil("wait-for-heat-window", dates.observationWindowStartDate);
+
+      const stillRelevant18 = await step.run("check-relevance-18", async () => {
+        const ins = await Insemination.findById(inseminationId);
+        return ins && ins.status === "done" && !isTerminalAIAttempt(ins);
       });
+
+      if (stillRelevant18) {
+        await step.run("send-heat-reminder", async () => {
+          const animal = await Animal.findById(animalId);
+          const title = "Watch for signs of heat";
+          const body = `It has been ${HEAT_RETURN_MONITORING_POLICY.observationWindowStartDays} days since the AI service for ${animal?.earTag || 'your animal'}. For the next 3 days, watch for standing heat, mounting behavior, or unusual restlessness.`;
+
+          await Notification.create({
+            recipientId: farmerId,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: animalId,
+            title,
+            message: body,
+          });
+
+          const farmer = await User.findById(farmerId);
+          if (farmer?.pushToken) {
+            await sendPushNotification(farmer.pushToken, title, body);
+          }
+        });
+      }
     }
 
     // --- STEP 2: DAY 21 (FARMER CONFIRMATION) ---
-    await step.sleep("wait-for-confirmation", "3 days"); // Day 18 + 3 = Day 21
+    if (dates.farmerFollowUpDate > new Date()) {
+      await step.sleepUntil("wait-for-confirmation", dates.farmerFollowUpDate);
 
-    const stillRelevant21 = await step.run("check-relevance-21", async () => {
-      const ins = await Insemination.findById(inseminationId);
-      return ins && ins.status === "done" && ins.isSuccess === null;
-    });
-
-    if (stillRelevant21) {
-      await step.run("ask-farmer-success", async () => {
-        const animal = await Animal.findById(animalId);
-        const title = "Share a breeding observation";
-        const body = `It has been 21 days since the AI service for ${animal?.earTag || 'your animal'}. Report any signs of heat or possible pregnancy for technician review.`;
-
-        await Notification.create({
-          recipientId: farmerId,
-          senderId: "000000000000000000000000",
-          type: "ai-request",
-          relatedId: inseminationId,
-          title,
-          message: body,
-        });
-
-        const farmer = await User.findById(farmerId);
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
+      const stillRelevant21 = await step.run("check-relevance-21", async () => {
+        const ins = await Insemination.findById(inseminationId);
+        return ins && ins.status === "done" && !isTerminalAIAttempt(ins);
       });
-    }
 
-    // --- STEP 3: DAY 25 (TECHNICIAN NUDGE) ---
-    await step.sleep("wait-for-tech-nudge", "4 days"); // Day 21 + 4 = Day 25
+      if (stillRelevant21) {
+        await step.run("ask-farmer-success", async () => {
+          const animal = await Animal.findById(animalId);
+          const title = "Share a breeding observation";
+          const body = `It has been ${HEAT_RETURN_MONITORING_POLICY.expectedEstrousCycleDays} days since the AI service for ${animal?.earTag || 'your animal'}. Report any signs of heat or possible pregnancy for technician review.`;
 
-    if (stillRelevant21) {
-      await step.run("nudge-technician", async () => {
-        const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
-        const technicians = await User.find({ role: "technician" });
-        const title = "Farmer observation follow-up";
-        const body = `${ins.farmerId?.name || "A farmer"} has not yet submitted an observation for AI attempt ${ins.attemptNumber}. Contact the farmer if an update is needed.`;
-        
-        await Promise.all(technicians.map(async (tech) => {
           await Notification.create({
-            recipientId: tech._id,
+            recipientId: farmerId,
             senderId: "000000000000000000000000",
-            type: "system",
+            type: "ai-request",
             relatedId: inseminationId,
             title,
             message: body,
           });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, body);
+
+          const farmer = await User.findById(farmerId);
+          if (farmer?.pushToken) {
+            await sendPushNotification(farmer.pushToken, title, body);
           }
-        }));
+        });
+      }
+    }
+
+    // --- STEP 3: DAY 25 (TECHNICIAN NUDGE) ---
+    if (dates.technicianFollowUpDate > new Date()) {
+      await step.sleepUntil("wait-for-tech-nudge", dates.technicianFollowUpDate);
+
+      const stillRelevant25 = await step.run("check-relevance-25", async () => {
+        const ins = await Insemination.findById(inseminationId);
+        return ins && ins.status === "done" && !isTerminalAIAttempt(ins);
       });
+
+      if (stillRelevant25) {
+        await step.run("nudge-technician", async () => {
+          const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
+          const technicians = await User.find({ role: "technician" });
+          const title = "Farmer observation follow-up";
+          const body = `${ins.farmerId?.name || "A farmer"} has not yet submitted an observation for AI attempt ${ins.attemptNumber}. Contact the farmer if an update is needed.`;
+
+          await Promise.all(technicians.map(async (tech) => {
+            await Notification.create({
+              recipientId: tech._id,
+              senderId: "000000000000000000000000",
+              type: "system",
+              relatedId: inseminationId,
+              title,
+              message: body,
+            });
+            if (tech.pushToken) {
+              await sendPushNotification(tech.pushToken, title, body);
+            }
+          }));
+        });
+      }
     }
 
     // --- STEP 4: DAY 60 (PD DIAGNOSIS REMINDER) ---
@@ -566,7 +589,7 @@ const automatedGestationLifecycle = inngest.createFunction(
         // Notify Technicians (In-app & Push)
         const techTitle = "Expected calving approaching";
         const techBody = `${farmer?.name || 'A farmer'}'s animal (${animal.earTag || 'tag not recorded'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
-        
+
         for (const tech of technicians) {
           await Notification.create({
             recipientId: tech._id,
@@ -646,7 +669,7 @@ const remindPendingServices = inngest.createFunction(
         if (tech) {
           const title = "AI service record needed";
           const body = `Today's AI visit for ${request.farmerId?.name || 'the farmer'} and ${request.animalId?.earTag || request.animalId?.animalId || 'the animal'} does not have a completed service record. Open the visit to finish it.`;
-          
+
           await Notification.create({
             recipientId: tech._id,
             senderId: "000000000000000000000000",
@@ -668,7 +691,7 @@ const remindPendingServices = inngest.createFunction(
         if (tech) {
           const title = "Health service record needed";
           const body = `Today's health visit for ${request.farmerId?.name || 'the farmer'} and ${request.animalId?.earTag || request.animalId?.animalId || 'the animal'} does not have a completed service record. Open the visit to finish it.`;
-          
+
           await Notification.create({
             recipientId: tech._id,
             senderId: "000000000000000000000000",
@@ -692,9 +715,9 @@ const remindPendingServices = inngest.createFunction(
 export const functions = [
   syncUserCreated,
   syncUserUpdated,
-  deleteUserFromDB, 
-  onInseminationApproved, 
-  onPregnancyConfirmed, 
+  deleteUserFromDB,
+  onInseminationApproved,
+  onPregnancyConfirmed,
   onCalvingRecorded,
   dailyStatsAggregation,
   automatedGestationLifecycle,

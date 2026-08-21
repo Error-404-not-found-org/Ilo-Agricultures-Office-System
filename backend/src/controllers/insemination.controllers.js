@@ -30,6 +30,7 @@ export const createInsemination = async (req, res) => {
       semenDosesUsed,
       estrus,
       visitPeriod,
+      previousAttemptId,
     } = req.body;
 
     const normalizedSireBreed = normalizeSireBreed(sireBreed);
@@ -81,6 +82,7 @@ export const createInsemination = async (req, res) => {
         ? { visitPeriod: normalizedVisitPeriod }
         : {}),
       estrus,
+      ...(previousAttemptId ? { previousAttemptId } : {}),
       status: "approved",
       approvedBy: req.user._id,
     });

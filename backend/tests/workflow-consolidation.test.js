@@ -122,10 +122,12 @@ test("Workflow consolidation: inactive technician AI status controller is remove
 
 test("Workflow consolidation: AI status transitions reject invalid moves (e.g. pending -> done)", async () => {
   const originalFindById = Insemination.findById;
-  Insemination.findById = async () => ({
-    _id: "507f1f77bcf86cd799439021",
-    status: "pending",
-    approvedBy: "507f1f77bcf86cd799439011",
+  Insemination.findById = () => ({
+    populate: () => ({
+      _id: "507f1f77bcf86cd799439021",
+      status: "pending",
+      approvedBy: "507f1f77bcf86cd799439011",
+    }),
   });
 
   const recorder = createResponseRecorder();

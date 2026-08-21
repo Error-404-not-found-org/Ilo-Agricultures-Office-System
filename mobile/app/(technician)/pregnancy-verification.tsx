@@ -31,6 +31,7 @@ import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
 } from "@/features/breeding/utils/breedingObservationPresentation";
+import { technicianKeys } from "@/lib/queryKeys";
 
 export default function PregnancyVerificationScreen() {
   const { id } = useLocalSearchParams();
@@ -57,6 +58,7 @@ export default function PregnancyVerificationScreen() {
   // Date picker visibility states
   const [showCheckedAtPicker, setShowCheckedAtPicker] = useState(false);
   const [showNextCheckDatePicker, setShowNextCheckDatePicker] = useState(false);
+  const [methodValidationError, setMethodValidationError] = useState(false);
   const pregnancyReadiness = task?.pregnancyReadiness || insem?.pregnancyReadiness || null;
   const methodBased = pregnancyReadiness?.policyMode === "method_based";
   const methodOptions = methodBased
@@ -82,7 +84,7 @@ export default function PregnancyVerificationScreen() {
         if (res.data?.insemination) {
           const insemData = res.data.insemination;
           setInsem(insemData);
-          
+
           const animalObj = insemData.animalId;
           const start = insemData.inseminationDate || insemData.createdAt;
           if (start && animalObj) {
@@ -116,10 +118,12 @@ export default function PregnancyVerificationScreen() {
       toast.error("Please select a verification result.");
       return;
     }
-    if (!checkMethod && (methodBased || officialDiagnosis)) {
-      toast.error("Please select a diagnostic method.");
+    if (!checkMethod) {
+      setMethodValidationError(true);
+      toast.error("Select a diagnostic method before saving the pregnancy check.");
       return;
     }
+    setMethodValidationError(false);
     if (verificationResult === "needs_recheck" && !nextCheckDate) {
       toast.error("Please specify a next check date for rechecks.");
       return;
@@ -137,12 +141,34 @@ export default function PregnancyVerificationScreen() {
         taskId: task?._id,
       });
 
+      // Optimistically synchronize the Work Queue cache for conclusive results
+      if (verificationResult !== "needs_recheck") {
+        queryClient.setQueryData(technicianKeys.workQueue(), (oldData: any[]) => {
+          if (!oldData || !Array.isArray(oldData)) return oldData;
+          return oldData.filter((item) => {
+            // Remove the completed PD task
+            if (task?._id && item.id === task._id) return false;
+
+            // Remove the Insemination item itself
+            if (insem?._id && item.id === insem._id) return false;
+            if (insem?._id && item.workflowId === insem._id) return false;
+
+            // Remove related tasks (like BreedingFollowUp)
+            if (insem?._id && item.raw?.metadata?.inseminationId === insem._id) return false;
+            if (insem?._id && item.raw?.inseminationId === insem._id) return false;
+
+            return true;
+          });
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
+      queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
       toast.success("Pregnancy verification recorded!");
-      
+
       // Navigate back and dismiss this screen
       router.dismiss(2);
     } catch (err: any) {
@@ -345,7 +371,10 @@ export default function PregnancyVerificationScreen() {
                     },
                     checkMethod === method.methodCode && styles.pillBtnActive,
                   ]}
-                  onPress={() => setCheckMethod(method.methodCode)}
+                  onPress={() => {
+                    setCheckMethod(method.methodCode);
+                    setMethodValidationError(false);
+                  }}
                 >
                   <Text
                     style={[
@@ -364,6 +393,12 @@ export default function PregnancyVerificationScreen() {
               )
             )}
           </View>
+          {methodValidationError && (
+            <Text style={{ color: "#ef4444", fontSize: 12, marginTop: 4, fontFamily: "Outfit_500Medium", marginBottom: 8 }}>
+              Select a diagnostic method before saving the pregnancy check.
+            </Text>
+          )}
+
 
           {/* Date of Diagnosis */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Checked At</Text>

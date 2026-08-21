@@ -198,3 +198,97 @@ test("Idempotency: replaying the original key returns the original success", asy
     Idempotency.findOne = originalFindOne;
   }
 });
+
+test("Idempotency: farmer observation replay does not run the route handler twice", async () => {
+  const body = {
+    reportType: "unsure",
+    signs: ["Needs technician check"],
+    notes: "Please review.",
+    evidencePhotos: [],
+    verificationRequested: false,
+  };
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(body))
+    .digest("hex");
+  const stored = {
+    _id: "farmer-observation-idempotency-1",
+    key: "farmer-observation-operation-1",
+    userId: "farmer-1",
+    method: "POST",
+    path: "/ai-request/insemination-1/farmer-observation",
+    requestHash,
+    status: "pending",
+    createdAt: new Date(),
+  };
+  let routeHandlerCalls = 0;
+
+  const originals = {
+    create: Idempotency.create,
+    findOne: Idempotency.findOne,
+    updateOne: Idempotency.updateOne,
+    deleteOne: Idempotency.deleteOne,
+  };
+  Idempotency.create = async () => {
+    if (routeHandlerCalls === 0) return stored;
+    const error = new Error("Duplicate key");
+    error.code = 11000;
+    throw error;
+  };
+  Idempotency.findOne = async () => stored;
+  Idempotency.updateOne = async (_query, update) => {
+    Object.assign(stored, update.$set);
+  };
+  Idempotency.deleteOne = async () => {};
+
+  const makeRequest = () => ({
+    method: "POST",
+    headers: { "idempotency-key": stored.key },
+    body,
+    user: { _id: "farmer-1" },
+    path: stored.path,
+  });
+  const makeResponse = () => ({
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    send(value) {
+      this.body = value;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+  });
+
+  try {
+    const firstResponse = makeResponse();
+    await idempotencyMiddleware(makeRequest(), firstResponse, () => {
+      routeHandlerCalls += 1;
+      firstResponse.status(200).json({
+        message: "Breeding observation saved.",
+        data: { request: { _id: "insemination-1" } },
+      });
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const replayResponse = makeResponse();
+    await idempotencyMiddleware(makeRequest(), replayResponse, () => {
+      routeHandlerCalls += 1;
+    });
+
+    assert.equal(routeHandlerCalls, 1);
+    assert.equal(stored.status, "resolved");
+    assert.equal(replayResponse.statusCode, 200);
+    assert.equal(replayResponse.body.message, "Breeding observation saved.");
+  } finally {
+    Idempotency.create = originals.create;
+    Idempotency.findOne = originals.findOne;
+    Idempotency.updateOne = originals.updateOne;
+    Idempotency.deleteOne = originals.deleteOne;
+  }
+});

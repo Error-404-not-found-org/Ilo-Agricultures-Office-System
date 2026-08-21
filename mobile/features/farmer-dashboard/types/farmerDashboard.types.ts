@@ -58,9 +58,16 @@ export interface FarmerMilestone {
     daysPostAI?: number | null;
     minimumDays?: number | null;
   } | null;
+  pregnancyFollowUpTask?: {
+    _id?: string;
+    status?: string | null;
+    dueDate?: string | null;
+    sourceType?: string | null;
+  } | null;
   farmerObservation?: {
     reportType?: "possible_pregnancy" | "return_to_heat" | "unsure" | null;
     verificationStatus?: string | null;
+    outcomeVerificationStatus?: string | null;
     reportedAt?: string | null;
   } | null;
 }

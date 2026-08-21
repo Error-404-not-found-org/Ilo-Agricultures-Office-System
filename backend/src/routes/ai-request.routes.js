@@ -9,11 +9,14 @@ import {
   confirmAIOutcome,
   submitFarmerBreedingObservation,
   verifyFarmerBreedingObservation,
+  recordTechnicianBreedingObservation,
   deleteRequest,
   getAIRequestDetail,
   cancelAIRequest,
   respondAICancellation,
   dismissAIRequestForFarmer,
+  submitFarmerPregnancyReport,
+  verifyFarmerPregnancyReport,
 } from "../controllers/ai-request.controllers.js";
 import {
   protectedRoute,
@@ -66,6 +69,15 @@ router.post("/:id/farmer-observation", protectedRoute, submitFarmerBreedingObser
 
 // Technician/Admin verifies a breeding observation / records PD check
 router.post("/:id/verify-breeding-observation", protectedRoute, verifyFarmerBreedingObservation);
+
+// Technician records a breeding observation via phone call or field visit
+router.post("/:id/technician-observation", protectedRoute, requireRole(["technician", "admin"]), recordTechnicianBreedingObservation);
+
+// Farmer submits a pregnancy report with evidence
+router.post("/:id/farmer-pregnancy-report", protectedRoute, submitFarmerPregnancyReport);
+
+// Technician reviews a farmer pregnancy report (Request More Info or Accept)
+router.post("/:id/verify-pregnancy-report", protectedRoute, verifyFarmerPregnancyReport);
 
 // Farmer/Tech/Admin cancels a request (smart cancel with reason)
 router.patch("/:id/cancel", protectedRoute, cancelAIRequest);

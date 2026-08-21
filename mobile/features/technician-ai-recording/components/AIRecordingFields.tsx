@@ -34,6 +34,8 @@ interface AIRecordingFieldsProps {
   onSemenDosesChange: (value: string) => void;
   onTechnicianNoteChange: (value: string) => void;
   disabled?: boolean;
+  isHistoricalMode?: boolean;
+  isRequestLinked?: boolean;
 }
 
 const estrusOptions: EstrusType[] = ["Natural", "Synchronized", "Induced"];
@@ -66,6 +68,8 @@ export function AIRecordingFields({
   onSemenDosesChange,
   onTechnicianNoteChange,
   disabled = false,
+  isHistoricalMode = false,
+  isRequestLinked = false,
 }: AIRecordingFieldsProps) {
   const { colors } = useTheme();
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -105,7 +109,7 @@ export function AIRecordingFields({
       <View style={{ gap: 18 }}>
         <View style={{ flexDirection: "row", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <FieldLabel>Actual Insemination Date</FieldLabel>
+            <FieldLabel>{isHistoricalMode ? "Service Date" : "Actual Insemination Date"}</FieldLabel>
             <TouchableOpacity
               disabled={disabled}
               onPress={() => setShowDatePicker(true)}
@@ -139,7 +143,7 @@ export function AIRecordingFields({
           </View>
 
           <View style={{ flex: 1 }}>
-            <FieldLabel>Actual Insemination Time</FieldLabel>
+            <FieldLabel>{isHistoricalMode ? "Service Time" : "Actual Insemination Time"}</FieldLabel>
             <TouchableOpacity
               disabled={disabled}
               onPress={() => setShowTimePicker(true)}

@@ -26,6 +26,7 @@ import {
 } from "lucide-react-native";
 import React, { useRef, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { toast } from "sonner-native";
 import { useQueryClient } from "@tanstack/react-query";
@@ -44,7 +45,18 @@ interface CalfEntry {
   imageUri?: string;
   imageBase64?: string;
   isLiving?: boolean;
+  isCustomColor?: boolean;
 }
+
+const CALF_COLOR_OPTIONS = [
+    'Black',
+    'Brown',
+    'White',
+    'Red',
+    'Gray',
+    'Spotted',
+    'Mixed',
+];
 
 export default function RecordCalving() {
   const router = useRouter();
@@ -61,6 +73,8 @@ export default function RecordCalving() {
   const taskId = params.taskId as string;
 
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState<Date>(new Date());
   const [calvingEase, setCalvingEase] = useState("Normal");
   const [outcome, setOutcome] = useState<"live_birth" | "mixed" | "stillbirth" | "abortion">("live_birth");
   const [technicianNote, setTechnicianNote] = useState("");
@@ -140,7 +154,7 @@ export default function RecordCalving() {
     setCalves(newCalves);
   };
 
-  const updateCalf = (index: number, field: keyof CalfEntry, value: string) => {
+  const updateCalf = (index: number, field: keyof CalfEntry, value: any) => {
     const newCalves = [...calves];
     (newCalves[index] as any)[field] = value;
     setCalves(newCalves);
@@ -278,23 +292,32 @@ export default function RecordCalving() {
           </Text>
         </View>
 
-        {/* Date & Ease Section */}
         <View className="mt-8">
           <View>
             <Text className="text-[10px] font-black uppercase tracking-widest ml-1 mb-2" style={{ color: colors.textMuted }}>
               Calving Date
             </Text>
-            <View className="border rounded-2xl px-4 py-3 flex-row items-center" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <Calendar size={16} color={colors.textMuted} />
-              <TextInput
-                className="flex-1 ml-3 font-bold"
+            <Text className="text-slate-400 dark:text-slate-500 text-[10px] font-outfit-medium mb-2 ml-1">Date the calf was born or the calving occurred.</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setTempDate(date ? new Date(`${date}T00:00:00`) : new Date());
+                setShowDatePicker(true);
+              }}
+              className="border rounded-2xl px-4 py-4 flex-row items-center" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+              <Calendar size={18} color={primaryColor} />
+              <Text
+                className="flex-1 ml-3 font-bold text-sm"
                 style={{ color: colors.textPrimary }}
-                value={date}
-                onChangeText={setDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
+              >
+                {date
+                    ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                    })
+                    : "Select date"}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -425,8 +448,8 @@ export default function RecordCalving() {
               </View>
 
               {/* Tag & Color */}
-              <View className="flex-row gap-4">
-                <View className="flex-1">
+              <View className="gap-4">
+                <View>
                   <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
                     Ear Tag #
                   </Text>
@@ -442,21 +465,60 @@ export default function RecordCalving() {
                     />
                   </View>
                 </View>
-                <View className="flex-1">
+                <View>
                   <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
-                    Color / Markings
+                    Calf Color
                   </Text>
-                  <View className="rounded-xl px-4 py-3 flex-row items-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
-                    <Palette size={14} color={colors.textMuted} />
-                    <TextInput
-                      className="flex-1 ml-2 font-bold text-xs"
-                      style={{ color: colors.textPrimary }}
-                      value={calf.color}
-                      onChangeText={(val) => updateCalf(index, "color", val)}
-                      placeholder="Brown, White..."
-                      placeholderTextColor={colors.textMuted}
-                    />
+                  <View className="flex-row flex-wrap gap-2 mb-2">
+                    {CALF_COLOR_OPTIONS.map((c) => (
+                      <TouchableOpacity
+                        key={c}
+                        onPress={() => {
+                          updateCalf(index, "color", c);
+                          updateCalf(index, "isCustomColor", false);
+                        }}
+                        className={`px-3 py-2 rounded-xl border ${calf.color === c && !calf.isCustomColor ? 'border-transparent' : ''}`}
+                        style={{
+                          backgroundColor: calf.color === c && !calf.isCustomColor ? primaryColor : colors.card,
+                          borderColor: calf.color === c && !calf.isCustomColor ? 'transparent' : colors.border
+                        }}
+                      >
+                        <Text className="font-bold text-[10px]" style={{ color: calf.color === c && !calf.isCustomColor ? "white" : colors.textMuted }}>
+                          {c}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity
+                      onPress={() => {
+                        updateCalf(index, "isCustomColor", true);
+                        if (CALF_COLOR_OPTIONS.includes(calf.color)) {
+                            updateCalf(index, "color", "");
+                        }
+                      }}
+                      className={`px-3 py-2 rounded-xl border ${calf.isCustomColor ? 'border-transparent' : ''}`}
+                      style={{
+                        backgroundColor: calf.isCustomColor ? primaryColor : colors.card,
+                        borderColor: calf.isCustomColor ? 'transparent' : colors.border
+                      }}
+                    >
+                      <Text className="font-bold text-[10px]" style={{ color: calf.isCustomColor ? "white" : colors.textMuted }}>
+                        Other
+                      </Text>
+                    </TouchableOpacity>
                   </View>
+                  {calf.isCustomColor && (
+                    <View className="rounded-xl px-4 py-3 flex-row items-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
+                      <Palette size={14} color={colors.textMuted} />
+                      <TextInput
+                        className="flex-1 ml-2 font-bold text-xs"
+                        style={{ color: colors.textPrimary }}
+                        value={calf.color}
+                        onChangeText={(val) => updateCalf(index, "color", val)}
+                        placeholder="Describe color..."
+                        placeholderTextColor={colors.textMuted}
+                      />
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -591,6 +653,41 @@ export default function RecordCalving() {
           )}
         </TouchableOpacity>
       </View>
+      {showDatePicker && (
+        <DateTimePicker
+          value={tempDate}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          maximumDate={new Date()}
+          onChange={(event, selectedDate) => {
+            if (Platform.OS === "android") {
+              if (event.type === "set" && selectedDate) {
+                setShowDatePicker(false);
+                setTempDate(selectedDate);
+                const year = selectedDate.getFullYear();
+                const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                const day = String(selectedDate.getDate()).padStart(2, "0");
+                setDate(`${year}-${month}-${day}`);
+              } else if (event.type === "dismissed") {
+                setShowDatePicker(false);
+              }
+            } else if (Platform.OS === "ios" && selectedDate) {
+              setTempDate(selectedDate);
+              const year = selectedDate.getFullYear();
+              const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+              const day = String(selectedDate.getDate()).padStart(2, "0");
+              setDate(`${year}-${month}-${day}`);
+            }
+          }}
+        />
+      )}
+      {Platform.OS === "ios" && showDatePicker && (
+        <View style={{ backgroundColor: colors.card, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'flex-end', padding: 16 }}>
+          <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+            <Text style={{ color: primaryColor, fontWeight: 'bold' }}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

@@ -16,6 +16,7 @@ const ids = {
   pregnancy: "507f1f77bcf86cd799439005",
   pdTask: "507f1f77bcf86cd799439006",
   calvingTask: "507f1f77bcf86cd799439007",
+  failedAttempt: "507f1f77bcf86cd799439008",
 };
 
 const queryResult = (value) => {
@@ -69,6 +70,19 @@ test("Farmer breeding milestones expose canonical identifiers, readiness, and ac
       farmerOutcomeReport: "possible_pregnancy",
       verificationStatus: "pending",
     },
+    {
+      _id: ids.failedAttempt,
+      farmerId: ids.farmer,
+      animalId: animal,
+      status: "done",
+      isSuccess: false,
+      outcome: "Failed (Re-heat)",
+      outcomeVerificationStatus: "verified",
+      outcomeConfirmationSource: "technician_return_to_heat",
+      failureReason: "return_to_heat",
+      farmerOutcomeReport: "return_to_heat",
+      inseminationDate: daysAgo(20),
+    },
   ]);
   Pregnancy.find = () => queryResult([
     {
@@ -87,6 +101,8 @@ test("Farmer breeding milestones expose canonical identifiers, readiness, and ac
       animalIds: [ids.animal],
       taskType: "PD",
       status: "Pending",
+      sourceType: "automatic_pd_followup",
+      dueDate: daysFromNow(30),
       metadata: { inseminationId: ids.pdAttempt },
     },
     {
@@ -125,14 +141,20 @@ test("Farmer breeding milestones expose canonical identifiers, readiness, and ac
     (item) => item.type === "pd_check" && String(item.relatedId) === ids.pdAttempt,
   );
   const calving = recorder.body.find((item) => item.type === "calving");
+  const failedAttemptMilestone = recorder.body.find(
+    (item) => String(item.relatedId) === ids.failedAttempt,
+  );
 
   assert.equal(String(heat.relatedId), ids.heatAttempt);
   assert.equal(String(pd.relatedId), ids.pdAttempt);
   assert.equal(String(pd.taskId), ids.pdTask);
   assert.equal(pd.status, "awaiting_confirmation");
+  assert.equal(String(pd.pregnancyFollowUpTask._id), ids.pdTask);
+  assert.equal(pd.pregnancyFollowUpTask.sourceType, "automatic_pd_followup");
   assert.equal(pd.farmerObservation.reportType, "possible_pregnancy");
   assert.equal(pd.pregnancyReadiness.isEligible, false);
   assert.equal(pd.pregnancyReadiness.policyMode, "legacy_day_60");
   assert.equal(String(calving.relatedId), ids.pregnancy);
   assert.equal(String(calving.taskId), ids.calvingTask);
+  assert.equal(failedAttemptMilestone, undefined);
 });

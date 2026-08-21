@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { assertStatusTransition, reproductiveStatusForPregnancyResult } from "../src/domain/livestock-workflow.js";
 import {
   AI_STATUS,
+  LEGACY_ACTIVE_AI_STATUS,
   HEALTH_STATUS,
   ANIMAL_REPRODUCTIVE_STATUS,
   normalizeAIStatus,
@@ -188,6 +189,21 @@ test("Legacy status spellings normalize without breaking existing clients", () =
   assert.equal(normalizeAnimalReproductiveStatus("Postpartum"), ANIMAL_REPRODUCTIVE_STATUS.POST_PARTUM);
   assert.equal(normalizeHealthStatus("in_progress"), HEALTH_STATUS.IN_PROGRESS);
   assert.equal(normalizeAIStatus("in_progress"), AI_STATUS.IN_PROGRESS);
+  const expectedAICompatibility = new Map([
+    [LEGACY_ACTIVE_AI_STATUS.SUBMITTED, AI_STATUS.PENDING],
+    [LEGACY_ACTIVE_AI_STATUS.ACCEPTED, AI_STATUS.APPROVED],
+    [LEGACY_ACTIVE_AI_STATUS.ASSIGNED, AI_STATUS.APPROVED],
+    [LEGACY_ACTIVE_AI_STATUS.IN_PROGRESS, AI_STATUS.IN_PROGRESS],
+    [LEGACY_ACTIVE_AI_STATUS.AWAITING_SERVICE, AI_STATUS.SCHEDULED],
+    [LEGACY_ACTIVE_AI_STATUS.AWAITING_SERVICE_SPACED, AI_STATUS.SCHEDULED],
+    [LEGACY_ACTIVE_AI_STATUS.AWAITING_RESULT, AI_STATUS.IN_PROGRESS],
+    [LEGACY_ACTIVE_AI_STATUS.AWAITING_RESULT_SPACED, AI_STATUS.IN_PROGRESS],
+    [LEGACY_ACTIVE_AI_STATUS.UNDER_MONITORING, AI_STATUS.IN_PROGRESS],
+    [LEGACY_ACTIVE_AI_STATUS.UNDER_MONITORING_SPACED, AI_STATUS.IN_PROGRESS],
+  ]);
+  for (const [legacy, canonical] of expectedAICompatibility) {
+    assert.equal(normalizeAIStatus(legacy), canonical, legacy);
+  }
   assert.deepEqual(reproductiveStatusQuery("Open"), { $in: ["Normal", "Open"] });
   assert.doesNotThrow(() => assertStatusTransition("health", "in_progress", "resolved"));
   assert.doesNotThrow(() => assertStatusTransition("ai", "in_progress", "done"));

@@ -274,7 +274,7 @@ export function RequestLinkedAIRecordForm({
         ) : null}
 
         <SummaryLine
-          label="Scheduled Vist"
+          label="Scheduled Visit"
           value={`${scheduledDate} ${period}`}
         />
       </SectionCard>

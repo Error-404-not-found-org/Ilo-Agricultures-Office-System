@@ -34,6 +34,7 @@ import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
 import { TranslationProvider } from "../contexts/TranslationContext";
 import { getPushNotificationTarget } from "@/features/notifications/utils/notificationPresentation";
+import { invalidateNotificationLinkedQueries } from "@/features/notifications/utils/notificationQueryInvalidation";
 import { AuthBootstrapGate } from "@/features/auth/components/AuthBootstrapGate";
 import { getBootstrapUserQueryKey } from "@/features/auth/hooks/useBootstrapUser";
 import { AppStartupScreen } from "@/features/startup/components/AppStartupScreen";
@@ -94,20 +95,31 @@ function AppContent({
         | Record<string, unknown>
         | undefined;
       const target = getPushNotificationTarget(data, role);
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void invalidateNotificationLinkedQueries(queryClient, data);
       router.push(target as never);
     };
 
-    const subscription =
+    const responseSubscription =
       Notifications.addNotificationResponseReceivedListener(
         openNotificationResponse,
       );
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        void invalidateNotificationLinkedQueries(
+          queryClient,
+          notification.request.content.data as Record<string, unknown>,
+        );
+      },
+    );
     const initialResponse = Notifications.getLastNotificationResponse();
     if (initialResponse) {
       openNotificationResponse(initialResponse);
     }
 
-    return () => subscription.remove();
+    return () => {
+      responseSubscription.remove();
+      receivedSubscription.remove();
+    };
   }, [isSignedIn, navigationState?.key, user?.publicMetadata?.role]);
 
   return (

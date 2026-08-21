@@ -21,7 +21,7 @@ import {
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
 import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
-import { RequestWorkFilterChips } from "../components/RequestWorkBadge";
+import { FilterChips } from "@/components/ui/AppBadge";
 import type { RequestItem } from "../types/technicianRequests.types";
 import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
 import { OPEN_REQUEST_FILTERS } from "../utils/requestWorkPresentation";

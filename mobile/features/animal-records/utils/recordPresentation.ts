@@ -161,7 +161,9 @@ export const formatAnimalRecord = (
 
   if (kind === "pregnancy") {
     const result = record.pregnancyDiagnosis?.result || record.result;
-    const pregnant = String(result).toLowerCase() === "pregnant";
+    const resultString = String(result).toLowerCase();
+    const isPregnant = resultString === "pregnant";
+    const isEmpty = resultString === "empty" || resultString === "not_pregnant";
     const method = record.confirmation?.methodCode;
     const technician = personName(record.confirmation?.confirmedBy || record.technicianId);
     const relatedAttempt = record.inseminationId?.attemptNumber;
@@ -174,9 +176,11 @@ export const formatAnimalRecord = (
       animalReference,
       fullAnimalReference,
       badges: [
-        pregnant
+        isPregnant
           ? { label: "Pregnancy confirmed", domain: "pregnancy", variant: "success" }
-          : { label: "Not pregnant", domain: "pregnancy", variant: "neutral" },
+          : isEmpty
+            ? { label: "Not pregnant", domain: "pregnancy", variant: "neutral" }
+            : { label: "Pending confirmation", domain: "pregnancy", variant: "warning" },
         ...(recheck ? [recheck] : []),
       ],
       details: [

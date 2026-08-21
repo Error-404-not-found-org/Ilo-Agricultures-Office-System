@@ -3,13 +3,37 @@ import { ScrollView, TouchableOpacity, View } from "react-native";
 
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
-import type {
-  RequestWorkFilterOption,
-  RequestWorkTone,
-} from "../utils/requestWorkPresentation";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type BadgeTone =
+  | "emerald"
+  | "rose"
+  | "violet"
+  | "orange"
+  | "blue"
+  | "amber"
+  | "red"
+  | "green"
+  | "slate"
+  | "neutral";
+
+export interface FilterOption {
+  value: string;
+  label: string;
+}
+
+// ─── Badge Component ──────────────────────────────────────────────────────────
+
+interface BadgeProps {
+  label: string;
+  tone: BadgeTone;
+  accessibilityPrefix?: string;
+  size?: "sm" | "md" | "lg";
+}
 
 const toneColors = (
-  tone: RequestWorkTone,
+  tone: BadgeTone,
   isDark: boolean,
 ): { background: string; foreground: string; border: string } => {
   const palette = {
@@ -48,17 +72,22 @@ const toneColors = (
   return { background, foreground, border };
 };
 
-export function RequestWorkBadge({
+const sizeStyles = {
+  sm: { fontSize: 9, paddingHorizontal: 8, paddingVertical: 2, minHeight: 22 },
+  md: { fontSize: 10, paddingHorizontal: 9, paddingVertical: 3, minHeight: 26 },
+  lg: { fontSize: 12, paddingHorizontal: 12, paddingVertical: 4, minHeight: 30 },
+};
+
+export function AppBadge({
   label,
   tone,
-  accessibilityPrefix,
-}: {
-  label: string;
-  tone: RequestWorkTone;
-  accessibilityPrefix: "Service" | "Status";
-}) {
+  accessibilityPrefix = "Badge",
+  size = "md",
+}: BadgeProps) {
   const { isDark } = useTheme();
   const colors = toneColors(tone, isDark);
+  const sizeStyle = sizeStyles[size];
+
   return (
     <View
       accessible
@@ -66,21 +95,21 @@ export function RequestWorkBadge({
       accessibilityLabel={`${accessibilityPrefix}: ${label}`}
       style={{
         alignSelf: "flex-start",
-        minHeight: 26,
         justifyContent: "center",
         borderRadius: 999,
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.background,
-        paddingHorizontal: 9,
-        paddingVertical: 3,
+        paddingHorizontal: sizeStyle.paddingHorizontal,
+        paddingVertical: sizeStyle.paddingVertical,
+        minHeight: sizeStyle.minHeight,
       }}
     >
       <Text
         style={{
           color: colors.foreground,
           fontFamily: "Outfit_700Bold",
-          fontSize: 10,
+          fontSize: sizeStyle.fontSize,
           textTransform: "uppercase",
           letterSpacing: 0.4,
         }}
@@ -91,20 +120,25 @@ export function RequestWorkBadge({
   );
 }
 
-export function RequestWorkFilterChips({
+// ─── Filter Chips Component ──────────────────────────────────────────────────
+
+interface FilterChipsProps {
+  options: FilterOption[];
+  value: string;
+  onChange: (value: string) => void;
+  counts?: Partial<Record<string, number>>;
+  countsLoading?: boolean;
+}
+
+export function FilterChips({
   options,
   value,
   onChange,
   counts,
   countsLoading = false,
-}: {
-  options: RequestWorkFilterOption[];
-  value: RequestWorkFilterOption["value"];
-  onChange: (value: RequestWorkFilterOption["value"]) => void;
-  counts?: Partial<Record<RequestWorkFilterOption["value"], number>>;
-  countsLoading?: boolean;
-}) {
+}: FilterChipsProps) {
   const { colors, isDark } = useTheme();
+
   return (
     <ScrollView
       horizontal
@@ -121,6 +155,7 @@ export function RequestWorkFilterChips({
         const selected = value === option.value;
         const count = counts?.[option.value];
         const countLabel = countsLoading || count === undefined ? "" : ` ${count}`;
+
         return (
           <TouchableOpacity
             key={option.value}

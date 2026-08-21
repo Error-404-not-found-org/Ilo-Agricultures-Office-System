@@ -12,6 +12,7 @@ import {
   ANIMAL_REPRODUCTIVE_STATUS,
   reproductiveStatusForPregnancyResult,
 } from "../domain/livestock-workflow.js";
+import { getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
 import { assertPregnancyDiagnosisWindow } from "../domain/pregnancy-readiness.js";
 import { PREGNANCY_TASK_STAGE } from "../domain/pregnancy-task-workflow.js";
 import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
@@ -25,6 +26,11 @@ import {
   createAIRequestWithGuard,
   isVerifiedFailedAIAttempt,
 } from "./ai-request-creation.service.js";
+import {
+  ensureBreedingObservationFollowUpTask,
+  closeBreedingFollowUpTask,
+  cancelPendingReproductiveTasksForInsemination,
+} from "./breeding-observation-followup.service.js";
 import {
   checkInseminationAgeEligibility,
   verifyPostpartumWindow,
@@ -138,7 +144,7 @@ export const completeInsemination = async (
 
     const dueDate = new Date(updateData.inseminationDate);
     dueDate.setDate(dueDate.getDate() + initialConfirmationDays);
-    await Task.updateOne(
+    const pdTask = await Task.findOneAndUpdate(
       {
         sourceType: "automatic_pd_followup",
         "metadata.inseminationId": id,
@@ -165,8 +171,47 @@ export const completeInsemination = async (
           },
         },
       },
+      { upsert: true, new: true, session },
+    );
+
+    if (pdTask) {
+      await Insemination.updateOne(
+        { _id: id },
+        { $set: { verificationTaskId: pdTask._id } },
+        { session }
+      );
+    }
+
+    const { technicianFollowUpDate } = getHeatReturnMonitoringDates(updateData.inseminationDate);
+    const breedingFollowUpDueDate = technicianFollowUpDate;
+
+    await Task.updateOne(
+      {
+        taskType: "BreedingFollowUp",
+        "metadata.inseminationId": id,
+      },
+      {
+        $setOnInsert: {
+          technicianId,
+          farmerId,
+          animalIds: [animalId],
+          taskType: "BreedingFollowUp",
+          category: "Follow-up",
+          priority: 2,
+          notes: `Scheduled Breeding Follow-up for Animal Tag #${animalTag || "Unknown"}. Contact the farmer to check if the animal returned to heat.`,
+          status: "Pending",
+          dueDate: breedingFollowUpDueDate,
+          sourceType: "automatic_breeding_followup",
+          metadata: {
+            animalId,
+            farmerId,
+            inseminationId: id,
+          },
+        },
+      },
       { upsert: true, session },
     );
+
     return request;
   };
 
@@ -317,6 +362,7 @@ export const persistBreedingObservationVerification = ({
   nextCheckDate,
   evidencePhotos = [],
   actorId,
+  taskId,
 }) =>
   runTransaction(async (session) => {
     const diagnosisDate = checkedAt ? new Date(checkedAt) : new Date();
@@ -444,9 +490,12 @@ export const persistBreedingObservationVerification = ({
       needs_recheck: {
         nextAction: "Recheck required. Follow-up task scheduled.",
       },
+      cannot_confirm: {
+        nextAction: "Farmer observation could not be confirmed. Record updated.",
+      },
     };
     const outcome = outcomes[verificationResult];
-    const finalResult = verificationResult !== "needs_recheck";
+    const finalResult = !["needs_recheck", "cannot_confirm"].includes(verificationResult);
     const verificationNote =
       `Technician verified as: ${verificationResult.replaceAll("_", " ")} using ${checkMethod}. ${technicianNotes}`.trim();
 
@@ -487,6 +536,26 @@ export const persistBreedingObservationVerification = ({
       requestUpdate,
       { returnDocument: "after", session },
     );
+
+    if (finalResult) {
+      if (outcome.isSuccess === false) {
+        await cancelPendingReproductiveTasksForInsemination({
+          inseminationId: insemination._id,
+          taskTypes: ["BreedingFollowUp", "PD"],
+          reason: `Professional verification resulted in a terminal failure: ${outcome.outcome}`,
+          session,
+          excludeTaskId: taskId || insemination.verificationTaskId,
+        });
+      } else {
+        await closeBreedingFollowUpTask({
+          inseminationId: insemination._id,
+          reason: `Professional verification resulted in: ${outcome.outcome}`,
+          at: new Date(),
+          actorId,
+          session,
+        });
+      }
+    }
     if (!updatedRequest) {
       throw new AppError("AI request record is no longer available.", {
         status: 409,
@@ -525,13 +594,13 @@ export const persistBreedingObservationVerification = ({
     }
 
     let task = null;
-    const taskId = insemination.verificationTaskId;
+    const targetTaskId = taskId || insemination.verificationTaskId;
     if (verificationResult === "needs_recheck") {
       const notes = `Pregnancy Check Recheck Required. Checked on: ${diagnosisDate.toLocaleDateString()}. Notes: ${technicianNotes || "None"}. Next check after: ${recheckDate.toLocaleDateString()}`;
-      if (taskId) {
+      if (targetTaskId) {
         task = await Task.findOneAndUpdate(
           {
-            _id: taskId,
+            _id: targetTaskId,
             farmerId: insemination.farmerId,
             animalIds: animal._id,
             taskType: "PD",
@@ -546,14 +615,17 @@ export const persistBreedingObservationVerification = ({
               completedAt: null,
               relatedRecordType: null,
               relatedRecordId: null,
+              "metadata.workflowStage": PREGNANCY_TASK_STAGE.DIAGNOSTIC_FOLLOW_UP,
             },
           },
           { returnDocument: "after", session },
         );
-        if (!task) {
-          throw new AppError(
-            "The pregnancy-check task does not match this animal or is cancelled.",
-            { status: 409, code: "TASK_RECORD_MISMATCH" },
+        if (targetTaskId && String(insemination.verificationTaskId) !== String(targetTaskId)) {
+          updatedRequest.verificationTaskId = targetTaskId;
+          await Insemination.updateOne(
+            { _id: insemination._id },
+            { $set: { verificationTaskId: targetTaskId } },
+            { session }
           );
         }
       } else {
@@ -570,7 +642,10 @@ export const persistBreedingObservationVerification = ({
               status: "Pending",
               dueDate: recheckDate,
               sourceType: "farmer_requested_verification",
-              metadata: { inseminationId: insemination._id },
+              metadata: {
+                inseminationId: insemination._id,
+                workflowStage: PREGNANCY_TASK_STAGE.DIAGNOSTIC_FOLLOW_UP,
+              },
             },
           ],
           { session },
@@ -582,14 +657,21 @@ export const persistBreedingObservationVerification = ({
         );
         updatedRequest.verificationTaskId = task._id;
       }
-    } else if (taskId) {
+      await closeBreedingFollowUpTask({
+        inseminationId: insemination._id,
+        reason: `Superseded by pregnancy recheck scheduled for ${recheckDate.toLocaleDateString()}`,
+        at: new Date(),
+        actorId,
+        session,
+      });
+    } else if (targetTaskId) {
       task = await Task.findOneAndUpdate(
         {
-          _id: taskId,
+          _id: targetTaskId,
           farmerId: insemination.farmerId,
           animalIds: animal._id,
-          taskType: "PD",
-          status: { $nin: ["Completed", "Cancelled"] },
+          taskType: { $in: ["PD", "BreedingFollowUp"] },
+          status: { $nin: ["Completed", "Cancelled", "Rejected"] },
         },
         {
           $set: {

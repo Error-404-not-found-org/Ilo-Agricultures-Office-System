@@ -23,6 +23,7 @@ import {
 import { resolveOrSyncUser } from "../services/auth-user.service.js";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
+import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
 
 // Structured Console Log Helper for Audit Trail
 const logAdminAction = (action, admin, target, details = {}) => {
@@ -1785,17 +1786,34 @@ export const getBreedingMilestones = async (req, res) => {
 
     // Process Inseminations -> Heat Checks (21 days) and PD Checks (60 days)
     inseminations.forEach((ins) => {
+      if (isVerifiedReturnToHeatAIAttempt(ins)) return;
+
       const aiDate = ins.inseminationDate || ins.createdAt;
       const daysSinceAI = Math.floor(
         (now.getTime() - new Date(aiDate).getTime()) / (1000 * 3600 * 24),
       );
       const verificationTask = taskForInsemination(ins);
+      const pregnancyReadiness = getPregnancyCheckReadiness({
+        insemination: ins,
+        at: now,
+        policy: policyResolution.policy,
+        species: ins.animalId?.species,
+      });
       const farmerObservation = ins.farmerOutcomeReport
         ? {
             reportType: ins.farmerOutcomeReport,
-            verificationStatus:
-              ins.verificationStatus || ins.outcomeVerificationStatus || null,
+            verificationStatus: ins.verificationStatus || null,
+            outcomeVerificationStatus:
+              ins.outcomeVerificationStatus || null,
             reportedAt: ins.farmerOutcomeReportedAt || null,
+          }
+        : null;
+      const pregnancyFollowUpTask = verificationTask
+        ? {
+            _id: verificationTask._id,
+            status: verificationTask.status,
+            dueDate: verificationTask.dueDate,
+            sourceType: verificationTask.sourceType,
           }
         : null;
 
@@ -1816,6 +1834,8 @@ export const getBreedingMilestones = async (req, res) => {
           relatedId: ins._id,
           taskId: verificationTask?._id || null,
           status: verificationTask ? "awaiting_confirmation" : "actionable",
+          pregnancyReadiness,
+          pregnancyFollowUpTask,
           farmerObservation,
         });
       }
@@ -1823,12 +1843,6 @@ export const getBreedingMilestones = async (req, res) => {
       // Pregnancy confirmation presentation is driven by the canonical
       // backend policy rather than a frontend day threshold.
       if (daysSinceAI >= 26 && daysSinceAI <= 90) {
-        const pregnancyReadiness = getPregnancyCheckReadiness({
-          insemination: ins,
-          at: now,
-          policy: policyResolution.policy,
-          species: ins.animalId?.species,
-        });
         const pdDate = pregnancyReadiness.availableDate
           ? new Date(pregnancyReadiness.availableDate)
           : null;
@@ -1847,6 +1861,7 @@ export const getBreedingMilestones = async (req, res) => {
           taskId: verificationTask?._id || null,
           status: verificationTask ? "awaiting_confirmation" : "actionable",
           pregnancyReadiness,
+          pregnancyFollowUpTask,
           farmerObservation,
         });
       }

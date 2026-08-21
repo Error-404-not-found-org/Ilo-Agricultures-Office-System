@@ -75,14 +75,22 @@ export interface ActivityFeedItem {
     technicianNote?: string;
     outcomeVerificationStatus?: string;
     outcomeConfirmationSource?: string;
+    outcomeConfirmedBy?: string;
     outcomeConfirmedAt?: string;
     previousAttemptNumber?: number;
     previousAttemptDate?: string;
+    previousAttemptOutcome?: string;
+    previousAttemptFailureReason?: string;
     inseminationDate?: string;
     scheduledDate?: string;
     visitPeriod?: "morning" | "afternoon" | null;
+    serviceStartedAt?: string | null;
+    completedAt?: string | null;
+    completedAtLabel?: string;
+    earlyStartMinutes?: number;
     preferredDate?: string;
     requestedAt?: string;
+    requestedAtLabel?: string;
     serviceDate?: string;
     serviceDateLabel?: string;
     entryDate?: string;
@@ -121,6 +129,14 @@ export interface ActivityFeedItem {
     stillbornCount?: number;
     relatedPregnancyId?: string | null;
     relatedInseminationId?: string | null;
+    farmerOutcomeReport?: string | null;
+    farmerOutcomeReportedAt?: string;
+    farmerObservationSigns?: string[];
+    farmerObservationNotes?: string;
+    pregnancyLinked?: boolean;
+    pregnancyResult?: string;
+    pregnancyDiagnosisDate?: string;
+    pregnancyConfirmationMethod?: string | null;
     nonLivingCalves?: {
       sex: string;
       earTag?: string;

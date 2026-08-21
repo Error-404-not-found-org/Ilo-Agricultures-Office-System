@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Image,
   Text,
@@ -20,11 +20,12 @@ import {
   Ban,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { aiRequestKeys } from "@/lib/queryKeys";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ImageViewerModal, type ImageViewerItem } from "@/components/shared";
 import {
@@ -53,6 +54,7 @@ import {
 import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
+  getFarmerBreedingObservationReadiness,
 } from "@/features/breeding/utils/breedingObservationPresentation";
 import type { AIRequest } from "@/types";
 
@@ -260,13 +262,24 @@ export default function AiRequestDetailScreen() {
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
 
   const query = useQuery({
-    queryKey: ["ai-request", id],
+    queryKey: aiRequestKeys.detail(id || ""),
     enabled: Boolean(id),
     queryFn: async () => {
       const res = await api.get(`/ai-request/${id}`);
       return res.data.data;
     },
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      void queryClient.invalidateQueries({
+        queryKey: aiRequestKeys.detail(id),
+        exact: true,
+        refetchType: "active",
+      });
+    }, [id, queryClient]),
+  );
 
   const galleryImages = useMemo<ImageViewerItem[]>(() => {
     const request = query.data;
@@ -346,6 +359,7 @@ export default function AiRequestDetailScreen() {
   );
   const technicianNote = getRequestText(request.technicianNote);
   const hasRecordedObservation = Boolean(request.farmerOutcomeReport);
+  const observationReadiness = getFarmerBreedingObservationReadiness(request);
   const observationLabel = getBreedingObservationLabel(
     request.farmerOutcomeReport,
   );
@@ -659,11 +673,12 @@ export default function AiRequestDetailScreen() {
                 >
                   {hasRecordedObservation
                     ? "Your report is visible to the technician. It does not confirm pregnancy until an official pregnancy check is completed."
-                    : "Report what you observe after insemination. A technician pregnancy check is still required to confirm pregnancy."}
+                    : observationReadiness.message}
                 </Text>
               </View>
             </View>
 
+            {(hasRecordedObservation || observationReadiness.isAvailable) ? (
             <TouchableOpacity
               onPress={() =>
                 router.push({
@@ -682,10 +697,13 @@ export default function AiRequestDetailScreen() {
             >
               <Text className="text-white text-xs font-bold">
                 {hasRecordedObservation
-                  ? "Update observation"
+                  ? observationReadiness.isAvailable
+                    ? "Update observation"
+                    : "View observation"
                   : "Report an observation"}
               </Text>
             </TouchableOpacity>
+            ) : null}
           </View>
         )}
 

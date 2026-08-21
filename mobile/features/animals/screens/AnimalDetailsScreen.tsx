@@ -1662,7 +1662,6 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                     animalId: id,
                                     requestId: latestInsemination?._id,
                                     defaultReport: "unsure",
-                                    requestVerification: "true",
                                   },
                                 } as any)
                               }

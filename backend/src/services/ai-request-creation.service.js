@@ -1,4 +1,7 @@
-import { ACTIVE_AI_REQUEST_STATUSES } from "../domain/status-vocabulary.js";
+import {
+  ACTIVE_AI_REQUEST_STATUSES,
+  AI_STATUS,
+} from "../domain/status-vocabulary.js";
 import { Insemination } from "../models/insemination.model.js";
 import { AppError } from "../utils/app-error.js";
 
@@ -23,6 +26,32 @@ export const createActiveAIRequestError = (existingRequest) =>
     },
   });
 
+export const isVerifiedFailedAIAttempt = (request) =>
+  request?.status === "done" &&
+  request?.isSuccess === false &&
+  String(request?.outcome || "").startsWith("Failed") &&
+  (
+    request?.outcomeVerificationStatus === "verified" ||
+    Boolean(request?.reviewedBy) ||
+    // Legacy negative PD outcomes were written only by technician diagnosis
+    // paths before explicit verification metadata existed.
+    request?.outcome === "Failed (Negative PD)"
+  );
+
+export const isVerifiedReturnToHeatAIAttempt = (request) =>
+  isVerifiedFailedAIAttempt(request) &&
+  request?.outcome === "Failed (Re-heat)" &&
+  request?.failureReason === "return_to_heat" &&
+  request?.outcomeVerificationStatus === "verified";
+
+export const assertVerifiedReturnToHeatAIAttempt = (request) => {
+  if (isVerifiedReturnToHeatAIAttempt(request)) return request;
+  throw new AppError(
+    "The previous AI attempt must be confirmed unsuccessful before requesting another insemination.",
+    { status: 409, code: "PREVIOUS_AI_FAILURE_NOT_VERIFIED" },
+  );
+};
+
 const applySession = (query, session) => {
   if (session && typeof query.session === "function") {
     return query.session(session);
@@ -41,6 +70,8 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
   const session = options?.session || null;
   const existing = await findActiveAIRequest(payload.animalId, session);
   if (existing) throw createActiveAIRequestError(existing);
+  const serverPayload = { ...payload };
+  delete serverPayload.completedAt;
 
   const lastPerformedAttempt = await applySession(
     Insemination.findOne({
@@ -51,29 +82,63 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
     }).sort({ attemptNumber: -1, inseminationDate: -1 }),
     session
   );
+
+  if (payload.previousAttemptId && !lastPerformedAttempt) {
+    throw new AppError(
+      "The previous AI attempt could not be found for this animal.",
+      { status: 404, code: "PREVIOUS_AI_ATTEMPT_NOT_FOUND" },
+    );
+  }
+
+  if (
+    payload.previousAttemptId &&
+    String(payload.previousAttemptId) !== String(lastPerformedAttempt?._id)
+  ) {
+    throw new AppError(
+      "Re-insemination must be linked to the latest performed AI attempt.",
+      { status: 409, code: "PREVIOUS_AI_ATTEMPT_NOT_LATEST" },
+    );
+  }
+
+  if (lastPerformedAttempt) {
+    if (options.requireVerifiedReturnToHeat === true) {
+      assertVerifiedReturnToHeatAIAttempt(lastPerformedAttempt);
+    } else if (!isVerifiedFailedAIAttempt(lastPerformedAttempt)) {
+      throw new AppError(
+        "The previous AI attempt must be completed and confirmed unsuccessful before re-insemination.",
+        { status: 409, code: "PREVIOUS_AI_FAILURE_NOT_VERIFIED" },
+      );
+    }
+  }
+
   const attemptNumber = (lastPerformedAttempt?.attemptNumber || 0) + 1;
+  if (payload.status === AI_STATUS.DONE) {
+    serverPayload.completedAt = new Date();
+  }
 
   try {
     let createdResult;
     if (session) {
       createdResult = await Insemination.create([{
-        ...payload,
+        ...serverPayload,
         attemptNumber,
-        previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
+        previousAttemptId: lastPerformedAttempt?._id || null,
         attemptSeriesId:
-          payload.attemptSeriesId ||
           lastPerformedAttempt?.attemptSeriesId ||
+          lastPerformedAttempt?._id ||
+          payload.attemptSeriesId ||
           undefined,
         activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
       }], { session });
     } else {
       createdResult = await Insemination.create({
-        ...payload,
+        ...serverPayload,
         attemptNumber,
-        previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
+        previousAttemptId: lastPerformedAttempt?._id || null,
         attemptSeriesId:
-          payload.attemptSeriesId ||
           lastPerformedAttempt?.attemptSeriesId ||
+          lastPerformedAttempt?._id ||
+          payload.attemptSeriesId ||
           undefined,
         activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
       });
@@ -86,15 +151,3 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
     throw createActiveAIRequestError(concurrentWinner);
   }
 };
-
-export const isVerifiedFailedAIAttempt = (request) =>
-  request?.status === "done" &&
-  request?.isSuccess === false &&
-  String(request?.outcome || "").startsWith("Failed") &&
-  (
-    request?.outcomeVerificationStatus === "verified" ||
-    Boolean(request?.reviewedBy) ||
-    // Legacy negative PD outcomes were written only by technician diagnosis
-    // paths before explicit verification metadata existed.
-    request?.outcome === "Failed (Negative PD)"
-  );

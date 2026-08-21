@@ -18,6 +18,12 @@ test("H4 candidate AI detail supports review-first scheduling with safe request 
     comment: "Observed signs this morning.",
     imageUrl: " https://example.test/heat-sign.jpg ",
     createdAt: "2026-08-07T06:00:00.000Z",
+    attemptNumber: 2,
+    previousAttemptId: {
+      _id: "attempt-1",
+      attemptNumber: 1,
+      outcome: "Failed (Re-heat)",
+    },
     animalId: {
       _id: "animal-1",
       earTag: "01DP",
@@ -52,6 +58,10 @@ test("H4 candidate AI detail supports review-first scheduling with safe request 
   assert.equal(candidate.farmerNotes, "Observed signs this morning.");
   assert.equal(candidate.comment, "Observed signs this morning.");
   assert.equal(candidate.imageUrl, "https://example.test/heat-sign.jpg");
+  assert.equal(candidate.requestKind, "re_insemination");
+  assert.equal(candidate.attemptNumber, 2);
+  assert.equal(candidate.previousAttemptId._id, "attempt-1");
+  assert.equal(candidate.previousAttemptId.outcome, "Failed (Re-heat)");
 
   for (const privateField of [
     "farmerId",
@@ -206,6 +216,60 @@ test("H4 unclaimed technician AI detail response includes review contact and loc
       res.payload.farmerId.farmLocation.directionsNote,
       "Hidden directions",
     );
+  } finally {
+    Insemination.findOne = originalFindOne;
+  }
+});
+
+test("H4 assigned legacy AI detail presents a canonical status without rewriting the record", async () => {
+  const originalFindOne = Insemination.findOne;
+  const storedStatus = "awaiting-result";
+  const requestRecord = {
+    _id: "66b5f16a1f0d2c3b4a596881",
+    status: storedStatus,
+    animalId: { earTag: "01DP", breed: "Bali Cattle" },
+    farmerId: { _id: "farmer-1", name: "Maria Farmer" },
+    approvedBy: { _id: "technician-1", name: "Assigned Tech" },
+    technicianId: { _id: "technician-1", name: "Assigned Tech" },
+  };
+  const requestDocument = {
+    ...requestRecord,
+    toObject: () => ({ ...requestRecord }),
+  };
+
+  try {
+    Insemination.findOne = () => {
+      const query = {
+        populate: () => query,
+        then: (resolve) => resolve(requestDocument),
+      };
+      return query;
+    };
+
+    const res = {
+      statusCode: 0,
+      payload: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.payload = payload;
+        return this;
+      },
+    };
+
+    await getAIRequestDetail(
+      {
+        params: { id: requestRecord._id },
+        user: { _id: "technician-1", role: "technician" },
+      },
+      res,
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.data.status, "in-progress");
+    assert.equal(requestDocument.status, storedStatus);
   } finally {
     Insemination.findOne = originalFindOne;
   }

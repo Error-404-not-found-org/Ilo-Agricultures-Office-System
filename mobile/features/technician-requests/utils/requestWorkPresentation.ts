@@ -11,6 +11,7 @@ export type RequestWorkService =
   | "health"
   | "pregnancy"
   | "calving"
+  | "breeding_follow_up"
   | "unknown";
 
 export type RequestWorkStatus =
@@ -21,17 +22,9 @@ export type RequestWorkStatus =
   | "completed"
   | "cancelled";
 
-export type RequestWorkTone =
-  | "emerald"
-  | "rose"
-  | "violet"
-  | "orange"
-  | "neutral"
-  | "blue"
-  | "amber"
-  | "red"
-  | "green"
-  | "slate";
+import type { BadgeTone } from "@/components/ui/AppBadge";
+
+export type RequestWorkTone = BadgeTone;
 
 export interface RequestWorkFilterOption {
   value: "all" | Exclude<RequestWorkService, "unknown">;
@@ -97,14 +90,25 @@ export function normalizeServiceType(
     return "health";
   }
   if (
-    ["pd", "pregnancy", "pregnancy_check", "pregnancy_diagnosis", "breeding_verification"].includes(
-      value,
-    )
+    [
+      "pd",
+      "pregnancy",
+      "pregnancy_check",
+      "pregnancy_diagnosis",
+      "breeding_verification",
+    ].includes(value)
   ) {
     return "pregnancy";
   }
   if (["cd", "calving", "calving_assistance"].includes(value)) {
     return "calving";
+  }
+  if (
+    ["breedingfollowup", "breeding_follow_up", "breeding_followup"].includes(
+      value,
+    )
+  ) {
+    return "breeding_follow_up";
   }
   return "unknown";
 }
@@ -118,6 +122,7 @@ export function getServicePresentation(service: RequestWorkService) {
     health: { label: "Health", tone: "rose" },
     pregnancy: { label: "Pregnancy", tone: "violet" },
     calving: { label: "Calving", tone: "orange" },
+    breeding_follow_up: { label: "Breeding Follow-up", tone: "blue" },
     unknown: { label: "Other service", tone: "neutral" },
   };
   return presentations[service];
@@ -174,7 +179,8 @@ const visitPeriod = (value: unknown): VisitPeriod | null => {
 const text = (value: unknown): string | null => {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const normalized = String(value).trim();
-  return normalized && !["n/a", "unknown", "null", "undefined"].includes(normalized.toLowerCase())
+  return normalized &&
+    !["n/a", "unknown", "null", "undefined"].includes(normalized.toLowerCase())
     ? normalized
     : null;
 };
@@ -197,28 +203,33 @@ const workTypeOf = (item: WorkQueueItem): TechnicianWorkType => {
   if (service === "health") return "health";
   if (service === "pregnancy") return "pregnancy_check";
   if (service === "calving") return "calving";
+  if (service === "breeding_follow_up") return "breeding_follow_up";
   return "task";
 };
 
-const titleFor = (workType: TechnicianWorkType, attemptNumber: number | null) => ({
-  ai: attemptNumber && attemptNumber > 1
-    ? "Re-insemination"
-    : "Artificial Insemination",
-  health: "Health Assistance",
-  pregnancy_check: "Pregnancy Check",
-  calving: "Expected Calving",
-  task: "Field Task",
-})[workType];
+const titleFor = (workType: TechnicianWorkType, attemptNumber: number | null) =>
+  ({
+    ai:
+      attemptNumber && attemptNumber > 1
+        ? "Re-insemination"
+        : "Artificial Insemination",
+    health: "Health Assistance",
+    pregnancy_check: "Pregnancy Check",
+    calving: "Expected Calving",
+    breeding_follow_up: "Breeding Follow-up",
+    task: "Field Task",
+  })[workType];
 
-const statusLabelFor = (state: TechnicianWorkState) => ({
-  needs_scheduling: "Needs scheduling",
-  scheduled: "Scheduled",
-  needs_confirmation: "Needs confirmation",
-  monitoring: "Monitoring",
-  in_progress: "In progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-})[state];
+const statusLabelFor = (state: TechnicianWorkState) =>
+  ({
+    needs_scheduling: "Needs scheduling",
+    scheduled: "Scheduled",
+    needs_confirmation: "Needs confirmation",
+    monitoring: "Monitoring",
+    in_progress: "In progress",
+    completed: "Completed",
+    cancelled: "Cancelled",
+  })[state];
 
 export function normalizeTechnicianWorkItem(
   item: WorkQueueItem,
@@ -236,23 +247,38 @@ export function normalizeTechnicianWorkItem(
     workType === "ai" || workType === "health" || hasExplicitTaskVisit
       ? queueDate
       : null;
-  const dueDate = workType === "pregnancy_check" || workType === "task"
-    ? rawDueDate
-    : null;
+  const dueDate =
+    workType === "pregnancy_check" ||
+    workType === "task" ||
+    workType === "breeding_follow_up"
+      ? rawDueDate
+      : null;
   const expectedDate = workType === "calving" ? rawDueDate : null;
   const completedAt = text(item.completedAt);
-  const serviceStartedAt = text(item.serviceStartedAt || item.raw?.serviceStartedAt);
-  const rawAttemptNumber = Number(item.attemptNumber ?? item.raw?.attemptNumber);
-  const attemptNumber = Number.isInteger(rawAttemptNumber) && rawAttemptNumber > 0
-    ? rawAttemptNumber
-    : null;
+  const serviceStartedAt = text(
+    item.serviceStartedAt || item.raw?.serviceStartedAt,
+  );
+  const rawAttemptNumber = Number(
+    item.attemptNumber ?? item.raw?.attemptNumber,
+  );
+  const attemptNumber =
+    Number.isInteger(rawAttemptNumber) && rawAttemptNumber > 0
+      ? rawAttemptNumber
+      : null;
   const previousAttemptId = text(
-    item.previousAttemptId || item.raw?.previousAttemptId?._id || item.raw?.previousAttemptId,
+    item.previousAttemptId ||
+      item.raw?.previousAttemptId?._id ||
+      item.raw?.previousAttemptId,
   );
   const previousAttemptOutcome = text(
     item.previousAttemptOutcome || item.raw?.previousAttemptId?.outcome,
   );
   const previousAttemptVerified = item.previousAttemptVerified === true;
+  const farmerReportType = normalizedValue(
+    item.raw?.metadata?.reportType || item.raw?.farmerOutcomeReport,
+  );
+  const isFarmerReturnToHeatReview =
+    workType === "pregnancy_check" && farmerReportType === "return_to_heat";
 
   let state: TechnicianWorkState;
   if (cancelledStatuses.has(status)) state = "cancelled";
@@ -282,8 +308,12 @@ export function normalizeTechnicianWorkItem(
   const timingKey = philippineDateKey(timingDate);
   const todayKey = philippineDateKey(now);
   const unfinished = !["completed", "cancelled"].includes(state);
-  const isReadyToday = Boolean(unfinished && timingKey && timingKey === todayKey);
-  const needsAttention = Boolean(unfinished && timingKey && todayKey && timingKey < todayKey);
+  const isReadyToday = Boolean(
+    unfinished && timingKey && timingKey === todayKey,
+  );
+  const needsAttention = Boolean(
+    unfinished && timingKey && todayKey && timingKey < todayKey,
+  );
   const overdue = needsAttention && timingKind !== "expected_event";
   const dateLabel = formatWorkDate(timingDate);
   const timingLabel = !dateLabel
@@ -297,21 +327,30 @@ export function normalizeTechnicianWorkItem(
           : `Due · ${dateLabel}`;
 
   const readiness = item.pregnancyReadiness || item.raw?.pregnancyReadiness;
-  const actionLabel = state === "completed"
-    ? "View Record"
-    : state === "in_progress"
-      ? "Continue Service"
-      : state === "needs_scheduling"
-        ? "Set Visit"
-        : workType === "health" && state === "scheduled"
-          ? "Record Health Assistance"
-          : workType === "pregnancy_check"
-            ? readiness?.isEligible === false ? "Review" : "Record Pregnancy Check"
-            : workType === "calving"
-              ? ["START_SERVICE", "RECORD_SERVICE"].includes(String(item.allowedAction))
-                ? "Record Calving"
-                : "View Animal"
-              : item.actionLabel || "View Details";
+  const actionLabel =
+    state === "completed"
+      ? "View Record"
+      : state === "in_progress"
+        ? "Continue Service"
+        : state === "needs_scheduling"
+          ? "Set Visit"
+          : workType === "health" && state === "scheduled"
+            ? "Record Health Assistance"
+            : workType === "pregnancy_check"
+              ? readiness?.isEligible === false
+                ? "Review"
+                : "Record Pregnancy Check"
+              : workType === "breeding_follow_up"
+                ? farmerReportType
+                  ? "Review Update"
+                  : "Contact Farmer"
+                : workType === "calving"
+                  ? ["START_SERVICE", "RECORD_SERVICE"].includes(
+                      String(item.allowedAction),
+                    )
+                    ? "Record Calving"
+                    : "View Animal"
+                  : item.actionLabel || "View Details";
 
   const farmer = typeof item.farmer === "object" ? item.farmer : null;
   const animal = typeof item.animal === "object" ? item.animal : null;
@@ -325,7 +364,39 @@ export function normalizeTechnicianWorkItem(
     state,
     status,
     title: titleFor(workType, attemptNumber),
-    statusLabel: statusLabelFor(state),
+    statusLabel:
+      workType === "breeding_follow_up" &&
+      !["completed", "cancelled"].includes(state)
+        ? farmerReportType === "return_to_heat"
+          ? "Needs attention"
+          : farmerReportType
+            ? "Update received"
+            : dueDate
+              ? (() => {
+                  const due = new Date(dueDate);
+                  const today = new Date();
+                  // Compare dates only (ignore time)
+                  const dueDateOnly = new Date(
+                    due.getFullYear(),
+                    due.getMonth(),
+                    due.getDate(),
+                  );
+                  const todayOnly = new Date(
+                    today.getFullYear(),
+                    today.getMonth(),
+                    today.getDate(),
+                  );
+
+                  if (dueDateOnly < todayOnly) {
+                    return "Overdue"; // Past due date
+                  } else if (dueDateOnly.getTime() === todayOnly.getTime()) {
+                    return "Follow-up due"; // TODAY is the due date
+                  } else {
+                    return `Due ${formatWorkDate(dueDate)}`; // Future due date
+                  }
+                })()
+              : "Follow-up due"
+        : statusLabelFor(state),
     actionLabel,
     scheduledDate,
     visitPeriod: period,
@@ -334,6 +405,7 @@ export function normalizeTechnicianWorkItem(
     completedAt,
     serviceStartedAt,
     farmerName: text(farmer?.name || item.farmerName),
+    farmerImageUrl: item.farmer?.imageUrl || item.farmerImageUrl || null,
     animalName: text(animal?.name),
     animalTag: text(animal?.earTag || item.animalTag),
     location: text(farmer?.location || item.location || item.farmLocationLabel),
@@ -343,15 +415,20 @@ export function normalizeTechnicianWorkItem(
     overdue,
     allowedAction: item.allowedAction,
     readinessMessage: text(readiness?.reason),
-    requestKind: workType === "ai"
-      ? attemptNumber && attemptNumber > 1 ? "re_insemination" : "initial_ai"
-      : workType === "health"
-        ? "health"
-        : workType === "pregnancy_check"
-          ? "pregnancy_confirmation"
-          : workType === "calving"
-            ? "calving_monitoring"
-            : "task",
+    requestKind:
+      workType === "ai"
+        ? attemptNumber && attemptNumber > 1
+          ? "re_insemination"
+          : "initial_ai"
+        : workType === "health"
+          ? "health"
+          : workType === "pregnancy_check"
+            ? "pregnancy_confirmation"
+            : workType === "breeding_follow_up"
+              ? "breeding_observation_review"
+              : workType === "calving"
+                ? "calving_monitoring"
+                : "task",
     attemptNumber,
     previousAttemptId,
     previousAttemptOutcome,
@@ -373,7 +450,8 @@ export function summarizeTechnicianWork(
     (summary, item) => {
       if (item.state === "cancelled") return summary;
       if (item.state === "completed") {
-        if (philippineDateKey(item.completedAt) === todayKey) summary.completedToday += 1;
+        if (philippineDateKey(item.completedAt) === todayKey)
+          summary.completedToday += 1;
         return summary;
       }
       if (item.isReadyToday) summary.dueToday += 1;
@@ -414,9 +492,13 @@ export function normalizeWorkflowStatus(
   if (scheduleState) return scheduleState;
 
   if (
-    ["scheduled", "approved", "assigned", "in_progress", "ready_today"].includes(
-      status,
-    )
+    [
+      "scheduled",
+      "approved",
+      "assigned",
+      "in_progress",
+      "ready_today",
+    ].includes(status)
   ) {
     return "scheduled";
   }

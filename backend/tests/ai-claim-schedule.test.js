@@ -158,6 +158,14 @@ test("AI claim schedule atomically assigns the authenticated technician and sche
     "morning",
   );
   assert.ok(state.notifications[0].update.$setOnInsert.metadata.scheduledDate);
+  assert.equal(
+    state.notifications[0].update.$setOnInsert.metadata.requestKind,
+    "initial_ai",
+  );
+  assert.equal(
+    state.notifications[0].update.$setOnInsert.title,
+    "AI service visit scheduled",
+  );
 });
 
 test("AI claim schedule accepts afternoon", async (t) => {
@@ -171,6 +179,30 @@ test("AI claim schedule accepts afternoon", async (t) => {
 
   assert.equal(recorder.statusCode, 200);
   assert.equal(recorder.body.request.visitPeriod, "afternoon");
+});
+
+test("re-insemination scheduling notification preserves attempt context", async (t) => {
+  const state = installHarness(t, {
+    request: {
+      attemptNumber: 2,
+      previousAttemptId: "507f1f77bcf86cd799439099",
+    },
+  });
+  const recorder = createResponseRecorder();
+
+  await claimAndScheduleAIRequest(createRequest(), recorder.response);
+
+  assert.equal(recorder.statusCode, 200);
+  const notification = state.notifications[0].update.$setOnInsert;
+  assert.equal(notification.metadata.requestKind, "re_insemination");
+  assert.equal(notification.metadata.attemptNumber, 2);
+  assert.equal(
+    String(notification.metadata.previousAttemptId),
+    "507f1f77bcf86cd799439099",
+  );
+  assert.equal(notification.title, "Re-insemination scheduled");
+  assert.match(notification.message, /AI-001/);
+  assert.match(notification.message, /scheduled for/i);
 });
 
 test("AI claim schedule rejects invalid payloads before database or notification writes", async (t) => {

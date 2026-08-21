@@ -74,10 +74,7 @@ export function getAIEligibility({
 
   const status = String(animal.reproductiveStatus || "");
   if (status === "Pregnant") {
-    return { isEligible: false, code: "ACTIVE_PREGNANCY", reason: "There is already an active pregnancy registered for this animal." };
-  }
-  if (["Inseminated", "Likely Pregnant"].includes(status)) {
-    return { isEligible: false, code: "ACTIVE_REPRODUCTIVE_WORKFLOW", reason: "This animal is currently under reproductive monitoring." };
+    return { isEligible: false, code: "ACTIVE_PREGNANCY", reason: "This animal is currently pregnant." };
   }
 
   const inferredActiveRequest =
@@ -86,7 +83,40 @@ export function getAIEligibility({
       ACTIVE_AI_STATUSES.has(String(item?.status || "").toLowerCase()),
     );
   if (inferredActiveRequest) {
-    return { isEligible: false, code: "ACTIVE_AI_REQUEST_EXISTS", reason: "This animal already has an active AI service request." };
+    const isScheduled = ["scheduled", "in-progress", "in_progress"].includes(String(inferredActiveRequest.status).toLowerCase());
+    return {
+      isEligible: false,
+      code: "ACTIVE_AI_REQUEST_EXISTS",
+      reason: isScheduled ? "AI service is already in progress." : "An AI request is already active."
+    };
+  }
+
+  const isRecheck = animal.inseminations?.[0]?.pregnancyFollowUpTask?.metadata?.workflowStage === "diagnostic_follow_up";
+
+  if (animal.nextAction) {
+    if (animal.nextAction.phase === "PREGNANCY_CHECK_DUE" || animal.nextAction.phase === "PREGNANCY_MONITORING") {
+      return {
+        isEligible: false,
+        code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
+        reason: isRecheck ? "Pregnancy recheck is still pending." : "Pregnancy check is still pending."
+      };
+    }
+    if (animal.nextAction.phase === "HEAT_RETURN_MONITORING" || animal.nextAction.phase === "CALVING_DUE") {
+      return {
+        isEligible: false,
+        code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
+        reason: "Waiting for the current breeding cycle result."
+      };
+    }
+  }
+
+  // Fallback if nextAction is not provided by the current context
+  if (["Inseminated", "Likely Pregnant"].includes(status)) {
+    return {
+      isEligible: false,
+      code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
+      reason: isRecheck ? "Pregnancy recheck is still pending." : (status === "Likely Pregnant" ? "Pregnancy check is still pending." : "Waiting for the current breeding cycle result.")
+    };
   }
 
   if (animal.lastCalvingDate) {
@@ -100,7 +130,7 @@ export function getAIEligibility({
       return {
         isEligible: false,
         code: "POSTPARTUM_RECOVERY",
-        reason: `Animal is in postpartum recovery. ${recovery.requiredDays} days are required; ${recovery.daysPassed} days have passed.`,
+        reason: `This animal is still in postpartum recovery.`,
       };
     }
   }

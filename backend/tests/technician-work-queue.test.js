@@ -90,6 +90,12 @@ const matchesCondition = (actual, expected) => {
       }
       return idOf(actual) !== idOf(expected.$ne);
     }
+    if (expected.$lte !== undefined) {
+      if (actual == null) return false;
+      const actualVal = actual instanceof Date ? actual.getTime() : actual;
+      const expectedVal = expected.$lte instanceof Date ? expected.$lte.getTime() : expected.$lte;
+      return actualVal <= expectedVal;
+    }
   }
   return idOf(actual) === idOf(expected);
 };
@@ -480,6 +486,73 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.get(ids.pdTask).allowedAction, "START_SERVICE");
       assert.equal(byId.get(ids.calvingTask).workflowType, "Calving");
       assert.equal(byId.get(ids.calvingTask).allowedAction, "START_SERVICE");
+    },
+  );
+
+  await t.test(
+    "PD tasks correctly follow the canonical My Work visibility rules",
+    async () => {
+      state.inseminations = [];
+      state.healthRequests = [];
+      state.tasks = [
+        taskRecord({
+          _id: "pd-future-pending",
+          taskType: "PD",
+          status: "Pending",
+          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+        }),
+        taskRecord({
+          _id: "pd-due-pending",
+          taskType: "PD",
+          status: "Pending",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
+        }),
+        taskRecord({
+          _id: "pd-missing-due-pending",
+          taskType: "PD",
+          status: "Pending",
+          dueDate: null, // Missing/invalid
+        }),
+        taskRecord({
+          _id: "pd-in-progress",
+          taskType: "PD",
+          status: "In Progress",
+          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Future due date but in progress
+        }),
+        taskRecord({
+          _id: "pd-completed",
+          taskType: "PD",
+          status: "Completed",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Completed
+        }),
+        taskRecord({
+          _id: "general-future-pending",
+          taskType: "GeneralVisit",
+          status: "Pending",
+          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+        }),
+        taskRecord({
+          _id: "general-completed",
+          taskType: "GeneralVisit",
+          status: "Completed",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        }),
+      ];
+
+      const recorder = responseRecorder();
+      await getWorkQueue(
+        { user: { _id: ids.technician, role: "technician" } },
+        recorder.response,
+      );
+
+      const byId = new Map(recorder.body.data.map((item) => [item.id, item]));
+      assert.equal(byId.has("pd-future-pending"), false, "Future pending PD must be hidden");
+      assert.equal(byId.has("pd-due-pending"), true, "Due pending PD must be visible");
+      assert.equal(byId.has("pd-missing-due-pending"), false, "Missing due date PD must be hidden");
+      assert.equal(byId.has("pd-in-progress"), true, "In Progress PD must be visible regardless of due date");
+      assert.equal(byId.has("pd-completed"), false, "Completed PD must be completely hidden from My Work");
+      assert.equal(byId.has("general-future-pending"), true, "Non-PD future tasks must remain visible");
+      assert.equal(byId.has("general-completed"), true, "Non-PD completed tasks retain previous visibility");
     },
   );
 });

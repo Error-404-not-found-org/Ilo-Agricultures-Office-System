@@ -4,6 +4,7 @@ import {
   ANIMAL_REPRODUCTIVE_STATUS,
   TASK_STATUS,
   isActiveAIRequestStatus,
+  normalizeAIStatus,
 } from "../domain/status-vocabulary.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
@@ -26,15 +27,21 @@ import {
   completeInsemination,
   persistBreedingObservationVerification,
 } from "../services/livestock-transaction.service.js";
-import { confirmPregnancyDiagnosis } from "../services/pregnancy-confirmation.service.js";
+import { confirmPregnancyDiagnosis, executePregnancyFinalization } from "../services/pregnancy-confirmation.service.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import {
   activeRequestKeyForAnimal,
   createAIRequestWithGuard,
   findActiveAIRequest,
   isVerifiedFailedAIAttempt,
+  isVerifiedReturnToHeatAIAttempt,
 } from "../services/ai-request-creation.service.js";
 import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
+import {
+  ensureBreedingObservationFollowUpTask,
+  cancelPendingReproductiveTasksForInsemination,
+  buildInseminationIdMatch
+} from "../services/breeding-observation-followup.service.js";
 import { getEarlyStartTiming } from "../domain/service-timing.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
@@ -49,7 +56,10 @@ import {
   assertVisitDaypartAvailable,
   hasVisitScheduleChanged,
 } from "../domain/visit-scheduling.js";
-import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import {
+  assertFarmerBreedingObservationWindow,
+  getPregnancyCheckReadiness,
+} from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 // POST /api/ai-request
@@ -57,8 +67,14 @@ import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.se
 export const createAIRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const { animalId, imageUrl, photos, comment, heatSigns, previousAttemptId } =
-      req.body;
+    const {
+      animalId,
+      imageUrl,
+      photos,
+      comment,
+      heatSigns,
+      previousAttemptId,
+    } = req.body;
 
     if (!animalId) {
       return res
@@ -180,11 +196,11 @@ export const createAIRequest = async (req, res) => {
             "Re-insemination must be linked to the latest performed AI attempt.",
         });
       }
-      if (!isVerifiedFailedAIAttempt(previousAttempt)) {
+      if (!isVerifiedReturnToHeatAIAttempt(previousAttempt)) {
         return res.status(409).json({
           code: "PREVIOUS_AI_FAILURE_NOT_VERIFIED",
           message:
-            "The previous AI attempt must be completed and confirmed unsuccessful before requesting re-insemination.",
+            "The previous AI attempt must be confirmed unsuccessful before requesting another insemination.",
         });
       }
       attemptLink = {
@@ -206,41 +222,64 @@ export const createAIRequest = async (req, res) => {
     const dispatchSnapshot = {
       location: dispatchLocation,
       stage: "local",
-      resolutionStatus: dispatchLocation.source === "unresolved" ? "unresolved" : "resolved",
+      resolutionStatus:
+        dispatchLocation.source === "unresolved" ? "unresolved" : "resolved",
       version: 1,
-      resolvedAt: new Date()
+      resolvedAt: new Date(),
     };
 
-    const request = await createAIRequestWithGuard({
-      farmerId,
-      animalId,
-      imageUrl: imageUrl || (photos && photos.length > 0 ? photos[0] : ""),
-      photos: photos || [],
-      comment: comment || "",
-      heatSigns: heatSigns || [],
-      status: "pending",
-      dispatch: dispatchSnapshot,
-      ...attemptLink,
-    });
+    const request = await createAIRequestWithGuard(
+      {
+        farmerId,
+        animalId,
+        imageUrl: imageUrl || (photos && photos.length > 0 ? photos[0] : ""),
+        photos: photos || [],
+        comment: comment || "",
+        heatSigns: heatSigns || [],
+        status: "pending",
+        dispatch: dispatchSnapshot,
+        ...attemptLink,
+      },
+      { requireVerifiedReturnToHeat: Boolean(previousAttemptId) },
+    );
     const attemptNumber = request.attemptNumber;
+    const isReInsemination = Boolean(request.previousAttemptId);
     await Promise.all([
       createTimelineEvent({
         animalId: animal._id,
-        eventType: "ai_requested",
+        eventType: isReInsemination
+          ? "ai_reinsemination_requested"
+          : "ai_requested",
         actorId: farmerId,
         sourceType: "Insemination",
         sourceId: request._id,
-        title: "AI service requested",
-        summary: comment || "Farmer requested artificial insemination service.",
-        attachments: photos?.length > 0 ? photos : (imageUrl ? [imageUrl] : []),
-        metadata: { attemptNumber },
+        title: isReInsemination
+          ? "Re-insemination requested"
+          : "AI service requested",
+        summary:
+          comment ||
+          (isReInsemination
+            ? "Farmer requested another AI service after the previous attempt was confirmed unsuccessful."
+            : "Farmer requested artificial insemination service."),
+        attachments: photos?.length > 0 ? photos : imageUrl ? [imageUrl] : [],
+        metadata: {
+          attemptNumber,
+          previousAttemptId: request.previousAttemptId || null,
+          requestKind: isReInsemination ? "re_insemination" : "initial_ai",
+        },
       }),
       createAuditLog({
         entityType: "Insemination",
         entityId: request._id,
-        action: "ai_requested",
+        action: isReInsemination
+          ? "ai_reinsemination_requested"
+          : "ai_requested",
         actorId: farmerId,
-        after: { status: request.status, attemptNumber },
+        after: {
+          status: request.status,
+          attemptNumber,
+          previousAttemptId: request.previousAttemptId || null,
+        },
       }),
     ]);
 
@@ -263,7 +302,9 @@ export const createAIRequest = async (req, res) => {
     // --- TRIGGER SOCKET UPDATE ---
     req.app.get("io").emit("dashboardUpdate", {
       type: "AI_REQUEST_CREATED",
-      message: "New AI request submitted",
+      message: isReInsemination
+        ? "New re-insemination request submitted"
+        : "New AI request submitted",
     });
 
     res
@@ -500,9 +541,10 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const finalVisitPeriod = visitPeriod !== undefined ? normalizeVisitPeriod(visitPeriod) : undefined;
+    const finalVisitPeriod =
+      visitPeriod !== undefined ? normalizeVisitPeriod(visitPeriod) : undefined;
 
-    const existing = await Insemination.findById(id);
+    const existing = await Insemination.findById(id).populate("animalId", "earTag animalId");
     if (!existing) {
       return res.status(404).json({ message: "AI request record not found." });
     }
@@ -619,7 +661,7 @@ export const updateRequestStatus = async (req, res) => {
         existing.scheduledDate,
         existing.visitPeriod,
         normalizedScheduledDate,
-        finalVisitPeriod
+        finalVisitPeriod,
       );
 
     const updateData = {
@@ -717,6 +759,10 @@ export const updateRequestStatus = async (req, res) => {
     // --- TRIGGER NOTIFICATION TO FARMER ---
     try {
       if (request.farmerId && request.farmerId._id) {
+        const requestKind =
+          request.previousAttemptId || Number(request.attemptNumber) > 1
+            ? "re_insemination"
+            : "initial_ai";
         const eventType =
           status === "done"
             ? "service_completed"
@@ -750,6 +796,9 @@ export const updateRequestStatus = async (req, res) => {
             scheduledDate: request.scheduledDate,
             visitPeriod: request.visitPeriod,
             reason: normalizedTechnicianNote || "",
+            requestKind,
+            attemptNumber: request.attemptNumber || 1,
+            previousAttemptId: request.previousAttemptId || null,
           },
         });
       }
@@ -788,7 +837,6 @@ export const updateRequestStatus = async (req, res) => {
         );
       }
     }
-
   } catch (error) {
     console.error("[updateRequestStatus ERROR]", error.message);
     if (res.headersSent) return;
@@ -885,8 +933,7 @@ export const claimAndScheduleAIRequest = async (req, res) => {
         current.approvedBy?._id?.toString() ||
         current.approvedBy?.toString() ||
         null;
-      const isSameTechnician =
-        assignedTechnicianId === req.user._id.toString();
+      const isSameTechnician = assignedTechnicianId === req.user._id.toString();
       const isSameSchedule =
         current.scheduledDate &&
         new Date(current.scheduledDate).getTime() === scheduledDate.getTime() &&
@@ -907,7 +954,8 @@ export const claimAndScheduleAIRequest = async (req, res) => {
 
       if (assignedTechnicianId && !isSameTechnician) {
         return res.status(409).json({
-          message: "This request has already been claimed by another technician.",
+          message:
+            "This request has already been claimed by another technician.",
           code: "REQUEST_ALREADY_CLAIMED",
         });
       }
@@ -920,6 +968,10 @@ export const claimAndScheduleAIRequest = async (req, res) => {
 
     try {
       if (request.farmerId?._id) {
+        const requestKind =
+          request.previousAttemptId || Number(request.attemptNumber) > 1
+            ? "re_insemination"
+            : "initial_ai";
         await notifyUser({
           recipient: request.farmerId,
           senderId: req.user._id,
@@ -934,17 +986,22 @@ export const claimAndScheduleAIRequest = async (req, res) => {
           metadata: {
             requestId: request._id,
             animalId: request.animalId?._id,
-            animalTag:
-              request.animalId?.earTag || request.animalId?.animalId,
+            animalTag: request.animalId?.earTag || request.animalId?.animalId,
             serviceType: "ai",
             technicianName: req.user.name,
             scheduledDate: request.scheduledDate,
             visitPeriod: request.visitPeriod,
+            requestKind,
+            attemptNumber: request.attemptNumber || 1,
+            previousAttemptId: request.previousAttemptId || null,
           },
         });
       }
     } catch (notifyError) {
-      console.error("[claimAndScheduleAIRequest NOTIFICATION ERROR]", notifyError.message);
+      console.error(
+        "[claimAndScheduleAIRequest NOTIFICATION ERROR]",
+        notifyError.message,
+      );
     }
 
     const io = req.app?.get?.("io");
@@ -990,7 +1047,6 @@ export const confirmAIOutcome = async (req, res) => {
     signs: [],
     notes: note,
     evidencePhotos: [],
-    verificationRequested: false,
   };
   return submitFarmerBreedingObservation(req, res);
 };
@@ -1005,7 +1061,6 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       notes = "",
       evidencePhotos = [],
       evidenceImageUrl,
-      verificationRequested = false,
     } = req.body;
 
     if (req.user.role !== "farmer") {
@@ -1048,6 +1103,24 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       });
     }
 
+    const isTerminalOutcome =
+      request.outcome === "Pregnant" ||
+      request.outcome === "Failed (Re-heat)" ||
+      request.outcome === "Failed (Aborted)" ||
+      request.outcome === "Failed (Negative PD)";
+
+    const isTerminal =
+      (isTerminalOutcome && request.outcomeVerificationStatus === "verified") ||
+      typeof request["isSuccess"] === "boolean";
+
+    if (isTerminal) {
+      return res.status(409).json({
+        message:
+          "This AI attempt has already been verified with a terminal outcome and cannot accept further observations.",
+        code: "AI_ATTEMPT_TERMINAL",
+      });
+    }
+
     const animal = await Animal.findById(
       request.animalId?._id || request.animalId,
     );
@@ -1055,45 +1128,14 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       return res.status(404).json({ message: "Animal not found." });
     }
 
-    // Return-to-heat has its own observation window. Pregnancy verification
-    // follows the same configurable readiness policy as official diagnosis.
-    if (verificationRequested) {
-      const aiDate =
-        request.inseminationDate ||
-        request.dateOfAI ||
-        request.completedAt ||
-        request.createdAt;
-      if (aiDate) {
-        const daysSinceAI = Math.floor(
-          (Date.now() - new Date(aiDate).getTime()) / (1000 * 60 * 60 * 24),
-        );
-        if (reportType === "return_to_heat" && daysSinceAI < 18) {
-          return res.status(400).json({
-            message: `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`,
-            code: "VERIFICATION_TOO_EARLY",
-            daysSinceAI,
-            minimumDays: 18,
-          });
-        }
-        if (reportType !== "return_to_heat") {
-          const policyResolution = await loadPregnancyConfirmationPolicy();
-          const readiness = getPregnancyCheckReadiness({
-            insemination: request,
-            policy: policyResolution.policy,
-            species: animal.species,
-          });
-          if (!readiness.isEligible) {
-            return res.status(400).json({
-              message: readiness.reason,
-              code: "VERIFICATION_TOO_EARLY",
-              daysSinceAI: readiness.daysPostAI,
-              minimumDays: readiness.minimumDays,
-              pregnancyReadiness: readiness,
-            });
-          }
-        }
-      }
-    }
+    assertFarmerBreedingObservationWindow({ insemination: request });
+
+    const policyResolution = await loadPregnancyConfirmationPolicy();
+    const pregnancyReadiness = getPregnancyCheckReadiness({
+      insemination: request,
+      policy: policyResolution.policy,
+      species: animal.species,
+    });
 
     const photos = Array.isArray(evidencePhotos)
       ? evidencePhotos.filter(Boolean)
@@ -1102,17 +1144,34 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         : [];
 
     const observationReportedAt = new Date();
+    const previousFarmerReport = request.farmerOutcomeReport;
     request.farmerOutcomeReport = reportType;
     request.farmerOutcomeReportedAt = observationReportedAt;
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
     request.farmerObservationNotes = notes || "";
     request.evidencePhotos = photos;
-    const technicianVerificationRequired =
-      reportType === "return_to_heat" || Boolean(verificationRequested);
+    request.observationSource = "farmer";
+    request.observationRecordedBy = req.user._id;
+    const followUp = await ensureBreedingObservationFollowUpTask({
+      request,
+      farmerId: req.user._id,
+      animalId: animal._id,
+      technicianId:
+        request.technicianId?._id ||
+        request.technicianId ||
+        request.approvedBy?._id ||
+        request.approvedBy,
+      reportType,
+      signs,
+      notes,
+      pregnancyReadiness,
+      at: observationReportedAt,
+    });
+    const verificationTask = followUp.task;
+    const technicianVerificationRequired = followUp.technicianActionRequired;
     request.verificationRequested = technicianVerificationRequired;
-    request.verificationStatus = technicianVerificationRequired
-      ? "pending"
-      : "not_requested";
+    request.verificationStatus = followUp.verificationStatus;
+    // We intentionally DO NOT update request.verificationTaskId here, because that field is reserved for the PD task.
 
     let nextAction = "Observation saved.";
 
@@ -1121,19 +1180,12 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       request.outcomeConfirmationSource = "farmer_possible_pregnancy";
       request.outcomeConfirmedBy = req.user._id;
       request.outcomeConfirmedAt = new Date();
-      if (
-        animal.reproductiveStatus === "Inseminated" ||
-        animal.reproductiveStatus === "Normal"
-      ) {
-        animal.reproductiveStatus = "Likely Pregnant";
-      }
-      nextAction = verificationRequested
-        ? "A technician pregnancy verification task was queued."
-        : "Observation saved as likely pregnant. A technician pregnancy check is still required to confirm.";
+      nextAction = technicianVerificationRequired
+        ? "Possible pregnancy signs recorded. Technician follow-up is available now."
+        : "Possible pregnancy signs recorded. Pregnancy confirmation will follow the existing readiness schedule.";
     }
 
     if (reportType === "return_to_heat") {
-      animal.reproductiveStatus = "In Heat";
       request.outcomeVerificationStatus = "reported";
       request.outcomeConfirmationSource = "farmer_return_to_heat";
       nextAction =
@@ -1141,63 +1193,11 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     }
 
     if (reportType === "unsure") {
-      nextAction = verificationRequested
-        ? "A technician verification task was queued."
-        : "Observation saved. Continue monitoring or request technician verification.";
-    }
-
-    let verificationTask = null;
-    if (technicianVerificationRequired) {
-      if (request.verificationTaskId) {
-        verificationTask = await Task.findById(request.verificationTaskId);
-        if (
-          verificationTask &&
-          !["Pending", "In Progress"].includes(verificationTask.status)
-        ) {
-          verificationTask = null;
-        }
-      }
-
-      if (!verificationTask) {
-        verificationTask = await Task.findOne({
-          farmerId: req.user._id,
-          animalIds: animal._id,
-          taskType: "PD",
-          status: { $in: ["Pending", "In Progress"] },
-          $or: [
-            { "metadata.inseminationId": request._id },
-            {
-              relatedRecordType: "insemination",
-              relatedRecordId: request._id,
-            },
-          ],
-        });
-        if (verificationTask) {
-          request.verificationTaskId = verificationTask._id;
-        }
-      }
-
-      if (!verificationTask) {
-        verificationTask = await Task.create({
-          farmerId: req.user._id,
-          animalIds: [animal._id],
-          technicianId:
-            request.technicianId?._id ||
-            request.technicianId ||
-            request.approvedBy?._id ||
-            request.approvedBy ||
-            undefined,
-          taskType: "PD",
-          category: "Follow-up",
-          priority: reportType === "return_to_heat" ? 1 : 2,
-          notes: `Breeding verification requested by farmer. Observation: ${reportType}. Signs: ${(Array.isArray(signs) ? signs : []).join(", ") || "None"}. Notes: ${notes || "None"}`,
-          status: "Pending",
-          dueDate: new Date(),
-          sourceType: "farmer_requested_verification",
-          metadata: { inseminationId: id, reportType },
-        });
-        request.verificationTaskId = verificationTask._id;
-      }
+      request.outcomeVerificationStatus = "pending";
+      request.outcomeConfirmationSource = null;
+      request.outcomeConfirmedBy = null;
+      request.outcomeConfirmedAt = null;
+      nextAction = "Observation saved. Continue monitoring the animal.";
     }
 
     request.statusHistory = request.statusHistory || [];
@@ -1230,7 +1230,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         metadata: {
           reportType,
           signs: Array.isArray(signs) ? signs : [],
-          verificationRequested: technicianVerificationRequired,
+          technicianFollowUpRequired: technicianVerificationRequired,
           verificationTaskId: verificationTask?._id,
         },
       }),
@@ -1242,7 +1242,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         after: {
           reportType,
           signs,
-          verificationRequested: technicianVerificationRequired,
+          technicianFollowUpRequired: technicianVerificationRequired,
           verificationTaskId: verificationTask?._id,
           animalStatus: animal.reproductiveStatus,
         },
@@ -1258,7 +1258,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       signs: Array.isArray(signs) ? signs : [],
       notes,
       reportedAt: observationReportedAt,
-      verificationRequested: technicianVerificationRequired,
+      technicianActionRequired: technicianVerificationRequired,
     });
 
     res.status(200).json({
@@ -1275,6 +1275,444 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     res.status(error.status || 500).json({
       message: error.message || "Failed to submit breeding observation.",
       code: error.code || "BREEDING_OBSERVATION_FAILED",
+    });
+  }
+};
+
+export const recordTechnicianBreedingObservation = async (req, res) => {
+  try {
+    const { reportType, signs, notes, evidenceImageUrl, evidencePhotos, source } = req.body;
+
+    if (!['possible_pregnancy', 'return_to_heat', 'unsure', 'unable_to_contact'].includes(reportType)) {
+      return res.status(400).json({ message: 'Invalid reportType.' });
+    }
+    const request = await Insemination.findById(req.params.id)
+      .populate('animalId', 'species earTag farmerId reproductiveStatus activityLogs')
+      .populate('technicianId')
+      .populate('approvedBy');
+
+    if (!request) {
+      return res.status(404).json({ message: 'AI Request not found.' });
+    }
+
+    // 1. Domain-level terminal guard based on AI attempt
+    if (request.outcomeVerificationStatus === 'verified' && request.outcome !== 'Pending') {
+      return res.status(409).json({
+        code: "AI_ATTEMPT_ALREADY_TERMINAL",
+        message: "This AI attempt has already reached a terminal reproductive outcome.",
+      });
+    }
+
+    // 2. Add backend duplicate-submission guard
+    const existingTask = await Task.findOne({
+      taskType: "BreedingFollowUp",
+      "metadata.inseminationId": buildInseminationIdMatch(request._id),
+    });
+
+    if (existingTask && ["Completed", "Cancelled", "Rejected"].includes(existingTask.status)) {
+      return res.status(409).json({
+        code: "BREEDING_FOLLOWUP_ALREADY_RESOLVED",
+        message: "This breeding follow-up has already been resolved."
+      });
+    }
+
+    // 3. Prevent performing scheduled BreedingFollowUp tasks before their due date
+    if (existingTask && existingTask.status === "Pending" && existingTask.dueDate && new Date(existingTask.dueDate) > new Date()) {
+      return res.status(409).json({
+        code: "BREEDING_FOLLOWUP_NOT_DUE",
+        message: "This scheduled breeding follow-up is not due yet."
+      });
+    }
+
+    if (reportType === 'unable_to_contact') {
+      const task = await Task.findOneAndUpdate(
+        {
+          taskType: "BreedingFollowUp",
+          "metadata.inseminationId": request._id,
+          status: { $nin: ["Completed", "Cancelled", "Rejected"] },
+        },
+        {
+          $set: {
+            status: "Completed",
+            completedAt: new Date(),
+            notes: `Unable to contact farmer. Notes: ${notes || "None"}`,
+            "metadata.followUpResolution": "unable_to_contact",
+            "metadata.reportType": "unable_to_contact",
+          }
+        },
+        { new: true }
+      );
+
+      return res.status(200).json({
+        message: 'Unable to contact recorded. Follow-up closed.',
+        task
+      });
+    }
+
+    const isVerified =
+      request.verificationStatus === 'verified' ||
+      request.verificationStatus === 'rejected' ||
+      request.outcomeVerificationStatus === 'verified';
+
+    if (request.farmerOutcomeReport && request.observationSource === 'farmer' && isVerified) {
+      return res.status(409).json({
+        message: 'This observation has already been reviewed by a technician and cannot be modified.',
+        code: 'OBSERVATION_ALREADY_VERIFIED',
+      });
+    }
+
+    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    if (!animal) {
+      return res.status(404).json({ message: 'Animal not found.' });
+    }
+
+    const photos = Array.isArray(evidencePhotos)
+      ? evidencePhotos.filter(Boolean)
+      : evidenceImageUrl
+        ? [evidenceImageUrl]
+        : [];
+
+    // 4. Technician "Returned to heat" must be terminal
+    if (reportType === 'return_to_heat') {
+      const verification = await persistBreedingObservationVerification({
+        animal,
+        insemination: request,
+        verificationResult: "return_to_heat",
+        checkMethod: "visual_observation",
+        checkedAt: new Date(),
+        technicianNotes: notes,
+        nextCheckDate: null,
+        evidencePhotos: photos,
+        actorId: req.user._id,
+      });
+
+      // Clean up any Pending reproductive tasks (like PD) according to the policy
+      await cancelPendingReproductiveTasksForInsemination({
+        inseminationId: request._id,
+        taskTypes: ["BreedingFollowUp", "PD"],
+        reason: "Cancelled because attempt terminally failed (return to heat).",
+      });
+
+      return res.status(200).json({
+        message: "Return to heat authoritatively recorded.",
+        request: verification.request,
+        animal: verification.animal,
+        task: verification.task,
+        nextAction: verification.nextAction,
+      });
+    }
+
+    const policyResolution = await loadPregnancyConfirmationPolicy();
+    const pregnancyReadiness = getPregnancyCheckReadiness({
+      insemination: request,
+      policy: policyResolution.policy,
+      species: animal.species,
+    });
+
+    const observationReportedAt = new Date();
+    request.farmerOutcomeReport = reportType;
+    request.farmerOutcomeReportedAt = observationReportedAt;
+    request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
+    request.farmerObservationNotes = notes || '';
+    request.evidencePhotos = photos;
+    request.observationSource = 'technician';
+    request.observationRecordedBy = req.user._id;
+
+    // Follow-up adjustment (temporarily reusing the existing logic until BreedingFollowUp task is fully separated)
+    const followUp = await ensureBreedingObservationFollowUpTask({
+      request,
+      farmerId: animal.farmerId,
+      animalId: animal._id,
+      technicianId: req.user._id,
+      reportType,
+      signs,
+      notes,
+      pregnancyReadiness,
+      at: observationReportedAt,
+    });
+
+    // Technician observations act as authoritative, so the task should be completed
+    if (followUp && followUp.task) {
+      await Task.updateOne(
+        { _id: followUp.task._id },
+        {
+          $set: {
+            status: "Completed",
+            completedAt: new Date(),
+          }
+        }
+      );
+    }
+
+    const verificationTask = followUp.task;
+    const technicianVerificationRequired = followUp.technicianActionRequired;
+    request.verificationRequested = technicianVerificationRequired;
+    request.verificationStatus = followUp.verificationStatus;
+
+    let nextAction = 'Observation saved.';
+
+    if (reportType === 'possible_pregnancy') {
+      request.outcomeVerificationStatus = 'reported';
+      // 3. Stop Technician observations from becoming fake farmer observations
+      // request.outcomeConfirmationSource = 'farmer_possible_pregnancy';
+      nextAction = technicianVerificationRequired
+        ? 'Possible pregnancy signs recorded. Technician follow-up is available now.'
+        : 'Possible pregnancy signs recorded. Pregnancy confirmation will follow the existing readiness schedule.';
+    }
+
+    if (reportType === 'unsure') {
+      request.outcomeVerificationStatus = 'pending';
+      request.outcomeConfirmationSource = null;
+      request.outcomeConfirmedBy = null;
+      request.outcomeConfirmedAt = null;
+      nextAction = 'Observation saved. Continue monitoring the animal.';
+    }
+
+    request.statusHistory = request.statusHistory || [];
+    request.statusHistory.push({
+      status: 'technician_observation_recorded',
+      note: `Technician recorded observation: ${reportType} via ${source || 'technician'}.`,
+      actorId: req.user._id,
+      createdAt: new Date(),
+    });
+
+    animal.activityLogs = animal.activityLogs || [];
+    animal.activityLogs.push({
+      event: 'Breeding Observation Recorded',
+      date: new Date(),
+      description: `Technician recorded observation: ${reportType}. ${notes || ''}`.trim(),
+    });
+
+    await Promise.all([
+      request.save(),
+      animal.save(),
+      createTimelineEvent({
+        animalId: animal._id,
+        eventType: 'technician_breeding_observation_recorded',
+        actorId: req.user._id,
+        sourceType: 'Insemination',
+        sourceId: request._id,
+        title: 'Breeding observation recorded',
+        summary: `${reportType.replaceAll('_', ' ')}${notes ? `: ${notes}` : ''}`,
+        attachments: photos,
+        metadata: {
+          reportType,
+          source,
+          signs: Array.isArray(signs) ? signs : [],
+          technicianFollowUpRequired: technicianVerificationRequired,
+          verificationTaskId: verificationTask?._id,
+        },
+      }),
+      createAuditLog({
+        entityType: 'Insemination',
+        entityId: request._id,
+        action: 'technician_breeding_observation_recorded',
+        actorId: req.user._id,
+        after: {
+          farmerOutcomeReport: reportType,
+          observationSource: source,
+          observationRecordedBy: req.user._id,
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      message: 'Technician observation successfully recorded.',
+      data: {
+        request,
+        animal,
+        verificationTask,
+        nextAction,
+      },
+    });
+  } catch (error) {
+    console.error('Record technician breeding observation error:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+// POST /api/ai-request/:id/farmer-pregnancy-report
+export const submitFarmerPregnancyReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes = "", evidencePhotos = [], evidenceImageUrl } = req.body;
+
+    if (req.user.role !== "farmer") {
+      return res.status(403).json({
+        message: "Only farmers can submit pregnancy reports.",
+        code: "FARMER_ONLY_REPORT",
+      });
+    }
+
+    const request = await Insemination.findOne({ _id: id, deletedAt: null }).populate("animalId");
+    if (!request) return res.status(404).json({ message: "AI request record not found." });
+
+    assertAIRequestAccess(req.user, request);
+
+    if (request.farmerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        message: "You can only report pregnancy for your own animal.",
+        code: "OBSERVATION_OWNER_MISMATCH",
+      });
+    }
+
+    if (request.status !== "done") {
+      return res.status(400).json({
+        message: "Pregnancy reports can only be submitted after an AI service has been authoritatively performed.",
+        code: "AI_NOT_COMPLETED",
+      });
+    }
+
+    if (!request.inseminationDate) {
+      return res.status(400).json({
+        message: "The AI service is missing a canonical insemination date.",
+        code: "AI_NOT_COMPLETED",
+      });
+    }
+
+    if (request.outcome === "Pregnant" || request.outcome === "Failed" || request.isSuccess !== null || request.outcomeVerificationStatus === "verified") {
+      return res.status(409).json({
+        message: "This AI attempt has already been authoritatively resolved.",
+        code: "AI_ALREADY_RESOLVED",
+      });
+    }
+
+    if (request.farmerPregnancyReport && request.pregnancyReportVerificationStatus === "pending") {
+      return res.status(409).json({
+        message: "A pregnancy report is already pending technician review.",
+        code: "PREGNANCY_REPORT_ALREADY_PENDING",
+      });
+    }
+
+    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    if (!animal) return res.status(404).json({ message: "Animal not found." });
+
+    if (animal.reproductiveStatus === "Pregnant") {
+      return res.status(409).json({
+        message: "This animal already has an authoritative pregnancy recorded.",
+        code: "ANIMAL_ALREADY_PREGNANT",
+      });
+    }
+
+    const photos = Array.isArray(evidencePhotos) ? evidencePhotos.filter(Boolean) : (evidenceImageUrl ? [evidenceImageUrl] : []);
+
+    request.farmerPregnancyReport = true;
+    request.farmerPregnancyReportedAt = new Date();
+    request.farmerPregnancyNotes = notes || "";
+    request.farmerPregnancyPhotos = photos;
+    request.pregnancyReportVerificationStatus = "pending";
+
+    console.log("----- PREGNANCY REPORT TRACE -----");
+    console.log("request.params.id:", id);
+    console.log("request._id:", request._id.toString());
+    console.log("request.collection.name:", request.collection.name);
+    console.log("BEFORE save:");
+    console.log("farmerPregnancyReport:", request.farmerPregnancyReport);
+    console.log("pregnancyReportVerificationStatus:", request.pregnancyReportVerificationStatus);
+    console.log("farmerPregnancyNotes:", request.farmerPregnancyNotes);
+    console.log("farmerPregnancyPhotos.length:", request.farmerPregnancyPhotos?.length);
+
+    await Promise.all([
+      request.save(),
+      createTimelineEvent({
+        animalId: animal._id,
+        eventType: "farmer_breeding_observation_reported",
+        actorId: req.user._id,
+        sourceType: "Insemination",
+        sourceId: request._id,
+        title: "Farmer reported pregnancy",
+        summary: `Pregnancy report submitted with evidence.`,
+        attachments: photos,
+        metadata: { isPregnancyReport: true },
+      }),
+    ]);
+
+    const refetched = await Insemination.findById(request._id);
+    console.log("AFTER save/refetch:");
+    console.log("farmerPregnancyReport:", refetched?.farmerPregnancyReport);
+    console.log("pregnancyReportVerificationStatus:", refetched?.pregnancyReportVerificationStatus);
+    console.log("farmerPregnancyNotes:", refetched?.farmerPregnancyNotes);
+    console.log("farmerPregnancyPhotos.length:", refetched?.farmerPregnancyPhotos?.length);
+    console.log("----------------------------------");
+
+    res.status(200).json({
+      message: "Pregnancy report saved and sent for technician review.",
+      data: { request },
+    });
+  } catch (error) {
+    console.error("[submitFarmerPregnancyReport ERROR]", error.message);
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to submit pregnancy report.",
+      code: error.code || "PREGNANCY_REPORT_FAILED",
+    });
+  }
+};
+
+// POST /api/ai-request/:id/verify-pregnancy-report
+export const verifyFarmerPregnancyReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    if (!["admin", "technician"].includes(req.user.role)) {
+      return res.status(403).json({
+        message: "Only technicians or administrators can verify pregnancy reports.",
+        code: "UNAUTHORIZED_VERIFICATION",
+      });
+    }
+
+    if (!["request_more_info", "accept"].includes(action)) {
+      return res.status(400).json({ message: "Invalid verification action." });
+    }
+
+    const request = await Insemination.findOne({ _id: id, deletedAt: null }).populate("animalId");
+    if (!request) return res.status(404).json({ message: "AI request record not found." });
+
+    if (!request.farmerPregnancyReport || request.pregnancyReportVerificationStatus !== "pending") {
+      return res.status(400).json({
+        message: "There is no pending farmer pregnancy report to verify.",
+        code: "NO_PENDING_REPORT",
+      });
+    }
+
+    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    if (!animal) return res.status(404).json({ message: "Animal not found." });
+
+    if (action === "request_more_info") {
+      request.pregnancyReportVerificationStatus = "more_info_requested";
+      request.pregnancyReportReviewedBy = req.user._id;
+      request.pregnancyReportReviewedAt = new Date();
+
+      await Promise.all([
+        request.save(),
+        createTimelineEvent({
+          animalId: animal._id,
+          eventType: "pregnancy_check_requested", // existing event type fits OK or custom
+          actorId: req.user._id,
+          sourceType: "Insemination",
+          sourceId: request._id,
+          title: "Technician requested more info",
+          summary: "More information was requested for the farmer pregnancy report.",
+        }),
+      ]);
+
+      return res.status(200).json({
+        message: "Requested more information from the farmer.",
+        data: { request },
+      });
+    }
+
+    if (action === "accept") {
+      return res.status(400).json({
+        message: "Direct acceptance of farmer pregnancy reports is deprecated. Please use the professional pregnancy diagnosis workflow (PD Task).",
+        code: "DEPRECATED_WORKFLOW",
+      });
+    }
+  } catch (error) {
+    console.error("[verifyFarmerPregnancyReport ERROR]", error.message);
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to verify pregnancy report.",
+      code: error.code || "PREGNANCY_VERIFICATION_FAILED",
     });
   }
 };
@@ -1445,10 +1883,12 @@ export const buildCandidateAIDetail = (request) => {
       ? request.farmerId
       : {};
   const address =
-    farmer.address && typeof farmer.address === "object"
-      ? farmer.address
-      : {};
+    farmer.address && typeof farmer.address === "object" ? farmer.address : {};
   const dispatchLocation = request?.dispatch?.location || {};
+  const previousAttempt =
+    request?.previousAttemptId && typeof request.previousAttemptId === "object"
+      ? request.previousAttemptId
+      : null;
 
   return {
     id: request._id,
@@ -1459,6 +1899,19 @@ export const buildCandidateAIDetail = (request) => {
     actionLabel: "Accept & Set Visit",
     type: request.type,
     serviceType: "Artificial Insemination",
+    requestKind: request.previousAttemptId ? "re_insemination" : "initial_ai",
+    attemptNumber: request.attemptNumber || 1,
+    previousAttemptId: previousAttempt
+      ? {
+          _id: previousAttempt._id,
+          attemptNumber: previousAttempt.attemptNumber,
+          inseminationDate: previousAttempt.inseminationDate,
+          outcome: previousAttempt.outcome,
+          outcomeVerificationStatus: previousAttempt.outcomeVerificationStatus,
+          outcomeConfirmationSource: previousAttempt.outcomeConfirmationSource,
+          outcomeConfirmedAt: previousAttempt.outcomeConfirmedAt,
+        }
+      : request.previousAttemptId || null,
     status: request.status,
     urgency: request.urgency,
     preferredDate: request.preferredDate,
@@ -1611,6 +2064,12 @@ export const getAIRequestDetail = async (req, res) => {
 
     const requestObj = request.toObject();
 
+    requestObj.status = normalizeAIStatus(requestObj.status);
+    requestObj.requestKind =
+      requestObj.previousAttemptId || Number(requestObj.attemptNumber) > 1
+        ? "re_insemination"
+        : "initial_ai";
+
     requestObj.nextAction = nextAction;
     requestObj.nextActionAt = nextAction?.at || null;
 
@@ -1633,7 +2092,12 @@ export const getAIRequestDetail = async (req, res) => {
       }
     }
 
-    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician") {
+    if (
+      isUnclaimed &&
+      !isOwnFarmer &&
+      req.user.role !== "admin" &&
+      req.user.role !== "technician"
+    ) {
       return res.status(200).json(buildCandidateAIDetail(requestObj));
     }
 
@@ -2092,12 +2556,43 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       "pregnant",
       "not_pregnant",
       "return_to_heat",
+      "cannot_confirm",
       "needs_recheck",
     ];
     if (!validResults.includes(verificationResult)) {
       return res.status(400).json({
         message: "Invalid verification result.",
         code: "INVALID_VERIFICATION_RESULT",
+      });
+    }
+
+    const request = await Insemination.findOne({
+      _id: id,
+      deletedAt: null,
+    }).populate("animalId");
+    if (!request) {
+      return res.status(404).json({ message: "AI request record not found." });
+    }
+
+    if (request.isSuccess === false || request.verificationStatus === "verified" || request.verificationStatus === "rejected") {
+      return res.status(409).json({
+        message: "This insemination attempt has already been resolved or verified.",
+        code: "VERIFICATION_ALREADY_RESOLVED",
+      });
+    }
+
+    assertAIRequestAccess(req.user, request);
+
+    const isReturnToHeatObservationReview =
+      request.farmerOutcomeReport === "return_to_heat";
+    if (
+      verificationResult === "cannot_confirm" &&
+      !isReturnToHeatObservationReview
+    ) {
+      return res.status(400).json({
+        message:
+          "Cannot-confirm is only valid when reviewing a Farmer return-to-heat report.",
+        code: "INVALID_VERIFICATION_CONTEXT",
       });
     }
 
@@ -2113,22 +2608,18 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       "clinical_examination",
       "other_approved",
     ];
-    if (!validMethods.includes(checkMethod)) {
+    const reviewDecisionDoesNotRequireMethod =
+      isReturnToHeatObservationReview &&
+      ["return_to_heat", "cannot_confirm"].includes(verificationResult);
+    if (
+      !reviewDecisionDoesNotRequireMethod &&
+      !validMethods.includes(checkMethod)
+    ) {
       return res.status(400).json({
-        message: "Invalid check method.",
+        message: "Please select a valid diagnostic method.",
         code: "INVALID_CHECK_METHOD",
       });
     }
-
-    const request = await Insemination.findOne({
-      _id: id,
-      deletedAt: null,
-    }).populate("animalId");
-    if (!request) {
-      return res.status(404).json({ message: "AI request record not found." });
-    }
-
-    assertAIRequestAccess(req.user, request);
 
     if (request.farmerId.toString() === req.user._id.toString()) {
       return res.status(403).json({
@@ -2205,6 +2696,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         nextCheckDate,
         evidencePhotos,
         actorId: req.user._id,
+        taskId: taskId || request.verificationTaskId,
       });
       verifiedRequest = verification.request;
       verifiedAnimal = verification.animal;
@@ -2240,9 +2732,11 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         actorId: req.user._id,
         sourceType: "Insemination",
         sourceId: verifiedRequest._id,
-        title: "Pregnancy Verification Completed",
+        title: isReturnToHeatObservationReview
+          ? "Farmer Breeding Update Reviewed"
+          : "Pregnancy Verification Completed",
         summary:
-          `Verified as ${verificationResult.replaceAll("_", " ")} via ${checkMethod}. ${technicianNotes}`.trim(),
+          `Recorded as ${verificationResult.replaceAll("_", " ")}${checkMethod ? ` via ${checkMethod}` : ""}. ${technicianNotes}`.trim(),
         attachments: evidencePhotos || [],
         metadata: {
           verificationResult,
@@ -2281,26 +2775,51 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         const eventType =
           verificationResult === "pregnant"
             ? "pregnancy_confirmed"
-            : verificationResult === "needs_recheck"
-              ? "continuation_recheck_due"
-              : "pregnancy_not_confirmed";
+            : verificationResult === "return_to_heat"
+              ? "return_to_heat_confirmed"
+              : verificationResult === "needs_recheck"
+                ? "continuation_recheck_due"
+                : isReturnToHeatObservationReview
+                  ? "breeding_observation_reviewed"
+                  : "pregnancy_not_confirmed";
+        const isConfirmedReturnToHeat = verificationResult === "return_to_heat";
         await notifyUser({
           recipient: farmer,
           recipientId: verifiedRequest.farmerId,
           senderId: req.user._id,
           type: "ai-request",
-          category: "pregnancy",
+          category: isReturnToHeatObservationReview ? "ai" : "pregnancy",
           eventType,
-          relatedId: verifiedAnimal._id,
-          linkType: "animal",
+          relatedId: isConfirmedReturnToHeat
+            ? verifiedRequest._id
+            : verifiedAnimal._id,
+          linkType: isConfirmedReturnToHeat ? "record" : "animal",
           dedupeKey: `breeding-verification:${verifiedRequest._id}:${eventType}`,
-          title: "Pregnancy check updated",
-          message: `The pregnancy check for ${verifiedAnimal.earTag || verifiedAnimal.animalId} has been recorded.`,
+          title: isReturnToHeatObservationReview
+            ? "Breeding update reviewed"
+            : "Pregnancy check updated",
+          message: isReturnToHeatObservationReview
+            ? verificationResult === "return_to_heat"
+              ? `A technician confirmed the return-to-heat update for ${verifiedAnimal.earTag || verifiedAnimal.animalId}.`
+              : `A technician reviewed the return-to-heat update for ${verifiedAnimal.earTag || verifiedAnimal.animalId} but could not confirm it.`
+            : `The pregnancy check for ${verifiedAnimal.earTag || verifiedAnimal.animalId} has been recorded.`,
           metadata: {
             animalId: verifiedAnimal._id,
             animalTag: verifiedAnimal.earTag || verifiedAnimal.animalId,
             technicianName: req.user.name,
-            requestId: verifiedRequest._id,
+            ...(isReturnToHeatObservationReview
+              ? {
+                  inseminationId: verifiedRequest._id,
+                  ...(isConfirmedReturnToHeat
+                    ? {
+                        recordId: verifiedRequest._id,
+                        sourceId: verifiedRequest._id,
+                        sourceKind: "insemination",
+                        recordType: "insemination",
+                      }
+                    : {}),
+                }
+              : { requestId: verifiedRequest._id }),
             nextCheckDate,
             workflowStage:
               verificationResult === "needs_recheck"

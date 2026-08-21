@@ -97,7 +97,18 @@ test("FARMER AI", async (t) => {
   await t.test("re-insemination linkage preserved", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "AI-123", gender: "Female", species: "Cattle", breed: "Brahman", birthDate: new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000) });
-    const ai1 = await Insemination.create({ farmerId, animalId, status: "done", isSuccess: false, outcome: "Failed (Negative PD)" });
+    const ai1 = await Insemination.create({
+      farmerId,
+      animalId,
+      status: "done",
+      inseminationDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      isSuccess: false,
+      farmerOutcomeReport: "return_to_heat",
+      outcome: "Failed (Re-heat)",
+      failureReason: "return_to_heat",
+      outcomeVerificationStatus: "verified",
+      outcomeConfirmationSource: "technician_return_to_heat"
+    });
     
     const { req, res } = reqRes({ animalId: animalId.toString(), comment: "Test" }, "farmer", farmerId);
     req.params.id = ai1._id.toString();
@@ -179,16 +190,16 @@ test("FARMER HEALTH", async (t) => {
 
 test("NORMALIZATION", async (t) => {
   await t.test("date-only input", () => {
-    const d = normalizeVisitScheduleDate("2026-08-07");
-    assert.equal(d.toISOString(), "2026-08-07T04:00:00.000Z");
+    const d = normalizeVisitScheduleDate("2030-08-07");
+    assert.equal(d.toISOString(), "2030-08-07T04:00:00.000Z");
   });
   await t.test("legacy ISO input", () => {
-    const d = normalizeVisitScheduleDate("2026-08-07T14:30:00.000Z");
-    assert.equal(d.toISOString(), "2026-08-07T04:00:00.000Z");
+    const d = normalizeVisitScheduleDate("2030-08-07T14:30:00.000Z");
+    assert.equal(d.toISOString(), "2030-08-07T04:00:00.000Z");
   });
   await t.test("clock discarded", () => {
-    const d1 = normalizeVisitScheduleDate("2026-08-07T00:00:00.000Z");
-    const d2 = normalizeVisitScheduleDate("2026-08-07T23:59:59.000Z");
+    const d1 = normalizeVisitScheduleDate("2030-08-07T00:00:00.000Z");
+    const d2 = normalizeVisitScheduleDate("2030-08-07T23:59:59.000Z");
     assert.equal(d1.getTime(), d2.getTime());
   });
   await t.test("invalid date", () => {

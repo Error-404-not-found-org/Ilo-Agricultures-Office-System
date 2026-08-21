@@ -76,6 +76,7 @@ const TASK_ANIMAL_DETAIL_FIELDS = [
 
 const INSEMINATION_DETAIL_FIELDS = [
   "animalId",
+  "status",
   "inseminationDate",
   "scheduledDate",
   "attemptNumber",
@@ -104,11 +105,11 @@ export const getDashboardStats = async (req, res) => {
   try {
     const technicianId = req.user._id;
 
-    const tasks = await Task.find({ 
-      $or: [ { technicianId }, { technicianId: { $exists: false } }, { technicianId: null } ], 
-      status: TASK_STATUS.PENDING 
+    const tasks = await Task.find({
+      $or: [ { technicianId }, { technicianId: { $exists: false } }, { technicianId: null } ],
+      status: TASK_STATUS.PENDING
     });
-    
+
     const stats = {
       urgent: tasks.filter(t => t.category === "Urgent").length,
       routine: tasks.filter(t => t.category === "Routine").length,
@@ -173,7 +174,7 @@ export const getTasks = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     let taskQuery = Task.find(query)
-      .populate("farmerId", "name imageUrl phoneNumber address farmLocation")
+      .populate("farmerId", "name imageUrl avatarUrl profilePicture avatar phoneNumber address farmLocation")
       .populate("animalIds", "animalId earTag species breed color")
       .sort({ createdAt: -1 });
 
@@ -337,7 +338,7 @@ export const createTask = async (req, res) => {
           return res.status(409).json({ message: "This animal already has an active service request." });
         }
       }
-      
+
       if (normalizedTaskType === "Health") {
         const activeHealth = await HealthRequest.findOne({
           animalId: { $in: animalIds },
@@ -389,6 +390,13 @@ export const completeTask = async (req, res) => {
       });
     }
 
+    if (existingTask.taskType === "BreedingFollowUp") {
+      return res.status(400).json({
+        message: "Breeding Follow-up must be resolved through the reproductive follow-up workflow.",
+        code: "INVALID_TASK_COMPLETION",
+      });
+    }
+
     const task = await Task.findOneAndUpdate(
       { _id: id, $or: [ { technicianId: req.user._id }, { technicianId: { $exists: false } }, { technicianId: null } ] },
       {
@@ -401,7 +409,7 @@ export const completeTask = async (req, res) => {
       },
       { returnDocument: 'after' }
     );
-    
+
     res.status(200).json({ message: "Task completed!", task });
   } catch (error) {
     console.error("Error completing task:", error);
@@ -445,7 +453,7 @@ export const getTaskById = async (req, res) => {
       }
     }
 
-    if (task.taskType === "PD") {
+    if (["PD", "BreedingFollowUp"].includes(task.taskType)) {
       const inseminationQuery = task.metadata?.inseminationId
         ? {
             $or: [
@@ -459,9 +467,14 @@ export const getTaskById = async (req, res) => {
       const insemination = await Insemination.findOne(inseminationQuery)
         .select(INSEMINATION_DETAIL_FIELDS)
         .populate("animalId", TASK_ANIMAL_DETAIL_FIELDS);
+
+      taskObj.insemination = insemination || null;
+    }
+
+    if (task.taskType === "PD") {
+      const insemination = taskObj.insemination;
       const policyResolution = await loadPregnancyConfirmationPolicy();
       taskObj.metadata = withNormalizedPregnancyTaskMetadata(taskObj);
-      taskObj.insemination = insemination || null;
       taskObj.pregnancyReadiness = getPregnancyCheckReadiness({
         insemination,
         policy: policyResolution.policy,

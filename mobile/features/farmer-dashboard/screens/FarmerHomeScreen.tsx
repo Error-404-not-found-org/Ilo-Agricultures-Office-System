@@ -205,7 +205,6 @@ export function FarmerHomeScreen() {
           animalId,
           requestId: item.relatedId,
           defaultReport: item.farmerObservation?.reportType || "unsure",
-          requestVerification: "true",
         },
       } as never);
       return;
@@ -869,6 +868,7 @@ export function FarmerHomeScreen() {
                   variant="preview"
                   cardWidth={dashboardLayout.animalCardWidth}
                   nextAction={
+                    animal.reproductiveStatus === "Pregnant" &&
                     animal.expectedCalvingDate
                       ? `Calving ${format(new Date(animal.expectedCalvingDate), "MMM d")}`
                       : undefined

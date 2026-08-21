@@ -242,12 +242,20 @@ export function AnimalRegistryCard({
                 flexDirection: "row",
                 alignItems: "center",
                 marginLeft: 12,
+                maxWidth: "45%",
+                justifyContent: "flex-end",
               }}
             >
-              <Text variant="bold" size={12} style={{ color: colors.primary }}>
-                {actionEyebrow === "Animal record"
-                  ? "View details"
-                  : actionLabel || "View details"}
+              <Text
+                variant="bold"
+                size={12}
+                style={{
+                  color: colors.primary,
+                  textAlign: "right",
+                  flexShrink: 1,
+                }}
+              >
+                View details
               </Text>
               <ChevronRight size={16} color={colors.primary} />
             </View>

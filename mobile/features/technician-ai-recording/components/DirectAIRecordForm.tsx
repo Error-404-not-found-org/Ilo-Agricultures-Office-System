@@ -44,6 +44,7 @@ interface DirectAIRecordFormProps {
   route: Extract<RecordAIRouteMode, { kind: "direct" }>;
   values: AIRecordingValues;
   saving: boolean;
+  isHistoricalMode?: boolean;
   onValuesChange: (next: Partial<AIRecordingValues>) => void;
   onReview: (farmer: SelectedFarmer, animal: SelectedAnimal) => void;
 }
@@ -65,6 +66,7 @@ export function DirectAIRecordForm({
   route,
   values,
   saving,
+  isHistoricalMode,
   onValuesChange,
   onReview,
 }: DirectAIRecordFormProps) {
@@ -574,11 +576,12 @@ export function DirectAIRecordForm({
             marginBottom: 14,
           }}
         >
-          Actual Service Details
+          {isHistoricalMode ? "Previous AI Service Details" : "Actual Service Details"}
         </Text>
         <AIRecordingFields
           values={values}
           disabled={saving}
+          isHistoricalMode={isHistoricalMode}
           onDateChange={(inseminationDate) =>
             onValuesChange({ inseminationDate })
           }

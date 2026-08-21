@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import mongoose from "mongoose";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
@@ -40,6 +41,21 @@ const responseRecorder = () => {
     },
   };
 };
+
+test("AI follow-up mutations do not replace the completion timestamp", () => {
+  const controller = readFileSync(
+    new URL("../src/controllers/ai-request.controllers.js", import.meta.url),
+    "utf8",
+  );
+  const start = controller.indexOf("export const submitFarmerBreedingObservation");
+  const end = controller.indexOf("// DELETE /api/ai-request/:id", start);
+  const handler = controller.slice(start, end);
+
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(handler, /request\.completedAt\s*=/);
+  assert.match(handler, /request\.farmerOutcomeReportedAt\s*=/);
+  assert.match(handler, /request\.save\(\)/);
+});
 
 test("Official records: farmer scope overrides a supplied farmer id", async () => {
   const originals = {
@@ -213,7 +229,7 @@ test("Official records: invalid date range is rejected", async () => {
   assert.equal(recorder.body.code, "RECORD_DATE_RANGE_INVALID");
 });
 
-test("Official record detail: AI exposes only its persisted evidence", async () => {
+test("Official record detail: AI exposes canonical service and follow-up context", async () => {
   const originals = {
     animal: Animal.findOne,
     insemination: Insemination.findOne,
@@ -225,14 +241,47 @@ test("Official record detail: AI exposes only its persisted evidence", async () 
   };
 
   Animal.findOne = async () => animal;
+  const createdAt = new Date("2026-07-31T08:00:00.000Z");
+  const completedAt = new Date("2026-08-01T07:20:00.000Z");
+  const serviceStartedAt = new Date("2026-08-01T07:00:00.000Z");
+  const outcomeConfirmedAt = new Date("2026-09-05T04:00:00.000Z");
+  const observationReportedAt = new Date("2026-08-22T03:00:00.000Z");
+  const previousAttemptDate = new Date("2026-05-01T06:30:00.000Z");
+  const pregnancyDiagnosisDate = new Date("2026-09-05T03:45:00.000Z");
   Insemination.findOne = () =>
     queryResult({
       _id: "ai-1",
       animalId: animal,
       status: "done",
-      attemptNumber: 1,
+      attemptNumber: 2,
       inseminationDate: new Date("2026-08-01T07:10:00.000Z"),
-      createdAt: new Date("2026-07-31T08:00:00.000Z"),
+      createdAt,
+      completedAt,
+      serviceStartedAt,
+      earlyStartMinutes: 15,
+      outcome: "Pregnant",
+      outcomeVerificationStatus: "verified",
+      outcomeConfirmationSource: "technician_pregnancy_diagnosis",
+      outcomeConfirmedBy: { _id: "tech-1", name: "Tech One" },
+      outcomeConfirmedAt,
+      farmerOutcomeReport: "possible_pregnancy",
+      farmerOutcomeReportedAt: observationReportedAt,
+      farmerObservationSigns: ["no_return_to_heat"],
+      farmerObservationNotes: "No heat observed.",
+      previousAttemptId: {
+        attemptNumber: 1,
+        inseminationDate: previousAttemptDate,
+        outcome: "Failed (Re-heat)",
+        failureReason: "return_to_heat",
+      },
+      pregnancyId: {
+        _id: "pregnancy-1",
+        pregnancyDiagnosis: {
+          date: pregnancyDiagnosisDate,
+          result: "Pregnant",
+        },
+        confirmation: { methodCode: "ultrasound" },
+      },
       imageUrl: "https://example.test/request.jpg",
       evidencePhotos: [
         "https://example.test/follow-up.jpg",
@@ -257,12 +306,120 @@ test("Official record detail: AI exposes only its persisted evidence", async () 
     assert.equal(recorder.statusCode, 200);
     assert.equal(recorder.body.data.dateLabel, "AI performed at");
     assert.equal(recorder.body.data.datePrecision, "datetime");
+    assert.equal(recorder.body.data.details.entryDate, completedAt);
+    assert.equal(
+      recorder.body.data.details.entryDateLabel,
+      "Record completed at",
+    );
+    assert.equal(recorder.body.data.details.requestedAt, createdAt);
+    assert.equal(
+      recorder.body.data.details.requestedAtLabel,
+      "Workflow created at",
+    );
+    assert.equal(recorder.body.data.details.serviceStartedAt, serviceStartedAt);
+    assert.equal(recorder.body.data.details.earlyStartMinutes, 15);
+    assert.equal(recorder.body.data.details.outcomeVerificationStatus, "verified");
+    assert.equal(
+      recorder.body.data.details.outcomeConfirmationSource,
+      "technician_pregnancy_diagnosis",
+    );
+    assert.equal(recorder.body.data.details.outcomeConfirmedBy, "Tech One");
+    assert.equal(recorder.body.data.details.outcomeConfirmedAt, outcomeConfirmedAt);
+    assert.equal(
+      recorder.body.data.details.farmerOutcomeReport,
+      "possible_pregnancy",
+    );
+    assert.deepEqual(recorder.body.data.details.farmerObservationSigns, [
+      "no_return_to_heat",
+    ]);
+    assert.equal(
+      recorder.body.data.details.farmerObservationNotes,
+      "No heat observed.",
+    );
+    assert.equal(
+      recorder.body.data.details.farmerOutcomeReportedAt,
+      observationReportedAt,
+    );
+    assert.equal(recorder.body.data.details.previousAttemptNumber, 1);
+    assert.equal(
+      recorder.body.data.details.previousAttemptDate,
+      previousAttemptDate,
+    );
+    assert.equal(
+      recorder.body.data.details.previousAttemptOutcome,
+      "Failed (Re-heat)",
+    );
+    assert.equal(
+      recorder.body.data.details.previousAttemptFailureReason,
+      "return_to_heat",
+    );
+    assert.equal(recorder.body.data.details.pregnancyLinked, true);
+    assert.equal(recorder.body.data.details.pregnancyResult, "Pregnant");
+    assert.equal(
+      recorder.body.data.details.pregnancyDiagnosisDate,
+      pregnancyDiagnosisDate,
+    );
+    assert.equal(
+      recorder.body.data.details.pregnancyConfirmationMethod,
+      "ultrasound",
+    );
     assert.deepEqual(
       recorder.body.data.attachments.map((attachment) => attachment.url),
       [
         "https://example.test/request.jpg",
         "https://example.test/follow-up.jpg",
       ],
+    );
+  } finally {
+    Animal.findOne = originals.animal;
+    Insemination.findOne = originals.insemination;
+  }
+});
+
+test("Official record detail: legacy AI does not present creation as completion", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    insemination: Insemination.findOne,
+  };
+  const createdAt = new Date("2025-04-01T08:00:00.000Z");
+  const animal = {
+    _id: "animal-legacy",
+    farmerId: "farmer-1",
+    earTag: "TAG-LEGACY",
+  };
+
+  Animal.findOne = async () => animal;
+  Insemination.findOne = () =>
+    queryResult({
+      _id: "ai-legacy",
+      animalId: animal,
+      status: "done",
+      attemptNumber: 1,
+      inseminationDate: new Date("2025-04-02T07:00:00.000Z"),
+      createdAt,
+    });
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-legacy",
+          recordKind: "insemination",
+          recordId: "ai-legacy",
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data.details.entryDate, null);
+    assert.equal(recorder.body.data.details.completedAt, null);
+    assert.equal(recorder.body.data.details.requestedAt, createdAt);
+    assert.equal(
+      recorder.body.data.details.requestedAtLabel,
+      "Workflow created at",
     );
   } finally {
     Animal.findOne = originals.animal;

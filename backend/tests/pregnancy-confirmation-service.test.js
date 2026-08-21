@@ -66,6 +66,7 @@ function installDiagnosisStubs({
     target[key] = value;
   };
   const now = new Date("2026-07-18T00:00:00.000Z");
+  const completedAt = new Date("2026-06-13T08:30:00.000Z");
   const animal = {
     _id: ids.animal,
     farmerId: ids.farmer,
@@ -81,6 +82,7 @@ function installDiagnosisStubs({
     status: "done",
     outcome: "Pending",
     isSuccess: null,
+    completedAt,
     inseminationDate: new Date(now.getTime() - daysPostAI * 24 * 60 * 60 * 1000),
   };
   const initialTask = {
@@ -179,6 +181,7 @@ function installDiagnosisStubs({
   return {
     state,
     now,
+    completedAt,
     restore() {
       for (const [target, key, original] of originals.reverse()) target[key] = original;
     },
@@ -210,6 +213,7 @@ test("method-based early diagnosis snapshots policy and creates one continuation
     assert.equal(stubs.state.initialTask.status, "Completed");
     assert.equal(stubs.state.timelineWrites, 1);
     assert.equal(stubs.state.auditWrites, 1);
+    assert.equal(stubs.state.insemination.completedAt, stubs.completedAt);
   } finally {
     stubs.restore();
   }

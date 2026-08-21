@@ -33,6 +33,9 @@ import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
 } from "@/features/breeding/utils/breedingObservationPresentation";
+import { FarmerBreedingObservationCard } from "@/features/breeding/components/FarmerBreedingObservationCard";
+import { PregnancyConfirmationWindow } from "@/features/breeding/components/PregnancyConfirmationWindow";
+import BreedingFollowUpTaskView from "@/features/breeding/components/BreedingFollowUpTaskView";
 
 const formatDisplayDate = (value: unknown, includeWeekday = false) => {
   if (!value) return null;
@@ -93,6 +96,7 @@ function PregnancyConfirmationTaskView({
   const animal = task.animalIds?.[0];
   const insemination = task.insemination || task.pregnancy?.inseminationId;
   const pregnancyReadiness = task.pregnancyReadiness;
+  const { isDark } = useTheme();
 
   const farmLocation = task.farmerId?.farmLocation;
   const farmerAddress = Array.isArray(task.farmerId?.address)
@@ -120,43 +124,7 @@ function PregnancyConfirmationTaskView({
       .join(", ");
 
   const aiDate = insemination?.inseminationDate || insemination?.scheduledDate;
-  const daysPostAI =
-    typeof pregnancyReadiness?.daysPostAI === "number"
-      ? pregnancyReadiness.daysPostAI
-      : null;
-  const directMinimumDays =
-    typeof pregnancyReadiness?.minimumDays === "number" &&
-    pregnancyReadiness.minimumDays > 0
-      ? pregnancyReadiness.minimumDays
-      : null;
-  const methodMinimumDays = Array.isArray(pregnancyReadiness?.methods)
-    ? pregnancyReadiness.methods
-        .filter(
-          (method: any) =>
-            method?.enabled &&
-            typeof method.earliestDaysPostAI === "number" &&
-            method.earliestDaysPostAI > 0,
-        )
-        .map((method: any) => method.earliestDaysPostAI)
-        .sort((left: number, right: number) => left - right)[0] || null
-    : null;
-  const minimumDays = directMinimumDays || methodMinimumDays;
-  const progressPercent =
-    daysPostAI !== null && minimumDays
-      ? Math.min(100, Math.max(0, (daysPostAI / minimumDays) * 100))
-      : null;
-  const daysRemaining =
-    !pregnancyReadiness?.isEligible &&
-    daysPostAI !== null &&
-    minimumDays !== null
-      ? Math.max(0, minimumDays - daysPostAI)
-      : null;
-
   const animalTag = animal?.earTag || animal?.animalId || "Animal";
-  const readinessAnimalDescription = [animal?.breed, animal?.species]
-    .filter(Boolean)
-    .map(humanize)
-    .join(" ");
   const animalDescription = [animal?.species, animal?.breed]
     .filter(Boolean)
     .map(humanize)
@@ -183,104 +151,14 @@ function PregnancyConfirmationTaskView({
 
   const hasFarmerObservation = Boolean(
     insemination?.farmerOutcomeReport ||
-      insemination?.farmerObservationSigns?.length ||
-      insemination?.farmerObservationNotes,
+    insemination?.farmerObservationSigns?.length ||
+    insemination?.farmerObservationNotes ||
+    insemination?.evidencePhotos?.length,
   );
-  const availableDate =
-    formatDisplayDate(pregnancyReadiness?.availableDate) ||
-    pregnancyReadiness?.availableDateLabel ||
-    null;
 
   return (
     <View>
-      {/* Readiness is the primary decision point for a PD task. */}
-      <View
-        style={[
-          styles.pdCard,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
-        <Text
-          style={[
-            styles.pdReadinessStatus,
-            {
-              color: pregnancyReadiness?.isEligible
-                ? colors.primary
-                : colors.textPrimary,
-            },
-          ]}
-        >
-          {pregnancyReadiness?.isEligible
-            ? "READY FOR CONFIRMATION"
-            : "MONITORING"}
-        </Text>
-        <Text style={[styles.pdTitle, { color: colors.textPrimary }]}>
-          {animalTag}
-          {readinessAnimalDescription
-            ? ` · ${readinessAnimalDescription}`
-            : ""}
-        </Text>
-        {daysPostAI !== null ? (
-          <Text style={[styles.pdMilestoneDay, { color: colors.textPrimary }]}>
-            Day {daysPostAI} after AI
-          </Text>
-        ) : null}
-
-        {progressPercent !== null ? (
-          <View style={{ marginTop: 18, marginBottom: availableDate ? 18 : 0 }}>
-            <View
-              style={{
-                height: 5,
-                backgroundColor: colors.border,
-                borderRadius: 999,
-                overflow: "hidden",
-              }}
-            >
-              <View
-                style={{
-                  height: "100%",
-                  width: `${progressPercent}%`,
-                  backgroundColor: colors.primary,
-                }}
-              />
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 7,
-              }}
-            >
-              <Text style={[styles.pdProgressLabel, { color: colors.textMuted }]}>
-                AI Date
-              </Text>
-              <Text style={[styles.pdProgressLabel, { color: colors.textMuted }]}>
-                Confirmation
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
-        {availableDate ? (
-          <View style={{ gap: 3 }}>
-            <Text style={[styles.pdContextLabel, { color: colors.textSecondary }]}>
-              {pregnancyReadiness?.isEligible
-                ? "Confirmation has been available since"
-                : "Confirmation available from"}
-            </Text>
-            <Text style={[styles.pdAvailabilityDate, { color: colors.textPrimary }]}>
-              {availableDate}
-            </Text>
-            {daysRemaining !== null ? (
-              <Text style={[styles.pdDaysRemaining, { color: colors.primary }]}>
-                {daysRemaining} day{daysRemaining === 1 ? "" : "s"} remaining
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
-
-      {/* Animal and farmer are one compact context section. */}
+      {/* 1. Animal and Farmer */}
       <View
         style={[
           styles.pdCard,
@@ -293,7 +171,7 @@ function PregnancyConfirmationTaskView({
             { color: colors.primary, marginBottom: 12 },
           ]}
         >
-          Animal &amp; Farmer
+          Animal & Farmer
         </Text>
 
         {animal ? (
@@ -302,12 +180,16 @@ function PregnancyConfirmationTaskView({
               {animalTag}
             </Text>
             {animalDescription ? (
-              <Text style={[styles.pdAnimalMeta, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.pdAnimalMeta, { color: colors.textSecondary }]}
+              >
                 {animalDescription}
               </Text>
             ) : null}
             {animal.reproductiveStatus ? (
-              <Text style={[styles.pdAnimalStatus, { color: colors.textMuted }]}>
+              <Text
+                style={[styles.pdAnimalStatus, { color: colors.textMuted }]}
+              >
                 Reproductive status: {humanize(animal.reproductiveStatus)}
               </Text>
             ) : null}
@@ -351,7 +233,9 @@ function PregnancyConfirmationTaskView({
             <Text style={[styles.pdFarmerName, { color: colors.textPrimary }]}>
               {task.farmerId?.name || "Farmer"}
             </Text>
-            <Text style={[styles.pdContextLabel, { color: colors.textSecondary }]}>
+            <Text
+              style={[styles.pdContextLabel, { color: colors.textSecondary }]}
+            >
               Farmer Owner
             </Text>
           </View>
@@ -359,11 +243,10 @@ function PregnancyConfirmationTaskView({
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Call farmer"
-              onPress={() => Linking.openURL(`tel:${task.farmerId.phoneNumber}`)}
-              style={[
-                styles.pdCallButton,
-                { backgroundColor: colors.tint },
-              ]}
+              onPress={() =>
+                Linking.openURL(`tel:${task.farmerId.phoneNumber}`)
+              }
+              style={[styles.pdCallButton, { backgroundColor: colors.tint }]}
             >
               <Phone size={18} color={colors.primary} />
             </TouchableOpacity>
@@ -396,10 +279,17 @@ function PregnancyConfirmationTaskView({
                   style={{ marginTop: 2 }}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.pdContextLabel, { color: colors.textMuted }]}>
+                  <Text
+                    style={[styles.pdContextLabel, { color: colors.textMuted }]}
+                  >
                     Farm Location
                   </Text>
-                  <Text style={[styles.pdContactValue, { color: colors.textPrimary }]}>
+                  <Text
+                    style={[
+                      styles.pdContactValue,
+                      { color: colors.textPrimary },
+                    ]}
+                  >
                     {structuredFarmAddress}
                   </Text>
                   {destinationQuery ? (
@@ -414,7 +304,9 @@ function PregnancyConfirmationTaskView({
                         );
                       }}
                     >
-                      <Text style={[styles.pdDirections, { color: colors.primary }]}>
+                      <Text
+                        style={[styles.pdDirections, { color: colors.primary }]}
+                      >
                         Get directions
                       </Text>
                     </TouchableOpacity>
@@ -425,10 +317,7 @@ function PregnancyConfirmationTaskView({
           </View>
         ) : (
           <View
-            style={[
-              styles.pdLockedRow,
-              { backgroundColor: colors.background },
-            ]}
+            style={[styles.pdLockedRow, { backgroundColor: colors.background }]}
           >
             <Lock size={16} color={colors.textMuted} />
             <Text style={[styles.pdLockedText, { color: colors.textMuted }]}>
@@ -438,6 +327,7 @@ function PregnancyConfirmationTaskView({
         )}
       </View>
 
+      {/* 2. Breeding Reference */}
       <View
         style={[
           styles.pdCard,
@@ -465,7 +355,12 @@ function PregnancyConfirmationTaskView({
         </View>
       </View>
 
+      {/* 3. Farmer Update */}
       {hasFarmerObservation ? (
+        <View style={{ marginBottom: 20 }}>
+          <FarmerBreedingObservationCard observation={insemination} />
+        </View>
+      ) : (
         <View
           style={[
             styles.pdCard,
@@ -475,55 +370,29 @@ function PregnancyConfirmationTaskView({
           <Text
             style={[
               styles.pdSectionTitle,
-              { color: colors.primary, marginBottom: 12 },
+              { color: colors.primary, marginBottom: 8 },
             ]}
           >
-            Farmer Observation
+            Farmer Follow-up
           </Text>
-          {insemination?.farmerOutcomeReport ? (
-            <Text style={[styles.pdObservation, { color: colors.textPrimary }]}>
-              {getBreedingObservationLabel(
-                insemination.farmerOutcomeReport,
-              )}
-            </Text>
-          ) : null}
-          {insemination?.farmerObservationSigns?.length > 0 ? (
-            <View style={{ marginTop: 12 }}>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {insemination.farmerObservationSigns.map((sign: string) => (
-                  <View
-                    key={sign}
-                    style={[
-                      styles.pdObservationPill,
-                      { backgroundColor: colors.background },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.pdObservationPillText,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      {getBreedingObservationSignLabel(sign)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-          {insemination?.farmerObservationNotes ? (
-            <View style={{ marginTop: 14 }}>
-              <Text style={[styles.pdContextLabel, { color: colors.textMuted }]}>
-                Farmer note
-              </Text>
-              <Text style={[styles.pdObservationNote, { color: colors.textPrimary }]}>
-                {insemination.farmerObservationNotes}
-              </Text>
-            </View>
-          ) : null}
+          <Text
+            style={{
+              color: colors.textSecondary,
+              fontFamily: "Outfit_400Regular",
+            }}
+          >
+            No update has been received from the farmer.
+          </Text>
         </View>
-      ) : null}
+      )}
 
+      {/* 4. Pregnancy Confirmation Window */}
+      <PregnancyConfirmationWindow
+        pregnancyReadiness={pregnancyReadiness}
+        aiDate={aiDate}
+      />
+
+      {/* 5. Primary Action */}
       {!isClaimed ? (
         <TouchableOpacity
           accessibilityRole="button"
@@ -547,7 +416,9 @@ function PregnancyConfirmationTaskView({
       ) : task.status === "Completed" ? (
         <View style={[styles.pdBtn, { backgroundColor: colors.border }]}>
           <CheckCircle size={20} color={colors.textMuted} />
-          <Text style={[styles.pdBtnText, { color: colors.textMuted }]}>Completed</Text>
+          <Text style={[styles.pdBtnText, { color: colors.textMuted }]}>
+            Completed
+          </Text>
         </View>
       ) : (
         <TouchableOpacity
@@ -601,11 +472,7 @@ function PDContactRow({
 }) {
   return (
     <View style={styles.pdContactRow}>
-      <Icon
-        size={17}
-        color={colors.textSecondary}
-        style={{ marginTop: 2 }}
-      />
+      <Icon size={17} color={colors.textSecondary} style={{ marginTop: 2 }} />
       <View style={{ flex: 1 }}>
         <Text style={[styles.pdContextLabel, { color: colors.textMuted }]}>
           {label}
@@ -623,18 +490,18 @@ export default function TaskDetailsScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
 
-  const { taskDetailsQuery, claimTaskMutation, completeTaskMutation } = useTechnicianTasks(String(id));
+  const { taskDetailsQuery, claimTaskMutation, completeTaskMutation } =
+    useTechnicianTasks(String(id));
   const { data: task, isLoading, refetch } = taskDetailsQuery;
   const pregnancyWorkflowStage =
-    task?.metadata?.workflowStage || task?.workflowStage || "initial_confirmation";
-  const isReturnToHeatReview =
-    task?.insemination?.farmerOutcomeReport === "return_to_heat";
+    task?.metadata?.workflowStage ||
+    task?.workflowStage ||
+    "initial_confirmation";
   const initialPregnancyCheckLocked = Boolean(
     task?.taskType === "PD" &&
-      pregnancyWorkflowStage === "initial_confirmation" &&
-      task?.pregnancyReadiness &&
-      !task.pregnancyReadiness.isEligible &&
-      !isReturnToHeatReview,
+    pregnancyWorkflowStage === "initial_confirmation" &&
+    task?.pregnancyReadiness &&
+    !task.pregnancyReadiness.isEligible
   );
 
   const [completing, setCompleting] = useState(false);
@@ -671,29 +538,58 @@ export default function TaskDetailsScreen() {
   const getPrimaryAction = () => {
     const taskType = task?.taskType;
     if (taskType === "AI") {
-      return { label: "Record AI Service", pathname: "/(technician)/record-ai" };
+      return {
+        label: "Record AI Service",
+        pathname: "/(technician)/record-ai",
+      };
     }
-    if (["Health", "Treatment", "Vaccination", "Deworming"].includes(taskType)) {
-      return { label: "Record Health Assistance", pathname: "/(technician)/health-log" };
+    if (
+      ["Health", "Treatment", "Vaccination", "Deworming"].includes(taskType)
+    ) {
+      return {
+        label: "Record Health Assistance",
+        pathname: "/(technician)/health-log",
+      };
     }
     if (taskType === "PD") {
       if (pregnancyWorkflowStage === "continuation_recheck") {
-        return { label: "Record Continuation Recheck", pathname: "/(technician)/pregnancy-verification" };
+        return {
+          label: "Record Continuation Recheck",
+          pathname: "/(technician)/pregnancy-verification",
+        };
       }
       if (pregnancyWorkflowStage === "diagnostic_follow_up") {
-        return { label: "Record Diagnostic Follow-up", pathname: "/(technician)/pregnancy-verification" };
+        return {
+          label: "Record Diagnostic Follow-up",
+          pathname: "/(technician)/pregnancy-verification",
+        };
       }
-      return { label: "Record Pregnancy Check", pathname: "/(technician)/pregnancy-verification" };
+      return {
+        label: "Record Pregnancy Check",
+        pathname: "/(technician)/pregnancy-verification",
+      };
     }
     if (taskType === "CD" || taskType === "Calving") {
-      return { label: "Record Calving", pathname: "/(technician)/record-calf-drop" };
+      return {
+        label: "Record Calving",
+        pathname: "/(technician)/record-calf-drop",
+      };
+    }
+    if (taskType === "BreedingFollowUp") {
+      return {
+        label: "Record Follow-up",
+        pathname: "/(technician)/record-breeding-observation",
+      };
     }
     return { label: "Complete General Visit", pathname: null };
   };
 
   const handlePrimaryAction = () => {
     if (initialPregnancyCheckLocked) {
-      toast.error(task?.pregnancyReadiness?.reason || "Pregnancy check is not yet available.");
+      toast.error(
+        task?.pregnancyReadiness?.reason ||
+          "Pregnancy check is not yet available.",
+      );
       return;
     }
     const action = getPrimaryAction();
@@ -762,7 +658,45 @@ export default function TaskDetailsScreen() {
           backgroundColor: colors.background,
         }}
       >
-        <Text style={{ color: colors.textPrimary }}>Visit or task not found</Text>
+        <Text style={{ color: colors.textPrimary }}>
+          Visit or task not found
+        </Text>
+      </View>
+    );
+  }
+
+  if (task.taskType === "BreedingFollowUp") {
+    const hasFarmerUpdate = Boolean(
+      task.insemination?.observationSource === "farmer" &&
+      (task.insemination?.farmerOutcomeReport ||
+      task.insemination?.farmerObservationSigns?.length ||
+      task.insemination?.farmerObservationNotes ||
+      task.insemination?.evidencePhotos?.length)
+    );
+    const ctaText = hasFarmerUpdate ? "Review & Record Follow-up" : "Record Follow-up";
+
+    return (
+      <View style={{ flex: 1 }}>
+        <BreedingFollowUpTaskView task={task} />
+        {!["completed", "cancelled", "resolved", "rejected"].includes(String(task.status || "").toLowerCase()) &&
+         (!task.dueDate || new Date(task.dueDate).getTime() <= Date.now() || task.status === "In Progress") && (
+          <View style={{ padding: 16, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <TouchableOpacity
+              style={{
+                backgroundColor: colors.primary,
+                padding: 16,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+              activeOpacity={0.7}
+              onPress={() => router.push(`/(technician)/record-breeding-observation?taskId=${task._id}&inseminationId=${task.metadata?.inseminationId || task.inseminationId || task.insemination?._id}` as any)}
+            >
+              <Text style={{ color: "white", fontSize: 16, fontFamily: "Outfit_600SemiBold" }}>
+                {ctaText}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
@@ -788,42 +722,42 @@ export default function TaskDetailsScreen() {
   const visitDate = formatDisplayDate(task.dueDate, true);
   const pregnancyDetails = isCalvingTask
     ? [
-          [
-            "Pregnancy status",
-            pregnancy?.pregnancyDiagnosis?.result
-              ? humanize(pregnancy.pregnancyDiagnosis.result)
-              : null,
-          ],
-          [
-            "Pregnancy confirmed",
-            formatDisplayDate(pregnancy?.pregnancyDiagnosis?.date),
-          ],
-          [
-            "Expected calving",
-            formatDisplayDate(
-              pregnancy?.targetCalvingDate || animal?.expectedCalvingDate,
-            ),
-          ],
-          [
-            "Confirmation method",
-            pregnancy?.confirmation?.methodCode
-              ? humanize(pregnancy.confirmation.methodCode)
-              : null,
-          ],
-          [
-            "AI service date",
-            formatDisplayDate(
-              insemination?.inseminationDate || insemination?.scheduledDate,
-            ),
-          ],
-          [
-            "AI attempt",
-            insemination?.attemptNumber
-              ? `Attempt ${insemination.attemptNumber}`
-              : null,
-          ],
-          ["Sire breed", insemination?.sireBreed],
-          ["Sire code", insemination?.sireCode],
+        [
+          "Pregnancy status",
+          pregnancy?.pregnancyDiagnosis?.result
+            ? humanize(pregnancy.pregnancyDiagnosis.result)
+            : null,
+        ],
+        [
+          "Pregnancy confirmed",
+          formatDisplayDate(pregnancy?.pregnancyDiagnosis?.date),
+        ],
+        [
+          "Expected calving",
+          formatDisplayDate(
+            pregnancy?.targetCalvingDate || animal?.expectedCalvingDate,
+          ),
+        ],
+        [
+          "Confirmation method",
+          pregnancy?.confirmation?.methodCode
+            ? humanize(pregnancy.confirmation.methodCode)
+            : null,
+        ],
+        [
+          "AI service date",
+          formatDisplayDate(
+            insemination?.inseminationDate || insemination?.scheduledDate,
+          ),
+        ],
+        [
+          "AI attempt",
+          insemination?.attemptNumber
+            ? `Attempt ${insemination.attemptNumber}`
+            : null,
+        ],
+        ["Sire breed", insemination?.sireBreed],
+        ["Sire code", insemination?.sireCode],
       ]
     : [];
   const availablePregnancyDetails = pregnancyDetails.filter(
@@ -898,574 +832,601 @@ export default function TaskDetailsScreen() {
               <View
                 style={[
                   styles.section,
-              styles.cardContainer,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.summaryHeading}>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[styles.summaryEyebrow, { color: colors.primary }]}
-                >
-                  {isCalvingTask
-                    ? "CALVING VISIT"
-                    : "FIELD VISIT"}
-                </Text>
-                <Text
-                  style={[styles.summaryTitle, { color: colors.textPrimary }]}
-                >
-                  {serviceTitle}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.statusPill,
-                  {
-                    backgroundColor: isDark
-                      ? "rgba(16,185,129,0.14)"
-                      : "#ECFDF5",
-                  },
+                  styles.cardContainer,
+                  { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
-                <Text
-                  style={[styles.statusPillText, { color: colors.primary }]}
-                >
-                  {humanize(task.status || "Pending")}
-                </Text>
-              </View>
-            </View>
+                <View style={styles.summaryHeading}>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.summaryEyebrow, { color: colors.primary }]}
+                    >
+                      {isCalvingTask ? "CALVING VISIT" : "FIELD VISIT"}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.summaryTitle,
+                        { color: colors.textPrimary },
+                      ]}
+                    >
+                      {serviceTitle}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusPill,
+                      {
+                        backgroundColor: isDark
+                          ? "rgba(16,185,129,0.14)"
+                          : "#ECFDF5",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.statusPillText, { color: colors.primary }]}
+                    >
+                      {humanize(task.status || "Pending")}
+                    </Text>
+                  </View>
+                </View>
 
-            {visitDate ? (
-              <View style={styles.scheduleLine}>
-                <CalendarClock size={19} color={colors.primary} />
-                <View style={{ flex: 1 }}>
+                {visitDate ? (
+                  <View style={styles.scheduleLine}>
+                    <CalendarClock size={19} color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.scheduleLabel,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Scheduled visit
+                      </Text>
+                      <Text
+                        style={[
+                          styles.scheduleValue,
+                          { color: colors.textPrimary },
+                        ]}
+                      >
+                        {visitDate}
+                        {visitPeriod === "morning"
+                          ? " · Morning"
+                          : visitPeriod === "afternoon"
+                            ? " · Afternoon"
+                            : ""}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
                   <Text
                     style={[
-                      styles.scheduleLabel,
+                      styles.unscheduledText,
                       { color: colors.textSecondary },
                     ]}
                   >
-                    Scheduled visit
+                    Visit date not scheduled
                   </Text>
+                )}
+
+                <View style={styles.summaryMetaRow}>
                   <Text
                     style={[
-                      styles.scheduleValue,
-                      { color: colors.textPrimary },
+                      styles.summaryMeta,
+                      { color: colors.textSecondary },
                     ]}
                   >
-                    {visitDate}
-                    {visitPeriod === "morning"
-                      ? " · Morning"
-                      : visitPeriod === "afternoon"
-                        ? " · Afternoon"
-                        : ""}
+                    {task.category || "Routine"}
                   </Text>
-                </View>
-              </View>
-            ) : (
-              <Text
-                style={[
-                  styles.unscheduledText,
-                  { color: colors.textSecondary },
-                ]}
-              >
-                Visit date not scheduled
-              </Text>
-            )}
-
-            <View style={styles.summaryMetaRow}>
-              <Text
-                style={[styles.summaryMeta, { color: colors.textSecondary }]}
-              >
-                {task.category || "Routine"}
-              </Text>
-              {task.priority ? (
-                <Text
-                  style={[styles.summaryMeta, { color: colors.textSecondary }]}
-                >
-                  Priority {task.priority}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-
-          {/* Farmer Info section */}
-          <View
-            style={[
-              styles.section,
-              styles.cardContainer,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.sectionHeader}>
-              <User size={18} color={isDark ? "#34d399" : "#00643B"} />
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: isDark ? "#34d399" : "#00643B" },
-                ]}
-              >
-                Farmer Info
-              </Text>
-            </View>
-
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 16,
-                marginTop: 8,
-              }}
-            >
-              {/* Farmer Profile Pic */}
-              {task.farmerId?.imageUrl ? (
-                <Image
-                  source={{ uri: task.farmerId.imageUrl }}
-                  style={styles.profileAvatar}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.profileAvatar,
-                    { backgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
-                  ]}
-                >
-                  <User size={24} color={colors.textSecondary} />
-                </View>
-              )}
-
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[styles.farmerName, { color: colors.textPrimary }]}
-                >
-                  {task.farmerId?.name}
-                </Text>
-
-                {isClaimed ? (
-                  <>
-                    <View style={styles.row}>
-                      <Phone size={14} color={colors.textSecondary} />
-                      <Text
-                        style={[
-                          styles.farmerSub,
-                          { color: colors.textSecondary },
-                        ]}
-                      >
-                        {task.farmerId?.phoneNumber || "Phone not provided"}
-                      </Text>
-                    </View>
-                    {displayAddress ? (
-                      <View style={styles.row}>
-                        <MapPin size={14} color={colors.textSecondary} />
-                        <Text
-                          style={[
-                            styles.farmerSub,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          {displayAddress}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text
-                        style={[
-                          styles.locationNote,
-                          { color: colors.textMuted },
-                        ]}
-                      >
-                        Farm location not provided
-                      </Text>
-                    )}
-                    {farmLocation?.landmark || farmerAddress.landmark ? (
-                      <Text
-                        style={[
-                          styles.locationNote,
-                          { color: colors.textSecondary },
-                        ]}
-                      >
-                        Landmark:{" "}
-                        {farmLocation?.landmark || farmerAddress.landmark}
-                      </Text>
-                    ) : null}
-                    {farmLocation?.directionsNote ? (
-                      <Text
-                        style={[
-                          styles.locationNote,
-                          { color: colors.textSecondary },
-                        ]}
-                      >
-                        Directions: {farmLocation.directionsNote}
-                      </Text>
-                    ) : null}
-                  </>
-                ) : (
-                  <View style={styles.row}>
-                    <Lock size={14} color={colors.textMuted} />
+                  {task.priority ? (
                     <Text
                       style={[
-                        styles.farmerSub,
-                        { color: colors.textMuted, fontStyle: "italic" },
+                        styles.summaryMeta,
+                        { color: colors.textSecondary },
                       ]}
                     >
-                      Claim task to view contact details
+                      Priority {task.priority}
                     </Text>
-                  </View>
-                )}
+                  ) : null}
+                </View>
               </View>
-            </View>
 
-            {/* Navigate Button */}
-            {isClaimed && destinationQuery ? (
-              <TouchableOpacity
+              {/* Farmer Info section */}
+              <View
                 style={[
-                  styles.navigateBtn,
-                  {
-                    backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
-                    borderColor: isDark ? "#065f46" : "#bbf7d0",
-                  },
-                ]}
-                onPress={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
-                  Linking.openURL(url).catch((err) =>
-                    console.error("Failed to open maps", err),
-                  );
-                }}
-              >
-                <Navigation size={14} color={isDark ? "#34d399" : "#00643B"} />
-                <Text
-                  style={[
-                    styles.navigateBtnText,
-                    { color: isDark ? "#34d399" : "#00643B" },
-                  ]}
-                >
-                  {typeof farmLocation?.latitude === "number"
-                    ? "Get directions to farm"
-                    : task.farmerId?.address?.coordinates?.lat
-                      ? "Navigate to Address Coordinates"
-                      : "Navigate to Barangay Area"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          {/* Task Description section */}
-          <View
-            style={[
-              styles.section,
-              styles.cardContainer,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.sectionHeader}>
-              <Info size={18} color={isDark ? "#34d399" : "#00643B"} />
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: isDark ? "#34d399" : "#00643B" },
+                  styles.section,
+                  styles.cardContainer,
+                  { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
-                Visit / Task Description
-              </Text>
-            </View>
-            <View
-              className={`inline-block self-start px-2 py-1 rounded-lg mb-3 ${
-                task.category === "Urgent"
-                  ? isDark
-                    ? "bg-red-950/40"
-                    : "bg-red-50"
-                  : isDark
-                    ? "bg-blue-950/40"
-                    : "bg-blue-50"
-              }`}
-            >
-              <Text
-                className={`text-[10px] font-black uppercase ${
-                  task.category === "Urgent" ? "text-red-500" : "text-blue-500"
-                }`}
-              >
-                {task.category}
-              </Text>
-            </View>
-            <Text style={[styles.notesText, { color: colors.textPrimary }]}>
-              {task.notes}
-            </Text>
-          </View>
+                <View style={styles.sectionHeader}>
+                  <User size={18} color={isDark ? "#34d399" : "#00643B"} />
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      { color: isDark ? "#34d399" : "#00643B" },
+                    ]}
+                  >
+                    Farmer Info
+                  </Text>
+                </View>
 
-          {availablePregnancyDetails.length > 0 ? (
-            <View
-              style={[
-                styles.section,
-                styles.cardContainer,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <View style={styles.sectionHeader}>
-                <Baby size={18} color={isDark ? "#22D3EE" : "#0891B2"} />
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    { color: isDark ? "#34d399" : "#00643B" },
-                  ]}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 16,
+                    marginTop: 8,
+                  }}
                 >
-                  Calving &amp; Pregnancy Details
-                </Text>
-              </View>
-              <View style={[styles.detailList, { borderColor: colors.border }]}>
-                {availablePregnancyDetails.map(([label, value], index) => (
-                  <DetailRow
-                    key={label}
-                    label={label}
-                    value={value}
-                    colors={colors}
-                    last={index === availablePregnancyDetails.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/* Associated Animals section */}
-          {task.animalIds && task.animalIds.length > 0 && (
-            <View style={styles.section}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  {
-                    color: isDark ? "#34d399" : "#00643B",
-                    marginBottom: 12,
-                    marginLeft: 4,
-                  },
-                ]}
-              >
-                {isCalvingTask ? "Mother Animal" : "Associated Animals"}
-              </Text>
-              {task.animalIds.map((anim: any) => (
-                <TouchableOpacity
-                  key={anim._id}
-                  style={[
-                    styles.animalCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  onPress={() =>
-                    router.push(
-                      `/(technician)/animal-details?id=${anim._id}` as any,
-                    )
-                  }
-                >
-                  {/* Animal Profile Pic */}
-                  {anim.imageUrl ? (
+                  {/* Farmer Profile Pic */}
+                  {task.farmerId?.imageUrl ? (
                     <Image
-                      source={{ uri: anim.imageUrl }}
-                      style={styles.animalAvatar}
+                      source={{ uri: task.farmerId.imageUrl }}
+                      style={styles.profileAvatar}
                       resizeMode="cover"
                     />
                   ) : (
                     <View
                       style={[
-                        styles.animalAvatar,
+                        styles.profileAvatar,
                         { backgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
                       ]}
                     >
-                      <Text
-                        style={{
-                          fontFamily: "Outfit_700Bold",
-                          color: colors.textSecondary,
-                          fontSize: 16,
-                        }}
-                      >
-                        {(anim.species || "A").charAt(0).toUpperCase()}
-                      </Text>
+                      <User size={24} color={colors.textSecondary} />
                     </View>
                   )}
 
-                  <View style={styles.animalInfo}>
+                  <View style={{ flex: 1 }}>
                     <Text
-                      style={[styles.animalTag, { color: colors.textPrimary }]}
+                      style={[styles.farmerName, { color: colors.textPrimary }]}
                     >
-                      Tag: {anim.earTag || anim.animalId}
+                      {task.farmerId?.name}
+                    </Text>
+
+                    {isClaimed ? (
+                      <>
+                        <View style={styles.row}>
+                          <Phone size={14} color={colors.textSecondary} />
+                          <Text
+                            style={[
+                              styles.farmerSub,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            {task.farmerId?.phoneNumber || "Phone not provided"}
+                          </Text>
+                        </View>
+                        {displayAddress ? (
+                          <View style={styles.row}>
+                            <MapPin size={14} color={colors.textSecondary} />
+                            <Text
+                              style={[
+                                styles.farmerSub,
+                                { color: colors.textSecondary },
+                              ]}
+                            >
+                              {displayAddress}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text
+                            style={[
+                              styles.locationNote,
+                              { color: colors.textMuted },
+                            ]}
+                          >
+                            Farm location not provided
+                          </Text>
+                        )}
+                        {farmLocation?.landmark || farmerAddress.landmark ? (
+                          <Text
+                            style={[
+                              styles.locationNote,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            Landmark:{" "}
+                            {farmLocation?.landmark || farmerAddress.landmark}
+                          </Text>
+                        ) : null}
+                        {farmLocation?.directionsNote ? (
+                          <Text
+                            style={[
+                              styles.locationNote,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            Directions: {farmLocation.directionsNote}
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : (
+                      <View style={styles.row}>
+                        <Lock size={14} color={colors.textMuted} />
+                        <Text
+                          style={[
+                            styles.farmerSub,
+                            { color: colors.textMuted, fontStyle: "italic" },
+                          ]}
+                        >
+                          Claim task to view contact details
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* Navigate Button */}
+                {isClaimed && destinationQuery ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.navigateBtn,
+                      {
+                        backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+                        borderColor: isDark ? "#065f46" : "#bbf7d0",
+                      },
+                    ]}
+                    onPress={() => {
+                      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
+                      Linking.openURL(url).catch((err) =>
+                        console.error("Failed to open maps", err),
+                      );
+                    }}
+                  >
+                    <Navigation
+                      size={14}
+                      color={isDark ? "#34d399" : "#00643B"}
+                    />
+                    <Text
+                      style={[
+                        styles.navigateBtnText,
+                        { color: isDark ? "#34d399" : "#00643B" },
+                      ]}
+                    >
+                      {typeof farmLocation?.latitude === "number"
+                        ? "Get directions to farm"
+                        : task.farmerId?.address?.coordinates?.lat
+                          ? "Navigate to Address Coordinates"
+                          : "Navigate to Barangay Area"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Task Description section */}
+              <View
+                style={[
+                  styles.section,
+                  styles.cardContainer,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.sectionHeader}>
+                  <Info size={18} color={isDark ? "#34d399" : "#00643B"} />
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      { color: isDark ? "#34d399" : "#00643B" },
+                    ]}
+                  >
+                    Visit / Task Description
+                  </Text>
+                </View>
+                <View
+                  className={`inline-block self-start px-2 py-1 rounded-lg mb-3 ${
+                    task.category === "Urgent"
+                      ? isDark
+                        ? "bg-red-950/40"
+                        : "bg-red-50"
+                      : isDark
+                        ? "bg-blue-950/40"
+                        : "bg-blue-50"
+                  }`}
+                >
+                  <Text
+                    className={`text-[10px] font-black uppercase ${
+                      task.category === "Urgent"
+                        ? "text-red-500"
+                        : "text-blue-500"
+                    }`}
+                  >
+                    {task.category}
+                  </Text>
+                </View>
+                <Text style={[styles.notesText, { color: colors.textPrimary }]}>
+                  {task.notes}
+                </Text>
+              </View>
+
+              {availablePregnancyDetails.length > 0 ? (
+                <View
+                  style={[
+                    styles.section,
+                    styles.cardContainer,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.sectionHeader}>
+                    <Baby size={18} color={isDark ? "#22D3EE" : "#0891B2"} />
+                    <Text
+                      style={[
+                        styles.sectionTitle,
+                        { color: isDark ? "#34d399" : "#00643B" },
+                      ]}
+                    >
+                      Calving &amp; Pregnancy Details
+                    </Text>
+                  </View>
+                  <View
+                    style={[styles.detailList, { borderColor: colors.border }]}
+                  >
+                    {availablePregnancyDetails.map(([label, value], index) => (
+                      <DetailRow
+                        key={label}
+                        label={label}
+                        value={value}
+                        colors={colors}
+                        last={index === availablePregnancyDetails.length - 1}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Associated Animals section */}
+              {task.animalIds && task.animalIds.length > 0 && (
+                <View style={styles.section}>
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      {
+                        color: isDark ? "#34d399" : "#00643B",
+                        marginBottom: 12,
+                        marginLeft: 4,
+                      },
+                    ]}
+                  >
+                    {isCalvingTask ? "Mother Animal" : "Associated Animals"}
+                  </Text>
+                  {task.animalIds.map((anim: any) => (
+                    <TouchableOpacity
+                      key={anim._id}
+                      style={[
+                        styles.animalCard,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      onPress={() =>
+                        router.push(
+                          `/(technician)/animal-details?id=${anim._id}` as any,
+                        )
+                      }
+                    >
+                      {/* Animal Profile Pic */}
+                      {anim.imageUrl ? (
+                        <Image
+                          source={{ uri: anim.imageUrl }}
+                          style={styles.animalAvatar}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View
+                          style={[
+                            styles.animalAvatar,
+                            { backgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              color: colors.textSecondary,
+                              fontSize: 16,
+                            }}
+                          >
+                            {(anim.species || "A").charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View style={styles.animalInfo}>
+                        <Text
+                          style={[
+                            styles.animalTag,
+                            { color: colors.textPrimary },
+                          ]}
+                        >
+                          Tag: {anim.earTag || anim.animalId}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.animalBreed,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          {[anim.breed, anim.species]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                        {[
+                          anim.gender,
+                          anim.color,
+                          anim.reproductiveStatus,
+                        ].filter(Boolean).length ? (
+                          <Text
+                            style={[
+                              styles.animalFacts,
+                              { color: colors.textMuted },
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {[anim.gender, anim.color, anim.reproductiveStatus]
+                              .filter(Boolean)
+                              .map(humanize)
+                              .join(" · ")}
+                          </Text>
+                        ) : null}
+                        {anim.birthDate || typeof anim.parity === "number" ? (
+                          <Text
+                            style={[
+                              styles.animalFacts,
+                              { color: colors.textMuted },
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {[
+                              anim.birthDate
+                                ? `Born ${formatDisplayDate(anim.birthDate)}`
+                                : null,
+                              typeof anim.parity === "number"
+                                ? `Parity ${anim.parity}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <CheckCircle size={20} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {isClaimed && isFieldWorkTask && task.status !== "Completed" ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Add an optional field note"
+                  onPress={() => {
+                    const animal = task.animalIds?.[0];
+                    router.push({
+                      pathname: "/(technician)/photo-notes",
+                      params: {
+                        taskId: String(task._id),
+                        taskType: String(task.taskType),
+                        farmerId: String(task.farmerId?._id || ""),
+                        farmerName: String(task.farmerId?.name || ""),
+                        animalId: animal?._id ? String(animal._id) : "",
+                        openEditor: "true",
+                      },
+                    } as any);
+                  }}
+                  style={[
+                    styles.fieldNoteBtn,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <FileText size={18} color={isDark ? "#34d399" : "#00643B"} />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.fieldNoteBtnTitle,
+                        { color: colors.textPrimary },
+                      ]}
+                    >
+                      Add Field Note
                     </Text>
                     <Text
                       style={[
-                        styles.animalBreed,
+                        styles.fieldNoteBtnDescription,
                         { color: colors.textSecondary },
                       ]}
                     >
-                      {[anim.breed, anim.species].filter(Boolean).join(" · ")}
+                      Optional observation, photo, or GPS context
                     </Text>
-                    {[anim.gender, anim.color, anim.reproductiveStatus].filter(
-                      Boolean,
-                    ).length ? (
-                      <Text
-                        style={[
-                          styles.animalFacts,
-                          { color: colors.textMuted },
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {[anim.gender, anim.color, anim.reproductiveStatus]
-                          .filter(Boolean)
-                          .map(humanize)
-                          .join(" · ")}
-                      </Text>
-                    ) : null}
-                    {anim.birthDate || typeof anim.parity === "number" ? (
-                      <Text
-                        style={[
-                          styles.animalFacts,
-                          { color: colors.textMuted },
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {[
-                          anim.birthDate
-                            ? `Born ${formatDisplayDate(anim.birthDate)}`
-                            : null,
-                          typeof anim.parity === "number"
-                            ? `Parity ${anim.parity}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                    ) : null}
                   </View>
-                  <CheckCircle size={20} color={colors.textMuted} />
                 </TouchableOpacity>
-              ))}
-            </View>
-          )}
+              ) : null}
 
-          {isClaimed && isFieldWorkTask && task.status !== "Completed" ? (
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Add an optional field note"
-              onPress={() => {
-                const animal = task.animalIds?.[0];
-                router.push({
-                  pathname: "/(technician)/photo-notes",
-                  params: {
-                    taskId: String(task._id),
-                    taskType: String(task.taskType),
-                    farmerId: String(task.farmerId?._id || ""),
-                    farmerName: String(task.farmerId?.name || ""),
-                    animalId: animal?._id ? String(animal._id) : "",
-                    openEditor: "true",
-                  },
-                } as any);
-              }}
-              style={[
-                styles.fieldNoteBtn,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <FileText size={18} color={isDark ? "#34d399" : "#00643B"} />
-              <View style={{ flex: 1 }}>
-                <Text
+              {/* Save/Action Button */}
+              {!isClaimed ? (
+                <TouchableOpacity
+                  disabled={claiming}
                   style={[
-                    styles.fieldNoteBtnTitle,
-                    { color: colors.textPrimary },
+                    styles.completeBtn,
+                    {
+                      backgroundColor: claiming
+                        ? "#34d399"
+                        : isDark
+                          ? "#10b981"
+                          : "#00643B",
+                      shadowColor: isDark ? "transparent" : "#00643B",
+                      opacity: claiming ? 0.7 : 1,
+                    },
+                  ]}
+                  onPress={handleClaim}
+                >
+                  {claiming ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <CheckCircle size={20} color="#fff" />
+                      <Text style={styles.completeBtnText}>Claim Task</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : task.status === "Completed" ? (
+                <View
+                  style={[
+                    styles.completeBtn,
+                    {
+                      backgroundColor: colors.border,
+                      shadowColor: "transparent",
+                      opacity: 0.8,
+                    },
                   ]}
                 >
-                  Add Field Note
-                </Text>
-                <Text
-                  style={[
-                    styles.fieldNoteBtnDescription,
-                    { color: colors.textSecondary },
-                  ]}
-                >
-                  Optional observation, photo, or GPS context
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : null}
-
-          {/* Save/Action Button */}
-          {!isClaimed ? (
-            <TouchableOpacity
-              disabled={claiming}
-              style={[
-                styles.completeBtn,
-                {
-                  backgroundColor: claiming
-                    ? "#34d399"
-                    : isDark
-                      ? "#10b981"
-                      : "#00643B",
-                  shadowColor: isDark ? "transparent" : "#00643B",
-                  opacity: claiming ? 0.7 : 1,
-                },
-              ]}
-              onPress={handleClaim}
-            >
-              {claiming ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <CheckCircle size={20} color="#fff" />
-                  <Text style={styles.completeBtnText}>Claim Task</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          ) : task.status === "Completed" ? (
-            <View
-              style={[
-                styles.completeBtn,
-                {
-                  backgroundColor: colors.border,
-                  shadowColor: "transparent",
-                  opacity: 0.8,
-                },
-              ]}
-            >
-              <CheckCircle size={20} color={colors.textMuted} />
-              <Text
-                style={[styles.completeBtnText, { color: colors.textMuted }]}
-              >
-                Completed
-              </Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              disabled={completing}
-              accessibilityRole="button"
-              accessibilityState={{
-                disabled: completing,
-              }}
-              accessibilityLabel={getPrimaryAction().label}
-              style={[
-                styles.completeBtn,
-                {
-                  backgroundColor: completing
-                    ? "#34d399"
-                    : isDark
-                      ? "#10b981"
-                      : "#00643B",
-                  shadowColor: isDark ? "transparent" : "#00643B",
-                  opacity: completing ? 0.55 : 1,
-                },
-              ]}
-              onPress={handlePrimaryAction}
-            >
-              {completing ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <CheckCircle size={20} color="#fff" />
-                  <Text style={styles.completeBtnText}>
-                    {getPrimaryAction().label}
+                  <CheckCircle size={20} color={colors.textMuted} />
+                  <Text
+                    style={[
+                      styles.completeBtnText,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    Completed
                   </Text>
-                </>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  disabled={completing}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled: completing,
+                  }}
+                  accessibilityLabel={getPrimaryAction().label}
+                  style={[
+                    styles.completeBtn,
+                    {
+                      backgroundColor: completing
+                        ? "#34d399"
+                        : isDark
+                          ? "#10b981"
+                          : "#00643B",
+                      shadowColor: isDark ? "transparent" : "#00643B",
+                      opacity: completing ? 0.55 : 1,
+                    },
+                  ]}
+                  onPress={handlePrimaryAction}
+                >
+                  {completing ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <CheckCircle size={20} color="#fff" />
+                      <Text style={styles.completeBtnText}>
+                        {getPrimaryAction().label}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
-          )}
             </>
           )}
         </View>
@@ -1722,8 +1683,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   farmerName: {
     fontFamily: "Outfit_800ExtraBold",
@@ -1742,10 +1703,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   navigateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginTop: 16,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -1754,7 +1715,7 @@ const styles = StyleSheet.create({
   },
   navigateBtnText: {
     fontSize: 13,
-    fontFamily: 'Outfit_700Bold',
+    fontFamily: "Outfit_700Bold",
   },
   notesText: {
     fontFamily: "Outfit_500Medium",
@@ -1806,8 +1767,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   animalInfo: {
