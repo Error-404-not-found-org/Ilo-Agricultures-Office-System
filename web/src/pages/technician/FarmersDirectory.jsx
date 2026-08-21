@@ -300,7 +300,7 @@ export default function ClientRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-60 w-full" />)}</div>
                 <div className="hidden overflow-hidden rounded-box border border-base-300 lg:block" aria-label="Loading farmer records">
-                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                  <table className="table table-pin-rows w-full text-left min-w-250">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Farmer</th>
@@ -309,7 +309,7 @@ export default function ClientRegistry() {
                         <th className="p-3.5">Animals</th>
                         <th className="p-3.5">App access</th>
                         <th className="p-3.5">Verification</th>
-                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                        <th className="p-3.5 pr-6 text-right w-25">Actions</th>
                       </tr>
                     </thead>
                     <tbody>{[0, 1, 2, 3, 4].map((row) => <tr key={row}><td colSpan={7}><div className="grid grid-cols-[1.4fr_1fr_1.2fr_.5fr_1fr_1fr_.8fr] gap-5 py-1"><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /></div></td></tr>)}</tbody>

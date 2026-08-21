@@ -353,14 +353,14 @@ export default function Dashboard() {
       title: "Barangays needing review",
       count: barangayAttention.filter((item) => item.status !== "healthy").length,
       detail: "Health, AI, or registry quality risk",
-      to: "/admin/barangays",
+      to: "/admin/users",
       tone: "blue",
     },
     {
       title: "Incomplete animal records",
       count: registryMonitor.missingAnimalData || 0,
       detail: "Missing breed, birth date, or registry details",
-      to: "/admin/monitoring",
+      to: "/admin/livestock",
       tone: "slate",
     },
   ];
@@ -459,7 +459,7 @@ export default function Dashboard() {
         </section>
 
         <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <Panel className="xl:col-span-6" title="Barangay Overview" description="Barangays with service or data quality pressure" actionLabel="View all" to="/admin/barangays">
+          <Panel className="xl:col-span-6" title="Barangay Overview" description="Barangays with service or data quality pressure" actionLabel="View farmers" to="/admin/users">
             <RankedBarangays barangays={barangayAttention} loading={isLoading} />
           </Panel>
 
@@ -475,7 +475,7 @@ export default function Dashboard() {
         </section>
 
         <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <Panel className="xl:col-span-12" title="Recent Audit Activity" description="Latest admin and workflow changes" actionLabel="View logs" to="/admin/audit-logs">
+          <Panel className="xl:col-span-12" title="Recent Audit Activity" description="Latest admin and workflow changes">
             <AuditPreview logs={auditLogs} loading={isLoading} />
           </Panel>
         </section>

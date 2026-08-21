@@ -470,9 +470,6 @@ export default function LivestockProfile() {
           <div className="flex-1 min-w-0 space-y-4 w-full">
             {/* Title + StatusBadge */}
             <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-2xl font-black text-base-content tracking-tight">
-                {animal.name || animal.earTag || "Bella"}
-              </h2>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-success/20 bg-success/15 text-xs font-extrabold text-success">
                 <CheckCircle2 size={14} />
                 {animal.reproductiveStatus || "Pregnant"}
@@ -558,6 +555,8 @@ export default function LivestockProfile() {
                   </p>
                 </div>
               </div>
+
+              
             </div>
           </div>
 
@@ -768,15 +767,6 @@ export default function LivestockProfile() {
                     : "420 kg"}
                 </span>
               </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-base-200">
-                <span className="text-base-content/60 font-medium">Milk Production</span>
-                <span className="font-bold text-base-content">
-                  {animal.milkProduction
-                    ? `${animal.milkProduction} L / day`
-                    : "16.5 L / day"}
-                </span>
-              </div>
             </div>
           </div>
 
@@ -804,8 +794,15 @@ export default function LivestockProfile() {
                 </span>
               </div>
 
+              <div className="flex justify-between items-center py-1 border-t border-base-200">
+                <span className="text-base-content/60 font-medium">Email Address</span>
+                <span className="font-bold text-base-content">
+                  {animal.farmerId?.email || "No email provided"}
+                </span>
+              </div>
+
               <div className="flex justify-between items-start py-1 border-t border-base-200 gap-4">
-                <span className="text-base-content/60 font-medium shrink-0">Address</span>
+                <span className="text-base-content/60 font-medium shrink-0">Location</span>
                 <span className="font-bold text-base-content text-right leading-snug">
                   {getOwnerLocation(animal.farmerId?.address)}
                 </span>

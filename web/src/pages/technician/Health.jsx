@@ -350,14 +350,14 @@ export default function HealthLog() {
           </div>
 
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full min-w-[860px] border-collapse" aria-label="Technician health records">
+            <table className="table w-full min-w-215 border-collapse" aria-label="Technician health records">
               <thead>
                 <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                   <th className="p-3.5 pl-6">Animal</th>
                   <th className="p-3.5">Incident</th>
                   <th className="p-3.5">Schedule</th>
                   <th className="p-3.5">Status</th>
-                  <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                  <th className="p-3.5 pr-6 text-right w-25">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-base-300 text-xs font-semibold text-base-content/85">
@@ -449,7 +449,7 @@ export default function HealthLog() {
                                 {c.urgency}
                               </span>
                             </div>
-                            <span className="text-[10px] text-base-content/55 block leading-tight font-medium max-w-[200px] truncate">
+                            <span className="text-[10px] text-base-content/55 block leading-tight font-medium max-w-50 truncate">
                               Symptoms: {c.symptoms || "None reported"}
                             </span>
                           </div>

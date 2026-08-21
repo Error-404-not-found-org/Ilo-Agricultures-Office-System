@@ -145,7 +145,7 @@ const EditHealthModal = ({ isOpen, onClose, health }) => {
                     name="status"
                     value={formData.status}
                     onChange={handleChange}
-                    className="select select-bordered w-full h-11 min-h-[44px] rounded-none text-xs font-bold bg-base-200 text-base-content focus:outline-none focus:border-blue-500/50 cursor-pointer"
+                    className="select select-bordered w-full h-11 min-h-11 rounded-none text-xs font-bold bg-base-200 text-base-content focus:outline-none focus:border-blue-500/50 cursor-pointer"
                   >
                     <option value="pending" className="bg-base-100">Pending</option>
                     <option value="in-progress" className="bg-base-100">In Progress</option>
@@ -196,7 +196,7 @@ const EditHealthModal = ({ isOpen, onClose, health }) => {
                       placeholder="Additional field observations"
                       value={formData.technicianNote}
                       onChange={handleChange}
-                      className="textarea textarea-bordered w-full min-h-[80px] pl-10 pt-3 rounded-none text-xs font-bold bg-base-200 text-base-content focus:outline-none focus:border-blue-500/50 resize-none"
+                      className="textarea textarea-bordered w-full min-h-20 pl-10 pt-3 rounded-none text-xs font-bold bg-base-200 text-base-content focus:outline-none focus:border-blue-500/50 resize-none"
                     />
                   </div>
                 </fieldset>

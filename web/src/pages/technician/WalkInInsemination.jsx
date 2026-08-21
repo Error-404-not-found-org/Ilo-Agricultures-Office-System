@@ -705,7 +705,7 @@ export default function WalkInInsemination() {
                         }
                         value={selectedAnimalId}
                         onChange={(e) => handleAnimalChange(e.target.value)}
-                        className={`${selectClass} disabled:opacity-50 ${showPregnancyWarning ? "border-error" : ""}`}
+                        className={`${selectClass} disabled:opacity-50 ${showPregnancyWarning ? "border-rose-400" : ""}`}
                       >
                         <option value="">
                           {isLoadingAnimals
@@ -780,17 +780,17 @@ export default function WalkInInsemination() {
                         exit={{ opacity: 0, height: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="bg-error/10 border border-error/20 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                           <div className="flex items-start gap-3">
                             <AlertTriangle
                               size={18}
-                              className="text-error shrink-0 mt-0.5"
+                              className="text-rose-500 shrink-0 mt-0.5"
                             />
                             <div>
-                              <h4 className="text-[10px] font-black text-error uppercase tracking-widest">
+                              <h4 className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
                                 Pregnancy Warning
                               </h4>
-                              <p className="text-[10px] font-medium text-error/75 mt-1">
+                              <p className="text-[10px] font-medium text-rose-500/70 dark:text-rose-500/50 mt-1">
                                 Asset recorded as PREGNANT. Insemination is
                                 risky without field confirmation.
                               </p>
@@ -801,7 +801,7 @@ export default function WalkInInsemination() {
                               overrideMutation.mutate(selectedAnimalId)
                             }
                             disabled={overrideMutation.isPending}
-                            className="btn btn-error btn-sm shrink-0 px-5 rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer"
+                            className="shrink-0 px-5 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer disabled:opacity-50"
                           >
                             {overrideMutation.isPending
                               ? "Updating..."
@@ -819,16 +819,16 @@ export default function WalkInInsemination() {
                         exit={{ opacity: 0, height: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="bg-warning/10 border border-warning/20 rounded-2xl p-4 flex items-start gap-3">
+                        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 flex items-start gap-3">
                           <AlertTriangle
                             size={16}
-                            className="text-warning shrink-0 mt-0.5"
+                            className="text-amber-500 shrink-0 mt-0.5"
                           />
                           <div>
-                            <h4 className="text-[9px] font-black text-warning uppercase tracking-widest">
+                            <h4 className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
                               Age Eligibility Warning
                             </h4>
-                            <p className="text-[10px] text-base-content/70 mt-1">
+                            <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">
                               {ageWarning}
                             </p>
                           </div>
@@ -844,16 +844,16 @@ export default function WalkInInsemination() {
                         exit={{ opacity: 0, height: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="bg-warning/10 border border-warning/20 rounded-2xl p-4 flex items-start gap-3">
+                        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 flex items-start gap-3">
                           <AlertTriangle
                             size={16}
-                            className="text-warning shrink-0 mt-0.5"
+                            className="text-amber-500 shrink-0 mt-0.5"
                           />
                           <div>
-                            <h4 className="text-[9px] font-black text-warning uppercase tracking-widest">
+                            <h4 className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
                               Postpartum Window Warning
                             </h4>
-                            <p className="text-[10px] text-base-content/70 mt-1">
+                            <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">
                               {vwpWarning}
                             </p>
                           </div>
@@ -910,7 +910,7 @@ export default function WalkInInsemination() {
                       <div className="relative">
                         <Mail
                           size={14}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                         />
                         <input
                           type="email"
@@ -928,7 +928,7 @@ export default function WalkInInsemination() {
                       <div className="relative">
                         <Phone
                           size={14}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                         />
                         <input
                           type="tel"
@@ -975,7 +975,7 @@ export default function WalkInInsemination() {
                           </select>
                           <ChevronDown
                             size={14}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                           />
                         </div>
                       </div>
@@ -1011,7 +1011,7 @@ export default function WalkInInsemination() {
                             </select>
                             <ChevronDown
                               size={14}
-                              className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                             />
                           </div>
                         </div>
@@ -1022,7 +1022,7 @@ export default function WalkInInsemination() {
                         <div className="relative">
                           <MapPin
                             size={14}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                           />
                           <input
                             type="text"
@@ -1057,7 +1057,7 @@ export default function WalkInInsemination() {
                                   initial={{ opacity: 0, y: -5 }}
                                   animate={{ opacity: 1, y: 0 }}
                                   exit={{ opacity: 0, y: -5 }}
-                                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
+                                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 shadow-xl rounded-xl custom-scrollbar"
                                 >
                                   {targetBarangays.filter((b) =>
                                     b
@@ -1087,13 +1087,13 @@ export default function WalkInInsemination() {
                                             });
                                             setIsBarangayDropdownOpen(false);
                                           }}
-                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-base-content hover:bg-primary/10 border-b border-base-200 last:border-0 cursor-pointer"
+                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 border-b border-slate-100 dark:border-slate-800 last:border-0 cursor-pointer"
                                         >
                                           {brgy}
                                         </button>
                                       ))
                                   ) : (
-                                    <div className="py-6 text-center text-[10px] font-black text-base-content/40 uppercase tracking-widest">
+                                    <div className="py-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                       No matches found
                                     </div>
                                   )}
@@ -1181,7 +1181,7 @@ export default function WalkInInsemination() {
                         ))}
                       </select>
                     </div>
-                    <div className="pt-4 border-t border-base-300 space-y-4">
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
                       <div className="space-y-1.5">
                         <label
                           htmlFor="walk-in-sire-breed"
@@ -1213,7 +1213,7 @@ export default function WalkInInsemination() {
                         <div className="relative">
                           <Dna
                             size={14}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                           />
                           <input
                             type="text"

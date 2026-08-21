@@ -6,7 +6,7 @@ import {
   Search,
   Clock,
   Calendar,
-  CheckCircle,
+  MapPin,
   ChevronLeft,
   ChevronRight,
   MoreVertical,
@@ -32,8 +32,6 @@ import {
 import {
   MY_WORK_FILTERS,
   getServicePresentation,
-  formatCanonicalVisitSchedule,
-  isDateOnlyWorkflowType,
   normalizeServiceType,
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
@@ -50,6 +48,28 @@ const toTitleCase = (str) => {
 };
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+
+
+
+
+
+
+
+const formatCanonicalAISchedule = (schedule = {}) => {
+  if (!schedule.date) return "Not scheduled";
+  const date = new Date(schedule.date);
+  if (Number.isNaN(date.getTime())) return "Not scheduled";
+  const dateLabel = date.toLocaleDateString("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const periodLabel = schedule.visitPeriod
+    ? toTitleCase(schedule.visitPeriod)
+    : null;
+  return [dateLabel, periodLabel].filter(Boolean).join(" · ");
+};
 
 const formatRecordDate = (value) => {
   if (!value) return "Not recorded";
@@ -295,7 +315,7 @@ export default function WorkQueue() {
   return (
     <div className={ui.page}>
       <Topbar
-        title="Work Queue"
+        title="My Work"
         subtitle="Complete assigned field tasks and lifecycle follow-ups"
       />
 
@@ -398,6 +418,7 @@ export default function WorkQueue() {
                     <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                       <th className="p-3.5 pl-6">Service</th>
                       <th className="p-3.5">Farmer & Animal</th>
+                      <th className="p-3.5">Location</th>
                       <th className="p-3.5">Schedule</th>
                       <th className="p-3.5">Status</th>
                       <th className="p-3.5 w-40 text-right pr-6">Action</th>
@@ -407,8 +428,9 @@ export default function WorkQueue() {
                   <tbody>
                     {[0, 1, 2, 3, 4].map((row) => (
                       <tr key={row}>
-                        <td colSpan={6}>
-                          <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr_.2fr] gap-5 py-2">
+                        <td colSpan={7}>
+                          <div className="grid grid-cols-[1fr_1.5fr_1.2fr_1fr_1fr_1fr_.2fr] gap-5 py-2">
+                            <span className="skeleton h-4" />
                             <span className="skeleton h-4" />
                             <span className="skeleton h-4" />
                             <span className="skeleton h-4" />
@@ -456,6 +478,7 @@ export default function WorkQueue() {
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Service</th>
                         <th className="p-3.5">Farmer & Animal</th>
+                        <th className="p-3.5">Location</th>
                         <th className="p-3.5">Schedule</th>
                         <th className="p-3.5">Status</th>
                         <th className="p-3.5 w-40 text-right pr-6">Action</th>
@@ -469,12 +492,8 @@ export default function WorkQueue() {
                         const serviceType = normalizeServiceType(task);
                         const servicePresentation = getServicePresentation(serviceType);
                         const complete = workflowStatus === "completed";
-                        const canViewCompletedAI =
-                          task.workflowType === "AI" &&
-                          task.allowedAction === "VIEW_RECORD";
+
                         const priority = task.urgent ? 1 : 0;
-                        const animalReference =
-                          task.animalTag || "Not recorded";
                         const readiness = getTaskReadiness(task.raw || task);
                         const actionDisabled =
                           !readiness.ready ||
@@ -508,41 +527,40 @@ export default function WorkQueue() {
 
                             {/* 2. FARMER & ANIMAL */}
                             <td className="p-3.5 align-top">
-                              <div className="flex flex-col gap-0.5">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="font-bold text-sm text-base-content leading-tight">
-                                    {toTitleCase(task.farmerName)}
-                                  </span>
-                                  <span className="font-mono text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold tracking-tight">
-                                    #
-                                    {animalReference.length > 12
-                                      ? animalReference.slice(0, 12) + "..."
-                                      : animalReference}
-                                  </span>
+                              <div className="flex flex-col gap-1">
+                                <div className="font-bold text-sm text-base-content leading-tight">
+                                  {toTitleCase(
+                                    task.farmerName ||
+                                      task.farmer?.name ||
+                                      task.raw?.farmerId?.name ||
+                                      "Farmer unavailable",
+                                  )}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] mt-0.5">
-                                  <span className="text-base-content/50 truncate max-w-30">
-                                    {task.location || "Location not set"}
-                                  </span>
-                                  <span className="text-base-content/30">
-                                    •
-                                  </span>
-                                  <span className="text-base-content/40 truncate max-w-24">
-                                    {task.raw?.animalId?.species ||
-                                      task.raw?.animalIds?.[0]?.species ||
-                                      "Livestock"}
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="font-semibold text-primary">
+                                    Tag #{task.animalTag || task.animal?.earTag || task.animal?.name || "Not recorded"}
                                   </span>
                                 </div>
                               </div>
                             </td>
 
+                            {/* 3. LOCATION */}
+                            <td className="p-3.5 align-top">
+                              <div className="flex items-start gap-1.5 text-xs font-medium text-base-content/85 mt-0.5">
+                                <MapPin size={14} className="mt-0.5 shrink-0 text-base-content/45" />
+                                <span className="wrap-break-word">
+                                  {task.location || task.farmer?.location || "Location not set"}
+                                </span>
+                              </div>
+                            </td>
+
                             {/* 3. SCHEDULE */}
                             <td className="p-3.5 align-top">
-                              {["AI", "Health"].includes(task.workflowType) ? (
+                              {task.workflowType === "AI" ? (
                                 <span
                                   className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
                                 >
-                                  {formatCanonicalVisitSchedule(task.schedule)}
+                                  {formatCanonicalAISchedule(task.schedule)}
                                 </span>
                               ) : (
                                 (() => {
@@ -556,13 +574,9 @@ export default function WorkQueue() {
                                     >
                                       {sched.date}
                                     </span>
-                                    {!isDateOnlyWorkflowType(
-                                      task.workflowType,
-                                    ) ? (
-                                      <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
-                                        {sched.time}
-                                      </span>
-                                    ) : null}
+                                    <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
+                                      {sched.time}
+                                    </span>
                                   </div>
                                 );
                                 })()
@@ -580,10 +594,14 @@ export default function WorkQueue() {
 
                             {/* 5. PRIMARY ACTION */}
                             <td className="p-3.5 align-top pr-6 text-right">
-                              {complete && !canViewCompletedAI ? (
-                                <span className="text-[11px] font-bold text-emerald-600 flex items-center justify-end gap-1 mt-1">
-                                  <CheckCircle size={13} /> Completed
-                                </span>
+                              {complete && task.allowedAction !== "VIEW_RECORD" ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="btn btn-xs px-4 bg-base-200 border border-base-300 text-base-content/40 cursor-not-allowed font-bold select-none"
+                                >
+                                  Recorded
+                                </button>
                               ) : (
                                 <div
                                   className={
@@ -601,11 +619,16 @@ export default function WorkQueue() {
                                     type="button"
                                     disabled={actionDisabled}
                                     onClick={() => openTask(task)}
-                                    className={`btn btn-xs px-4 btn-primary`}
+                                    className="btn btn-xs sm:btn-sm px-4 btn-primary font-bold whitespace-nowrap"
                                   >
-                                    {task.workflowType === "AI"
-                                      ? task.actionLabel
-                                      : getTaskPrimaryActionLabel(task)}
+                                    {task.allowedAction === "RECORD_SERVICE" && task.workflowType === "AI"
+                                      ? (task.actionLabel || "Record Insemination")
+                                      : task.allowedAction === "COMPLETE_TASK"
+                                        ? getTaskPrimaryActionLabel(task)
+                                        : (task.actionLabel ||
+                                          (task.workflowType === "AI"
+                                            ? "Record Insemination"
+                                            : getTaskPrimaryActionLabel(task)))}
                                   </button>
                                 </div>
                               )}
@@ -811,7 +834,7 @@ export default function WorkQueue() {
               <div>
                 <p className="text-xs text-base-content/55">Scheduled visit</p>
                 <p className="font-semibold">
-                  {formatCanonicalVisitSchedule(selectedAIRecord.schedule)}
+                  {formatCanonicalAISchedule(selectedAIRecord.schedule)}
                 </p>
               </div>
               <div>

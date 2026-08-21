@@ -396,7 +396,7 @@ export default function NewbornsLog() {
 
           {/* Table */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full min-w-[1040px] border-collapse" aria-label="Calving and newborn records">
+            <table className="table w-full min-w-260 border-collapse" aria-label="Calving and newborn records">
               <thead>
                 <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider select-none">
                   <th className="p-3.5 pl-5">Status</th>
@@ -486,7 +486,7 @@ export default function NewbornsLog() {
                           {l.numberOfCalves == null
                             ? "Not recorded"
                             : `${l.numberOfCalves} Calf/Calves`}
-                          <div className="text-[10px] font-medium text-base-content/40 mt-0.5 truncate max-w-[180px]">
+                          <div className="text-[10px] font-medium text-base-content/40 mt-0.5 truncate max-w-45">
                             {l.calvesSummary}
                           </div>
                         </td>
@@ -635,7 +635,7 @@ export default function NewbornsLog() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-base-content/40 font-semibold">Email</span>
-                    <span className="font-bold truncate max-w-[130px]">{selectedLog.farmerEmail}</span>
+                    <span className="font-bold truncate max-w-32.5">{selectedLog.farmerEmail}</span>
                   </div>
                 </div>
               </div>

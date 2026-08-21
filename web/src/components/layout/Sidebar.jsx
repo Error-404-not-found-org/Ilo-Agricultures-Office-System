@@ -12,15 +12,9 @@ import {
   Users,
   Tractor,
   CalendarDays,
-  MapPin,
-  FileText,
-  BarChart3,
   Settings as SettingsIcon,
   LogOut,
-  BookOpen,
   MessageSquare,
-  Activity,
-  ArchiveRestore,
   ListChecks,
   ChevronLeft,
   ChevronRight,
@@ -218,11 +212,6 @@ export default function Sidebar() {
         badge: livePendingCount > 0 ? String(livePendingCount) : null,
       },
       {
-        path: "/admin/monitoring",
-        icon: <Activity size={16} />,
-        label: "System Monitoring",
-      },
-      {
         path: "/admin/support-tickets",
         icon: <MessageSquare size={16} />,
         label: "Support Tickets",
@@ -241,12 +230,7 @@ export default function Sidebar() {
       {
         path: "/admin/users",
         icon: <Users size={16} />,
-        label: "User Accounts",
-      },
-      {
-        path: "/admin/barangays",
-        icon: <MapPin size={16} />,
-        label: "Barangay Insights",
+        label: "Farmers Registry",
       },
       { type: "label", label: "Service Records" },
       {
@@ -259,21 +243,6 @@ export default function Sidebar() {
         icon: <Tractor size={16} />,
         label: "Newborns Log",
         badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
-      },
-      {
-        path: "/admin/reports",
-        icon: <FileText size={16} />,
-        label: "Analytics & Audits",
-      },
-      {
-        path: "/admin/audit-logs",
-        icon: <BookOpen size={16} />,
-        label: "Audit Logs",
-      },
-      {
-        path: "/admin/archived",
-        icon: <ArchiveRestore size={16} />,
-        label: "Archived Records",
       },
       { type: "label", label: "Account" },
       {

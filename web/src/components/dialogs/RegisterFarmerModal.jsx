@@ -3,6 +3,9 @@ import {
   UserPlus,
   Loader2,
   BadgeCheck,
+  Camera,
+  Upload,
+  X,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -33,6 +36,7 @@ const RegisterFarmerModal = ({
   const toast = useToast();
 
   const [selectedDistrict, setSelectedDistrict] = useState("");
+  const [imagePreview, setImagePreview] = useState(null);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -63,6 +67,7 @@ const RegisterFarmerModal = ({
           name: `${data.firstName} ${data.lastName}`.trim(),
           email: data.email || "",
           phoneNumber: data.phoneNumber,
+          imageUrl: data.imageUrl,
           address: {
             barangay: finalBarangay,
             city: data.city,
@@ -75,6 +80,7 @@ const RegisterFarmerModal = ({
       } else {
         const res = await axiosInstance.post("/technician/register-farmer", {
           ...data,
+          imageUrl: data.imageUrl,
           address: {
             barangay: finalBarangay,
             city: data.city,
@@ -109,6 +115,7 @@ const RegisterFarmerModal = ({
         const city = farmer.address?.city || "Oton";
         Promise.resolve().then(() => {
           setSelectedDistrict(parsed.district);
+          setImagePreview(farmer.imageUrl || farmer.profileImage || null);
           setFormData({
             firstName: first,
             lastName: last,
@@ -122,6 +129,7 @@ const RegisterFarmerModal = ({
       } else {
         Promise.resolve().then(() => {
           setSelectedDistrict("");
+          setImagePreview(null);
           setFormData({
             firstName: "",
             lastName: "",
@@ -143,6 +151,23 @@ const RegisterFarmerModal = ({
     if (value.length <= 50) {
       setFormData({ ...formData, [field]: value });
     }
+  };
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      event.target.value = "";
+      return toast.error("Please select a valid image file.");
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      event.target.value = "";
+      return toast.error("Farmer profile photo must be 5 MB or smaller.");
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result);
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = (event) => {
@@ -169,7 +194,7 @@ const RegisterFarmerModal = ({
     if (formData.city === "Iloilo City" && !selectedDistrict) {
       return toast.error("Please select the Iloilo City district.");
     }
-    mutation.mutate(formData);
+    mutation.mutate({ ...formData, imageUrl: imagePreview });
   };
   const toTitleCase = (str) => {
     if (!str) return "";
@@ -202,29 +227,71 @@ const RegisterFarmerModal = ({
         </>
       }
     >
-      <form id="register-farmer-form" onSubmit={handleSubmit} className="space-y-6">
-        <fieldset className="fieldset">
-          <legend className="fieldset-legend text-sm font-bold">Personal information</legend>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
-            <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
-            <Input id="farmer-phone" label="Contact number" required type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Use an 11-digit Philippine mobile number beginning with 09." placeholder="e.g. 09123456789" />
-            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" />
-          </div>
+      <form id="register-farmer-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-[200px_1fr]">
+        <fieldset className="fieldset self-start">
+          <legend className="fieldset-legend text-sm font-bold">Profile picture</legend>
+          <label
+            htmlFor="farmer-photo"
+            className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-base-300 bg-base-200 transition-colors hover:border-primary focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+          >
+            {imagePreview ? (
+              <div className="relative h-full w-full">
+                <img src={imagePreview} alt="Farmer profile preview" className="h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-white p-2">
+                  <Camera size={20} />
+                  <span className="text-xs font-bold">Change photo</span>
+                </div>
+              </div>
+            ) : (
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 p-4 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-hover:scale-105">
+                  <Upload size={18} />
+                </span>
+                <div>
+                  <span className="block text-xs font-bold text-base-content">Upload photo</span>
+                  <span className="block text-[10px] font-medium text-base-content/60 mt-0.5">Profile picture</span>
+                </div>
+                <span className="text-[10px] font-semibold text-base-content/50">PNG, JPG, or WEBP</span>
+              </span>
+            )}
+            <input id="farmer-photo" type="file" className="sr-only" accept="image/*" onChange={handleImageChange} />
+          </label>
+          {imagePreview && (
+            <button
+              type="button"
+              onClick={() => setImagePreview(null)}
+              className="btn btn-ghost btn-xs text-error w-full mt-2"
+            >
+              <X size={13} className="mr-1" /> Remove photo
+            </button>
+          )}
         </fieldset>
 
-        <fieldset className="fieldset">
-          <legend className="fieldset-legend text-sm font-bold">Location information</legend>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { const city = event.target.value; setFormData({ ...formData, city, barangay: "" }); setSelectedDistrict(""); }} />
-            {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { setSelectedDistrict(event.target.value); setFormData({ ...formData, barangay: "" }); }} />}
-            <Input id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} list="farmer-barangay-options" autoComplete="address-level3" placeholder="Type or select a barangay" />
-            <datalist id="farmer-barangay-options">{targetBarangays.map((barangay) => <option key={barangay} value={toTitleCase(barangay)} />)}</datalist>
-          </div>
-        </fieldset>
+        <div className="space-y-6">
+          <fieldset className="fieldset">
+            <legend className="fieldset-legend text-sm font-bold">Personal information</legend>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
+              <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
+              <Input id="farmer-phone" label="Contact number" required type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Use an 11-digit Philippine mobile number beginning with 09." placeholder="e.g. 09123456789" />
+              <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" />
+            </div>
+          </fieldset>
+
+          <fieldset className="fieldset">
+            <legend className="fieldset-legend text-sm font-bold">Location information</legend>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { const city = event.target.value; setFormData({ ...formData, city, barangay: "" }); setSelectedDistrict(""); }} />
+              {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { setSelectedDistrict(event.target.value); setFormData({ ...formData, barangay: "" }); }} />}
+              <Input id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} list="farmer-barangay-options" autoComplete="address-level3" placeholder="Type or select a barangay" />
+              <datalist id="farmer-barangay-options">{targetBarangays.map((barangay) => <option key={barangay} value={toTitleCase(barangay)} />)}</datalist>
+            </div>
+          </fieldset>
+        </div>
       </form>
     </Modal>
   );
 };
 
 export default RegisterFarmerModal;
+

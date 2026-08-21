@@ -190,7 +190,7 @@ export default function DownloadApp() {
                 <img
                   src={MOCKUP_URL}
                   alt="BreedSmart mobile app mockup"
-                  className="mx-auto max-h-[560px] w-full object-contain drop-shadow-2xl"
+                  className="mx-auto max-h-140 w-full object-contain drop-shadow-2xl"
                 />
               </div>
 

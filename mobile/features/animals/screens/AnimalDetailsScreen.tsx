@@ -933,7 +933,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-[11px] leading-4 mt-0.5"
                   >
-                    Meat and milk from this animal are unsafe for consumption or
+                    Products from this animal are unsafe for consumption or
                     sale until{" "}
                     <Text className="font-outfit-bold text-red-600 dark:text-red-400">
                       {new Date(

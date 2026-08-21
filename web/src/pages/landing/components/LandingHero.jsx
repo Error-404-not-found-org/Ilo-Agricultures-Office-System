@@ -42,7 +42,7 @@ export default function LandingHero() {
 
         {/* Right Column: Hero Photograph Frame */}
         <div className="lg:col-span-6 relative">
-          <div className="relative rounded-3xl overflow-hidden shadow-xl border border-slate-200/80 bg-slate-100 aspect-[4/3] sm:aspect-[16/10] lg:aspect-[4/3]">
+          <div className="relative rounded-3xl overflow-hidden shadow-xl border border-slate-200/80 bg-slate-100 aspect-4/3 sm:aspect-16/10 lg:aspect-4/3">
             <img
               src={HERO_BG}
               alt="Filipino cattle farmer tending to cattle in a lush green pasture in Oton, Iloilo under warm golden hour sunlight"

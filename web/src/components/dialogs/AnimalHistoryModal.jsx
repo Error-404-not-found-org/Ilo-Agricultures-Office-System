@@ -15,13 +15,14 @@ import {
   Dna,
   BadgeCheck,
   Sparkles,
+  Mail,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axiosInstance from "../../lib/axios";
 
 const FieldItem = ({ icon: Icon, label, value }) => (
   <div className="flex items-center justify-between gap-3 py-2 border-b border-base-200/50 last:border-none">
-    <div className="flex items-center gap-2.5 min-w-[110px]">
+    <div className="flex items-center gap-2.5 min-w-27.5">
       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
         <Icon size={12} strokeWidth={2.5} />
       </div>
@@ -130,11 +131,20 @@ export default function AnimalHistoryModal({ isOpen, onClose, animalId }) {
                     {animal.breed || "Crossbreed"}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-base-content/40">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold text-base-content/40">
                    <span className="flex items-center gap-1">
                       <User size={10} className="text-emerald-500" />
                       {animal.farmerId?.name || "Unknown Owner"}
                    </span>
+                   {animal.farmerId?.email && (
+                     <>
+                       <span className="h-0.5 w-0.5 rounded-full bg-base-content/20"></span>
+                       <span className="flex items-center gap-1 text-base-content/60">
+                         <Mail size={10} className="text-emerald-500" />
+                         {animal.farmerId.email}
+                       </span>
+                     </>
+                   )}
                    <span className="h-0.5 w-0.5 rounded-full bg-base-content/20"></span>
                    <span className="uppercase">{animal.reproductiveStatus || "Normal"}</span>
                 </div>

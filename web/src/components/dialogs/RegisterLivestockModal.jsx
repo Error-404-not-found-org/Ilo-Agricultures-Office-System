@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { BadgeCheck, Loader2, PawPrint, Upload } from "lucide-react";
+import { BadgeCheck, Camera, Loader2, PawPrint, Sparkles, Upload, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -22,6 +22,29 @@ const initialFormData = {
   gender: "Female",
   dob: "",
   farmerName: "",
+};
+
+const getFarmerInitials = (name) => {
+  if (!name || typeof name !== "string") return "ANM";
+  const cleaned = name.replace(/[^a-zA-Z\s]/g, "").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "ANM";
+  if (parts.length === 1) {
+    const word = parts[0];
+    return word.length >= 2 ? word.slice(0, 2).toUpperCase() : word.toUpperCase();
+  }
+  const first = parts[0][0];
+  const last = parts[parts.length - 1][0];
+  return (first + last).toUpperCase();
+};
+
+const buildAutoEarTag = (farmerName, existingCount = 0) => {
+  if (!farmerName || typeof farmerName !== "string" || !farmerName.trim()) {
+    return `ANM-${String((existingCount || 0) + 1).padStart(3, "0")}`;
+  }
+  const initials = getFarmerInitials(farmerName);
+  const nextNum = String((existingCount || 0) + 1).padStart(3, "0");
+  return `${initials}-${nextNum}`;
 };
 
 const RegisterLivestockModal = ({
@@ -58,6 +81,18 @@ const RegisterLivestockModal = ({
     const query = searchFarmer.trim().toLowerCase();
     return farmers.filter((farmer) => (farmer.name || "").toLowerCase().includes(query));
   }, [farmers, searchFarmer]);
+
+  const { data: selectedFarmerAnimals = [] } = useQuery({
+    queryKey: ["farmer-animals-count", formData.farmerName],
+    queryFn: async () => {
+      if (!formData.farmerName) return [];
+      const response = await axiosInstance.get(`/animals/farmer/${formData.farmerName}`);
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || response.data?.animals || [];
+    },
+    enabled: Boolean(formData.farmerName && isOpen && !livestock),
+  });
 
   const mutation = useMutation({
     mutationFn: async (data) => {
@@ -131,15 +166,42 @@ const RegisterLivestockModal = ({
     }
 
     Promise.resolve().then(() => {
+      const initialFarmerId = preSelectedFarmer?._id || preSelectedFarmer?.id || "";
+      const farmerName = preSelectedFarmer?.name || "";
+      const initialCount = preSelectedFarmer?.animalsCount || 0;
+      const autoTag = buildAutoEarTag(farmerName, initialCount);
+
       setFormData({
         ...initialFormData,
-        farmerName: preSelectedFarmer?._id || preSelectedFarmer?.id || "",
+        farmerName: initialFarmerId,
+        earTag: autoTag,
       });
-      setSearchFarmer(preSelectedFarmer?.name || "");
+      setSearchFarmer(farmerName);
       setImagePreview(null);
       setIsDropdownOpen(false);
     });
   }, [isOpen, livestock, preSelectedFarmer]);
+
+  useEffect(() => {
+    if (!isOpen || livestock) return;
+
+    const matchedFarmer = farmers.find(
+      (f) => String(f._id || f.id) === String(formData.farmerName),
+    ) || preSelectedFarmer;
+    const currentName = searchFarmer || matchedFarmer?.name || "";
+    const knownCount =
+      matchedFarmer?.animalsCount ??
+      (Array.isArray(selectedFarmerAnimals) ? selectedFarmerAnimals.length : 0);
+
+    const generatedTag = buildAutoEarTag(currentName, knownCount);
+
+    setFormData((current) => {
+      if (!current.earTag || /^([A-Z]{2,3}-\d{3})$/.test(current.earTag)) {
+        return { ...current, earTag: generatedTag };
+      }
+      return current;
+    });
+  }, [formData.farmerName, searchFarmer, selectedFarmerAnimals, farmers, preSelectedFarmer, isOpen, livestock]);
 
   useEffect(() => {
     const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
@@ -176,6 +238,7 @@ const RegisterLivestockModal = ({
   const handleSubmit = (event) => {
     event.preventDefault();
     if (mutation.isPending) return;
+    if (!imagePreview) return toast.error("Animal photo is required to register an animal.");
     if (!formData.farmerName) return toast.error("Please select a livestock owner.");
     if (!formData.breed) return toast.error("Breed is required.");
     if (!formData.species) return toast.error("Species is required.");
@@ -229,24 +292,47 @@ const RegisterLivestockModal = ({
     >
       <form id="register-livestock-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-[240px_1fr]">
         <fieldset className="fieldset self-start">
-          <legend className="fieldset-legend text-sm font-bold">Animal photo</legend>
+          <legend className="fieldset-legend text-sm font-bold flex items-center justify-between">
+            <span>Animal photo <span className="text-error">*</span></span>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-error bg-error/10 px-2 py-0.5 rounded-full">Required</span>
+          </legend>
           <label
             htmlFor="animal-photo"
-            className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-base-300 bg-base-200 transition-colors hover:border-primary focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+            className={`group relative aspect-square cursor-pointer overflow-hidden rounded-xl border-2 transition-all hover:border-primary focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary ${
+              !imagePreview ? "border-dashed border-error/40 bg-base-200/50 hover:bg-base-200" : "border-primary/40 bg-base-100"
+            }`}
           >
             {imagePreview ? (
-              <img src={imagePreview} alt="Selected animal" className="h-full w-full object-cover" />
+              <div className="relative h-full w-full">
+                <img src={imagePreview} alt="Selected animal" className="h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-white p-2">
+                  <Camera size={20} />
+                  <span className="text-xs font-bold">Change photo</span>
+                </div>
+              </div>
             ) : (
-              <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-hover:scale-105">
-                  <Upload size={18} />
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 p-4 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-error/10 text-error transition-transform group-hover:scale-110">
+                  <Camera size={20} />
                 </span>
-                <span className="px-4 text-xs font-bold text-base-content/70">Upload or capture photo</span>
-                <span className="text-[10px] font-semibold text-base-content/60">PNG, JPG, or WEBP</span>
+                <div>
+                  <span className="block text-xs font-bold text-base-content">Upload or capture photo</span>
+                  <span className="block text-[10px] font-bold text-error mt-0.5">Required for registration</span>
+                </div>
+                <span className="text-[10px] font-semibold text-base-content/50">PNG, JPG, or WEBP (Max 5MB)</span>
               </span>
             )}
             <input id="animal-photo" type="file" className="sr-only" accept="image/*" onChange={handleImageChange} />
           </label>
+          {imagePreview && (
+            <button
+              type="button"
+              onClick={() => setImagePreview(null)}
+              className="btn btn-ghost btn-xs text-error w-full mt-2"
+            >
+              <X size={13} className="mr-1" /> Remove photo
+            </button>
+          )}
         </fieldset>
 
         <div className="space-y-6">
@@ -297,11 +383,17 @@ const RegisterLivestockModal = ({
                         role="option"
                         aria-selected={formData.farmerName === farmer._id}
                         onClick={() => {
-                          setFormData((current) => ({ ...current, farmerName: farmer._id }));
+                          const farmerCount = farmer.animalsCount ?? 0;
+                          const autoTag = buildAutoEarTag(farmer.name, farmerCount);
+                          setFormData((current) => ({
+                            ...current,
+                            farmerName: farmer._id,
+                            earTag: autoTag,
+                          }));
                           setSearchFarmer(farmer.name);
                           setIsDropdownOpen(false);
                         }}
-                        className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                        className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                       >
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                           {(farmer.name || "Farmer").substring(0, 2).toUpperCase()}
@@ -323,7 +415,37 @@ const RegisterLivestockModal = ({
           <fieldset className="fieldset">
             <legend className="fieldset-legend text-sm font-bold">Animal details</legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input id="livestock-ear-tag" label="Ear tag number" required value={formData.earTag} maxLength={3} onChange={updateField("earTag")} placeholder="e.g. 123" />
+              <div className="relative">
+                <Input
+                  id="livestock-ear-tag"
+                  label="Ear tag number"
+                  required
+                  value={formData.earTag}
+                  maxLength={15}
+                  onChange={updateField("earTag")}
+                  placeholder="e.g. JG-001"
+                  hint={searchFarmer ? `Auto-generated based on ${searchFarmer}'s initials` : "Auto-generates when farmer is selected"}
+                />
+                {searchFarmer && !livestock && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const matchedFarmer = farmers.find(
+                        (f) => String(f._id || f.id) === String(formData.farmerName),
+                      ) || preSelectedFarmer;
+                      const knownCount =
+                        matchedFarmer?.animalsCount ??
+                        (Array.isArray(selectedFarmerAnimals) ? selectedFarmerAnimals.length : 0);
+                      const tag = buildAutoEarTag(searchFarmer, knownCount);
+                      setFormData((prev) => ({ ...prev, earTag: tag }));
+                      toast.success(`Ear tag auto-generated: ${tag}`);
+                    }}
+                    className="btn btn-ghost btn-xs text-primary absolute top-0 right-0 gap-1 font-bold"
+                  >
+                    <Sparkles size={13} /> Auto-tag
+                  </button>
+                )}
+              </div>
               <Select id="livestock-species" label="Species" required value={formData.species} onChange={updateField("species")} options={CATTLE_SPECIES} placeholder="" />
               <Select id="livestock-breed" label="Genetic breed" required value={formData.breed} onChange={updateField("breed")} options={BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS} placeholder="Select breed" />
               <Select id="livestock-color" label="Primary color" required value={formData.color} onChange={updateField("color")} options={CATTLE_COLORS} placeholder="Select color" />

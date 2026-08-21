@@ -1157,7 +1157,7 @@ export default function BreedingLedger() {
                   />
                   <div
                     className={`absolute top-12 left-0 z-50 card bg-base-100 border border-base-300 rounded-2xl shadow-xl p-4 transition-all duration-200 animate-fade-in ${
-                      pickerMode === "calendar" ? "w-full md:w-[570px]" : "w-60"
+                      pickerMode === "calendar" ? "w-full md:w-142.5" : "w-60"
                     }`}
                   >
                     {pickerMode === "presets" ? (
