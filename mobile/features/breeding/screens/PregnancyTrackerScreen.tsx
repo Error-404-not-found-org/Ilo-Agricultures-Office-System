@@ -257,9 +257,17 @@ export function PregnancyTrackerScreen({
           animal.breed,
         )
       : null;
-  const remaining = expected
-    ? Math.max(0, differenceInCalendarDays(expected, new Date()))
+  const diffDays = expected
+    ? differenceInCalendarDays(expected, new Date())
     : null;
+  const remainingDisplay = diffDays !== null
+    ? diffDays === 0
+      ? "Expected today"
+      : diffDays < 0
+        ? `${Math.abs(diffDays)} days overdue`
+        : `${diffDays} estimated days remaining`
+    : null;
+  const remaining = diffDays;
   const totalDays =
     aiDate && expected
       ? Math.max(1, differenceInCalendarDays(expected, aiDate))
@@ -289,9 +297,9 @@ export function PregnancyTrackerScreen({
     "diagnostic_follow_up";
 
   const currentIndex = isConfirmedPregnant
-    ? remaining !== null && remaining <= 30
-      ? 4
-      : 3
+    ? diffDays !== null && diffDays <= 30
+      ? 3
+      : 2
     : isTerminallyFailed
       ? isNegativePD
         ? 3
@@ -328,7 +336,10 @@ export function PregnancyTrackerScreen({
           : "Observe for returning heat signs",
       isFailed: isReturnToHeat,
     },
-    {
+  ];
+
+  if (!isConfirmedPregnant) {
+    milestones.push({
       label: isRecheck ? "Pregnancy recheck" : "Pregnancy check",
       date:
         isRecheck && latest?.pregnancyFollowUpTask?.dueDate
@@ -345,8 +356,8 @@ export function PregnancyTrackerScreen({
             : "Professional diagnosis window",
       isSkipped: isReturnToHeat,
       isFailed: isNegativePD,
-    },
-  ];
+    });
+  }
 
   if (isConfirmedPregnant) {
     const confirmationDate = activePregnancy?.pregnancyDiagnosis?.date
@@ -365,10 +376,7 @@ export function PregnancyTrackerScreen({
       {
         label: "Expected calving",
         date: expected,
-        detail:
-          remaining === null
-            ? "Awaiting breeding information"
-            : `${remaining} estimated days remaining`,
+        detail: remainingDisplay || "Awaiting breeding information",
       },
     );
   }
@@ -629,23 +637,23 @@ export function PregnancyTrackerScreen({
               >
                 <Text
                   style={{
-                    color: colors.textMuted,
+                    color: diffDays !== null && diffDays < 0 ? colors.error : colors.textMuted,
                     fontFamily: "Outfit_800ExtraBold",
                     fontSize: 9,
                     letterSpacing: 0.5,
                   }}
                 >
-                  DAYS REMAINING
+                  {diffDays !== null && diffDays < 0 ? "OVERDUE" : "DAYS REMAINING"}
                 </Text>
                 <Text
                   style={{
-                    color: colors.textPrimary,
+                    color: diffDays !== null && diffDays < 0 ? colors.error : colors.textPrimary,
                     fontFamily: "Outfit_700Bold",
                     fontSize: 14,
                     marginTop: 4,
                   }}
                 >
-                  {remaining ?? "N/A"}
+                  {diffDays !== null ? Math.abs(diffDays) : "N/A"}
                 </Text>
               </View>
             </View>

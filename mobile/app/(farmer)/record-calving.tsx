@@ -36,7 +36,9 @@ import {
   useOfflineMutation,
 } from "@/hooks/useOfflineMutation";
 import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, taskKeys, userKeys } from "@/lib/queryKeys";
-import { farmerDashboardQueryKeys } from "@/features/farmer-dashboard/hooks/useFarmerDashboard";
+import { farmerDashboardQueryKeys, useFarmerDashboardQueries } from "@/features/farmer-dashboard/hooks/useFarmerDashboard";
+import { useUser } from "@clerk/clerk-expo";
+import EarTagGenerator from "@/components/EarTagGenerator";
 
 interface CalfEntry {
   sex: "M" | "F";
@@ -64,6 +66,11 @@ export default function RecordCalving() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
+  const { user } = useUser();
+  const { myAnimalsQuery } = useFarmerDashboardQueries();
+
+  const farmerName = user?.fullName || `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.username || "";
+  const animalCount = myAnimalsQuery.data?.length || 0;
 
   const primaryColor = isDark ? colors.primary : '#00643B';
 
@@ -464,6 +471,16 @@ export default function RecordCalving() {
                       placeholderTextColor={colors.textMuted}
                     />
                   </View>
+                  {calf.isLiving !== false && (
+                    <View className="mt-2 ml-1">
+                      <EarTagGenerator
+                        farmerName={farmerName}
+                        animalCount={animalCount + index}
+                        onGenerate={(tag) => updateCalf(index, "earTag", tag)}
+                        isDark={isDark}
+                      />
+                    </View>
+                  )}
                 </View>
                 <View>
                   <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
