@@ -1,3 +1,5 @@
+import type { FarmerHealthRequestDetails } from "./healthRequestInput";
+
 export interface FarmerAIRequestPayload {
   animalId: string;
   photos: string[];
@@ -38,6 +40,7 @@ export interface FarmerHealthRequestPayload {
   urgency: string;
   farmerNotes: string;
   photos: string[];
+  requestDetails?: FarmerHealthRequestDetails;
 }
 
 export function buildFarmerHealthRequestPayload(
@@ -46,7 +49,8 @@ export function buildFarmerHealthRequestPayload(
   symptoms: string,
   urgency: string,
   farmerNotes: string,
-  photos: string[]
+  photos: string[],
+  requestDetails?: FarmerHealthRequestDetails,
 ): FarmerHealthRequestPayload {
   return {
     animalId,
@@ -55,5 +59,6 @@ export function buildFarmerHealthRequestPayload(
     urgency,
     farmerNotes: farmerNotes.trim(),
     photos: photos.slice(0, 5),
+    ...(requestDetails ? { requestDetails } : {}),
   };
 }

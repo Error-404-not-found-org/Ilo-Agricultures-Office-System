@@ -121,12 +121,15 @@ export function useTechnicianReportData(enabled: boolean) {
       });
     });
 
-    const healthList = Array.isArray(sources.healthRequests)
-      ? sources.healthRequests
-      : sources.healthRequests?.data || [];
-    healthList.forEach((health: any) => {
-      if (!isWithinRange(health.createdAt, range.start, range.end)) return;
-      const date = new Date(health.createdAt);
+    const healthList = Array.isArray(sources.healthRecords)
+      ? sources.healthRecords
+      : sources.healthRecords?.data || [];
+    healthList.forEach((record: any) => {
+      if (record.recordKind !== "medical_record") return;
+      const health = record.source || record;
+      const sourceDate = record.recordDate || health.date || health.createdAt;
+      if (!isWithinRange(sourceDate, range.start, range.end)) return;
+      const date = new Date(sourceDate);
       allEvents.push({
         type: "HL",
         animalId: health.animalId?.animalId || "—",
@@ -139,8 +142,11 @@ export function useTechnicianReportData(enabled: boolean) {
         farmer: health.farmerId?.name || "—",
         barangay: health.farmerId?.address?.barangay || "—",
         date: format(date, "MM/dd/yyyy"),
-        sireBreed: health.issue || health.requestType || "Check-up",
-        sireCode: health.status?.toUpperCase() || "COMPLETED",
+        sireBreed:
+          health.healthRequestId?.requestType ||
+          health.type ||
+          "Clinical service",
+        sireCode: "COMPLETED",
       });
     });
 

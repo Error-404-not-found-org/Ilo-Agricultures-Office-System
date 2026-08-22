@@ -11,6 +11,7 @@ import {
   formatAnimalReference,
   getFullAnimalReference,
 } from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 interface RecordDetailContentProps {
   selectedActivity: ActivityFeedItem;
@@ -51,6 +52,9 @@ const calfSexLabel = (value: unknown) => {
 
 export function RecordDetailContent({ selectedActivity }: RecordDetailContentProps) {
   const { colors, isDark } = useTheme();
+  const healthPriority = getHealthUrgencyPresentation(
+    selectedActivity.details?.urgency,
+  );
 
   return (
     <View style={{ gap: 20 }}>
@@ -455,15 +459,12 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                 ) : null}
                 {hasDisplayValue(selectedActivity.details.urgency) ? (
                   <DetailRow
-                    label="Urgency"
-                    value={selectedActivity.details.urgency}
+                    label="Farmer request priority"
+                    value={healthPriority.label}
                     highlightColor={
-                      selectedActivity.details.urgency?.toLowerCase() === "high"
+                      healthPriority.priority === "urgent"
                         ? "#dc2626"
-                        : selectedActivity.details.urgency?.toLowerCase() ===
-                            "medium"
-                          ? "#d97706"
-                          : "#059669"
+                        : "#059669"
                     }
                   />
                 ) : null}
@@ -701,44 +702,45 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
       />
 
       {/* Technician Notes */}
-      {selectedActivity.details?.technicianNote && (
-        <View
-          style={{
-            gap: 6,
-            backgroundColor: isDark
-              ? "rgba(0, 100, 59, 0.05)"
-              : "#f0fdf4",
-            borderRadius: 16,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: isDark
-              ? "rgba(0, 100, 59, 0.2)"
-              : "#d1fae5",
-          }}
-        >
-          <Text
+      {selectedActivity.type !== "health" &&
+        selectedActivity.details?.technicianNote && (
+          <View
             style={{
-              fontSize: 11,
-              fontFamily: "Outfit_800ExtraBold",
-              color: isDark ? "#34d399" : "#00643B",
-              textTransform: "uppercase",
+              gap: 6,
+              backgroundColor: isDark
+                ? "rgba(0, 100, 59, 0.05)"
+                : "#f0fdf4",
+              borderRadius: 16,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: isDark
+                ? "rgba(0, 100, 59, 0.2)"
+                : "#d1fae5",
             }}
           >
-            Observations / Notes
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              fontFamily: "Outfit_500Medium",
-              color: colors.textPrimary,
-              fontStyle: "italic",
-              lineHeight: 18,
-            }}
-          >
-            &quot;{selectedActivity.details.technicianNote}&quot;
-          </Text>
-        </View>
-      )}
+            <Text
+              style={{
+                fontSize: 11,
+                fontFamily: "Outfit_800ExtraBold",
+                color: isDark ? "#34d399" : "#00643B",
+                textTransform: "uppercase",
+              }}
+            >
+              Observations / Notes
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: "Outfit_500Medium",
+                color: colors.textPrimary,
+                fontStyle: "italic",
+                lineHeight: 18,
+              }}
+            >
+              &quot;{selectedActivity.details.technicianNote}&quot;
+            </Text>
+          </View>
+        )}
     </View>
   );
 }

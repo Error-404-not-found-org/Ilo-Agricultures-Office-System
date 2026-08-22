@@ -22,6 +22,7 @@ import { isPregnancyCycleActive } from "../domain/pregnancy-lifecycle.js";
 import { sendDetail, sendList, sendMutation } from "../utils/api-response.js";
 import { getPagination, paginateArray } from "../utils/pagination.js";
 import { excludeRequestsWithOfficialMedicalRecords } from "../utils/health-records.js";
+import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
 
 const getAccessibleAnimal = async (id, user) => {
   const animal = await Animal.findOne({ _id: id, deletedAt: null });
@@ -70,7 +71,6 @@ const OFFICIAL_RECORD_KINDS = new Set([
   "insemination",
   "pregnancy",
   "calving",
-  "health_request",
   "medical_record",
 ]);
 
@@ -135,6 +135,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     sourceId,
     sourceKind: recordKind,
     animalId: subject,
+    farmerId: personSummary(record.farmerId),
   };
 
   if (recordKind === "insemination") {
@@ -324,73 +325,6 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     };
   }
 
-  if (recordKind === "health_request") {
-    const technician = record.handledBy || record.assignedTechnicianId || null;
-    const eventDate =
-      record.resolvedAt ||
-      record.serviceStartedAt ||
-      record.scheduledDate ||
-      record.createdAt;
-    const dateLabel = record.resolvedAt
-      ? "Health request resolved at"
-      : record.serviceStartedAt
-        ? "Health service started at"
-        : record.scheduledDate
-          ? "Health visit scheduled for"
-          : "Health request submitted at";
-    const attachments = uniqueRecordAttachments([
-      ...(record.photos || []).map((url, index) => ({
-        url,
-        category: "farmer_evidence",
-        label: `Health evidence ${index + 1}`,
-      })),
-      ...(record.imageUrl
-        ? [{
-            url: record.imageUrl,
-            category: "farmer_evidence",
-            label: "Health evidence",
-          }]
-        : []),
-    ]);
-    return {
-      ...common,
-      type: "health",
-      title: "Health Assistance",
-      description: record.symptoms || record.requestType || "Health request",
-      date: eventDate,
-      dateLabel,
-      datePrecision: "datetime",
-      attachments,
-      technician: personSummary(technician),
-      details: {
-        serviceDate: eventDate,
-        serviceDateLabel: dateLabel,
-        entryDate: record.createdAt,
-        entryDateLabel: "Submitted to BreedSmart at",
-        status: record.status,
-        requestType: record.requestType,
-        symptoms: record.symptoms,
-        farmerNotes: record.farmerNotes,
-        urgency: record.urgency,
-        diagnosis: record.diagnosis || record.findings,
-        treatment: record.treatment,
-        medicine: record.medicineGiven,
-        dosage: record.dosage,
-        advice: record.advice || record.resolutionNotes,
-        followUpDate: record.followUpDate || record.followUpCheckupDate,
-        withdrawalPeriodDays: record.withdrawalPeriodDays,
-        withdrawalEndDate: record.withdrawalEndDate,
-        technician: technician?.name || "",
-        technicianNote: record.technicianNote,
-      },
-      actions: {
-        reportPreviewAvailable: true,
-        reportId: sourceId,
-        pregnancyTrackerAvailable: false,
-      },
-    };
-  }
-
   const linkedRequest =
     record.healthRequestId && typeof record.healthRequestId === "object"
       ? record.healthRequestId
@@ -438,6 +372,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       entryDateLabel: "Recorded in BreedSmart at",
       status: "completed",
       requestType: linkedRequest?.requestType || record.type,
+      requestDetails: linkedRequest?.requestDetails,
       symptoms: linkedRequest?.symptoms,
       farmerNotes: linkedRequest?.farmerNotes,
       urgency: linkedRequest?.urgency,
@@ -457,8 +392,8 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       technicianNote: record.note,
     },
     actions: {
-      reportPreviewAvailable: Boolean(linkedRequest),
-      reportId: idOf(linkedRequest),
+      reportPreviewAvailable: record.type !== "General Note",
+      reportId: record.type !== "General Note" ? sourceId : null,
       pregnancyTrackerAvailable: false,
     },
   };
@@ -497,17 +432,13 @@ export const getOfficialRecordDetail = async (req, res) => {
       query = Calving.findOne({ ...scope, deletedAt: null })
         .populate("technicianId", "name role")
         .populate("calves.animalId", "animalId earTag imageUrl");
-    } else if (recordKind === "health_request") {
-      query = HealthRequest.findOne({ ...scope, deletedAt: null }).populate(
-        "handledBy assignedTechnicianId",
-        "name role",
-      );
     } else {
       query = MedicalRecord.findOne(scope)
         .populate("technicianId", "name role")
+        .populate("farmerId", "name")
         .populate(
           "healthRequestId",
-          "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes imageUrl photos",
+          "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes imageUrl photos",
         );
     }
 
@@ -648,7 +579,7 @@ export const getOfficialRecords = async (req, res) => {
               .populate("technicianId", "name role")
               .populate(
                 "healthRequestId",
-                "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+                "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes",
               )
               .lean()
           : [],
@@ -802,6 +733,10 @@ export const getAnimalHealthHistory = async (req, res) => {
     const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(
       healthRequests,
       medicalRecords,
+    ).map((request) =>
+      req.user.role === "farmer"
+        ? buildFarmerHealthRequest(request)
+        : request,
     );
 
     if (req.query.page || req.query.limit) {
@@ -854,10 +789,8 @@ export const getAnimalRecords = async (req, res) => {
 
     const animalQuery = { animalId: req.params.id, deletedAt: null };
     const medicalQuery = { animalId: req.params.id };
-    const healthQuery = { animalId: req.params.id, deletedAt: null };
     if (Object.keys(dateFilter).length) {
       animalQuery.createdAt = dateFilter;
-      healthQuery.createdAt = dateFilter;
       medicalQuery.date = dateFilter;
     }
 
@@ -865,7 +798,6 @@ export const getAnimalRecords = async (req, res) => {
       inseminations,
       pregnancies,
       calvings,
-      healthRequests,
       medicalRecords,
     ] = await Promise.all([
       Insemination.find(animalQuery)
@@ -885,23 +817,15 @@ export const getAnimalRecords = async (req, res) => {
         .sort({ date: -1 })
         .populate("technicianId", "name role")
         .lean(),
-      HealthRequest.find(healthQuery)
-        .sort({ createdAt: -1 })
-        .populate("handledBy assignedTechnicianId", "name role")
-        .lean(),
       MedicalRecord.find(medicalQuery)
         .sort({ date: -1 })
         .populate("technicianId", "name role")
         .populate(
           "healthRequestId",
-          "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+          "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes",
         )
         .lean(),
     ]);
-    const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(
-      healthRequests,
-      medicalRecords,
-    );
 
     const nextAttemptByPreviousId = new Map(
       inseminations
@@ -938,14 +862,6 @@ export const getAnimalRecords = async (req, res) => {
         title: "Calving / Offspring",
         summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
       })),
-      ...visibleHealthRequests.map((item) => ({
-        ...item,
-        recordKind: "health_request",
-        recordDate: item.createdAt,
-        title: "Health Request",
-        summary:
-          item.symptoms || item.requestType || "Health assistance request",
-      })),
       ...medicalRecords.map((item) => ({
         ...item,
         recordKind: "medical_record",
@@ -960,7 +876,6 @@ export const getAnimalRecords = async (req, res) => {
         if (!type || type === "All") return true;
         const normalized = String(type).toLowerCase();
         const recordKind = String(item.recordKind || "").toLowerCase();
-        const requestType = String(item.requestType || "").toLowerCase();
         const itemType = String(item.type || "").toLowerCase();
         if (normalized === "breeding") return recordKind === "insemination";
         if (normalized === "reproduction") {
@@ -968,13 +883,9 @@ export const getAnimalRecords = async (req, res) => {
         }
         if (normalized === "pregnancy") return recordKind === "pregnancy";
         if (normalized === "calving") return recordKind === "calving";
-        if (normalized === "health")
-          return (
-            recordKind === "health_request" || recordKind === "medical_record"
-          );
+        if (normalized === "health") return recordKind === "medical_record";
         return (
           recordKind.includes(normalized) ||
-          requestType.includes(normalized) ||
           itemType.includes(normalized)
         );
       })

@@ -51,6 +51,7 @@ import {
   formatVisitPeriod,
   formatVisitSchedule,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 const PRIMARY = "#00643B";
 
@@ -89,6 +90,9 @@ export function FarmerHomeScreen() {
   const [isModalVisible, setIsModalVisible] = React.useState(false);
   const [statusBarOnHero, setStatusBarOnHero] = React.useState(true);
   const [heroHeaderHeight, setHeroHeaderHeight] = React.useState(260);
+  const selectedHealthPriority = getHealthUrgencyPresentation(
+    selectedActivity?.details?.urgency,
+  );
 
   const [congratsModalVisible, setCongratsModalVisible] = React.useState(false);
   const [congratsInfo, setCongratsInfo] = React.useState<{
@@ -929,6 +933,13 @@ export function FarmerHomeScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`${item.title}. ${item.outcome}. Full animal identifier ${item.fullAnimalReference}.`}
                   onPress={() => {
+                    if (item.type === "health") {
+                      router.push({
+                        pathname: "/(farmer)/health-request-detail",
+                        params: { id: item.id },
+                      });
+                      return;
+                    }
                     router.push({
                       pathname: "/(farmer)/animal-record-detail",
                       params: {
@@ -1451,16 +1462,12 @@ export function FarmerHomeScreen() {
                               value={selectedActivity.details.symptoms}
                             />
                             <DetailRow
-                              label="Urgency"
-                              value={selectedActivity.details.urgency}
+                              label="Farmer request priority"
+                              value={selectedHealthPriority.label}
                               highlightColor={
-                                selectedActivity.details.urgency?.toLowerCase() ===
-                                "high"
+                                selectedHealthPriority.priority === "urgent"
                                   ? "#dc2626"
-                                  : selectedActivity.details.urgency?.toLowerCase() ===
-                                      "medium"
-                                    ? "#d97706"
-                                    : "#059669"
+                                  : "#059669"
                               }
                             />
                             <DetailRow

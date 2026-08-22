@@ -7,12 +7,18 @@ import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { Animal } from "../src/models/animal.model.js";
+import { HealthRequest } from "../src/models/health-request.model.js";
 import {
+  getAnimalHealthHistory,
+  getAnimalRecords,
   getOfficialRecordDetail,
   getOfficialRecords,
 } from "../src/controllers/animal-workflow.controllers.js";
 
 const queryResult = (data) => ({
+  sort() {
+    return this;
+  },
   populate() {
     return this;
   },
@@ -55,6 +61,121 @@ test("AI follow-up mutations do not replace the completion timestamp", () => {
   assert.doesNotMatch(handler, /request\.completedAt\s*=/);
   assert.match(handler, /request\.farmerOutcomeReportedAt\s*=/);
   assert.match(handler, /request\.save\(\)/);
+});
+
+test("animal official records exclude Advice and Office Pickup requests", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    insemination: Insemination.find,
+    pregnancy: Pregnancy.find,
+    calving: Calving.find,
+    health: HealthRequest.find,
+    medical: MedicalRecord.find,
+  };
+  let healthRequestQueryAttempted = false;
+  Animal.findOne = async () => ({
+    _id: "animal-boundary-1",
+    farmerId: "farmer-1",
+  });
+  Insemination.find = () => queryResult([]);
+  Pregnancy.find = () => queryResult([]);
+  Calving.find = () => queryResult([]);
+  HealthRequest.find = () => {
+    healthRequestQueryAttempted = true;
+    return queryResult([
+      { _id: "advice-1", handlingMethod: "advice", status: "resolved" },
+      {
+        _id: "pickup-1",
+        handlingMethod: "office_pickup",
+        status: "resolved",
+      },
+    ]);
+  };
+  MedicalRecord.find = () =>
+    queryResult([
+      {
+        _id: "medical-1",
+        animalId: "animal-boundary-1",
+        type: "Treatment",
+        date: new Date("2026-08-20T00:00:00.000Z"),
+        details: { diagnosis: "Clinical diagnosis" },
+      },
+    ]);
+
+  const recorder = responseRecorder();
+  try {
+    await getAnimalRecords(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: { id: "animal-boundary-1" },
+        query: { page: "1", limit: "10" },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(healthRequestQueryAttempted, false);
+    assert.deepEqual(
+      recorder.body.data.map((record) => record.recordKind),
+      ["medical_record"],
+    );
+  } finally {
+    Animal.findOne = originals.animal;
+    Insemination.find = originals.insemination;
+    Pregnancy.find = originals.pregnancy;
+    Calving.find = originals.calving;
+    HealthRequest.find = originals.health;
+    MedicalRecord.find = originals.medical;
+  }
+});
+
+test("animal health history keeps request responses and hides Farmer-only internal notes", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    health: HealthRequest.find,
+    medical: MedicalRecord.find,
+  };
+  Animal.findOne = async () => ({
+    _id: "animal-history-1",
+    farmerId: "farmer-1",
+  });
+  HealthRequest.find = () =>
+    queryResult([
+      {
+        _id: "pickup-history-1",
+        animalId: "animal-history-1",
+        handlingMethod: "office_pickup",
+        status: "resolved",
+        advice: "Pickup information",
+        technicianNote: "INTERNAL ONLY",
+        statusHistory: [
+          { status: "resolved", note: "PRIVATE", actorId: "tech-1" },
+        ],
+        createdAt: new Date("2026-08-20T00:00:00.000Z"),
+      },
+    ]);
+  MedicalRecord.find = () => queryResult([]);
+
+  const recorder = responseRecorder();
+  try {
+    await getAnimalHealthHistory(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: { id: "animal-history-1" },
+        query: { page: "1", limit: "10" },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data[0].recordKind, "health_request");
+    assert.equal(recorder.body.data[0].advice, "Pickup information");
+    assert.doesNotMatch(JSON.stringify(recorder.body), /INTERNAL ONLY|PRIVATE|actorId/);
+  } finally {
+    Animal.findOne = originals.animal;
+    HealthRequest.find = originals.health;
+    MedicalRecord.find = originals.medical;
+  }
 });
 
 test("Official records: farmer scope overrides a supplied farmer id", async () => {
@@ -652,9 +773,28 @@ test("Official record detail: linked MedicalRecord exposes the Health report act
       ],
     );
     assert.equal(recorder.body.data.actions.reportPreviewAvailable, true);
-    assert.equal(recorder.body.data.actions.reportId, "health-1");
+    assert.equal(recorder.body.data.actions.reportId, "medical-1");
   } finally {
     Animal.findOne = originals.animal;
     MedicalRecord.findOne = originals.medical;
   }
+});
+
+test("Official record detail rejects raw HealthRequest identifiers", async () => {
+  const recorder = responseRecorder();
+
+  await getOfficialRecordDetail(
+    {
+      user: { _id: "farmer-1", role: "farmer" },
+      params: {
+        id: "animal-1",
+        recordKind: "health_request",
+        recordId: "health-1",
+      },
+    },
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 400);
+  assert.equal(recorder.body.code, "OFFICIAL_RECORD_KIND_INVALID");
 });

@@ -7,6 +7,7 @@ import { Animal } from "../src/models/animal.model.js";
 import { HealthRequest } from "../src/models/health-request.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Notification } from "../src/models/notification.model.js";
+import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { User } from "../src/models/user.model.js";
 import {
   normalizeVisitPeriod,
@@ -168,6 +169,80 @@ test("FARMER HEALTH", async (t) => {
     const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: ["p1.jpg", "p2.jpg"] }, "farmer", farmerId);
     await createHealthRequest(req, res);
     assert.deepEqual(res.body.request.photos, ["p1.jpg", "p2.jpg"]);
+  });
+  await t.test("structured request details survive POST and persistence", async () => {
+    const animalId = new mongoose.Types.ObjectId();
+    await Animal.create({ _id: animalId, farmerId, animalId: "HL-STRUCTURED", species: "Carabao", breed: "Native" });
+    const medicalRecordsBefore = await MedicalRecord.countDocuments({ animalId });
+    const structuredPayload = {
+      animalId: animalId.toString(),
+      requestType: "disease",
+      symptoms: "Legacy compatibility summary",
+      farmerNotes: "Legacy note should not override structured data.",
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "medicine_request",
+        observedSigns: ["diarrhea", "not_eating_normally"],
+        farmerDescription: "Started yesterday and the animal looks weak.",
+      },
+    };
+    const { req, res } = reqRes(structuredPayload, "farmer", farmerId);
+
+    await createHealthRequest(req, res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.request.requestType, "medicine");
+    assert.equal(res.body.request.symptoms, "Legacy compatibility summary");
+    assert.equal(
+      res.body.request.farmerNotes,
+      "Started yesterday and the animal looks weak.",
+    );
+    assert.deepEqual(res.body.request.requestDetails.observedSigns, [
+      "diarrhea",
+      "not_eating_normally",
+    ]);
+    const persisted = await HealthRequest.findById(res.body.request._id).lean();
+    assert.equal(persisted.requestDetails.assistanceRequested, "medicine_request");
+    assert.deepEqual(persisted.requestDetails.observedSigns, [
+      "diarrhea",
+      "not_eating_normally",
+    ]);
+    assert.equal(
+      persisted.activeCaseKey,
+      `${animalId}:medicine`,
+    );
+    assert.equal(
+      await MedicalRecord.countDocuments({ animalId }),
+      medicalRecordsBefore,
+    );
+    const { req: duplicateReq, res: duplicateRes } = reqRes(
+      structuredPayload,
+      "farmer",
+      farmerId,
+    );
+    await createHealthRequest(duplicateReq, duplicateRes);
+    assert.equal(duplicateRes.statusCode, 409);
+    assert.equal(duplicateRes.body.code, "ACTIVE_HEALTH_CASE_EXISTS");
+  });
+  await t.test("structured Preventive Care can omit illness observations", async () => {
+    const animalId = new mongoose.Types.ObjectId();
+    await Animal.create({ _id: animalId, farmerId, animalId: "HL-PREVENTIVE", species: "Carabao", breed: "Native" });
+    const { req, res } = reqRes({
+      animalId: animalId.toString(),
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "preventive_care",
+        observedSigns: [],
+        farmerDescription: "",
+      },
+    }, "farmer", farmerId);
+
+    await createHealthRequest(req, res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.request.requestType, "checkup");
+    assert.deepEqual(res.body.request.requestDetails.observedSigns, []);
+    assert.match(res.body.request.symptoms, /Preventive care/);
   });
   await t.test("invalid photos rejected", async () => {
     const animalId = new mongoose.Types.ObjectId();

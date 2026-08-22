@@ -1,6 +1,62 @@
 import mongoose from "mongoose";
 import { HEALTH_STATUS } from "../domain/livestock-workflow.js";
-import { isActiveHealthRequestStatus } from "../domain/status-vocabulary.js";
+import {
+  HEALTH_HANDLING_METHOD,
+  isActiveHealthRequestStatus,
+} from "../domain/status-vocabulary.js";
+import { CANONICAL_HEALTH_REQUEST_TYPE } from "../domain/health-request-vocabulary.js";
+import {
+  HEALTH_OBSERVED_SIGN,
+  HEALTH_REQUEST_DESCRIPTION_MAX_LENGTH,
+  HEALTH_REQUEST_DETAILS_VERSION,
+} from "../domain/health-request-input.js";
+
+const HealthRequestDetailsSchema = new mongoose.Schema(
+  {
+    version: {
+      type: Number,
+      enum: [HEALTH_REQUEST_DETAILS_VERSION],
+      required: true,
+    },
+    assistanceRequested: {
+      type: String,
+      enum: Object.values(CANONICAL_HEALTH_REQUEST_TYPE),
+      required: true,
+    },
+    observedSigns: {
+      type: [{ type: String, enum: Object.values(HEALTH_OBSERVED_SIGN) }],
+      default: [],
+    },
+    farmerDescription: {
+      type: String,
+      trim: true,
+      maxlength: HEALTH_REQUEST_DESCRIPTION_MAX_LENGTH,
+      default: "",
+    },
+  },
+  { _id: false },
+);
+
+const HealthRequestPickupResponseSchema = new mongoose.Schema(
+  {
+    item: { type: String, trim: true },
+    availabilityConfirmed: { type: Boolean },
+    instructions: { type: String, trim: true },
+    dosageOrUseInstructions: { type: String, trim: true },
+    withdrawalGuidance: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
+const HealthRequestTechnicianResponseSchema = new mongoose.Schema(
+  {
+    pickup: {
+      type: HealthRequestPickupResponseSchema,
+      default: undefined,
+    },
+  },
+  { _id: false },
+);
 
 const HealthRequestSchema = new mongoose.Schema(
   {
@@ -48,6 +104,19 @@ const HealthRequestSchema = new mongoose.Schema(
       default: [],
     },
     farmerNotes: { type: String, default: "" },
+    requestDetails: {
+      type: HealthRequestDetailsSchema,
+      default: undefined,
+    },
+    handlingMethod: {
+      type: String,
+      enum: Object.values(HEALTH_HANDLING_METHOD),
+      default: undefined,
+    },
+    technicianResponse: {
+      type: HealthRequestTechnicianResponseSchema,
+      default: undefined,
+    },
     preferredDate: {
       type: Date,
     },

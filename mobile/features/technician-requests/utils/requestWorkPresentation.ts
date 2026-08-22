@@ -5,6 +5,7 @@ import type {
   VisitPeriod,
   WorkQueueItem,
 } from "../types/technicianRequests.types";
+import type { BadgeTone } from "@/components/ui/AppBadge";
 
 export type RequestWorkService =
   | "ai"
@@ -21,8 +22,6 @@ export type RequestWorkStatus =
   | "overdue"
   | "completed"
   | "cancelled";
-
-import type { BadgeTone } from "@/components/ui/AppBadge";
 
 export type RequestWorkTone = BadgeTone;
 
@@ -277,8 +276,23 @@ export function normalizeTechnicianWorkItem(
   const farmerReportType = normalizedValue(
     item.raw?.metadata?.reportType || item.raw?.farmerOutcomeReport,
   );
-  const isFarmerReturnToHeatReview =
-    workType === "pregnancy_check" && farmerReportType === "return_to_heat";
+  const handlingMethod = normalizedValue(
+    item.handlingMethod || item.raw?.handlingMethod,
+  );
+  const isNonClinicalHealthResponse =
+    workType === "health" &&
+    ["advice", "office_pickup"].includes(String(handlingMethod));
+  const hasMedicalRecord = Boolean(
+    text(item.medicalRecordId || item.raw?.medicalRecordId),
+  );
+  const healthCompletionPresentation =
+    workType === "health" && handlingMethod === "advice"
+      ? { title: "Health Advice", statusLabel: "Advice provided" }
+      : workType === "health" && handlingMethod === "office_pickup"
+        ? { title: "Office Pickup", statusLabel: "Pickup info available" }
+        : workType === "health" && hasMedicalRecord
+          ? { title: "Health Service", statusLabel: "Completed" }
+          : null;
 
   let state: TechnicianWorkState;
   if (cancelledStatuses.has(status)) state = "cancelled";
@@ -329,7 +343,11 @@ export function normalizeTechnicianWorkItem(
   const readiness = item.pregnancyReadiness || item.raw?.pregnancyReadiness;
   const actionLabel =
     state === "completed"
-      ? "View Record"
+      ? workType === "health"
+        ? hasMedicalRecord && !isNonClinicalHealthResponse
+          ? "View Record"
+          : "View Response"
+        : "View Record"
       : state === "in_progress"
         ? "Continue Service"
         : state === "needs_scheduling"
@@ -363,7 +381,10 @@ export function normalizeTechnicianWorkItem(
     timingKind,
     state,
     status,
-    title: titleFor(workType, attemptNumber),
+    title:
+      state === "completed" && healthCompletionPresentation
+        ? healthCompletionPresentation.title
+        : titleFor(workType, attemptNumber),
     statusLabel:
       workType === "breeding_follow_up" &&
       !["completed", "cancelled"].includes(state)
@@ -396,7 +417,9 @@ export function normalizeTechnicianWorkItem(
                   }
                 })()
               : "Follow-up due"
-        : statusLabelFor(state),
+        : state === "completed" && healthCompletionPresentation
+          ? healthCompletionPresentation.statusLabel
+          : statusLabelFor(state),
     actionLabel,
     scheduledDate,
     visitPeriod: period,

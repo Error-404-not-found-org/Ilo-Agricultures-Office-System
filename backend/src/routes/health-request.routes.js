@@ -12,6 +12,8 @@ import {
 } from "../controllers/health-request.controllers.js";
 import {
   getHealthRequestDetail,
+  provideHealthAdvice,
+  provideHealthOfficePickup,
   triageHealthRequest,
   scheduleHealthFollowUp,
 } from "../controllers/health-workflow.controllers.js";
@@ -25,6 +27,8 @@ router.post("/walk-in", protectedRoute, TechnicianOnly, walkInHealthRequest);
 router.get("/my", protectedRoute, getMyHealthRequests);
 router.get("/", protectedRoute, getAllHealthRequests);
 router.get("/:id", protectedRoute, getHealthRequestDetail);
+router.patch("/:id/advice", protectedRoute, TechnicianOnly, provideHealthAdvice);
+router.patch("/:id/office-pickup", protectedRoute, TechnicianOnly, provideHealthOfficePickup);
 router.patch("/:id/triage", protectedRoute, ClinicalOnly, triageHealthRequest);
 router.post("/:id/follow-up", protectedRoute, ClinicalOnly, scheduleHealthFollowUp);
 router.patch("/:id/status", protectedRoute, ClinicalOnly, updateHealthRequestStatus);

@@ -1,30 +1,12 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   TouchableOpacity,
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  Image,
 } from "react-native";
-import {
-  Plus,
-  CheckCircle,
-  ClipboardList,
-  ArrowLeft,
-  Sunrise,
-  Sunset,
-  Calendar,
-  Clock,
-  MapPin,
-  User,
-  PawPrint,
-  ChevronRight,
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  Clock as ClockIcon,
-} from "lucide-react-native";
+import { Plus, CheckCircle, ArrowLeft } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
@@ -35,7 +17,6 @@ import { toast } from "sonner-native";
 import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
 import {
   MY_WORK_FILTERS,
-  getServicePresentation,
   matchesServiceFilter,
   normalizeServiceType,
   normalizeTechnicianWorkItems,
@@ -45,13 +26,14 @@ import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
   standalone?: boolean;
+  initialWorkState?: "active" | "completed";
 }
-
 
 // ─── Main Panel Component ─────────────────────────────────────────────────────
 
 export default function TechnicianMyWorkPanel({
   standalone = false,
+  initialWorkState = "active",
 }: TechnicianMyWorkPanelProps) {
   const router = useRouter();
   const { colors, isDark } = useTheme();
@@ -62,7 +44,11 @@ export default function TechnicianMyWorkPanel({
     useState<RequestWorkFilterOption["value"]>("all");
   const [workStateFilter, setWorkStateFilter] = useState<
     "active" | "completed"
-  >("active");
+  >(initialWorkState);
+
+  useEffect(() => {
+    setWorkStateFilter(initialWorkState);
+  }, [initialWorkState]);
 
   const { tasksQuery } = useTechnicianTasks(undefined, { scope: "mine" });
   const { data: tasks = [], isLoading, refetch, isRefetching } = tasksQuery;

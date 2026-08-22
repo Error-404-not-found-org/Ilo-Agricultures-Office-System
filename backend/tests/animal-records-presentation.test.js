@@ -116,7 +116,6 @@ test("Technician Recent Records loads canonical record details by identifiers", 
 
   for (const kind of [
     'recordKind: "insemination"',
-    'recordKind: "health_request"',
     'recordKind: "medical_record"',
     'recordKind: "pregnancy"',
     'recordKind: "calving"',
@@ -126,7 +125,17 @@ test("Technician Recent Records loads canonical record details by identifiers", 
   assert.match(recordsBackend, /previousAttemptReference/);
 });
 
-test("animal records show one official outcome per linked health request", () => {
+test("animal records keep raw HealthRequests outside official record collections", () => {
+  const recordsBackend = source(
+    "backend/src/controllers/animal-workflow.controllers.js",
+  );
+  const recordsHandler = recordsBackend.slice(
+    recordsBackend.indexOf("export const getAnimalRecords"),
+    recordsBackend.indexOf("export const getAnimalReproductionEligibility"),
+  );
+  assert.doesNotMatch(recordsHandler, /HealthRequest\.find|recordKind: "health_request"/);
+  assert.match(recordsHandler, /MedicalRecord\.find|recordKind: "medical_record"/);
+
   const healthRequest = {
     _id: "health-request-1",
     recordKind: "health_request",

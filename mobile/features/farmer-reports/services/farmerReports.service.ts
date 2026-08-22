@@ -4,6 +4,7 @@ import type {
   OfficialRecordDetail,
   OfficialRecordKind,
 } from "../types/farmerReports.types";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 const getRecordText = (value: unknown): string | undefined => {
   if (value === null || value === undefined) return undefined;
@@ -59,12 +60,15 @@ export const mapHealthMedicalRecordDetails = (
   const details = source?.details || {};
   const withdrawalDays =
     details.withdrawalPeriodDays ?? source?.withdrawalPeriodDays;
+  const requestUrgency = linkedRequest.urgency || source?.urgency;
 
   return {
     status: "completed",
     requestType: formatHealthLabel(linkedRequest.requestType || source?.type),
     symptoms: getRecordText(linkedRequest.symptoms || source?.symptoms),
-    urgency: formatHealthLabel(linkedRequest.urgency || source?.urgency),
+    urgency: requestUrgency
+      ? getHealthUrgencyPresentation(requestUrgency).label
+      : undefined,
     farmerNotes: getRecordText(linkedRequest.farmerNotes),
     diagnosis: getRecordText(details.diagnosis || source?.diagnosis),
     treatment: getRecordText(details.treatment || source?.treatment),
@@ -159,7 +163,7 @@ export const getFarmerOfficialRecords = async (
       id: String(record.id),
       sourceId: String(record.id),
       sourceKind: record.recordKind,
-      title: isHealthRecord ? "Health Assistance" : record.title,
+      title: isHealthRecord ? "Health Service Record" : record.title,
       description: record.summary,
       date: record.recordDate || record.enteredAt,
       type,

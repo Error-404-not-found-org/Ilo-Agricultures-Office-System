@@ -12,7 +12,6 @@ export type OfficialRecordKind =
   | "insemination"
   | "pregnancy"
   | "calving"
-  | "health_request"
   | "medical_record";
 
 export interface RecordAttachment {
@@ -61,6 +60,10 @@ export interface ActivityFeedItem {
     reproductiveStatus?: string;
     imageUrl?: string;
   };
+  farmerId?: {
+    id: string | null;
+    name: string;
+  } | null;
   details?: {
     sireBreed?: string;
     sireCode?: string;
@@ -100,6 +103,14 @@ export interface ActivityFeedItem {
     lateEntryReason?: string;
 
     requestType?: string;
+    requestDetails?: {
+      version?: number;
+      assistanceRequested?: string;
+      observedSigns?: string[];
+      farmerDescription?: string;
+    };
+    handlingMethod?: "advice" | "office_pickup" | "farm_visit" | null;
+    medicalRecordId?: string | null;
     symptoms?: string;
     urgency?: string;
     farmerNotes?: string;

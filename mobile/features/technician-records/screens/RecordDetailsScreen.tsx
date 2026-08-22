@@ -21,7 +21,6 @@ const OFFICIAL_KINDS = new Set<OfficialRecordKind>([
   "insemination",
   "pregnancy",
   "calving",
-  "health_request",
   "medical_record",
 ]);
 
@@ -31,9 +30,8 @@ const canonicalKind = (value: unknown): OfficialRecordKind | undefined => {
     return normalized as OfficialRecordKind;
   }
   if (["ai", "ai-request"].includes(normalized)) return "insemination";
-  if (["health", "health-request"].includes(normalized)) {
-    return "health_request";
-  }
+  if (["medical", "medical-record"].includes(normalized))
+    return "medical_record";
   return undefined;
 };
 

@@ -28,12 +28,27 @@ import {
   normalizeVisitPeriod,
   normalizeVisitScheduleDate,
 } from "../domain/visit-scheduling.js";
+import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
+import {
+  buildLegacyHealthSymptoms,
+  legacyRequestTypeForAssistance,
+  normalizeHealthRequestDetails,
+} from "../domain/health-request-input.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const { animalId, requestType, symptoms, urgency, imageUrl, farmerNotes, photos } = req.body;
+    const {
+      animalId,
+      requestType,
+      symptoms,
+      urgency,
+      imageUrl,
+      farmerNotes,
+      photos,
+      requestDetails,
+    } = req.body;
     const normalizedUrgency = urgency === "critical" ? "emergency" : (urgency || "medium");
     if (!["low", "medium", "high", "emergency"].includes(normalizedUrgency)) {
       return res.status(400).json({ message: "Invalid health urgency value." });
@@ -42,8 +57,22 @@ export const createHealthRequest = async (req, res) => {
     if (!animalId) {
       return res.status(400).json({ message: "Please select an animal." });
     }
-    if (!symptoms || symptoms.trim() === "") {
-      return res.status(400).json({ message: "Please describe the symptoms or issue." });
+    const normalizedFarmerNotes =
+      typeof farmerNotes === "string" ? farmerNotes.trim() : "";
+    const normalizedRequestDetails = normalizeHealthRequestDetails(
+      requestDetails,
+      { legacyFarmerNotes: normalizedFarmerNotes },
+    );
+    const normalizedSymptoms =
+      typeof symptoms === "string" && symptoms.trim()
+        ? symptoms.trim()
+        : normalizedRequestDetails
+          ? buildLegacyHealthSymptoms(normalizedRequestDetails)
+          : "";
+    if (!normalizedSymptoms) {
+      return res.status(400).json({
+        message: "Please describe the symptoms or issue.",
+      });
     }
 
     // Verify the animal belongs to this farmer
@@ -52,7 +81,11 @@ export const createHealthRequest = async (req, res) => {
       return res.status(404).json({ message: "Animal not found or does not belong to you." });
     }
 
-    const normalizedRequestType = requestType || "disease";
+    const normalizedRequestType = normalizedRequestDetails
+      ? legacyRequestTypeForAssistance(
+          normalizedRequestDetails.assistanceRequested,
+        )
+      : requestType || "disease";
     const existingActiveRequest = await findActiveHealthCase(
       animalId,
       normalizedRequestType,
@@ -77,8 +110,6 @@ export const createHealthRequest = async (req, res) => {
       resolvedAt: new Date()
     };
 
-    const normalizedFarmerNotes = typeof farmerNotes === "string" ? farmerNotes.trim() : "";
-
     if (photos !== undefined) {
       if (!Array.isArray(photos) || !photos.every(p => typeof p === "string")) {
         return res.status(400).json({ code: "INVALID_PHOTOS", message: "Photos must be an array of strings." });
@@ -93,10 +124,15 @@ export const createHealthRequest = async (req, res) => {
       farmerId,
       animalId,
       requestType: normalizedRequestType,
-      symptoms: symptoms.trim(),
+      symptoms: normalizedSymptoms,
       urgency: normalizedUrgency,
       imageUrl: imageUrl || "",
-      farmerNotes: normalizedFarmerNotes,
+      farmerNotes: normalizedRequestDetails
+        ? normalizedRequestDetails.farmerDescription
+        : normalizedFarmerNotes,
+      ...(normalizedRequestDetails
+        ? { requestDetails: normalizedRequestDetails }
+        : {}),
       photos: normalizedPhotos,
       dispatch: dispatchSnapshot,
     });
@@ -155,7 +191,7 @@ export const getMyHealthRequests = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: requests,
+      data: requests.map(buildFarmerHealthRequest),
       total,
       page: parseInt(page),
       pages: Math.ceil(total / parseInt(limit))

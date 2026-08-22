@@ -436,6 +436,15 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
             const attemptNumber = Number.isFinite(req.attemptNumber)
               ? req.attemptNumber
               : null;
+            const isResolvedHealth =
+              isHealth &&
+              ["resolved", "done", "completed"].includes(req.status);
+            const healthRequestTitle =
+              isResolvedHealth && req.handlingMethod === "advice"
+                ? "Health Advice"
+                : isResolvedHealth && req.handlingMethod === "office_pickup"
+                  ? "Office Pickup"
+                  : "Health Request";
             const healthSymptoms = Array.isArray(req.symptoms)
               ? req.symptoms.map(getRequestText).filter(Boolean).join(", ")
               : getRequestText(req.symptoms || req.comment || req.reason);
@@ -486,7 +495,7 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
                         className="text-[15px] font-black"
                         style={{ color: colors.textPrimary }}
                       >
-                        {isHealth ? "Health Checkup" : "AI Insemination"}
+                        {isHealth ? healthRequestTitle : "AI Insemination"}
                       </Text>
                       <Text
                         className="text-[11px] font-bold"
@@ -771,7 +780,7 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
                         className="text-[11px] font-black uppercase tracking-widest"
                         style={{ color: primaryColor }}
                       >
-                        View Request
+                        {isResolvedHealth ? "View Response" : "View Request"}
                       </Text>
                       <ChevronRight size={12} color={primaryColor} />
                     </TouchableOpacity>
@@ -794,27 +803,6 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
                       <ChevronRight size={12} color={primaryColor} />
                     </TouchableOpacity>
                   )}
-
-                  {isHealth &&
-                    ["resolved", "done", "completed"].includes(req.status) && (
-                      <TouchableOpacity
-                        onPress={() =>
-                          router.push({
-                            pathname: "/(farmer)/health-report-preview",
-                            params: { id: req._id },
-                          })
-                        }
-                        className="flex-row items-center gap-1 ml-3"
-                      >
-                        <Text
-                          className="text-[11px] font-black uppercase tracking-widest"
-                          style={{ color: primaryColor }}
-                        >
-                          View Report
-                        </Text>
-                        <ChevronRight size={12} color={primaryColor} />
-                      </TouchableOpacity>
-                    )}
 
                   <View className="flex-1" />
 

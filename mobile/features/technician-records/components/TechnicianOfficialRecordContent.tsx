@@ -25,7 +25,6 @@ import {
   PawPrint,
   Heart,
   HeartOff,
-  Siren,
   MessageSquare,
   Search,
   Bandage,
@@ -48,6 +47,7 @@ import {
   formatAnimalReference,
   getFullAnimalReference,
 } from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 // --- EXISTING DATA HELPERS ---
 const hasValue = (value: unknown) => {
@@ -408,6 +408,7 @@ export function TechnicianOfficialRecordContent({
   const [calfGalleryImages, setCalfGalleryImages] = useState<ImageViewerItem[]>([]);
   const [calfGalleryInitialIndex, setCalfGalleryInitialIndex] = useState(0);
   const details = record.details || {};
+  const healthPriority = getHealthUrgencyPresentation(details.urgency);
   const eventDate = formatDate(
     details.serviceDate || record.date,
     record.datePrecision === "datetime",
@@ -587,7 +588,14 @@ export function TechnicianOfficialRecordContent({
         }
       : null,
     hasValue(details.urgency)
-      ? { label: "Urgency", value: humanize(details.urgency), icon: <Siren size={18} color={colors.primary} /> }
+      ? {
+          label: "Farmer request priority",
+          value: healthPriority.label,
+          icon:
+            healthPriority.priority === "urgent" ? (
+              <AlertTriangle size={18} color={colors.errorForeground} />
+            ) : undefined,
+        }
       : null,
     hasValue(details.symptoms)
       ? { label: "Concern or symptoms", value: details.symptoms || "", icon: <Stethoscope size={18} color={colors.primary} /> }

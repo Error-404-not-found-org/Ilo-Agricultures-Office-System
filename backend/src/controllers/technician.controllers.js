@@ -4,6 +4,7 @@ import cloudinary from "../config/cloudinary.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { MedicalRecord } from "../models/medical-record.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { Notification } from "../models/notification.model.js";
@@ -4215,6 +4216,26 @@ export const getWorkQueue = async (req, res) => {
 
       return null;
     };
+    const terminalHealthRequestIds = healthReqs
+      .filter(
+        (request) =>
+          ["resolved", "done"].includes(request.status) &&
+          !["advice", "office_pickup"].includes(request.handlingMethod),
+      )
+      .map((request) => request._id);
+    const healthMedicalRecords = terminalHealthRequestIds.length
+      ? await MedicalRecord.find({
+          healthRequestId: { $in: terminalHealthRequestIds },
+        })
+          .select("_id healthRequestId")
+          .lean()
+      : [];
+    const medicalRecordIdByHealthRequest = new Map(
+      healthMedicalRecords.map((record) => [
+        idOf(record.healthRequestId),
+        idOf(record),
+      ]),
+    );
     const cleanAddressPart = (value) => {
       const normalized = String(value || "").trim();
       return normalized &&
@@ -4482,6 +4503,8 @@ export const getWorkQueue = async (req, res) => {
     healthReqs.forEach((req) => {
       const workflowId = idOf(req);
       if (!workflowId) return;
+      const medicalRecordId =
+        medicalRecordIdByHealthRequest.get(workflowId) || null;
 
       const matchedTask = findExecutionTask("Health", workflowId);
       const taskId = idOf(matchedTask);
@@ -4508,13 +4531,16 @@ export const getWorkQueue = async (req, res) => {
         allowedAction = "START_SERVICE";
       else if (req.status === "in-progress" || req.status === "in_progress")
         allowedAction = "RECORD_SERVICE";
-      else if (terminal) allowedAction = "VIEW_RECORD";
+      else if (terminal)
+        allowedAction = medicalRecordId ? "VIEW_RECORD" : "VIEW_RESPONSE";
 
       if (allowedAction === "CLAIM") actionLabel = "Claim";
       else if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
       else if (allowedAction === "RECORD_SERVICE")
         actionLabel = "Record Service";
       else if (allowedAction === "VIEW_RECORD") actionLabel = "View Record";
+      else if (allowedAction === "VIEW_RESPONSE")
+        actionLabel = "View Response";
 
       const item = {
         id: workflowId,
@@ -4525,6 +4551,8 @@ export const getWorkQueue = async (req, res) => {
         taskType: "Health",
         serviceType: req.requestType || "Health Assistance",
         status: req.status,
+        handlingMethod: req.handlingMethod || null,
+        medicalRecordId,
         allowedAction,
         actionLabel,
         farmer: serializeFarmer(req.farmerId),

@@ -274,9 +274,33 @@ export const formatHumanReadableRecordTitle = (
     };
   }
 
+  if (type === "health") {
+    const handlingMethod = String(details.handlingMethod || "");
+    const hasMedicalRecord = Boolean(details.medicalRecordId);
+    const title =
+      handlingMethod === "advice"
+        ? `Health advice for ${animalReference}`
+        : handlingMethod === "office_pickup"
+          ? `Office pickup for ${animalReference}`
+          : hasMedicalRecord
+            ? `Health service recorded for ${animalReference}`
+            : `Health request for ${animalReference}`;
+    return {
+      id: String(activity.id || activity._id || "health"),
+      title,
+      outcome: String(
+        activity.description || humanizeOutcome(details.status),
+      ),
+      date: activity.date || activity.createdAt,
+      type,
+      animalId: activity.animalId,
+      fullAnimalReference,
+    };
+  }
+
   return {
     id: String(activity.id || activity._id || type),
-    title: `${type === "health" ? "Health check" : "Record updated"} for ${animalReference}`,
+    title: `Record updated for ${animalReference}`,
     outcome: String(activity.description || humanizeOutcome(details.status)),
     date: activity.date || activity.createdAt,
     type,

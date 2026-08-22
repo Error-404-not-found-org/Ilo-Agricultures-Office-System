@@ -3,14 +3,13 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   FlatList,
   ActivityIndicator,
   Image,
   Linking,
   useWindowDimensions,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   HeartPulse,
   User,
@@ -20,11 +19,9 @@ import {
   X,
   Check,
   AlertCircle,
-  Clock,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useEffect, useRef } from "react";
-import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
 
 import { useTheme } from "@/lib/theme";
@@ -47,6 +44,18 @@ import {
 } from "@/features/farmer-requests/utils/healthRequestState";
 import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
 import { requestFormStyles } from "@/features/farmer-requests/components/requestFormStyles";
+import {
+  HealthRequestCategoryFields,
+} from "@/features/farmer-requests/components/HealthRequestCategoryFields";
+import {
+  buildLegacyHealthRequestDetails,
+  buildStructuredHealthRequestDetails,
+  getHealthRequestInputValidationMessage,
+  getLegacyRequestType,
+  HEALTH_REQUEST_CATEGORIES,
+  type FarmerHealthAssistance,
+  type FarmerHealthObservedSign,
+} from "@/features/farmer-requests/utils/healthRequestInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -89,63 +98,36 @@ const formatAddress = (address?: FarmerProfile["address"]) => {
     .join(", ");
 };
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-const REQUEST_TYPES = [
-  { value: "disease", label: "🦠 Disease / Infection" },
-  { value: "medicine", label: "💊 Medicine Request" },
-  { value: "checkup", label: "🩺 General Checkup" },
-  { value: "injury", label: "🤕 Injury / Wound" },
-  { value: "vaccination", label: "💉 Vaccination" },
-  { value: "deworming", label: "🪱 Deworming" },
-  { value: "other", label: "📋 Other" },
-];
-
-const URGENCY_OPTIONS = [
-  {
-    value: "low",
-    label: "Low",
-    desc: "Can wait a few days",
-    color: "#22c55e",
-    bg: "#f0fdf4",
-    darkBg: "rgba(34, 197, 94, 0.15)",
-  },
-  {
-    value: "medium",
-    label: "Medium",
-    desc: "Needs attention soon",
-    color: "#f59e0b",
-    bg: "#fffbeb",
-    darkBg: "rgba(245, 158, 11, 0.15)",
-  },
-  {
-    value: "critical",
-    label: "Critical",
-    desc: "Needs attention immediately",
-    color: "#b91c1c",
-    bg: "#fef2f2",
-    darkBg: "rgba(185, 28, 28, 0.15)",
-  },
-];
-
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ReportSickness() {
   const router = useRouter();
+  const { animalId: routeAnimalId, type: routeType } = useLocalSearchParams<{
+    animalId?: string;
+    type?: string;
+  }>();
   const scrollRef = useRef<ScrollView>(null);
   const submitLockRef = useRef(false);
   const { colors, isDark } = useTheme();
 
-  const primaryColor = isDark ? colors.error : "#b91c1c";
+  const primaryColor = colors.primary;
+  const emergencyColor = colors.error;
+  const pregnancyConcern = routeType === "pregnancy_complication";
 
   const [farmer, setFarmer] = useState<FarmerProfile | null>(null);
   const [animals, setAnimals] = useState<Animal[]>([]);
 
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
-  const [requestType, setRequestType] = useState("disease");
-  const [urgency, setUrgency] = useState("medium");
-  const [symptoms, setSymptoms] = useState("");
-  const [farmerNotes, setFarmerNotes] = useState("");
+  const [category, setCategory] =
+    useState<FarmerHealthAssistance>("health_concern");
+  const [selectedOptions, setSelectedOptions] = useState<
+    FarmerHealthObservedSign[]
+  >([]);
+  const [description, setDescription] = useState("");
+  const [needsUrgentAttention, setNeedsUrgentAttention] = useState(false);
   const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
   const mutation = useSubmitHealthRequestMutation();
+  const requestType = getLegacyRequestType(category);
+  const urgency = needsUrgentAttention ? "critical" : "medium";
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitting = mutation.isPending || isSubmitting;
@@ -159,7 +141,6 @@ export default function ReportSickness() {
   };
 
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
-  const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
@@ -206,9 +187,16 @@ export default function ReportSickness() {
       const list = Array.isArray(animalsData) ? animalsData : animalsData.data;
       if (Array.isArray(list)) {
         setAnimals(list);
+        if (routeAnimalId && !selectedAnimal) {
+          const routeAnimal = list.find(
+            (animal: Animal) =>
+              animal._id === routeAnimalId || animal.animalId === routeAnimalId,
+          );
+          if (routeAnimal) setSelectedAnimal(routeAnimal);
+        }
       }
     }
-  }, [animalsData]);
+  }, [animalsData, routeAnimalId, selectedAnimal]);
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
     if (photos.length >= 5) {
@@ -229,14 +217,22 @@ export default function ReportSickness() {
     if (!selectedAnimal) return;
 
     const base64Photos = photos.map((p) => p.base64);
+    const requestDetails = buildStructuredHealthRequestDetails({
+      assistanceRequested: category,
+      observedSigns: selectedOptions,
+      farmerDescription: description,
+      pregnancyConcern,
+    });
+    const legacyDetails = buildLegacyHealthRequestDetails(requestDetails);
 
     const payload = buildFarmerHealthRequestPayload(
       selectedAnimal._id,
       requestType,
-      symptoms,
+      legacyDetails.symptoms,
       urgency,
-      farmerNotes,
+      legacyDetails.farmerNotes,
       base64Photos,
+      requestDetails,
     );
 
     setIsSubmitting(true);
@@ -247,13 +243,14 @@ export default function ReportSickness() {
       });
       if (result.status === "synced") {
         toast.success(
-          "Health request submitted. A technician will review your request and schedule the visit.",
+          "Health request submitted. A technician will review it and respond.",
           { duration: 4000, position: "top-center" },
         );
       }
       setSelectedAnimal(null);
-      setSymptoms("");
-      setFarmerNotes("");
+      setSelectedOptions([]);
+      setDescription("");
+      setNeedsUrgentAttention(false);
       setPhotos([]);
       router.back();
     } catch (error: any) {
@@ -308,15 +305,13 @@ export default function ReportSickness() {
         return;
       }
 
-      if (!symptoms.trim()) {
-        showSubmitError("Please describe the symptoms or condition.");
-        return;
-      }
-
-      if (photos.length === 0) {
-        showSubmitError(
-          "Please attach at least one photo of the animal to help technicians assess the condition.",
-        );
+      const validationMessage = getHealthRequestInputValidationMessage({
+        assistanceRequested: category,
+        observedSigns: selectedOptions,
+        farmerDescription: description,
+      });
+      if (validationMessage) {
+        showSubmitError(validationMessage);
         return;
       }
 
@@ -331,7 +326,9 @@ export default function ReportSickness() {
     }
   };
 
-  const selectedType = REQUEST_TYPES.find((t) => t.value === requestType);
+  const selectedCategory = HEALTH_REQUEST_CATEGORIES.find(
+    (item) => item.value === category,
+  );
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
@@ -353,24 +350,27 @@ export default function ReportSickness() {
           contentContainerStyle={{ paddingBottom: 160 }}
         >
           {/* --- EMERGENCY CONTACT BANNER & DIRECT CALLS --- */}
-          <View className="mb-6 rounded-[28px] border border-red-200 bg-red-50 dark:bg-red-950/15 dark:border-transparent p-5 shadow-sm">
+          <View className="mb-6 rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/15 dark:border-transparent p-5">
             <View className="flex-row items-start gap-2.5 mb-3">
-              <AlertCircle size={18} color={primaryColor} className="mt-0.5" />
+              <AlertCircle
+                size={18}
+                color={emergencyColor}
+                className="mt-0.5"
+              />
               <View className="flex-1">
                 <Text className="text-[12px] font-outfit-black uppercase tracking-wider text-red-700 dark:text-red-400">
                   Veterinary Emergency?
                 </Text>
                 <Text className="text-[12px] font-outfit-medium text-slate-500 dark:text-slate-400 mt-1 leading-[18px]">
-                  This form is for scheduling routine visits (Checkups,
-                  vaccinations, deworming). If your animal is in a critical
-                  emergency, please call a technician directly below:
+                  This form is for animal health assistance. If your animal is
+                  in a critical emergency, please call a technician directly:
                 </Text>
               </View>
             </View>
 
             {/* Technicians List */}
             {isLoadingTechs ? (
-              <ActivityIndicator color={primaryColor} className="py-4" />
+              <ActivityIndicator color={emergencyColor} className="py-4" />
             ) : !technicians || technicians.length === 0 ? (
               <Text className="text-center font-outfit-medium text-[11px] text-slate-400 dark:text-slate-500 italic py-2">
                 No active technicians registered in your area.
@@ -412,7 +412,7 @@ export default function ReportSickness() {
                           ) : (
                             <Text
                               className="font-outfit-black text-xs"
-                              style={{ color: primaryColor }}
+                              style={{ color: emergencyColor }}
                             >
                               {initials}
                             </Text>
@@ -471,7 +471,7 @@ export default function ReportSickness() {
                           }}
                           activeOpacity={0.8}
                           className="h-10 px-4 rounded-xl flex-row items-center justify-center gap-1.5 shadow-sm"
-                          style={{ backgroundColor: primaryColor }}
+                          style={{ backgroundColor: emergencyColor }}
                         >
                           <MaterialCommunityIcons
                             name="phone"
@@ -640,33 +640,87 @@ export default function ReportSickness() {
             />
           </TouchableOpacity>
 
-          {/* Request Type */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Request Type
-          </Text>
-          <TouchableOpacity
-            onPress={() => setTypeModalVisible(true)}
-            className="border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-5"
-            style={{
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              elevation: 1,
-            }}
-          >
-            <Text
-              className="text-sm font-bold"
-              style={[
-                requestFormStyles.fieldValue,
-                { color: colors.textPrimary },
-              ]}
-            >
-              {selectedType?.label || "Select type"}
-            </Text>
-            <ChevronDown size={20} color={colors.textMuted} />
-          </TouchableOpacity>
+          <View style={{ marginBottom: 20, gap: 10 }}>
+            <View style={{ marginLeft: 4 }}>
+              <AppText textRole="title" style={{ color: colors.textPrimary }}>
+                What do you need help with?
+              </AppText>
+              <AppText
+                textRole="body"
+                style={{ color: colors.textSecondary, marginTop: 2 }}
+              >
+                Choose the option that best matches your concern.
+              </AppText>
+            </View>
+
+            {HEALTH_REQUEST_CATEGORIES.map((item) => {
+              const selected = category === item.value;
+              return (
+                <TouchableOpacity
+                  key={item.value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={item.label}
+                  accessibilityState={{ selected }}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    if (item.value === category) return;
+                    setCategory(item.value);
+                  }}
+                  style={{
+                    minHeight: 64,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                    backgroundColor: selected
+                      ? colors.successContainer
+                      : colors.card,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 11,
+                      borderWidth: 1,
+                      borderColor: selected ? colors.primary : colors.textMuted,
+                      backgroundColor: selected ? colors.primary : colors.card,
+                    }}
+                  >
+                    {selected ? (
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: colors.onPrimary,
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <AppText
+                      textRole="bodyStrong"
+                      style={{ color: colors.textPrimary }}
+                    >
+                      {item.label}
+                    </AppText>
+                    <AppText
+                      textRole="caption"
+                      style={{ color: colors.textSecondary, marginTop: 2 }}
+                    >
+                      {item.description}
+                    </AppText>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {activeCase && (
             <View
@@ -689,8 +743,7 @@ export default function ReportSickness() {
                     className="text-xs mt-1 leading-5"
                     style={{ color: colors.textSecondary }}
                   >
-                    {selectedType?.label?.replace(/^\S+\s*/, "") ||
-                      "Health issue"}
+                    {selectedCategory?.label || "Health issue"}
                     {" · "}
                     {String(activeCase.status || "pending")
                       .replace(/[-_]/g, " ")
@@ -729,49 +782,88 @@ export default function ReportSickness() {
             </View>
           )}
 
-          {/* Urgency Selector */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Urgency Level
-          </Text>
-          <View className="flex-row gap-3 mb-5">
-            {URGENCY_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                onPress={() => setUrgency(opt.value)}
-                className="flex-1 rounded-2xl py-3 px-2 items-center border"
-                style={{
-                  borderColor:
-                    urgency === opt.value ? opt.color : colors.border,
-                  backgroundColor:
-                    urgency === opt.value
-                      ? isDark
-                        ? opt.darkBg
-                        : opt.bg
-                      : colors.card,
-                }}
-              >
-                <Text
-                  className="text-xs font-bold"
-                  style={{
-                    color: urgency === opt.value ? opt.color : colors.textMuted,
-                  }}
-                >
-                  {opt.label}
-                </Text>
-                <Text
-                  className="text-[10px] text-center mt-1 font-medium"
-                  style={{
-                    color: urgency === opt.value ? opt.color : colors.textMuted,
-                  }}
-                >
-                  {opt.desc}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={{ marginBottom: 20 }}>
+            <HealthRequestCategoryFields
+              category={category}
+              selectedOptions={selectedOptions}
+              description={description}
+              pregnancyConcern={pregnancyConcern}
+              onToggleOption={(option) =>
+                setSelectedOptions((current) =>
+                  current.includes(option)
+                    ? current.filter((item) => item !== option)
+                    : [...current, option],
+                )
+              }
+              onDescriptionChange={setDescription}
+              onDescriptionFocus={() =>
+                setTimeout(
+                  () =>
+                    scrollRef.current?.scrollTo({ y: 1050, animated: true }),
+                  350,
+                )
+              }
+            />
           </View>
+
+          <TouchableOpacity
+            accessibilityRole="checkbox"
+            accessibilityLabel="Needs urgent attention"
+            accessibilityState={{ checked: needsUrgentAttention }}
+            activeOpacity={0.75}
+            onPress={() => setNeedsUrgentAttention((current) => !current)}
+            style={{
+              minHeight: 64,
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 12,
+              padding: 14,
+              marginBottom: 20,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: needsUrgentAttention
+                ? colors.errorBorder
+                : colors.border,
+              backgroundColor: needsUrgentAttention
+                ? colors.errorContainer
+                : colors.card,
+            }}
+          >
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: needsUrgentAttention
+                  ? colors.error
+                  : colors.textMuted,
+                backgroundColor: needsUrgentAttention
+                  ? colors.error
+                  : colors.card,
+              }}
+            >
+              {needsUrgentAttention ? (
+                <Check size={15} color={colors.onPrimary} />
+              ) : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppText
+                textRole="bodyStrong"
+                style={{ color: colors.textPrimary }}
+              >
+                Needs urgent attention
+              </AppText>
+              <AppText
+                textRole="body"
+                style={{ color: colors.textSecondary, marginTop: 2 }}
+              >
+                Use this when the animal may need attention as soon as possible.
+              </AppText>
+            </View>
+          </TouchableOpacity>
 
           {/* Photos */}
           <View className="flex-row items-center justify-between mb-3 mt-2">
@@ -782,7 +874,8 @@ export default function ReportSickness() {
                 { color: colors.textMuted },
               ]}
             >
-              Attach Photos * {photos.length > 0 ? `(${photos.length}/5)` : ""}
+              Photos (Optional){" "}
+              {photos.length > 0 ? `(${photos.length}/5)` : ""}
             </Text>
             {photos.length > 0 && photos.length < 5 && (
               <TouchableOpacity
@@ -823,7 +916,7 @@ export default function ReportSickness() {
                 className="text-[13px] font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                Tap to upload up to 5 photos
+                Add up to 5 photos if they help explain the concern
               </Text>
             </TouchableOpacity>
           ) : (
@@ -853,76 +946,6 @@ export default function ReportSickness() {
               </View>
             </ScrollView>
           )}
-
-          {/* Symptoms / Description */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Symptoms / Description *
-          </Text>
-          <TextInput
-            className="border rounded-2xl px-4 py-4 text-sm mb-5"
-            style={[
-              requestFormStyles.textInput,
-              {
-                minHeight: 120,
-                textAlignVertical: "top",
-                elevation: 1,
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                color: colors.textPrimary,
-              },
-            ]}
-            value={symptoms}
-            onChangeText={setSymptoms}
-            onFocus={() =>
-              setTimeout(
-                () => scrollRef.current?.scrollTo({ y: 800, animated: true }),
-                350,
-              )
-            }
-            placeholder="Describe what you observed..."
-            placeholderTextColor={colors.textMuted}
-            multiline
-            numberOfLines={4}
-            blurOnSubmit={false}
-          />
-
-          {/* Farmer Notes */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Additional Notes (Optional)
-          </Text>
-          <TextInput
-            className="border rounded-2xl px-4 py-4 text-sm mb-6"
-            style={[
-              requestFormStyles.textInput,
-              {
-                minHeight: 100,
-                textAlignVertical: "top",
-                elevation: 1,
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                color: colors.textPrimary,
-              },
-            ]}
-            value={farmerNotes}
-            onChangeText={setFarmerNotes}
-            onFocus={() =>
-              setTimeout(
-                () => scrollRef.current?.scrollToEnd({ animated: true }),
-                350,
-              )
-            }
-            placeholder="Any other details for the technician..."
-            placeholderTextColor={colors.textMuted}
-            multiline
-            numberOfLines={3}
-            blurOnSubmit={false}
-          />
 
           {/* Submit */}
           <TouchableOpacity
@@ -1123,68 +1146,6 @@ export default function ReportSickness() {
         </View>
       </AnimatedBottomSheet>
 
-      {/* Request Type Modal */}
-      <AnimatedBottomSheet
-        visible={typeModalVisible}
-        onClose={() => setTypeModalVisible(false)}
-        backgroundColor={colors.card}
-      >
-        <View className="p-6" style={{ backgroundColor: colors.card }}>
-          <View className="flex-row justify-between items-center mb-4">
-            <Text
-              className="text-lg font-bold"
-              style={[
-                requestFormStyles.modalTitle,
-                { color: colors.textPrimary },
-              ]}
-            >
-              Request Type
-            </Text>
-            <TouchableOpacity
-              onPress={() => setTypeModalVisible(false)}
-              className="p-1 rounded-full"
-              style={{
-                backgroundColor: isDark ? colors.background : "#f8fafc",
-              }}
-            >
-              <X size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-          {REQUEST_TYPES.map((type) => (
-            <TouchableOpacity
-              key={type.value}
-              onPress={() => {
-                setRequestType(type.value);
-                setTypeModalVisible(false);
-              }}
-              className="py-4 px-3 border-b flex-row items-center justify-between"
-              style={{
-                borderBottomColor: colors.border,
-                backgroundColor:
-                  requestType === type.value
-                    ? isDark
-                      ? "rgba(239, 68, 68, 0.15)"
-                      : "#fef2f2"
-                    : undefined,
-                borderRadius: requestType === type.value ? 16 : 0,
-              }}
-            >
-              <Text
-                className="text-[15px] font-bold"
-                style={[
-                  requestFormStyles.modalItemTitle,
-                  { color: colors.textPrimary },
-                ]}
-              >
-                {type.label}
-              </Text>
-              {requestType === type.value && (
-                <Check size={18} color={primaryColor} />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </AnimatedBottomSheet>
       {/* Photo Selector Modal */}
       <PhotoOptionModal
         visible={photoModalVisible}

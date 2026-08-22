@@ -2,6 +2,7 @@ import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { MedicalRecord } from "../models/medical-record.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { Task } from "../models/task.model.js";
@@ -1906,6 +1907,28 @@ export const getMyActivityFeed = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(5),
     ]);
+    const clinicalHealthRequestIds = healthRequests
+      .filter(
+        (request) =>
+          ["resolved", "done", "completed"].includes(request.status) &&
+          !["advice", "office_pickup"].includes(request.handlingMethod),
+      )
+      .map((request) => request._id);
+    const linkedMedicalRecords = clinicalHealthRequestIds.length
+      ? await MedicalRecord.find({
+          healthRequestId: {
+            $in: clinicalHealthRequestIds,
+          },
+        })
+          .select("_id healthRequestId")
+          .lean()
+      : [];
+    const medicalRecordByRequestId = new Map(
+      linkedMedicalRecords.map((record) => [
+        String(record.healthRequestId),
+        String(record._id),
+      ]),
+    );
 
     const feed = [
       ...inseminations.map((i) => ({
@@ -1941,34 +1964,67 @@ export const getMyActivityFeed = async (req, res) => {
           scheduledDate: i.scheduledDate || i.preferredDate,
         },
       })),
-      ...healthRequests.map((h) => ({
-        id: h._id,
-        title: isTechnicianOrAdmin
-          ? `Health Check — ${h.animalId?.animalId || h.animalId?.earTag || "Animal"} (${h.farmerId?.name || "Farmer"})`
-          : `Health Check — ${h.animalId?.animalId || h.animalId?.earTag || "Animal"}`,
-        description: h.deletedAt
-          ? "Cancelled Request"
-          : h.status === "resolved"
-            ? "Completed checkup"
-            : h.status === "rejected"
-              ? "Declined by Technician"
-              : `Status: ${h.status}`,
-        date: h.createdAt,
-        type: "health",
-        animalId: h.animalId,
-        details: {
-          requestType: h.requestType || "checkup",
-          symptoms: h.symptoms || "N/A",
-          urgency: h.urgency || "medium",
-          status: h.deletedAt ? "cancelled" : h.status,
-          diagnosis: h.diagnosis || "No diagnosis logged.",
-          treatment: h.treatment || "No treatment logged.",
-          advice: h.advice || "No advice logged.",
-          technician: h.handledBy?.name || "Pending",
-          technicianNote: h.technicianNote || "No notes logged.",
-          scheduledDate: h.scheduledDate || h.preferredDate,
-        },
-      })),
+      ...healthRequests.map((h) => {
+        const medicalRecordId = medicalRecordByRequestId.get(String(h._id));
+        const animalLabel =
+          h.animalId?.animalId || h.animalId?.earTag || "Animal";
+        const farmerSuffix = isTechnicianOrAdmin
+          ? ` (${h.farmerId?.name || "Farmer"})`
+          : "";
+        const isAdvice = h.handlingMethod === "advice";
+        const isOfficePickup = h.handlingMethod === "office_pickup";
+        const isResolved = ["resolved", "done", "completed"].includes(
+          h.status,
+        );
+        const title = isAdvice
+          ? `Health Advice — ${animalLabel}${farmerSuffix}`
+          : isOfficePickup
+            ? `Office Pickup — ${animalLabel}${farmerSuffix}`
+            : medicalRecordId
+              ? `Health Service Record — ${animalLabel}${farmerSuffix}`
+              : `Health Request — ${animalLabel}${farmerSuffix}`;
+        const description = h.deletedAt
+          ? "Cancelled request"
+          : isResolved && isAdvice
+            ? isTechnicianOrAdmin
+              ? "Advice sent"
+              : "Advice received"
+            : isResolved && isOfficePickup
+              ? "Pickup information available"
+              : isResolved && medicalRecordId
+                ? "Clinical service recorded"
+                : isResolved
+                  ? "Health request resolved"
+                  : h.status === "rejected"
+                    ? "Declined by technician"
+                    : `Status: ${h.status}`;
+
+        return {
+          id: h._id,
+          title,
+          description,
+          date: h.createdAt,
+          type: "health",
+          animalId: h.animalId,
+          details: {
+            requestType: h.requestType || "checkup",
+            requestDetails: h.requestDetails,
+            symptoms: h.symptoms || "",
+            urgency: h.urgency || "medium",
+            status: h.deletedAt ? "cancelled" : h.status,
+            handlingMethod: h.handlingMethod || null,
+            medicalRecordId: medicalRecordId || null,
+            diagnosis: medicalRecordId ? h.diagnosis || "" : undefined,
+            treatment: medicalRecordId ? h.treatment || "" : undefined,
+            advice: h.advice || "",
+            technician: h.handledBy?.name || "Pending",
+            ...(isTechnicianOrAdmin
+              ? { technicianNote: h.technicianNote || "" }
+              : {}),
+            scheduledDate: h.scheduledDate || h.preferredDate,
+          },
+        };
+      }),
       ...calvings.map((c) => ({
         id: c._id,
         title: isTechnicianOrAdmin

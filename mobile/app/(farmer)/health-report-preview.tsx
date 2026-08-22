@@ -8,7 +8,7 @@ import * as Sharing from "expo-sharing";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { getHealthRequestDetail } from "@/features/health-requests/services/healthRequests.service";
+import { getFarmerOfficialRecordDetail } from "@/features/farmer-reports/services/farmerReports.service";
 import {
   FarmerScreen,
   AsyncState,
@@ -29,7 +29,7 @@ function HealthReportPreviewSkeleton() {
   return (
     <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
       <AppPageHeader
-        title="Health Report"
+        title="Health Service Record"
         rightAction={
           <View style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
             <Skeleton width={36} height={36} radius={12} />
@@ -79,14 +79,18 @@ function HealthReportPreviewSkeleton() {
 }
 
 export default function HealthReportPreviewScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, animalId } = useLocalSearchParams<{
+    id: string;
+    animalId: string;
+  }>();
   const api = useApi();
   const { colors } = useTheme();
 
   const query = useQuery({
-    queryKey: ["health-request", id, "report"],
-    enabled: Boolean(id),
-    queryFn: () => getHealthRequestDetail(api, id),
+    queryKey: ["official-medical-record", animalId, id, "report"],
+    enabled: Boolean(id && animalId),
+    queryFn: () =>
+      getFarmerOfficialRecordDetail(api, animalId, "medical_record", id),
   });
 
   if (query.isLoading) {
@@ -101,34 +105,35 @@ export default function HealthReportPreviewScreen() {
     );
   }
 
-  const request: any = query.data;
-  const animal: any = request.animalId || {};
-  const farmer: any = request.farmerId || {};
+  const record: any = query.data;
+  const animal: any = record.animalId || {};
+  const farmer: any = record.farmerId || {};
+  const details: any = record.details || {};
 
   const share = async () => {
     const rows = [
       ["Animal", animal.earTag || animal.animalId],
       ["Farmer", farmer.name],
-      ["Concern", request.requestType],
-      ["Urgency", request.urgency],
-      ["Symptoms", request.symptoms],
-      ["Findings", request.findings],
-      ["Diagnosis", request.diagnosis],
-      ["Treatment", request.treatment],
-      ["Medicine", request.medicineGiven],
-      ["Dosage", request.dosage],
-      ["Follow-up", request.followUpDate],
-      ["Resolution", request.resolutionNotes],
+      ["Record type", record.title],
+      ["Service date", details.serviceDate],
+      ["Concern", details.requestType],
+      ["Symptoms", details.symptoms],
+      ["Diagnosis", details.diagnosis],
+      ["Treatment", details.treatment],
+      ["Medicine", details.medicine],
+      ["Dosage", details.dosage],
+      ["Follow-up", details.followUpDate],
+      ["Clinical note", details.advice],
     ];
 
-    const html = `<html><body style="font-family:Arial;padding:32px;color:#17201a"><h1 style="color:#00643B">BreedSmart Health Report</h1><p>Iloilo Livestock Health Record</p>${rows
+    const html = `<html><body style="font-family:Arial;padding:32px;color:#17201a"><h1 style="color:#00643B">BreedSmart Health Service Record</h1><p>Iloilo Livestock Medical Record</p>${rows
       .map(
         ([label, value]) =>
           `<div style="border-bottom:1px solid #ddd;padding:10px 0"><b>${clean(label)}</b><br/>${clean(value)}</div>`,
       )
       .join(
         "",
-      )}<p style="margin-top:28px;font-size:11px;color:#667069">Generated from BreedSmart. This report documents recorded assistance and does not replace veterinary certification.</p></body></html>`;
+      )}<p style="margin-top:28px;font-size:11px;color:#667069">Generated from an official BreedSmart MedicalRecord. This document does not replace veterinary certification.</p></body></html>`;
 
     const result = await Print.printToFileAsync({ html });
     if (await Sharing.isAvailableAsync()) {
@@ -142,9 +147,12 @@ export default function HealthReportPreviewScreen() {
   return (
     <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
       <AppPageHeader
-        title="Health Report"
+        title="Health Service Record"
         rightAction={
-          <AppHeaderIconButton onPress={share} accessibilityLabel="Share Report">
+            <AppHeaderIconButton
+              onPress={share}
+              accessibilityLabel="Share health service record"
+            >
             <Share2 size={20} color={colors.textPrimary} />
           </AppHeaderIconButton>
         }
@@ -175,7 +183,7 @@ export default function HealthReportPreviewScreen() {
             fontSize: 11,
           }}
         >
-          Animal Health Assistance Report
+          Official Medical Record
         </Text>
 
         <View className="mt-5 flex-row justify-between">
@@ -188,20 +196,21 @@ export default function HealthReportPreviewScreen() {
           >
             {animal.earTag || animal.animalId}
           </Text>
-          <StatusBadge label={request.status} />
+          <StatusBadge label="Completed" />
         </View>
 
         {[
           ["Farmer", farmer.name],
-          ["Concern", request.requestType?.replaceAll("_", " ")],
-          ["Symptoms", request.symptoms],
-          ["Findings", request.findings],
-          ["Diagnosis", request.diagnosis],
-          ["Treatment", request.treatment],
-          ["Medicine", request.medicineGiven],
-          ["Dosage", request.dosage],
-          ["Follow-up", request.followUpDate],
-          ["Resolution", request.resolutionNotes],
+          ["Record type", record.title],
+          ["Service date", details.serviceDate],
+          ["Concern", details.requestType?.replaceAll("_", " ")],
+          ["Symptoms", details.symptoms],
+          ["Diagnosis", details.diagnosis],
+          ["Treatment", details.treatment],
+          ["Medicine", details.medicine],
+          ["Dosage", details.dosage],
+          ["Follow-up", details.followUpDate],
+          ["Clinical note", details.advice],
         ].map(([label, value]) => (
           <View
             key={label}

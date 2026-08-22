@@ -20,24 +20,29 @@ export const getAiRequests = async (api: AxiosInstance, limit = 25) => {
   return response.data;
 };
 
-export const getHealthRequests = async (api: AxiosInstance, limit = 25) => {
-  const response = await api.get(`/health-request?page=1&limit=${limit}`);
+export const getHealthMedicalRecords = async (
+  api: AxiosInstance,
+  limit = 25,
+) => {
+  const response = await api.get("/animals/records", {
+    params: { page: 1, limit, type: "health" },
+  });
   return response.data;
 };
 
 export const getTechnicianReportSources = async (api: AxiosInstance, limit = 50) => {
-  const [inseminations, pregnancyChecks, calvings, healthRequests] = await Promise.all([
+  const [inseminations, pregnancyChecks, calvings, healthRecords] = await Promise.all([
     getInseminations(api, limit),
     getPregnancyChecks(api, limit),
     getCalvings(api, limit),
-    getHealthRequests(api, limit),
+    getHealthMedicalRecords(api, limit),
   ]);
 
   return {
     inseminations,
     pregnancyChecks,
     calvings,
-    healthRequests,
+    healthRecords,
   };
 };
 

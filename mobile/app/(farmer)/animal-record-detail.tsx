@@ -32,7 +32,6 @@ const OFFICIAL_RECORD_KINDS: OfficialRecordKind[] = [
   "insemination",
   "pregnancy",
   "calving",
-  "health_request",
   "medical_record",
 ];
 
@@ -231,6 +230,7 @@ export default function AnimalRecordDetailScreen() {
     const actRec = (activityQuery.data || []).find(
       (r: any) => r.id === recordId || r._id === recordId
     );
+    if (actRec?.type === "health") return null;
     if (actRec) return mapRecordToActivity(actRec, actRec.type);
 
     return null;
@@ -335,8 +335,8 @@ export default function AnimalRecordDetailScreen() {
     foundRecord.details?.status === "Pregnant";
   const canPreviewHealthReport =
     foundRecord.type === "health" &&
-    (foundRecord.actions?.reportPreviewAvailable ||
-      foundRecord.sourceKind === "health_request");
+    foundRecord.sourceKind === "medical_record" &&
+    Boolean(foundRecord.actions?.reportPreviewAvailable);
   const canPreviewAiReport =
     foundRecord.type === "ai" &&
     (foundRecord.actions?.reportPreviewAvailable || Boolean(foundRecord.reportId));
@@ -382,7 +382,7 @@ export default function AnimalRecordDetailScreen() {
             onPress={() =>
               router.push({
                 pathname: "/(farmer)/health-report-preview",
-                params: { id: reportId },
+                params: { id: reportId, animalId },
               })
             }
             className="py-3.5 flex-row items-center justify-center border"

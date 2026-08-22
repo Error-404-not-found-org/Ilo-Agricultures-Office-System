@@ -48,3 +48,49 @@ test("active re-insemination is identifiable with its previous attempt context",
   assert.equal(item.previousAttemptOutcome, "Failed (Re-heat)");
   assert.equal(item.previousAttemptVerified, true);
 });
+
+test("completed non-clinical Health responses do not imply a MedicalRecord", () => {
+  const officePickup = normalizeTechnicianWorkItem({
+    id: "health-pickup-1",
+    workflowId: "health-pickup-1",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "resolved",
+    handlingMethod: "office_pickup",
+  } as any);
+  const advice = normalizeTechnicianWorkItem({
+    id: "health-advice-1",
+    workflowId: "health-advice-1",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "resolved",
+    handlingMethod: "advice",
+  } as any);
+  const clinical = normalizeTechnicianWorkItem({
+    id: "health-clinical-1",
+    workflowId: "health-clinical-1",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "resolved",
+    handlingMethod: "farm_visit",
+    medicalRecordId: "medical-1",
+  } as any);
+  const legacyWithoutRecord = normalizeTechnicianWorkItem({
+    id: "health-legacy-1",
+    workflowId: "health-legacy-1",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "resolved",
+  } as any);
+
+  assert.equal(officePickup.actionLabel, "View Response");
+  assert.equal(officePickup.title, "Office Pickup");
+  assert.equal(officePickup.statusLabel, "Pickup info available");
+  assert.equal(advice.actionLabel, "View Response");
+  assert.equal(advice.title, "Health Advice");
+  assert.equal(advice.statusLabel, "Advice provided");
+  assert.equal(clinical.actionLabel, "View Record");
+  assert.equal(clinical.title, "Health Service");
+  assert.equal(clinical.statusLabel, "Completed");
+  assert.equal(legacyWithoutRecord.actionLabel, "View Response");
+});

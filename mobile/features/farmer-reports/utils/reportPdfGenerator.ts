@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import type { ActivityFeedItem } from "../types/farmerReports.types";
 import { formatVisitSchedule } from "@/features/farmer-requests/utils/requestDetailPresentation";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 const clean = (value: unknown) =>
   String(value || "N/A").replace(/[&<>"']/g, (char) =>
@@ -81,7 +82,12 @@ export function generateSingleRecordPdfHtml(record: ActivityFeedItem): string {
       ["Service Date", dateVal],
       ["Concern / Request Type", (record.details?.requestType || "Check-up").replaceAll("_", " ")],
       ["Symptoms", record.details?.symptoms || "N/A"],
-      ["Urgency", record.details?.urgency || "N/A"],
+      [
+        "Farmer Request Priority",
+        record.details?.urgency
+          ? getHealthUrgencyPresentation(record.details.urgency).label
+          : "N/A",
+      ],
       ["Diagnosis", record.details?.diagnosis || "N/A"],
       ["Treatment", record.details?.treatment || "N/A"],
       ["Medicine / Advice", record.details?.advice || "N/A"],

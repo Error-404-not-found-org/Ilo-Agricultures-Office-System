@@ -470,12 +470,16 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
             {urgent && (
               <View
                 style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
                   borderRadius: 12,
                   backgroundColor: colors.error + "18",
                 }}
               >
+                <AlertTriangle size={13} color={colors.error} />
                 <Text
                   style={{
                     fontFamily: "Outfit_700Bold",
@@ -483,7 +487,7 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
                     color: colors.error,
                   }}
                 >
-                  Urgent
+                  Needs urgent attention
                 </Text>
               </View>
             )}

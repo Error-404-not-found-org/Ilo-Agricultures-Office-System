@@ -127,6 +127,14 @@ const structuredCopy = (eventType, metadata = {}) => {
       title: `${service} request accepted`,
       message: `${technician} accepted the request for ${animal}. A visit time will be added next.`,
     },
+    health_advice_available: {
+      title: "Health advice available",
+      message: `A technician responded to the Health request for ${animal}. Open the request to review the advice.`,
+    },
+    health_office_pickup_available: {
+      title: "Office pickup available",
+      message: `A technician confirmed an office-pickup response for ${animal}. Open the request to review the pickup instructions.`,
+    },
     service_visit_scheduled: {
       title: isReInsemination
         ? "Re-insemination scheduled"

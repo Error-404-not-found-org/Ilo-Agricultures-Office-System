@@ -132,6 +132,22 @@ export const ACTIVE_HEALTH_REQUEST_STATUSES = Object.freeze([
 export const isActiveHealthRequestStatus = (status) =>
   ACTIVE_HEALTH_REQUEST_STATUSES.includes(status);
 
+// Future Health vocabulary is re-exported for compatibility consumers. The
+// live HEALTH_STATUS enum and transition rules above remain unchanged in
+// Phase 1, so production mutations cannot begin writing `active` yet.
+export {
+  CANONICAL_HEALTH_REQUEST_STATUS,
+  CANONICAL_HEALTH_REQUEST_TYPE,
+  HEALTH_HANDLING_METHOD,
+  HEALTH_REQUEST_PRIORITY,
+  HEALTH_REQUEST_STATUS_COMPATIBILITY,
+  HEALTH_REQUEST_TYPE_COMPATIBILITY_GROUP,
+  healthRequestOwnerId,
+  normalizeHealthRequestStatus,
+  normalizeHealthRequestType,
+  normalizeHealthUrgency,
+} from "./health-request-vocabulary.js";
+
 export const PREGNANCY_RESULT = Object.freeze({
   PREGNANT: "Pregnant",
   EMPTY: "Empty",
