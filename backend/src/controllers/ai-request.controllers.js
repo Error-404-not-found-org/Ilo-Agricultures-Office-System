@@ -17,8 +17,10 @@ import { createAuditLog } from "../services/audit.service.js";
 import { createTimelineEvent } from "../services/animal-timeline.service.js";
 import {
   assertAIRequestAccess,
+  assertAIRequestMutationOwnership,
   assertAIRequestStatusAccess,
   buildAIRequestAssignmentGuard,
+  buildAIRequestMutationOwnershipGuard,
 } from "../policies/request.policy.js";
 import { Task } from "../models/task.model.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
@@ -2125,7 +2127,7 @@ export const cancelAIRequest = async (req, res) => {
     const actor = req.user;
     const role = actor.role; // "farmer" | "technician" | "admin"
 
-    const request = await Insemination.findOne({ _id: id, deletedAt: null })
+    let request = await Insemination.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
       .populate("approvedBy", "name pushToken")
@@ -2144,6 +2146,9 @@ export const cancelAIRequest = async (req, res) => {
     // Ownership check for farmers
     if (isFarmer && !isOwner) {
       return res.status(403).json({ message: "You do not own this request." });
+    }
+    if (isTechnician) {
+      assertAIRequestMutationOwnership(actor, request);
     }
 
     // Block everyone from cancelling terminal states
@@ -2293,18 +2298,48 @@ export const cancelAIRequest = async (req, res) => {
     }
 
     // Perform direct cancellation
-    request.status = "cancelled";
-    request.cancellationReason = reason?.trim() || "";
-    request.cancelledBy = actor._id;
-    request.cancellationRequestedAt = now;
-    request.cancellationStatus = "approved";
-    request.statusHistory = request.statusHistory || [];
-    request.statusHistory.push({
-      status: "cancelled",
-      note: reason?.trim() || `Cancelled by ${role}`,
-      actorId: actor._id,
-    });
-    await request.save();
+    const actorGuard = isFarmer
+      ? { farmerId: actor._id }
+      : isTechnician
+        ? buildAIRequestMutationOwnershipGuard({ technicianId: actor._id })
+        : {};
+    request = await Insemination.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        status: previousStatus,
+        ...actorGuard,
+      },
+      {
+        $set: {
+          status: "cancelled",
+          cancellationReason: reason?.trim() || "",
+          cancelledBy: actor._id,
+          cancellationRequestedAt: now,
+          cancellationStatus: "approved",
+        },
+        $unset: { activeRequestKey: 1 },
+        $push: {
+          statusHistory: {
+            status: "cancelled",
+            note: reason?.trim() || `Cancelled by ${role}`,
+            actorId: actor._id,
+          },
+        },
+      },
+      { new: true },
+    )
+      .populate("farmerId", "name pushToken")
+      .populate("animalId", "earTag animalId")
+      .populate("approvedBy", "name pushToken")
+      .populate("technicianId", "name pushToken");
+    if (!request) {
+      return res.status(409).json({
+        message:
+          "The request changed or is no longer assigned to you. Refresh and try again.",
+        code: "AI_CANCELLATION_CONCURRENT_UPDATE",
+      });
+    }
 
     // Audit log
     await createAuditLog({
@@ -2380,7 +2415,10 @@ export const cancelAIRequest = async (req, res) => {
       .json({ message: "AI request cancelled successfully." });
   } catch (error) {
     console.error("[cancelAIRequest ERROR]", error.message);
-    return res.status(500).json({ message: "Failed to cancel AI request." });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to cancel AI request.",
+      code: error.code,
+    });
   }
 };
 
@@ -2402,7 +2440,7 @@ export const respondAICancellation = async (req, res) => {
       });
     }
 
-    const request = await Insemination.findOne({ _id: id, deletedAt: null })
+    let request = await Insemination.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
       .populate("approvedBy", "name pushToken")
@@ -2417,24 +2455,57 @@ export const respondAICancellation = async (req, res) => {
         message: "This request does not have a pending cancellation request.",
       });
     }
+    if (role === "technician") {
+      assertAIRequestMutationOwnership(actor, request);
+    }
 
     const farmer = request.farmerId;
     const animal = request.animalId;
     const animalTag = animal?.earTag || animal?.animalId || "the animal";
     const previousStatus = request.status;
+    const responseGuard =
+      role === "technician"
+        ? buildAIRequestMutationOwnershipGuard({ technicianId: actor._id })
+        : {};
 
     if (approved) {
-      request.status = "cancelled";
-      request.cancellationStatus = "approved";
-      request.cancellationResponseReason = reason?.trim() || "";
-      request.cancellationRespondedAt = new Date();
-      request.statusHistory = request.statusHistory || [];
-      request.statusHistory.push({
-        status: "cancelled",
-        note: reason?.trim() || `Cancellation approved by ${role}`,
-        actorId: actor._id,
-      });
-      await request.save();
+      const respondedAt = new Date();
+      request = await Insemination.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: previousStatus,
+          cancellationStatus: "requested",
+          ...responseGuard,
+        },
+        {
+          $set: {
+            status: "cancelled",
+            cancellationStatus: "approved",
+            cancellationResponseReason: reason?.trim() || "",
+            cancellationRespondedAt: respondedAt,
+          },
+          $unset: { activeRequestKey: 1 },
+          $push: {
+            statusHistory: {
+              status: "cancelled",
+              note: reason?.trim() || `Cancellation approved by ${role}`,
+              actorId: actor._id,
+            },
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "earTag animalId")
+        .populate("approvedBy", "name pushToken")
+        .populate("technicianId", "name pushToken");
+      if (!request) {
+        return res.status(409).json({
+          message: "The cancellation request changed. Refresh and try again.",
+          code: "AI_CANCELLATION_RESPONSE_CONCURRENT_UPDATE",
+        });
+      }
 
       await createAuditLog({
         entityType: "AIRequest",
@@ -2476,16 +2547,41 @@ export const respondAICancellation = async (req, res) => {
       return res.status(200).json({ message: "Cancellation approved." });
     } else {
       // Rejected — restore cancellationStatus
-      request.cancellationStatus = "rejected";
-      request.cancellationResponseReason = reason?.trim() || "";
-      request.cancellationRespondedAt = new Date();
-      request.statusHistory = request.statusHistory || [];
-      request.statusHistory.push({
-        status: "cancellation_rejected",
-        note: reason?.trim() || `Cancellation rejected by ${role}`,
-        actorId: actor._id,
-      });
-      await request.save();
+      const respondedAt = new Date();
+      request = await Insemination.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: previousStatus,
+          cancellationStatus: "requested",
+          ...responseGuard,
+        },
+        {
+          $set: {
+            cancellationStatus: "rejected",
+            cancellationResponseReason: reason?.trim() || "",
+            cancellationRespondedAt: respondedAt,
+          },
+          $push: {
+            statusHistory: {
+              status: "cancellation_rejected",
+              note: reason?.trim() || `Cancellation rejected by ${role}`,
+              actorId: actor._id,
+            },
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "earTag animalId")
+        .populate("approvedBy", "name pushToken")
+        .populate("technicianId", "name pushToken");
+      if (!request) {
+        return res.status(409).json({
+          message: "The cancellation request changed. Refresh and try again.",
+          code: "AI_CANCELLATION_RESPONSE_CONCURRENT_UPDATE",
+        });
+      }
 
       await createAuditLog({
         entityType: "AIRequest",
@@ -2525,9 +2621,10 @@ export const respondAICancellation = async (req, res) => {
     }
   } catch (error) {
     console.error("[respondAICancellation ERROR]", error.message);
-    return res
-      .status(500)
-      .json({ message: "Failed to respond to cancellation request." });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to respond to cancellation request.",
+      code: error.code,
+    });
   }
 };
 

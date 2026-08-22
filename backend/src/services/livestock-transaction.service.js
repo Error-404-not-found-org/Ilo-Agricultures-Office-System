@@ -707,6 +707,7 @@ export const resolveHealthRequest = ({
   id,
   updateFields,
   technicianId,
+  allowAdminOverride = false,
   medicalRecord,
   taskId,
 }) =>
@@ -768,6 +769,32 @@ export const resolveHealthRequest = ({
         _id: id,
         status: { $nin: ["resolved", "rejected", "cancelled"] },
         deletedAt: null,
+        ...(allowAdminOverride
+          ? {}
+          : {
+              $and: [
+                {
+                  $or: [
+                    { handledBy: technicianId },
+                    { handledBy: null },
+                    { handledBy: { $exists: false } },
+                  ],
+                },
+                {
+                  $or: [
+                    { assignedTechnicianId: technicianId },
+                    { assignedTechnicianId: null },
+                    { assignedTechnicianId: { $exists: false } },
+                  ],
+                },
+                {
+                  $or: [
+                    { handledBy: technicianId },
+                    { assignedTechnicianId: technicianId },
+                  ],
+                },
+              ],
+            }),
       },
       { $set: updateFields, $unset: { activeCaseKey: 1 } },
       { returnDocument: "after", session },

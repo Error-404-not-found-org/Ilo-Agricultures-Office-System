@@ -57,7 +57,6 @@ interface NotificationDetails {
     symptoms?: string;
     urgency?: string;
     imageUrl?: string;
-    technicianNote?: string;
     approvedBy?: { _id?: string; name: string; imageUrl: string };
     handledBy?: { _id?: string; name: string; imageUrl: string };
     heatSigns?: string[];
@@ -370,14 +369,6 @@ export default function NotificationDetailsScreen() {
                   </View>
               ) : null}
 
-              {isFarmer && relatedData.technicianNote ? (
-                  <View className="mt-6 pt-6 border-t border-slate-100">
-                      <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Technician&apos;s Note</Text>
-                      <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 text-base leading-6 bg-emerald-50 p-4 rounded-2xl border border-emerald-100 italic">
-                          &quot;{relatedData.technicianNote}&quot;
-                      </Text>
-                  </View>
-              ) : null}
           </View>
         ) : (
           <View className="p-6 mb-2 border-b" style={{ backgroundColor: colors.card, borderColor: colors.border }}>

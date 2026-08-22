@@ -25,7 +25,12 @@ const router = Router();
 router.post("/", protectedRoute, requestLimiter, createHealthRequest);
 router.post("/walk-in", protectedRoute, TechnicianOnly, walkInHealthRequest);
 router.get("/my", protectedRoute, getMyHealthRequests);
-router.get("/", protectedRoute, getAllHealthRequests);
+router.get(
+  "/",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  getAllHealthRequests,
+);
 router.get("/:id", protectedRoute, getHealthRequestDetail);
 router.patch("/:id/advice", protectedRoute, TechnicianOnly, provideHealthAdvice);
 router.patch("/:id/office-pickup", protectedRoute, TechnicianOnly, provideHealthOfficePickup);

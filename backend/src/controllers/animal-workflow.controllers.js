@@ -7,6 +7,7 @@ import { Calving } from "../models/calving.model.js";
 import { Task } from "../models/task.model.js";
 import {
   ACTIVE_AI_REQUEST_STATUSES,
+  AI_STATUS,
   ANIMAL_REPRODUCTIVE_STATUS,
   TASK_STATUS,
 } from "../domain/status-vocabulary.js";
@@ -793,6 +794,10 @@ export const getAnimalRecords = async (req, res) => {
       animalQuery.createdAt = dateFilter;
       medicalQuery.date = dateFilter;
     }
+    const completedInseminationQuery = {
+      ...animalQuery,
+      status: AI_STATUS.DONE,
+    };
 
     const [
       inseminations,
@@ -800,7 +805,7 @@ export const getAnimalRecords = async (req, res) => {
       calvings,
       medicalRecords,
     ] = await Promise.all([
-      Insemination.find(animalQuery)
+      Insemination.find(completedInseminationQuery)
         .sort({ createdAt: -1 })
         .populate("technicianId approvedBy", "name role")
         .populate("previousAttemptId", "attemptNumber")

@@ -128,6 +128,23 @@ export const formatAnimalRecord = (
 
   if (kind === "insemination" || kind === "ai") {
     const number = Number(record.attemptNumber || 1);
+    const serviceStatus = String(record.status || record.source?.status || "").toLowerCase();
+    const serviceCompleted = serviceStatus === "done" || serviceStatus === "completed";
+    if (!serviceCompleted) {
+      const statusLabel = words(serviceStatus || "operational");
+      return {
+        title: `AI attempt ${number} · ${animalReference}`,
+        pageTitle: `AI Attempt ${number}`,
+        category: "Reproduction",
+        date,
+        animalReference,
+        fullAnimalReference,
+        badges: [
+          { label: statusLabel, domain: "service", variant: "warning" },
+        ],
+        details: [`Status: ${statusLabel}`],
+      };
+    }
     const failed = record.isSuccess === false || /failed|unsuccessful|re-heat/i.test(record.outcome || "");
     const confirmed = record.isSuccess === true || /pregnant|successful/i.test(record.outcome || "");
     const previous = record.previousAttemptReference || attemptNumber(record.previousAttemptId);

@@ -98,12 +98,15 @@ export const completeInitialConfirmationTask = async ({
     animalIds: animal._id,
     taskType: "PD",
     status: { $nin: ["Completed", "Cancelled"] },
-    ...(actor.role === "admin"
-      ? {}
-      : { $or: [{ technicianId: actor._id }, { technicianId: null }] }),
   };
   const query = taskId
-    ? { ...baseQuery, _id: taskId }
+    ? {
+        ...baseQuery,
+        _id: taskId,
+        ...(actor.role === "admin"
+          ? {}
+          : { $or: [{ technicianId: actor._id }, { technicianId: null }] }),
+      }
     : {
         ...baseQuery,
         $and: [{ $or: [
@@ -127,7 +130,7 @@ export const completeInitialConfirmationTask = async ({
 
   task.status = "Completed";
   task.completedAt = new Date();
-  task.technicianId = actor._id;
+  task.technicianId ||= actor._id;
   task.relatedRecordType = "pregnancy";
   task.relatedRecordId = pregnancy._id;
   task.metadata = {
@@ -712,13 +715,13 @@ export const recordPregnancyContinuationRecheck = ({
       animalIds: animal._id,
       "metadata.pregnancyId": pregnancy._id,
       status: { $nin: ["Completed", "Cancelled"] },
-      ...(actor.role === "admin"
-        ? {}
-        : { $or: [{ technicianId: actor._id }, { technicianId: null }] }),
+      ...(taskId && actor.role !== "admin"
+        ? { $or: [{ technicianId: actor._id }, { technicianId: null }] }
+        : {}),
     };
     const tasks = taskId
       ? [await Task.findOne(taskQuery).session(session)]
-      : await Task.find(taskQuery).session(session);
+      : await Task.find(taskQuery).sort({ dueDate: 1, createdAt: 1 }).session(session);
     continuationTask = tasks.find((task) => {
       if (!task) return false;
       const stage = getPregnancyTaskStage(task);
@@ -780,7 +783,7 @@ export const recordPregnancyContinuationRecheck = ({
     if (continuationTask) {
       continuationTask.status = "Completed";
       continuationTask.completedAt = new Date();
-      continuationTask.technicianId = actor._id;
+      continuationTask.technicianId ||= actor._id;
       await continuationTask.save({ session });
     }
     if (result === "loss_detected") {

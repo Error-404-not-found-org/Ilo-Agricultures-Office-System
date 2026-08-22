@@ -32,9 +32,20 @@ import {
   getBreedingObservationSignLabel,
 } from "@/features/breeding/utils/breedingObservationPresentation";
 import { technicianKeys } from "@/lib/queryKeys";
+import {
+  buildPregnancyContinuationPayload,
+  isPregnancyContinuationStage,
+  type PregnancyContinuationResult,
+  type TechnicianBreedingVerificationResult,
+} from "@/features/breeding/utils/technicianBreedingVerification";
 
 export default function PregnancyVerificationScreen() {
-  const { id } = useLocalSearchParams();
+  const routeParams = useLocalSearchParams<{
+    id?: string;
+    workflowStage?: string;
+    pregnancyId?: string;
+  }>();
+  const id = routeParams.id;
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
@@ -48,7 +59,7 @@ export default function PregnancyVerificationScreen() {
 
   // Form states
   const [verificationResult, setVerificationResult] = useState<
-    "pregnant" | "not_pregnant" | "return_to_heat" | "needs_recheck" | ""
+    TechnicianBreedingVerificationResult | PregnancyContinuationResult | ""
   >("");
   const [checkMethod, setCheckMethod] = useState("");
   const [checkedAt, setCheckedAt] = useState<Date>(new Date());
@@ -60,6 +71,16 @@ export default function PregnancyVerificationScreen() {
   const [showNextCheckDatePicker, setShowNextCheckDatePicker] = useState(false);
   const [methodValidationError, setMethodValidationError] = useState(false);
   const pregnancyReadiness = task?.pregnancyReadiness || insem?.pregnancyReadiness || null;
+  const workflowStage =
+    task?.metadata?.workflowStage ||
+    task?.workflowStage ||
+    routeParams.workflowStage ||
+    "initial_confirmation";
+  const isContinuationWorkflow = isPregnancyContinuationStage(workflowStage);
+  const pregnancyId =
+    task?.pregnancy?._id ||
+    task?.metadata?.pregnancyId ||
+    routeParams.pregnancyId;
   const methodBased = pregnancyReadiness?.policyMode === "method_based";
   const methodOptions = methodBased
     ? pregnancyReadiness?.methods || []
@@ -108,17 +129,26 @@ export default function PregnancyVerificationScreen() {
   }, [id, api]);
 
   const handleVerify = async () => {
-    if (officialDiagnosis && !officialDiagnosisReady) {
+    if (!verificationResult) {
+      toast.error("Please select a verification result.");
+      return;
+    }
+    if (isContinuationWorkflow) {
+      if (!pregnancyId) {
+        toast.error("This follow-up task is missing its Pregnancy record link.");
+        return;
+      }
+      if (verificationResult === "follow_up_required" && !nextCheckDate) {
+        toast.error("Please specify the next follow-up date.");
+        return;
+      }
+    } else if (officialDiagnosis && !officialDiagnosisReady) {
       toast.error(
         pregnancyReadiness?.reason || "Pregnancy check is not yet available.",
       );
       return;
     }
-    if (!verificationResult) {
-      toast.error("Please select a verification result.");
-      return;
-    }
-    if (!checkMethod) {
+    if (!isContinuationWorkflow && !checkMethod) {
       setMethodValidationError(true);
       toast.error("Select a diagnostic method before saving the pregnancy check.");
       return;
@@ -131,18 +161,31 @@ export default function PregnancyVerificationScreen() {
 
     setSubmitting(true);
     try {
-      await api.post(`/ai-request/${insem._id}/verify-breeding-observation`, {
-        verificationResult,
-        checkMethod,
-        checkedAt: checkedAt.toISOString(),
-        technicianNotes: notes,
-        nextCheckDate: nextCheckDate ? nextCheckDate.toISOString() : undefined,
-        policyVersion: pregnancyReadiness?.policyVersion,
-        taskId: task?._id,
-      });
+      if (isContinuationWorkflow) {
+        await api.post(
+          `/technician/pregnancy-checks/${pregnancyId}/continuation-recheck`,
+          buildPregnancyContinuationPayload({
+            result: verificationResult as PregnancyContinuationResult,
+            checkedAt,
+            notes,
+            followUpDate: nextCheckDate,
+            taskId: String(task?._id || id),
+          }),
+        );
+      } else {
+        await api.post(`/ai-request/${insem._id}/verify-breeding-observation`, {
+          verificationResult,
+          checkMethod,
+          checkedAt: checkedAt.toISOString(),
+          technicianNotes: notes,
+          nextCheckDate: nextCheckDate ? nextCheckDate.toISOString() : undefined,
+          policyVersion: pregnancyReadiness?.policyVersion,
+          taskId: task?._id,
+        });
+      }
 
       // Optimistically synchronize the Work Queue cache for conclusive results
-      if (verificationResult !== "needs_recheck") {
+      if (isContinuationWorkflow || verificationResult !== "needs_recheck") {
         queryClient.setQueryData(technicianKeys.workQueue(), (oldData: any[]) => {
           if (!oldData || !Array.isArray(oldData)) return oldData;
           return oldData.filter((item) => {
@@ -167,7 +210,11 @@ export default function PregnancyVerificationScreen() {
       queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
       queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
-      toast.success("Pregnancy verification recorded!");
+      toast.success(
+        isContinuationWorkflow
+          ? "Pregnancy follow-up recorded!"
+          : "Pregnancy verification recorded!",
+      );
 
       // Navigate back and dismiss this screen
       router.dismiss(2);
@@ -222,7 +269,7 @@ export default function PregnancyVerificationScreen() {
           <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Pregnancy Verification
+          {isContinuationWorkflow ? "Pregnancy Follow-up" : "Pregnancy Verification"}
         </Text>
       </View>
 
@@ -251,7 +298,7 @@ export default function PregnancyVerificationScreen() {
           {/* Verification Outcome Form */}
           <Text style={[styles.sectionTitle, { color: isDark ? "#34d399" : "#00643B" }]}>Verification Form</Text>
 
-          {pregnancyReadiness && !pregnancyReadiness.isEligible && (
+          {!isContinuationWorkflow && pregnancyReadiness && !pregnancyReadiness.isEligible && (
             <View
               style={[
                 styles.card,
@@ -275,8 +322,45 @@ export default function PregnancyVerificationScreen() {
           )}
 
           {/* Outcome Segmented Control */}
-          <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Pregnancy Diagnosis Outcome</Text>
+          <Text style={[styles.formLabel, { color: colors.textPrimary }]}>
+            {isContinuationWorkflow ? "Pregnancy Follow-up Outcome" : "Pregnancy Diagnosis Outcome"}
+          </Text>
           <View style={styles.segmentedControl}>
+            {isContinuationWorkflow ? (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    verificationResult === "continuing" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
+                    { borderColor: colors.border },
+                  ]}
+                  onPress={() => setVerificationResult("continuing")}
+                >
+                  <Text style={[styles.segmentText, { color: verificationResult === "continuing" ? "#fff" : colors.textPrimary }]}>Continuing</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    verificationResult === "loss_detected" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
+                    { borderColor: colors.border },
+                  ]}
+                  onPress={() => setVerificationResult("loss_detected")}
+                >
+                  <Text style={[styles.segmentText, { color: verificationResult === "loss_detected" ? "#fff" : colors.textPrimary }]}>Loss detected</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    verificationResult === "follow_up_required" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
+                    { borderColor: colors.border },
+                  ]}
+                  onPress={() => setVerificationResult("follow_up_required")}
+                >
+                  <Text style={[styles.segmentText, { color: verificationResult === "follow_up_required" ? "#fff" : colors.textPrimary }]}>Follow-up</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
             <TouchableOpacity
               style={[
                 styles.segmentBtn,
@@ -348,9 +432,13 @@ export default function PregnancyVerificationScreen() {
                 Recheck
               </Text>
             </TouchableOpacity>
+              </>
+            )}
           </View>
 
           {/* Diagnostic Check Method */}
+          {!isContinuationWorkflow && (
+            <>
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Diagnostic Method</Text>
           <View style={styles.pillRow}>
             {methodOptions.map(
@@ -398,13 +486,15 @@ export default function PregnancyVerificationScreen() {
               Select a diagnostic method before saving the pregnancy check.
             </Text>
           )}
+            </>
+          )}
 
 
           {/* Date of Diagnosis */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Checked At</Text>
           <TouchableOpacity
             style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
-            disabled={officialDiagnosis && !officialDiagnosisReady}
+            disabled={!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady}
             onPress={() => setShowCheckedAtPicker(true)}
           >
             <CalendarIcon size={18} color={colors.textSecondary} />
@@ -414,12 +504,14 @@ export default function PregnancyVerificationScreen() {
           </TouchableOpacity>
 
           {/* Next Check Date (Visible only on needs_recheck) */}
-          {verificationResult === "needs_recheck" && (
+          {(verificationResult === "needs_recheck" || verificationResult === "follow_up_required") && (
             <>
-              <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Next Recheck Date</Text>
+              <Text style={[styles.formLabel, { color: colors.textPrimary }]}>
+                {verificationResult === "follow_up_required" ? "Next Follow-up Date" : "Next Recheck Date"}
+              </Text>
               <TouchableOpacity
                 style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
-                disabled={officialDiagnosis && !officialDiagnosisReady}
+                disabled={!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady}
                 onPress={() => setShowNextCheckDatePicker(true)}
               >
                 <CalendarIcon size={18} color={colors.textSecondary} />
@@ -433,7 +525,7 @@ export default function PregnancyVerificationScreen() {
           {/* Notes */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Technician notes</Text>
           <TextInput
-            editable={!officialDiagnosis || officialDiagnosisReady}
+            editable={isContinuationWorkflow || !officialDiagnosis || officialDiagnosisReady}
             multiline
             numberOfLines={4}
             placeholder="Add diagnosis details, health notes, recommendation..."
@@ -452,12 +544,12 @@ export default function PregnancyVerificationScreen() {
 
           {/* Submit Button */}
           <TouchableOpacity
-            disabled={submitting || (officialDiagnosis && !officialDiagnosisReady)}
+            disabled={submitting || (!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady)}
             style={[
               styles.submitBtn,
               {
                 backgroundColor:
-                  submitting || (officialDiagnosis && !officialDiagnosisReady)
+                  submitting || (!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady)
                     ? colors.textMuted
                     : isDark ? "#10b981" : "#00643B",
                 shadowColor: isDark ? "transparent" : "#00643B",
@@ -470,7 +562,9 @@ export default function PregnancyVerificationScreen() {
             ) : (
               <>
                 <CheckCircle size={20} color="#fff" />
-                <Text style={styles.submitBtnText}>Save Pregnancy Confirmation</Text>
+                <Text style={styles.submitBtnText}>
+                  {isContinuationWorkflow ? "Save Pregnancy Follow-up" : "Save Pregnancy Confirmation"}
+                </Text>
               </>
             )}
           </TouchableOpacity>

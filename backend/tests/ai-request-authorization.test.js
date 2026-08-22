@@ -182,7 +182,7 @@ test("AI authorization: assigned technician update uses an atomic assignment and
     scheduledDate: null,
   };
   let capturedFilter;
-  Insemination.findById = async () => existing;
+  Insemination.findById = () => populatedQuery(existing);
   Insemination.findOne = async () => null;
   HealthRequest.findOne = async () => null;
   Insemination.findOneAndUpdate = (filter, update) => {

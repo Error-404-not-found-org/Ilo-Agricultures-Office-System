@@ -14,6 +14,21 @@ export const buildFarmerHealthRequest = (request) => {
   if (!result) return result;
 
   delete result.technicianNote;
+  delete result.assignedTechnicianId;
+  delete result.activeCaseKey;
+  delete result.claimedAt;
+  delete result.deletedAt;
+  delete result.farmerDismissedAt;
+  delete result.cancelledBy;
+  delete result.dispatch;
+
+  if (result.handledBy && typeof result.handledBy === "object") {
+    const publicTechnician = { ...result.handledBy };
+    delete publicTechnician._id;
+    delete publicTechnician.address;
+    delete publicTechnician.phoneNumber;
+    result.handledBy = publicTechnician;
+  }
 
   if (Array.isArray(result.statusHistory)) {
     result.statusHistory = result.statusHistory.map((entry) => ({

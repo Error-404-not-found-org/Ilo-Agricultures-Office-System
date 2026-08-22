@@ -30,6 +30,10 @@ import {
 } from "../domain/visit-scheduling.js";
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
 import {
+  assertHealthRequestMutationOwnership,
+  buildHealthRequestMutationOwnershipGuard,
+} from "../policies/request.policy.js";
+import {
   buildLegacyHealthSymptoms,
   legacyRequestTypeForAssistance,
   normalizeHealthRequestDetails,
@@ -254,6 +258,13 @@ export const dismissHealthRequestForFarmer = async (req, res) => {
 // GET /api/health-request  — all requests (technician/admin)
 export const getAllHealthRequests = async (req, res) => {
   try {
+    if (!["technician", "admin"].includes(req.user?.role)) {
+      return res.status(403).json({
+        message: "Only technicians or administrators can view all health requests.",
+        code: "HEALTH_REQUEST_BULK_ACCESS_FORBIDDEN",
+      });
+    }
+
     const { status, urgency, page, limit, search, fromDate, toDate } = req.query;
     const query = { deletedAt: null };
     if (status) query.status = status;
@@ -437,17 +448,11 @@ export const updateHealthRequestStatus = async (req, res) => {
 
     assertStatusTransition("health", existing.status, status, { isAdmin: req.user.role === "admin" });
 
-    // Concurrency guard: check if already assigned to another technician
-    if (
-      existing.handledBy &&
-      existing.handledBy.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      const assignedTech = await User.findById(existing.handledBy);
-      return res.status(403).json({
-        message: `This health request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
-      });
-    }
+    const mayAtomicallyClaimPending =
+      existing.status === "pending" && status === "scheduled";
+    assertHealthRequestMutationOwnership(req.user, existing, {
+      allowUnassigned: mayAtomicallyClaimPending,
+    });
 
     const targetTechId = (req.user.role === "admin" && req.body.handledBy) ? req.body.handledBy : req.user._id;
 
@@ -494,6 +499,7 @@ export const updateHealthRequestStatus = async (req, res) => {
         id,
         updateFields,
         technicianId: req.user._id,
+        allowAdminOverride: req.user.role === "admin",
         taskId: req.body.taskId,
         medicalRecord: {
           animalId: existing.animalId,
@@ -518,12 +524,34 @@ export const updateHealthRequestStatus = async (req, res) => {
       const statusUpdate = isActiveHealthRequestStatus(status)
         ? { $set: updateFields }
         : { $set: updateFields, $unset: { activeCaseKey: 1 } };
-      request = await HealthRequest.findByIdAndUpdate(id, statusUpdate, { returnDocument: 'after' })
+      const ownershipGuard =
+        req.user.role === "admin"
+          ? {}
+          : buildHealthRequestMutationOwnershipGuard({
+              technicianId: req.user._id,
+              allowUnassigned: mayAtomicallyClaimPending,
+            });
+      request = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: existing.status,
+          ...ownershipGuard,
+        },
+        statusUpdate,
+        { returnDocument: "after" },
+      )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "animalId earTag species");
     }
 
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(409).json({
+        message:
+          "The request changed or is no longer assigned to you. Refresh and try again.",
+        code: "HEALTH_REQUEST_CONCURRENT_UPDATE",
+      });
+    }
 
     // The transaction service is the sole medical-record writer. This block
     // only performs the post-commit withdrawal notification side effect.
@@ -975,7 +1003,7 @@ export const cancelHealthRequest = async (req, res) => {
     const actor = req.user;
     const role = actor.role;
 
-    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
+    let request = await HealthRequest.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
       .populate("handledBy", "name pushToken");
@@ -992,6 +1020,9 @@ export const cancelHealthRequest = async (req, res) => {
 
     if (isFarmer && !isOwner) {
       return res.status(403).json({ message: "You do not own this request." });
+    }
+    if (isTechnician) {
+      assertHealthRequestMutationOwnership(actor, request);
     }
 
     // Block terminal states
@@ -1111,18 +1142,49 @@ export const cancelHealthRequest = async (req, res) => {
       return res.status(400).json({ message: "A cancellation reason is required." });
     }
 
-    request.status = "cancelled";
-    request.cancellationReason = reason?.trim() || "";
-    request.cancelledBy = actor._id;
-    request.cancellationRequestedAt = now;
-    request.cancellationStatus = "approved";
-    request.statusHistory = request.statusHistory || [];
-    request.statusHistory.push({
-      status: "cancelled",
-      note: reason?.trim() || `Cancelled by ${role}`,
-      actorId: actor._id,
-    });
-    await request.save();
+    const actorGuard = isFarmer
+      ? { farmerId: actor._id }
+      : isTechnician
+        ? buildHealthRequestMutationOwnershipGuard({
+            technicianId: actor._id,
+          })
+        : {};
+    request = await HealthRequest.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        status: previousStatus,
+        ...actorGuard,
+      },
+      {
+        $set: {
+          status: "cancelled",
+          cancellationReason: reason?.trim() || "",
+          cancelledBy: actor._id,
+          cancellationRequestedAt: now,
+          cancellationStatus: "approved",
+        },
+        $unset: { activeCaseKey: 1 },
+        $push: {
+          statusHistory: {
+            status: "cancelled",
+            note: reason?.trim() || `Cancelled by ${role}`,
+            actorId: actor._id,
+          },
+        },
+      },
+      { new: true },
+    )
+      .populate("farmerId", "name pushToken")
+      .populate("animalId", "earTag animalId")
+      .populate("handledBy", "name pushToken");
+    if (!request) {
+      return res.status(409).json({
+        message:
+          "The request changed or is no longer assigned to you. Refresh and try again.",
+        code: "HEALTH_CANCELLATION_CONCURRENT_UPDATE",
+      });
+    }
 
     await createAuditLog({
       entityType: "HealthRequest",
@@ -1193,7 +1255,10 @@ export const cancelHealthRequest = async (req, res) => {
     return res.status(200).json({ message: "Health request cancelled successfully." });
   } catch (error) {
     console.error("[cancelHealthRequest ERROR]", error.message);
-    return res.status(500).json({ message: "Failed to cancel health request." });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to cancel health request.",
+      code: error.code,
+    });
   }
 };
 
@@ -1212,7 +1277,7 @@ export const respondHealthCancellation = async (req, res) => {
       return res.status(403).json({ message: "Only technicians or admins can respond to cancellation requests." });
     }
 
-    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
+    let request = await HealthRequest.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
       .populate("handledBy", "name pushToken");
@@ -1224,24 +1289,56 @@ export const respondHealthCancellation = async (req, res) => {
     if (request.cancellationStatus !== "requested") {
       return res.status(400).json({ message: "This request does not have a pending cancellation request." });
     }
+    if (role === "technician") {
+      assertHealthRequestMutationOwnership(actor, request);
+    }
 
     const farmer = request.farmerId;
     const animal = request.animalId;
     const animalTag = animal?.earTag || animal?.animalId || "the animal";
     const previousStatus = request.status;
+    const responseGuard =
+      role === "technician"
+        ? buildHealthRequestMutationOwnershipGuard({ technicianId: actor._id })
+        : {};
 
     if (approved) {
-      request.status = "cancelled";
-      request.cancellationStatus = "approved";
-      request.cancellationResponseReason = reason?.trim() || "";
-      request.cancellationRespondedAt = new Date();
-      request.statusHistory = request.statusHistory || [];
-      request.statusHistory.push({
-        status: "cancelled",
-        note: reason?.trim() || `Cancellation approved by ${role}`,
-        actorId: actor._id,
-      });
-      await request.save();
+      const respondedAt = new Date();
+      request = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: previousStatus,
+          cancellationStatus: "requested",
+          ...responseGuard,
+        },
+        {
+          $set: {
+            status: "cancelled",
+            cancellationStatus: "approved",
+            cancellationResponseReason: reason?.trim() || "",
+            cancellationRespondedAt: respondedAt,
+          },
+          $unset: { activeCaseKey: 1 },
+          $push: {
+            statusHistory: {
+              status: "cancelled",
+              note: reason?.trim() || `Cancellation approved by ${role}`,
+              actorId: actor._id,
+            },
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "earTag animalId")
+        .populate("handledBy", "name pushToken");
+      if (!request) {
+        return res.status(409).json({
+          message: "The cancellation request changed. Refresh and try again.",
+          code: "HEALTH_CANCELLATION_RESPONSE_CONCURRENT_UPDATE",
+        });
+      }
 
       await createAuditLog({
         entityType: "HealthRequest",
@@ -1281,16 +1378,40 @@ export const respondHealthCancellation = async (req, res) => {
 
       return res.status(200).json({ message: "Cancellation approved." });
     } else {
-      request.cancellationStatus = "rejected";
-      request.cancellationResponseReason = reason?.trim() || "";
-      request.cancellationRespondedAt = new Date();
-      request.statusHistory = request.statusHistory || [];
-      request.statusHistory.push({
-        status: "cancellation_rejected",
-        note: reason?.trim() || `Cancellation rejected by ${role}`,
-        actorId: actor._id,
-      });
-      await request.save();
+      const respondedAt = new Date();
+      request = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: previousStatus,
+          cancellationStatus: "requested",
+          ...responseGuard,
+        },
+        {
+          $set: {
+            cancellationStatus: "rejected",
+            cancellationResponseReason: reason?.trim() || "",
+            cancellationRespondedAt: respondedAt,
+          },
+          $push: {
+            statusHistory: {
+              status: "cancellation_rejected",
+              note: reason?.trim() || `Cancellation rejected by ${role}`,
+              actorId: actor._id,
+            },
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "earTag animalId")
+        .populate("handledBy", "name pushToken");
+      if (!request) {
+        return res.status(409).json({
+          message: "The cancellation request changed. Refresh and try again.",
+          code: "HEALTH_CANCELLATION_RESPONSE_CONCURRENT_UPDATE",
+        });
+      }
 
       await createAuditLog({
         entityType: "HealthRequest",
@@ -1330,6 +1451,9 @@ export const respondHealthCancellation = async (req, res) => {
     }
   } catch (error) {
     console.error("[respondHealthCancellation ERROR]", error.message);
-    return res.status(500).json({ message: "Failed to respond to cancellation request." });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to respond to cancellation request.",
+      code: error.code,
+    });
   }
 };

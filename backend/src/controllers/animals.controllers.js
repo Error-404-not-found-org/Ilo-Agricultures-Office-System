@@ -131,6 +131,13 @@ export const registerAnimal = async (req, res) => {
 
 export const getAllAnimals = async (req, res) => {
   try {
+    if (!["technician", "admin"].includes(req.user?.role)) {
+      return res.status(403).json({
+        message: "Only technicians or administrators can view all animals.",
+        code: "ANIMAL_BULK_ACCESS_FORBIDDEN",
+      });
+    }
+
     const {
       page,
       limit,
@@ -625,17 +632,16 @@ export const updateReproductiveStatus = async (req, res) => {
     const { id } = req.params;
     const { status, note } = req.body;
 
+    if (!["technician", "admin"].includes(req.user?.role)) {
+      return res.status(403).json({
+        message:
+          "Reproductive status changes require technician verification.",
+        code: "REPRODUCTIVE_STATUS_VERIFICATION_REQUIRED",
+      });
+    }
+
     const animal = await Animal.findById(id);
     if (!animal) return res.status(404).json({ message: "Animal not found" });
-
-    if (
-      animal.farmerId.toString() !== req.user._id.toString() &&
-      req.user.role !== "technician"
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to update this animal's status" });
-    }
 
     // --- HARDENED REHEAT LOGIC ---
     if (status === "In Heat") {

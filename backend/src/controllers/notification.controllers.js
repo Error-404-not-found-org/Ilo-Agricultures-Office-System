@@ -6,6 +6,7 @@ import {
   presentNotificationCopy,
   presentNotificationDocument,
 } from "../domain/notification-presentation.js";
+import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
 
 const syncOverdueNotifications = async (userId) => {
   const today = new Date();
@@ -157,7 +158,10 @@ export const getNotificationDetails = async (req, res) => {
     const notification = await Notification.findOne({
       _id: id,
       recipientId: req.user._id,
-    }).populate("senderId", "name imageUrl role address");
+    }).populate(
+      "senderId",
+      req.user.role === "farmer" ? "name imageUrl role" : "name imageUrl role address",
+    );
     
     if (!notification) return res.status(404).json({ message: "Notification not found." });
 
@@ -169,7 +173,15 @@ export const getNotificationDetails = async (req, res) => {
     } else if (notification.type === "health-request") {
       relatedData = await HealthRequest.findById(notification.relatedId)
         .populate("animalId", "animalId earTag species breed imageUrl")
-        .populate("handledBy", "name imageUrl role address");
+        .populate(
+          "handledBy",
+          req.user.role === "farmer"
+            ? "name imageUrl role"
+            : "name imageUrl role address",
+        );
+      if (req.user.role === "farmer") {
+        relatedData = buildFarmerHealthRequest(relatedData);
+      }
     } else if (notification.type === "system" && notification.linkType === "animal") {
       relatedData = await Animal.findById(notification.relatedId)
         .select("animalId earTag species breed imageUrl farmerId");

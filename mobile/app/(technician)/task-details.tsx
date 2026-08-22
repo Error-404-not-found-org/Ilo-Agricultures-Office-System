@@ -623,7 +623,18 @@ export default function TaskDetailsScreen() {
     }
 
     if (task.taskType === "PD") {
-      router.push(`/(technician)/pregnancy-verification?id=${task._id}` as any);
+      const pregnancyId =
+        task.pregnancy?._id ||
+        task.metadata?.pregnancyId ||
+        (task.relatedRecordType === "pregnancy" ? task.relatedRecordId : null);
+      router.push({
+        pathname: "/(technician)/pregnancy-verification",
+        params: {
+          id: String(task._id),
+          workflowStage: String(pregnancyWorkflowStage),
+          ...(pregnancyId ? { pregnancyId: String(pregnancyId) } : {}),
+        },
+      } as any);
       return;
     }
 

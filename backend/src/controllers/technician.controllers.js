@@ -3161,12 +3161,32 @@ export const claimRequest = async (req, res) => {
           code: "REQUEST_ALREADY_CLAIMED",
         });
       }
+      if (existing.status !== "pending") {
+        return res.status(409).json({
+          message: `This request is already ${existing.status} and cannot be claimed.`,
+          code: "REQUEST_NOT_CLAIMABLE",
+        });
+      }
 
       updated = await HealthRequest.findOneAndUpdate(
         {
           _id: id,
           deletedAt: null,
-          handledBy: { $in: [null, undefined] },
+          status: "pending",
+          $and: [
+            {
+              $or: [
+                { handledBy: null },
+                { handledBy: { $exists: false } },
+              ],
+            },
+            {
+              $or: [
+                { assignedTechnicianId: null },
+                { assignedTechnicianId: { $exists: false } },
+              ],
+            },
+          ],
         },
         {
           $set: {

@@ -10,6 +10,7 @@ import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Task } from "../src/models/task.model.js";
 import {
+  completeInitialConfirmationTask,
   confirmPregnancyDiagnosis,
   recordPregnancyContinuationRecheck,
 } from "../src/services/pregnancy-confirmation.service.js";
@@ -147,6 +148,10 @@ function installDiagnosisStubs({
     state.pregnancy = { _id: ids.pregnancy, cycleStatus: "active", ...data };
     return [state.pregnancy];
   });
+  replace(Pregnancy, "updateOne", async (_filter, update) => {
+    if (state.pregnancy) Object.assign(state.pregnancy, update.$set || {});
+    return { modifiedCount: state.pregnancy ? 1 : 0 };
+  });
   replace(Insemination, "updateOne", async (_filter, update) => {
     Object.assign(insemination, update.$set || {});
     return { modifiedCount: 1 };
@@ -165,6 +170,7 @@ function installDiagnosisStubs({
       : [created];
     return state.continuationTasks[0];
   });
+  replace(Task, "updateOne", async () => ({ matchedCount: 0, modifiedCount: 0 }));
   replace(Task, "updateMany", async () => ({ modifiedCount: 0 }));
   replace(AnimalTimelineEvent, "create", async (_entries, options) => {
     assert.ok(options.session);
@@ -189,6 +195,75 @@ function installDiagnosisStubs({
 }
 
 const actor = { _id: ids.actor, role: "technician", name: "Policy Tech" };
+
+test("a diagnosis from another supported path reconciles the exact assigned initial task without taking ownership", async () => {
+  const originalFind = Task.find;
+  const assignedTechnicianId = "507f1f77bcf86cd799439099";
+  const task = {
+    _id: ids.task,
+    farmerId: ids.farmer,
+    animalIds: [ids.animal],
+    technicianId: assignedTechnicianId,
+    taskType: "PD",
+    status: "Pending",
+    metadata: {
+      workflowStage: "initial_confirmation",
+      inseminationId: ids.insemination,
+    },
+    async save() { return this; },
+  };
+  let queryFilter = null;
+  Task.find = (filter) => {
+    queryFilter = filter;
+    return query([task]);
+  };
+  try {
+    const completed = await completeInitialConfirmationTask({
+      animal: { _id: ids.animal, farmerId: ids.farmer },
+      insemination: { _id: ids.insemination },
+      pregnancy: { _id: ids.pregnancy },
+      actor,
+      methodCode: "ultrasound",
+      policyVersion: activePolicy.version,
+      session: {},
+    });
+
+    assert.equal("$or" in queryFilter, false);
+    assert.equal(completed.status, "Completed");
+    assert.equal(completed.technicianId, assignedTechnicianId);
+    assert.equal(completed.relatedRecordId, ids.pregnancy);
+  } finally {
+    Task.find = originalFind;
+  }
+});
+
+test("automatic diagnosis reconciliation does not complete an unrelated Pregnancy task", async () => {
+  const originalFind = Task.find;
+  const unrelated = {
+    _id: ids.task,
+    taskType: "PD",
+    status: "Pending",
+    metadata: {
+      workflowStage: "continuation_recheck",
+      pregnancyId: "507f1f77bcf86cd799439098",
+    },
+  };
+  Task.find = () => query([unrelated]);
+  try {
+    const completed = await completeInitialConfirmationTask({
+      animal: { _id: ids.animal, farmerId: ids.farmer },
+      insemination: { _id: ids.insemination },
+      pregnancy: { _id: ids.pregnancy },
+      actor,
+      session: {},
+    });
+
+    assert.equal(completed, null);
+    assert.equal(unrelated.status, "Pending");
+  } finally {
+    Task.find = originalFind;
+  }
+});
 
 test("method-based early diagnosis snapshots policy and creates one continuation task", async () => {
   const stubs = installDiagnosisStubs({ daysPostAI: 35 });
@@ -585,6 +660,87 @@ test("diagnostic follow-up task updates the linked Pregnancy instead of creating
     assert.equal(followUpTask.status, "Completed");
   } finally {
     Pregnancy.updateOne = originalPregnancyUpdate;
+    stubs.restore();
+  }
+});
+
+test("continuation rejects an explicitly supplied task owned by another technician", async () => {
+  const pregnancy = {
+    _id: ids.pregnancy,
+    animalId: ids.animal,
+    farmerId: ids.farmer,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-06-01") },
+    confirmation: { recheckRequired: true },
+    cycleStatus: "active",
+    recheckStatus: "pending",
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 65, existingPregnancy: pregnancy });
+  let taskQuery = null;
+  Task.findOne = (filter) => {
+    taskQuery = filter;
+    return query(null);
+  };
+  try {
+    await assert.rejects(
+      () => recordPregnancyContinuationRecheck({
+        pregnancyId: ids.pregnancy,
+        result: "continuing",
+        checkedAt: stubs.now,
+        taskId: ids.task,
+        actor,
+      }),
+      (error) => error.code === "TASK_RECORD_MISMATCH",
+    );
+    assert.deepEqual(taskQuery.$or, [
+      { technicianId: ids.actor },
+      { technicianId: null },
+    ]);
+    assert.equal(pregnancy.recheckStatus, "pending");
+  } finally {
+    stubs.restore();
+  }
+});
+
+test("continuation through another supported path closes the exact task without taking its assignee", async () => {
+  const pregnancy = {
+    _id: ids.pregnancy,
+    animalId: ids.animal,
+    farmerId: ids.farmer,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-06-01") },
+    confirmation: { recheckRequired: true },
+    cycleStatus: "active",
+    recheckStatus: "pending",
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 65, existingPregnancy: pregnancy });
+  const assignedTechnicianId = "507f1f77bcf86cd799439099";
+  const continuationTask = {
+    ...stubs.state.initialTask,
+    technicianId: assignedTechnicianId,
+    metadata: {
+      workflowStage: "continuation_recheck",
+      pregnancyId: ids.pregnancy,
+    },
+  };
+  let taskQuery = null;
+  Task.find = (filter) => {
+    taskQuery = filter;
+    return query([continuationTask]);
+  };
+  try {
+    const result = await recordPregnancyContinuationRecheck({
+      pregnancyId: ids.pregnancy,
+      result: "continuing",
+      checkedAt: stubs.now,
+      actor,
+    });
+
+    assert.equal("$or" in taskQuery, false);
+    assert.equal(String(taskQuery["metadata.pregnancyId"]), ids.pregnancy);
+    assert.equal(result.completedTask.status, "Completed");
+    assert.equal(result.completedTask.technicianId, assignedTechnicianId);
+  } finally {
     stubs.restore();
   }
 });

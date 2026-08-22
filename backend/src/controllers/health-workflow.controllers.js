@@ -2,7 +2,11 @@ import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { Animal } from "../models/animal.model.js";
 import { assertAnimalAccess, assertClinicalRole } from "../policies/animal.policy.js";
-import { assertHealthRequestAccess } from "../policies/request.policy.js";
+import {
+  assertHealthRequestAccess,
+  assertHealthRequestMutationOwnership,
+  buildHealthRequestMutationOwnershipGuard,
+} from "../policies/request.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { createTimelineEvent } from "../services/animal-timeline.service.js";
 import { AppError } from "../utils/app-error.js";
@@ -909,6 +913,9 @@ export const triageHealthRequest = async (req, res) => {
     assertClinicalRole(req.user);
     const existing = await HealthRequest.findOne({ _id: req.params.id, deletedAt: null });
     if (!existing) throw new AppError("Health request not found", { status: 404, code: "HEALTH_REQUEST_NOT_FOUND" });
+    assertHealthRequestMutationOwnership(req.user, existing, {
+      allowUnassigned: true,
+    });
     if (!ACTIVE_STATUSES.has(existing.status)) {
       throw new AppError("Only active health requests can be triaged", { status: 409, code: "HEALTH_REQUEST_NOT_ACTIVE" });
     }
@@ -917,20 +924,51 @@ export const triageHealthRequest = async (req, res) => {
     if (urgency && !["low", "medium", "high", "emergency"].includes(urgency)) {
       throw new AppError("Invalid urgency value", { status: 400, code: "INVALID_URGENCY" });
     }
-    const nextStatus = scheduledDate ? "scheduled" : assignedTechnicianId ? "assigned" : "triaged";
+    const effectiveAssignedTechnicianId = assignedTechnicianId
+      ? req.user.role === "admin"
+        ? assignedTechnicianId
+        : req.user._id
+      : undefined;
+    const nextStatus = scheduledDate ? "scheduled" : effectiveAssignedTechnicianId ? "assigned" : "triaged";
     const before = { status: existing.status, urgency: existing.urgency };
     const update = {
-      status: nextStatus,
-      activeCaseKey: activeHealthCaseKey(existing.animalId, existing.requestType),
-      handledBy: req.user._id,
-      urgency: urgency || existing.urgency,
-      findings,
-      technicianNote,
-      ...(scheduledDate ? { scheduledDate: new Date(scheduledDate) } : {}),
-      ...(assignedTechnicianId ? { assignedTechnicianId } : {}),
+      $set: {
+        status: nextStatus,
+        activeCaseKey: activeHealthCaseKey(existing.animalId, existing.requestType),
+        handledBy: req.user._id,
+        urgency: urgency || existing.urgency,
+        findings,
+        technicianNote,
+        ...(scheduledDate ? { scheduledDate: new Date(scheduledDate) } : {}),
+        ...(effectiveAssignedTechnicianId
+          ? { assignedTechnicianId: effectiveAssignedTechnicianId }
+          : {}),
+      },
       $push: { statusHistory: { status: nextStatus, note: technicianNote || findings, actorId: req.user._id } },
     };
-    const request = await HealthRequest.findByIdAndUpdate(existing._id, update, { new: true });
+    const ownershipGuard =
+      req.user.role === "admin"
+        ? {}
+        : buildHealthRequestMutationOwnershipGuard({
+            technicianId: req.user._id,
+            allowUnassigned: true,
+          });
+    const request = await HealthRequest.findOneAndUpdate(
+      {
+        _id: existing._id,
+        deletedAt: null,
+        status: existing.status,
+        ...ownershipGuard,
+      },
+      update,
+      { new: true },
+    );
+    if (!request) {
+      throw new AppError(
+        "The request changed or was claimed by another technician. Refresh and try again.",
+        { status: 409, code: "HEALTH_TRIAGE_CONCURRENT_UPDATE" },
+      );
+    }
     await Promise.all([
       createTimelineEvent({ animalId: request.animalId, eventType: "health_triaged", actorId: req.user._id, sourceType: "HealthRequest", sourceId: request._id, title: "Health case triaged", summary: findings || technicianNote, metadata: { urgency: request.urgency, status: request.status } }),
       createAuditLog({ entityType: "HealthRequest", entityId: request._id, action: "triaged", actorId: req.user._id, before, after: { status: request.status, urgency: request.urgency, findings } }),
@@ -946,18 +984,48 @@ export const scheduleHealthFollowUp = async (req, res) => {
     assertClinicalRole(req.user);
     const request = await HealthRequest.findOne({ _id: req.params.id, deletedAt: null });
     if (!request) throw new AppError("Health request not found", { status: 404, code: "HEALTH_REQUEST_NOT_FOUND" });
+    assertHealthRequestMutationOwnership(req.user, request);
     const { followUpDate, note = "" } = req.body;
     if (!followUpDate || Number.isNaN(new Date(followUpDate).getTime())) {
       throw new AppError("A valid follow-up date is required", { status: 400, code: "FOLLOW_UP_DATE_REQUIRED" });
     }
-    request.followUpDate = new Date(followUpDate);
-    request.statusHistory.push({ status: request.status, note: `Follow-up scheduled: ${note}`.trim(), actorId: req.user._id });
-    await request.save();
+    const normalizedFollowUpDate = new Date(followUpDate);
+    const ownershipGuard =
+      req.user.role === "admin"
+        ? {}
+        : buildHealthRequestMutationOwnershipGuard({
+            technicianId: req.user._id,
+          });
+    const updated = await HealthRequest.findOneAndUpdate(
+      {
+        _id: request._id,
+        deletedAt: null,
+        status: request.status,
+        ...ownershipGuard,
+      },
+      {
+        $set: { followUpDate: normalizedFollowUpDate },
+        $push: {
+          statusHistory: {
+            status: request.status,
+            note: `Follow-up scheduled: ${note}`.trim(),
+            actorId: req.user._id,
+          },
+        },
+      },
+      { new: true },
+    );
+    if (!updated) {
+      throw new AppError(
+        "The request changed or is no longer assigned to you. Refresh and try again.",
+        { status: 409, code: "HEALTH_FOLLOW_UP_CONCURRENT_UPDATE" },
+      );
+    }
     await Promise.all([
-      createTimelineEvent({ animalId: request.animalId, eventType: "follow_up_due", actorId: req.user._id, sourceType: "HealthRequest", sourceId: request._id, title: "Health follow-up scheduled", summary: note, metadata: { followUpDate: request.followUpDate } }),
-      createAuditLog({ entityType: "HealthRequest", entityId: request._id, action: "follow_up_scheduled", actorId: req.user._id, after: { followUpDate: request.followUpDate, note } }),
+      createTimelineEvent({ animalId: updated.animalId, eventType: "follow_up_due", actorId: req.user._id, sourceType: "HealthRequest", sourceId: updated._id, title: "Health follow-up scheduled", summary: note, metadata: { followUpDate: updated.followUpDate } }),
+      createAuditLog({ entityType: "HealthRequest", entityId: updated._id, action: "follow_up_scheduled", actorId: req.user._id, after: { followUpDate: updated.followUpDate, note } }),
     ]);
-    sendMutation(res, "Health follow-up scheduled", request);
+    sendMutation(res, "Health follow-up scheduled", updated);
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message, code: error.code || "HEALTH_FOLLOW_UP_FAILED" });
   }

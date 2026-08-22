@@ -30,7 +30,12 @@ import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 const router = Router();
 
 router.post("/register", protectedRoute, registerAnimal);
-router.get("/all", protectedRoute, getAllAnimals);
+router.get(
+  "/all",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  getAllAnimals,
+);
 router.get("/farmer/:farmerId", protectedRoute, requireRole(["technician", "admin"]), getAnimalsByFarmer);
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/records", protectedRoute, getOfficialRecords);
@@ -52,7 +57,12 @@ router.put("/wizard/:id", protectedRoute, updateAnimalWizard);
 router.delete("/:id", protectedRoute, deleteAnimal);
 
 // Breeding Lifecycle
-router.patch("/:id/reproductive-status", protectedRoute, updateReproductiveStatus);
+router.patch(
+  "/:id/reproductive-status",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  updateReproductiveStatus,
+);
 router.post(
   "/re-inseminate",
   protectedRoute,

@@ -129,6 +129,75 @@ test("animal official records exclude Advice and Office Pickup requests", async 
   }
 });
 
+test("per-animal and global official Records use the same completed AI status boundary", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    insemination: Insemination.find,
+    pregnancy: Pregnancy.find,
+    calving: Calving.find,
+    medical: MedicalRecord.find,
+  };
+  const queries = [];
+  const inseminations = [
+    { _id: "ai-pending", status: "pending" },
+    { _id: "ai-scheduled", status: "scheduled" },
+    { _id: "ai-in-progress", status: "in-progress" },
+    { _id: "ai-cancelled", status: "cancelled" },
+    { _id: "ai-rejected", status: "rejected" },
+    {
+      _id: "ai-completed-unsuccessful",
+      animalId: "animal-ai-boundary",
+      status: "done",
+      outcome: "Failed (Re-heat)",
+      attemptNumber: 1,
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+    },
+  ];
+  Animal.findOne = async () => ({ _id: "animal-ai-boundary", farmerId: "farmer-1" });
+  Insemination.find = (query) => {
+    queries.push(query);
+    return queryResult(inseminations.filter((item) => item.status === query.status));
+  };
+  Pregnancy.find = () => queryResult([]);
+  Calving.find = () => queryResult([]);
+  MedicalRecord.find = () => queryResult([]);
+
+  const animalRecorder = responseRecorder();
+  const globalRecorder = responseRecorder();
+  try {
+    await getAnimalRecords(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: { id: "animal-ai-boundary" },
+        query: { page: "1", limit: "10" },
+      },
+      animalRecorder.response,
+    );
+    await getOfficialRecords(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        query: { type: "ai", page: "1", limit: "10" },
+      },
+      globalRecorder.response,
+    );
+
+    assert.equal(queries[0].status, "done");
+    assert.equal(queries[1].status, "done");
+    assert.equal(animalRecorder.body.data.length, 1);
+    assert.equal(globalRecorder.body.data.length, 1);
+    assert.equal(animalRecorder.body.data[0].status, "done");
+    assert.equal(animalRecorder.body.data[0].outcome, "Failed (Re-heat)");
+    assert.equal(globalRecorder.body.data[0].source.status, "done");
+    assert.equal(globalRecorder.body.data[0].source.outcome, "Failed (Re-heat)");
+  } finally {
+    Animal.findOne = originals.animal;
+    Insemination.find = originals.insemination;
+    Pregnancy.find = originals.pregnancy;
+    Calving.find = originals.calving;
+    MedicalRecord.find = originals.medical;
+  }
+});
+
 test("animal health history keeps request responses and hides Farmer-only internal notes", async () => {
   const originals = {
     animal: Animal.findOne,
