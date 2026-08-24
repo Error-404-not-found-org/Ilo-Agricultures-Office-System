@@ -31,6 +31,7 @@ import {
   getBarangaysInsightsList,
   getBarangayInsightsDetails,
   updateTechnicianDispatchProfile,
+  reassignTechnicianRequest,
 } from "../controllers/admin.controllers.js";
 import { getMunicipalCensusData } from "../controllers/report.controllers.js";
 
@@ -44,6 +45,7 @@ router.patch(
   "/technician/:id/dispatch-profile",
   updateTechnicianDispatchProfile,
 );
+router.post("/requests/:type/:id/reassign", reassignTechnicianRequest);
 router.get("/list-users", listAllUsersForAdmin);
 router.get("/recent-activities", getRecentActivities);
 router.post("/sync-metadata", syncUserMetadata);

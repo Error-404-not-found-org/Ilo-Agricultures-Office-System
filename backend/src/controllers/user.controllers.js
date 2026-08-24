@@ -8,6 +8,7 @@ import { Calving } from "../models/calving.model.js";
 import { Task } from "../models/task.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import cloudinary from "../config/cloudinary.js";
+import { ENV } from "../config/env.js";
 import {
   assertCanReadUser,
   assertCanUpdateUser,
@@ -25,6 +26,17 @@ import { resolveOrSyncUser } from "../services/auth-user.service.js";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
+import { evaluateTechnicianDispatchReadiness } from "../domain/geographic/eligibilityEvaluator.js";
+import {
+  canonicalizeMunicipality,
+  findMunicipalityByText,
+  getPSGCVersion,
+} from "../domain/geographic/psgcRegistry.js";
+import { DISPATCH_CAPABILITIES } from "../domain/geographic/constants.js";
+import {
+  getFarmerInvitationRedirectUrl,
+  resolveOrCreateAssistedFarmer,
+} from "../services/farmer-profile-resolution.service.js";
 
 // Structured Console Log Helper for Audit Trail
 const logAdminAction = (action, admin, target, details = {}) => {
@@ -51,6 +63,101 @@ const logAdminAction = (action, admin, target, details = {}) => {
   };
   console.log(`[AUDIT LOG] ${JSON.stringify(logObj)}`);
 };
+
+const getTechnicianInvitationRedirectUrl = () => {
+  return ENV.TECHNICIAN_INVITATION_REDIRECT_URL.trim();
+};
+
+export const buildTechnicianInvitationPayload = (emailAddress) => ({
+  emailAddress,
+  ignoreExisting: true,
+  redirectUrl: getTechnicianInvitationRedirectUrl(),
+  publicMetadata: {
+    role: "technician",
+    isVerified: true,
+  },
+});
+
+const DEFAULT_TECHNICIAN_SERVICE_AREA = Object.freeze({
+  municipalityName: "Oton",
+  provinceName: "Iloilo",
+});
+
+export const normalizeTechnicianRegistrationDispatch = ({
+  serviceMunicipalities,
+  serviceCapabilities = [],
+  assignedBy,
+  assignedAt = new Date(),
+} = {}) => {
+  if (serviceMunicipalities !== undefined && !Array.isArray(serviceMunicipalities)) {
+    throw new TypeError("serviceMunicipalities must be an array.");
+  }
+  if (!Array.isArray(serviceCapabilities)) {
+    throw new TypeError("serviceCapabilities must be an array.");
+  }
+
+  const requestedMunicipalities = serviceMunicipalities?.length
+    ? serviceMunicipalities
+    : [DEFAULT_TECHNICIAN_SERVICE_AREA];
+  const canonicalMunicipalities = requestedMunicipalities.map((municipality) => {
+    const canonical = canonicalizeMunicipality(municipality);
+    if (!canonical) {
+      throw new TypeError("One or more service municipalities are invalid.");
+    }
+    return {
+      ...canonical,
+      source: "technician_registration",
+      assignedBy,
+      assignedAt,
+    };
+  });
+
+  const validCapabilities = new Set(Object.values(DISPATCH_CAPABILITIES));
+  const uniqueCapabilities = [...new Set(serviceCapabilities)];
+  if (uniqueCapabilities.some((capability) => !validCapabilities.has(capability))) {
+    throw new TypeError("One or more service capabilities are invalid.");
+  }
+
+  return {
+    serviceMunicipalities: canonicalMunicipalities,
+    serviceCapabilities: uniqueCapabilities,
+  };
+};
+
+export const buildNewTechnicianProfile = ({
+  fullName,
+  email,
+  phoneNumber,
+  normalizedPhoneNumber,
+  address,
+  imageUrl,
+  initialDispatch = normalizeTechnicianRegistrationDispatch(),
+}) => ({
+  name: fullName,
+  email,
+  phoneNumber,
+  normalizedPhoneNumber,
+  address: {
+    street: (address?.street || "").trim(),
+    barangay: (address?.barangay || "").trim(),
+    city: (address?.city || address?.municipality || "").trim(),
+    district: (address?.district || "").trim(),
+    province: (address?.province || "Iloilo").trim(),
+  },
+  imageUrl,
+  role: "technician",
+  status: "active",
+  profileClaimStatus: "unclaimed",
+  isVerified: false,
+  dispatchProfile: {
+    serviceMunicipalities: initialDispatch?.serviceMunicipalities || [],
+    serviceCapabilities: initialDispatch?.serviceCapabilities || [],
+    availabilityStatus: "off_duty",
+    acceptsNewRequests: false,
+    profileVersion: 1,
+    updatedAt: new Date(),
+  },
+});
 
 /**
  * Synchronous Bootstrap Endpoint for Auth Hotfix.
@@ -330,6 +437,8 @@ export const createTechnician = async (req, res) => {
       phoneNumber,
       address,
       imageUrl,
+      serviceMunicipalities,
+      serviceCapabilities,
     } = req.body;
 
     // 1. Authorization Guard
@@ -370,8 +479,24 @@ export const createTechnician = async (req, res) => {
     const barangay = (address?.barangay || "").trim();
     if (!city || !barangay) {
       return res.status(400).json({
-        message: "Municipality/City and Barangay are required for technician service assignment.",
+        message: "Municipality/City and Barangay are required for the technician contact address.",
         code: "INVALID_ADDRESS",
+      });
+    }
+
+    let initialDispatch;
+    try {
+      initialDispatch = normalizeTechnicianRegistrationDispatch({
+        serviceMunicipalities,
+        serviceCapabilities,
+        assignedBy: req.user._id,
+      });
+    } catch (dispatchError) {
+      return res.status(400).json({
+        message: dispatchError.message,
+        code: dispatchError.message.includes("capabilities")
+          ? "INVALID_SERVICE_CAPABILITY"
+          : "INVALID_SERVICE_MUNICIPALITY",
       });
     }
 
@@ -405,6 +530,7 @@ export const createTechnician = async (req, res) => {
       email: { $regex: new RegExp(`^${escapedEmail}$`, "i") },
     });
 
+    let reusableUnclaimedTechnician = null;
     if (existingEmailUser) {
       if (existingEmailUser.deletedAt || existingEmailUser.status === "suspended") {
         return res.status(409).json({
@@ -412,10 +538,31 @@ export const createTechnician = async (req, res) => {
           code: "ACCOUNT_EXISTS_SUSPENDED_OR_DELETED",
         });
       }
-      return res.status(409).json({
-        message: "An account or pending invitation already exists for this email.",
-        code: "EMAIL_ALREADY_REGISTERED",
-      });
+
+      const hasActiveClerkLink =
+        Boolean(existingEmailUser.clerkId) &&
+        !String(existingEmailUser.clerkId).startsWith("manual_");
+      if (
+        existingEmailUser.role === "technician" &&
+        existingEmailUser.profileClaimStatus === "unclaimed" &&
+        !hasActiveClerkLink
+      ) {
+        reusableUnclaimedTechnician = existingEmailUser;
+      } else if (
+        existingEmailUser.role === "technician" &&
+        (existingEmailUser.profileClaimStatus === "claimed" || hasActiveClerkLink)
+      ) {
+        return res.status(409).json({
+          message:
+            "A Technician account already exists for this email. Sign in with the existing account or use account recovery.",
+          code: "TECHNICIAN_ACCOUNT_ALREADY_ACTIVE",
+        });
+      } else {
+        return res.status(409).json({
+          message: "An account already exists for this email.",
+          code: "EMAIL_ALREADY_REGISTERED",
+        });
+      }
     }
 
     // Tier 2: MongoDB Search by Phone Number (if provided)
@@ -425,7 +572,12 @@ export const createTechnician = async (req, res) => {
       if (phoneNorm) phoneQueries.push({ normalizedPhoneNumber: phoneNorm });
       if (phoneNorm) phoneQueries.push({ phoneNumber: phoneNorm });
 
-      const existingPhoneUser = await User.findOne({ $or: phoneQueries });
+      const existingPhoneUser = await User.findOne({
+        $or: phoneQueries,
+        ...(reusableUnclaimedTechnician
+          ? { _id: { $ne: reusableUnclaimedTechnician._id } }
+          : {}),
+      });
       if (existingPhoneUser) {
         return res.status(409).json({
           message: "This phone number is already connected to another account.",
@@ -454,32 +606,16 @@ export const createTechnician = async (req, res) => {
       console.warn("[Technician Onboarding] Warning checking Clerk users list:", clerkListErr?.message);
     }
 
-    // Tier 4: Clerk Search for Pending Invitation
-    try {
-      if (typeof clerkClient?.invitations?.getInvitationList === "function") {
-        const invResult = await clerkClient.invitations.getInvitationList({
-          status: "pending",
-        });
-        const invitations = Array.isArray(invResult)
-          ? invResult
-          : invResult?.data || [];
-        const pendingInv = invitations.find(
-          (inv) => inv.emailAddress?.trim()?.toLowerCase() === rawEmail,
-        );
-        if (pendingInv) {
-          return res.status(409).json({
-            message: "An invitation is already pending for this email.",
-            code: "INVITATION_ALREADY_PENDING",
-          });
-        }
-      }
-    } catch (invListErr) {
-      console.warn("[Technician Onboarding] Warning checking pending Clerk invitations:", invListErr?.message);
-    }
+    // Existing pending/expired invitations are intentionally handled by
+    // createInvitation({ ignoreExisting: true }) below.
 
-    // Tier 5: Image Upload (if applicable)
+    // Tier 4: Image Upload (fresh profile only)
     let finalImageUrl = imageUrl || "";
-    if (imageUrl && imageUrl.startsWith("data:image")) {
+    if (
+      !reusableUnclaimedTechnician &&
+      imageUrl &&
+      imageUrl.startsWith("data:image")
+    ) {
       try {
         const uploadResponse = await cloudinary.uploader.upload(imageUrl, {
           folder: "agriculture_profiles",
@@ -496,13 +632,9 @@ export const createTechnician = async (req, res) => {
     // Step A: Send Clerk Invitation
     let invitation;
     try {
-      invitation = await clerkClient.invitations.createInvitation({
-        emailAddress: rawEmail,
-        publicMetadata: {
-          role: "technician",
-          isVerified: true,
-        },
-      });
+      invitation = await clerkClient.invitations.createInvitation(
+        buildTechnicianInvitationPayload(rawEmail),
+      );
     } catch (clerkErr) {
       console.error("[Technician Onboarding] Clerk invitation failed:", clerkErr);
       const clerkMessage =
@@ -514,26 +646,21 @@ export const createTechnician = async (req, res) => {
     }
 
     // Step B: Pre-create MongoDB technician user profile
-    let invitedUser;
+    let invitedUser = reusableUnclaimedTechnician;
     try {
-      invitedUser = await User.create({
-        name: fullName,
-        email: rawEmail,
-        phoneNumber: phoneLocal || rawPhone,
-        normalizedPhoneNumber: phoneNorm || "",
-        address: {
-          street: (address?.street || "").trim(),
-          barangay: barangay,
-          city: city,
-          district: (address?.district || "").trim(),
-          province: (address?.province || "Iloilo").trim(),
-        },
-        imageUrl: finalImageUrl,
-        role: "technician",
-        status: "active",
-        profileClaimStatus: "unclaimed",
-        isVerified: false,
-      });
+      if (!invitedUser) {
+        invitedUser = await User.create(
+          buildNewTechnicianProfile({
+            fullName,
+            email: rawEmail,
+            phoneNumber: phoneLocal || rawPhone,
+            normalizedPhoneNumber: phoneNorm || "",
+            address,
+            imageUrl: finalImageUrl,
+            initialDispatch,
+          }),
+        );
+      }
     } catch (dbErr) {
       console.error("[Technician Onboarding] MongoDB creation failed. Initiating compensating rollback for Clerk invitation ID:", invitation?.id, dbErr);
       let rollbackSuccess = false;
@@ -564,18 +691,33 @@ export const createTechnician = async (req, res) => {
     }
 
     // 5. Log Action & Emit Notification
-    logAdminAction("technician onboarding created", req.user, invitedUser, {
+    const invitationResent = Boolean(reusableUnclaimedTechnician);
+    logAdminAction(
+      invitationResent
+        ? "technician invitation resent"
+        : "technician onboarding created",
+      req.user,
+      invitedUser,
+      {
       role: "technician",
       email: rawEmail,
       invitationId: invitation?.id,
-    });
+      },
+    );
 
     await createAuditLog({
       entityType: "User",
       entityId: invitedUser._id,
-      action: "create_technician",
+      action: invitationResent
+        ? "resend_technician_invitation"
+        : "create_technician",
       actorId: req.user?._id,
-      before: null,
+      before: invitationResent
+        ? {
+            profileClaimStatus: invitedUser.profileClaimStatus,
+            dispatchProfile: invitedUser.dispatchProfile,
+          }
+        : null,
       after: {
         name: invitedUser.name,
         email: invitedUser.email,
@@ -592,14 +734,21 @@ export const createTechnician = async (req, res) => {
     });
 
     req.app.get("io")?.emit("dashboardUpdate", {
-      type: "TECHNICIAN_REGISTERED",
-      message: `New technician ${fullName} registered.`,
+      type: invitationResent
+        ? "TECHNICIAN_INVITATION_RESENT"
+        : "TECHNICIAN_REGISTERED",
+      message: invitationResent
+        ? `Technician invitation resent to ${rawEmail}.`
+        : `New technician ${fullName} registered.`,
     });
 
-    return res.status(201).json({
-      message: `Technician invitation sent to ${rawEmail} successfully!`,
+    return res.status(invitationResent ? 200 : 201).json({
+      message: invitationResent
+        ? `Technician invitation resent to ${rawEmail} successfully!`
+        : `Technician invitation sent to ${rawEmail} successfully!`,
       technician: invitedUser,
       invitationSent: true,
+      invitationResent,
     });
   } catch (err) {
     console.error("[Technician Onboarding] Unexpected Error:", err);
@@ -639,73 +788,52 @@ export const createInvitedUser = async (req, res) => {
     }
 
     let invitedUser;
+    let farmerResolution = null;
 
     if (targetRole === "technician") {
       return createTechnician(req, res);
     } else {
-      // Create local offline user OR send Clerk invite if email is provided
+      // Create or safely reuse the assisted Farmer profile.
       const rawFirstName = (firstName || "").trim();
       const rawLastName = (lastName || "").trim();
-      const rawEmail = (email || "").trim().toLowerCase();
       const fullName = [rawFirstName, middleName, rawLastName, suffix]
         .filter(Boolean)
         .map((s) => String(s).trim())
         .join(" ");
-
-      let invitation = null;
-      if (rawEmail) {
-        try {
-          invitation = await clerkClient.invitations.createInvitation({
-            emailAddress: rawEmail,
-            publicMetadata: { role: targetRole },
-            ignoreExisting: false,
-          });
-        } catch (clerkErr) {
-          console.error(`[${targetRole} Onboarding] Clerk invitation failed:`, clerkErr);
-          const clerkMessage = clerkErr.errors?.[0]?.longMessage || clerkErr.errors?.[0]?.message;
-          return res.status(400).json({
-            message: clerkMessage || `The ${targetRole} was not created because the invitation could not be sent.`,
-            code: "CLERK_INVITATION_FAILED",
-          });
-        }
-      }
-
-      try {
-        invitedUser = await User.create({
-          name: fullName,
-          email: rawEmail || undefined,
-          phoneNumber,
-          address,
-          imageUrl: imageUrl || "",
-          role: targetRole,
-          isVerified: false,
-          profileClaimStatus: rawEmail ? "unclaimed" : "none",
-        });
-      } catch (dbErr) {
-        console.error(`[${targetRole} Onboarding] MongoDB creation failed. Initiating rollback.`, dbErr);
-        if (invitation?.id && typeof clerkClient?.invitations?.revokeInvitation === "function") {
-          try {
-            await clerkClient.invitations.revokeInvitation(invitation.id);
-          } catch (revokeErr) {
-            console.error("Failed to revoke Clerk invitation during rollback:", invitation.id, revokeErr);
-          }
-        }
-        if (dbErr.code === 11000) {
-          return res.status(409).json({ message: "An account with this email already exists." });
-        }
-        throw dbErr;
-      }
+      farmerResolution = await resolveOrCreateAssistedFarmer({
+        email,
+        phoneNumber,
+        name: fullName,
+        address,
+        imageUrl: imageUrl || "",
+        source: "create-invited-user",
+        invitationMode: email ? "required" : "none",
+        inviteExistingUnclaimed: true,
+        allowClaimedExisting: false,
+        redirectUrl: getFarmerInvitationRedirectUrl(),
+        isVerified: false,
+      });
+      invitedUser = farmerResolution.farmer;
     }
 
     // Audit & Log Admin Action
-    logAdminAction("user invited/created", req.user, invitedUser, {
+    logAdminAction(
+      farmerResolution?.invitationResent
+        ? "farmer invitation resent"
+        : "user invited/created",
+      req.user,
+      invitedUser,
+      {
       role: targetRole,
       email,
-    });
+      },
+    );
     await createAuditLog({
       entityType: "User",
       entityId: invitedUser._id,
-      action: "create",
+      action: farmerResolution?.invitationResent
+        ? "resend_farmer_invitation"
+        : "create",
       actorId: req.user?._id,
       before: null,
       after: {
@@ -727,11 +855,16 @@ export const createInvitedUser = async (req, res) => {
       message: `New ${targetRole} ${invitedUser.name} registered.`,
     });
 
-    res.status(201).json({
-      message: email
-        ? `Invitation email sent to ${email} successfully!`
-        : `${targetRole} offline profile created successfully!`,
+    res.status(farmerResolution?.reused ? 200 : 201).json({
+      message: farmerResolution?.invitationResent
+        ? `Farmer invitation resent to ${invitedUser.email} successfully!`
+        : farmerResolution?.invitationSent
+          ? `Invitation email sent to ${invitedUser.email} successfully!`
+          : `${targetRole} offline profile created successfully!`,
       newUser: invitedUser,
+      invitationSent: Boolean(farmerResolution?.invitationSent),
+      invitationResent: Boolean(farmerResolution?.invitationResent),
+      profileReused: Boolean(farmerResolution?.reused),
     });
   } catch (err) {
     console.error("Error creating invited user:", err);
@@ -753,7 +886,11 @@ export const createInvitedUser = async (req, res) => {
 
     const status = err.status || 500;
     const message = clerkMessage || err.message || "Failed to create user";
-    res.status(status).json({ message, clerkError: !!err.clerkError });
+    res.status(status).json({
+      message,
+      code: err.code,
+      clerkError: !!err.clerkError,
+    });
   }
 };
 
@@ -830,6 +967,92 @@ const enrichFarmerData = async (farmer) => {
   };
 };
 
+const FARMER_DIRECTORY_PROJECTION =
+  "name role status imageUrl email phoneNumber address";
+const TECHNICIAN_FARMER_DIRECTORY_PROJECTION = [
+  "_id",
+  "name",
+  "role",
+  "status",
+  "imageUrl",
+  "email",
+  "phoneNumber",
+  "address",
+  "farmLocation",
+  "isVerified",
+  "createdAt",
+  // Selected only to derive appAccountStatus; never returned to Technicians.
+  "clerkId",
+  "profileClaimStatus",
+  "registeredByTechnician",
+].join(" ");
+
+export const getFarmerAppAccountStatus = (farmer) => {
+  const hasRealClerkAccount =
+    Boolean(farmer?.clerkId) &&
+    !String(farmer.clerkId).startsWith("manual_");
+
+  if (farmer?.profileClaimStatus === "blocked") return "blocked";
+  if (farmer?.profileClaimStatus === "claimed" || hasRealClerkAccount) {
+    return "connected";
+  }
+  if (
+    farmer?.profileClaimStatus === "unclaimed" ||
+    (farmer?.registeredByTechnician && !farmer?.email)
+  ) {
+    return "no_app_account";
+  }
+  return "profile_only";
+};
+
+export const toTechnicianFarmerDirectoryEntry = (farmer) => {
+  const source = farmer?.toObject ? farmer.toObject() : farmer || {};
+
+  return {
+    _id: source._id,
+    name: source.name,
+    role: source.role,
+    status: source.status,
+    imageUrl: source.imageUrl,
+    email: source.email,
+    phoneNumber: source.phoneNumber || source.address?.phoneNumber || "",
+    address: source.address,
+    farmLocation: source.farmLocation,
+    isVerified: source.isVerified,
+    createdAt: source.createdAt,
+    appAccountStatus: getFarmerAppAccountStatus(source),
+    animalsCount: source.animalsCount || 0,
+    activeCount: source.activeCount || 0,
+    nextVisit: source.nextVisit || null,
+  };
+};
+
+export const presentUserDetailForRequester = ({ requester, target }) => {
+  const rawUser = target?.toObject ? target.toObject() : { ...(target || {}) };
+  if (requester?.role === "admin") return rawUser;
+
+  const presented =
+    requester?.role === "technician" && rawUser.role === "farmer"
+      ? toTechnicianFarmerDirectoryEntry(rawUser)
+      : { ...rawUser };
+  for (const field of [
+    "password",
+    "pushToken",
+    "clerkId",
+    "normalizedEmail",
+    "normalizedPhoneNumber",
+    "profileClaimedAt",
+    "profileClaimedByClerkId",
+    "phoneVerification",
+    "deactivatedBy",
+    "deletedAt",
+    "dispatchProfile",
+  ]) {
+    delete presented[field];
+  }
+  return presented;
+};
+
 export const getUsers = async (req, res) => {
   try {
     const {
@@ -859,6 +1082,13 @@ export const getUsers = async (req, res) => {
       } else {
         query.role = role;
       }
+    } else if (req.user.role === "technician") {
+      if (role && role !== "farmer") {
+        return res.status(403).json({
+          message: "Forbidden - technicians can only query Farmers.",
+        });
+      }
+      query.role = "farmer";
     } else {
       if (role) query.role = role;
     }
@@ -968,7 +1198,9 @@ export const getUsers = async (req, res) => {
 
     let selectFields = "-password";
     if (req.user.role === "farmer") {
-      selectFields = "name role status imageUrl email phoneNumber address";
+      selectFields = FARMER_DIRECTORY_PROJECTION;
+    } else if (req.user.role === "technician") {
+      selectFields = TECHNICIAN_FARMER_DIRECTORY_PROJECTION;
     }
 
     // If pagination params are provided, paginate
@@ -987,7 +1219,12 @@ export const getUsers = async (req, res) => {
       ]);
 
       let responseData = users;
-      if (req.user.role !== "farmer" && role === "farmer") {
+      if (req.user.role === "technician") {
+        const enrichedFarmers = await Promise.all(
+          users.map((u) => enrichFarmerData(u)),
+        );
+        responseData = enrichedFarmers.map(toTechnicianFarmerDirectoryEntry);
+      } else if (req.user.role !== "farmer" && role === "farmer") {
         responseData = await Promise.all(users.map((u) => enrichFarmerData(u)));
       }
 
@@ -1006,7 +1243,12 @@ export const getUsers = async (req, res) => {
       .sort({ createdAt: -1 });
 
     let responseData = users;
-    if (req.user.role !== "farmer" && role === "farmer") {
+    if (req.user.role === "technician") {
+      const enrichedFarmers = await Promise.all(
+        users.map((u) => enrichFarmerData(u)),
+      );
+      responseData = enrichedFarmers.map(toTechnicianFarmerDirectoryEntry);
+    } else if (req.user.role !== "farmer" && role === "farmer") {
       responseData = await Promise.all(users.map((u) => enrichFarmerData(u)));
     }
 
@@ -1179,37 +1421,42 @@ export const getUserById = async (req, res) => {
     let serviceHistory = [];
     let loginHistory = [];
     let activityHistory = [];
+    let fieldNotes = [];
+    const isAdminRequester = req.user.role === "admin";
+    const isTechnicianFarmerDetail =
+      req.user.role === "technician" && user.role === "farmer";
 
-    // Fetch Audit logs
-    try {
-      const { AuditLog } = await import("../models/audit-log.model.js");
-      activityHistory = await AuditLog.find({
-        $or: [{ actorId: id }, { entityId: id }],
-      })
-        .sort({ createdAt: -1 })
-        .limit(30)
-        .lean();
-    } catch (err) {
-      console.error("Error fetching activity history:", err);
-    }
-
-    // Fetch Clerk active sessions/login history if clerkId exists
-    if (user.clerkId) {
+    // Account activity and Clerk session data are Admin-only management data.
+    if (isAdminRequester) {
       try {
-        const { clerkClient } = await import("@clerk/clerk-sdk-node");
-        const sessions = await clerkClient.sessions.getSessionList({
-          userId: user.clerkId,
-        });
-        loginHistory = sessions.map((s) => ({
-          id: s.id,
-          status: s.status,
-          lastActiveAt: s.lastActiveAt,
-          expireAt: s.expireAt,
-          userAgent: s.latestActivity?.userAgent || "Unknown Device",
-          ipAddress: s.latestActivity?.ipAddress || "Unknown IP",
-        }));
+        const { AuditLog } = await import("../models/audit-log.model.js");
+        activityHistory = await AuditLog.find({
+          $or: [{ actorId: id }, { entityId: id }],
+        })
+          .sort({ createdAt: -1 })
+          .limit(30)
+          .lean();
       } catch (err) {
-        console.error("Error fetching Clerk sessions:", err);
+        console.error("Error fetching activity history:", err);
+      }
+
+      if (user.clerkId) {
+        try {
+          const { clerkClient } = await import("@clerk/clerk-sdk-node");
+          const sessions = await clerkClient.sessions.getSessionList({
+            userId: user.clerkId,
+          });
+          loginHistory = sessions.map((s) => ({
+            id: s.id,
+            status: s.status,
+            lastActiveAt: s.lastActiveAt,
+            expireAt: s.expireAt,
+            userAgent: s.latestActivity?.userAgent || "Unknown Device",
+            ipAddress: s.latestActivity?.ipAddress || "Unknown IP",
+          }));
+        } catch (err) {
+          console.error("Error fetching Clerk sessions:", err);
+        }
       }
     }
 
@@ -1275,9 +1522,27 @@ export const getUserById = async (req, res) => {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
     } else if (user.role === "farmer") {
+      const technicianScope = isTechnicianFarmerDetail
+        ? {
+            ai: {
+              $or: [
+                { approvedBy: req.user._id },
+                { technicianId: req.user._id },
+              ],
+            },
+            health: {
+              $or: [
+                { handledBy: req.user._id },
+                { assignedTechnicianId: req.user._id },
+              ],
+            },
+            task: { technicianId: req.user._id },
+          }
+        : { ai: {}, health: {}, task: {} };
       const totalInseminations = await Insemination.countDocuments({
         farmerId: id,
         deletedAt: null,
+        ...technicianScope.ai,
       });
       const successfulInseminations = await Pregnancy.countDocuments({
         farmerId: id,
@@ -1335,6 +1600,7 @@ export const getUserById = async (req, res) => {
       const insHistory = await Insemination.find({
         farmerId: id,
         deletedAt: null,
+        ...technicianScope.ai,
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
@@ -1342,11 +1608,15 @@ export const getUserById = async (req, res) => {
       const healthHistory = await HealthRequest.find({
         farmerId: id,
         deletedAt: null,
+        ...technicianScope.health,
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
         .lean();
-      const taskHistory = await Task.find({ farmerId: id })
+      const taskHistory = await Task.find({
+        farmerId: id,
+        ...technicianScope.task,
+      })
         .populate("animalIds", "earTag animalId breed species")
         .sort({ createdAt: -1 })
         .limit(20)
@@ -1370,10 +1640,12 @@ export const getUserById = async (req, res) => {
       );
 
       // Fetch custom technician field notes
-      var fieldNotes = [];
       try {
         const { FieldNote } = await import("../models/field-note.model.js");
         fieldNotes = await FieldNote.find({
+          ...(isTechnicianFarmerDetail
+            ? { technicianId: req.user._id }
+            : {}),
           $or: [
             { farmerId: id },
             { farmerName: { $regex: new RegExp(`^${user.name}$`, "i") } },
@@ -1388,18 +1660,34 @@ export const getUserById = async (req, res) => {
       }
     }
 
+    const rawUser = user.toObject();
+    const presentedUser = presentUserDetailForRequester({
+      requester: req.user,
+      target: rawUser,
+    });
+
     res.status(200).json({
-      ...user.toObject(),
+      ...presentedUser,
       stats,
       assignedAnimals,
       serviceHistory,
       loginHistory,
       activityHistory,
-      fieldNotes: fieldNotes || [],
+      fieldNotes,
+      ...(isAdminRequester && user.role === "technician"
+        ? {
+            dispatchReadiness: evaluateTechnicianDispatchReadiness({
+              technician: rawUser,
+            }),
+          }
+        : {}),
     });
   } catch (error) {
     console.error("Error fetching user details:", error);
-    res.status(500).json({ message: "Failed to fetch user details" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch user details",
+      code: error.code,
+    });
   }
 };
 
@@ -1513,6 +1801,7 @@ export const updateUser = async (req, res) => {
         "phoneNumber",
         "houseNumber",
         "subdivision",
+        "administrativeArea",
       ];
 
       const cleanIncomingAddress = {};
@@ -1523,6 +1812,32 @@ export const updateUser = async (req, res) => {
       });
       if (address.locationCapture) {
         cleanIncomingAddress.locationCapturedAt = new Date();
+      }
+
+      const incomingCity =
+        cleanIncomingAddress.city || cleanIncomingAddress.municipality;
+      const incomingProvince = cleanIncomingAddress.province;
+      if (
+        user.role === "farmer" &&
+        incomingCity &&
+        incomingProvince &&
+        !cleanIncomingAddress.administrativeArea
+      ) {
+        const psgcMatch = findMunicipalityByText(
+          incomingCity,
+          incomingProvince,
+        );
+        if (psgcMatch) {
+          cleanIncomingAddress.administrativeArea = {
+            municipalityCode: psgcMatch.psgcCode,
+            municipalityName: psgcMatch.name,
+            localityType:
+              psgcMatch.geographicLevel === "City" ? "city" : "municipality",
+            provinceCode: psgcMatch.provinceCode,
+            provinceName: incomingProvince,
+            psgcVersion: getPSGCVersion(),
+          };
+        }
       }
 
       const existingAddressObj = user.address

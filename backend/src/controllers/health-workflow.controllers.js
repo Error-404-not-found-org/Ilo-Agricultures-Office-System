@@ -14,6 +14,7 @@ import { sendDetail, sendMutation } from "../utils/api-response.js";
 import { activeHealthCaseKey } from "../services/health-request-creation.service.js";
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
+import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
 
 const ACTIVE_STATUSES = new Set(["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"]);
 
@@ -918,6 +919,13 @@ export const triageHealthRequest = async (req, res) => {
     });
     if (!ACTIVE_STATUSES.has(existing.status)) {
       throw new AppError("Only active health requests can be triaged", { status: 409, code: "HEALTH_REQUEST_NOT_ACTIVE" });
+    }
+    if (req.user.role === "technician" && requestOwnerIds(existing).length === 0) {
+      assertTechnicianEligibleForNewRequest({
+        technician: req.user,
+        requestType: "HEALTH",
+        dispatch: existing.dispatch,
+      });
     }
 
     const { urgency, findings = "", technicianNote = "", scheduledDate, assignedTechnicianId } = req.body;

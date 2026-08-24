@@ -17,6 +17,7 @@ import {
   dismissAIRequestForFarmer,
   submitFarmerPregnancyReport,
   verifyFarmerPregnancyReport,
+  getUpcomingVisits,
 } from "../controllers/ai-request.controllers.js";
 import {
   protectedRoute,
@@ -33,6 +34,9 @@ router.post("/:id/re-insemination", protectedRoute, requestLimiter, createReInse
 
 // Farmer views their own requests
 router.get("/my", protectedRoute, getMyRequests);
+
+// Farmer dashboard: canonical scheduled AI + Health visits in one request.
+router.get("/upcoming", protectedRoute, requireRole(["farmer"]), getUpcomingVisits);
 
 // Get single AI request detail
 router.get("/:id", protectedRoute, getAIRequestDetail);

@@ -1,13 +1,17 @@
-import { findMunicipalityByText, getPSGCVersion } from "./psgcRegistry.js";
+import {
+  canonicalizeMunicipality,
+  findMunicipalityByText,
+  getPSGCVersion,
+} from "./psgcRegistry.js";
 
 /**
  * Resolves the request location to a canonical PSGC municipality based on strict priority.
  * Does not mutate the Farmer profile.
- * 
+ *
  * @param {Object} farmer - The populated farmer object
  * @returns {Object} Normalized dispatch location object
  */
-export function resolveRequestLocation(farmer) {
+export function resolveRequestLocation(farmer, explicitLocation = null) {
   const unresolvedResult = {
     municipalityCode: null,
     municipalityName: null,
@@ -20,41 +24,35 @@ export function resolveRequestLocation(farmer) {
     psgcVersion: null,
   };
 
-  if (!farmer) return unresolvedResult;
-
-  // 1. Confirmed farmLocation.administrativeArea
-  if (
-    farmer.farmLocation?.isConfirmed &&
-    farmer.farmLocation?.administrativeArea?.municipalityCode
-  ) {
-    const adminArea = farmer.farmLocation.administrativeArea;
-    return {
-      municipalityCode: adminArea.municipalityCode,
-      municipalityName: adminArea.municipalityName,
-      localityType: adminArea.localityType || "municipality",
-      provinceCode: adminArea.provinceCode,
-      provinceName: adminArea.provinceName,
-      barangayCode: adminArea.barangayCode || null,
-      barangayName: adminArea.barangayName || null,
-      source: "confirmed_farm_location",
-      psgcVersion: adminArea.psgcVersion || getPSGCVersion(),
-    };
+  // 1. Explicit request-level location
+  if (explicitLocation && explicitLocation.municipalityCode) {
+    const canonicalLocation = canonicalizeMunicipality(explicitLocation);
+    if (canonicalLocation) {
+      return {
+        ...unresolvedResult,
+        ...explicitLocation,
+        ...canonicalLocation,
+        source: "explicit_request_location",
+        psgcVersion: explicitLocation.psgcVersion || getPSGCVersion(),
+      };
+    }
   }
+
+  if (!farmer) return unresolvedResult;
 
   // 2. address.administrativeArea
   if (farmer.address?.administrativeArea?.municipalityCode) {
     const adminArea = farmer.address.administrativeArea;
-    return {
-      municipalityCode: adminArea.municipalityCode,
-      municipalityName: adminArea.municipalityName,
-      localityType: adminArea.localityType || "municipality",
-      provinceCode: adminArea.provinceCode,
-      provinceName: adminArea.provinceName,
-      barangayCode: adminArea.barangayCode || null,
-      barangayName: adminArea.barangayName || null,
-      source: "canonical_contact_address",
-      psgcVersion: adminArea.psgcVersion || getPSGCVersion(),
-    };
+    const canonicalLocation = canonicalizeMunicipality(adminArea);
+    if (canonicalLocation) {
+      return {
+        ...canonicalLocation,
+        barangayCode: adminArea.barangayCode || null,
+        barangayName: adminArea.barangayName || null,
+        source: "canonical_contact_address",
+        psgcVersion: adminArea.psgcVersion || getPSGCVersion(),
+      };
+    }
   }
 
   // Helper for legacy resolution
@@ -64,9 +62,10 @@ export function resolveRequestLocation(farmer) {
     if (!psgcMatch) return null;
 
     return {
-      municipalityCode: psgcMatch.code,
+      municipalityCode: psgcMatch.psgcCode,
       municipalityName: psgcMatch.name,
-      localityType: psgcMatch.level === "City" ? "city" : "municipality",
+      localityType:
+        psgcMatch.geographicLevel === "City" ? "city" : "municipality",
       provinceCode: psgcMatch.provinceCode,
       provinceName: psgcMatch.provinceName,
       barangayCode: null,
@@ -84,7 +83,10 @@ export function resolveRequestLocation(farmer) {
 
   // 4. Legacy address.municipality
   if (farmer.address?.municipality && farmer.address?.province) {
-    const result = resolveLegacy(farmer.address.municipality, farmer.address.province);
+    const result = resolveLegacy(
+      farmer.address.municipality,
+      farmer.address.province,
+    );
     if (result) return result;
   }
 

@@ -9,7 +9,7 @@ export const DISPATCH_NOTIFICATION_MODES = Object.freeze({
 export function resolveDispatchNotificationMode(
   rawMode = ENV.DISPATCH_NOTIFICATION_MODE,
 ) {
-  const normalized = String(rawMode || "observe")
+  const normalized = String(rawMode || "targeted")
     .trim()
     .toLowerCase();
 
@@ -20,5 +20,5 @@ export function resolveDispatchNotificationMode(
     return normalized;
   }
 
-  return DISPATCH_NOTIFICATION_MODES.OBSERVE;
+  return DISPATCH_NOTIFICATION_MODES.TARGETED;
 }

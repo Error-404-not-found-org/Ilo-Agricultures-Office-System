@@ -11,7 +11,6 @@ import { Notification } from "../models/notification.model.js";
 
 import { Config } from "../models/config.model.js";
 import { FieldNote } from "../models/field-note.model.js";
-import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Task } from "../models/task.model.js";
 import { inngest } from "../config/inngest.js";
 import {
@@ -47,6 +46,7 @@ import {
 import { recordTechnicianAIService } from "../services/livestock-transaction.service.js";
 import {
   notifyUser,
+  notifyUserBestEffort,
   sendNotificationPush,
 } from "../services/notification-delivery.service.js";
 import { presentNotificationDocument } from "../domain/notification-presentation.js";
@@ -59,6 +59,116 @@ import {
   AI_STATUS,
   normalizeAIStatus,
 } from "../domain/status-vocabulary.js";
+import {
+  assertTechnicianEligibleForNewRequest,
+  buildNewRequestDispatchFilter,
+} from "../services/dispatch-eligibility.service.js";
+import {
+  getFarmerInvitationRedirectUrl,
+  resolveOrCreateAssistedFarmer,
+} from "../services/farmer-profile-resolution.service.js";
+
+const combineMongoFilters = (baseFilter, ...conditions) => {
+  const { $and: baseAnd = [], ...base } = baseFilter;
+  const activeConditions = conditions.filter(
+    (condition) => condition && Object.keys(condition).length > 0,
+  );
+  return activeConditions.length || baseAnd.length
+    ? { ...base, $and: [...baseAnd, ...activeConditions] }
+    : base;
+};
+
+const appendMongoCondition = (query, condition) => {
+  if (!condition || Object.keys(condition).length === 0) return;
+  query.$and = [...(query.$and || []), condition];
+};
+
+const fetchBoundedPartitions = async ({
+  Model,
+  baseFilter,
+  partitions,
+  windowLimit,
+  populate,
+}) => {
+  const batches = await Promise.all(
+    partitions.map(async ({ filter = {}, sort }) => {
+      let query = Model.find(combineMongoFilters(baseFilter, filter));
+      if (populate) query = populate(query);
+      query = query.sort(sort);
+      if (typeof query.limit === "function") query = query.limit(windowLimit);
+      return query.lean();
+    }),
+  );
+  const byId = new Map();
+  for (const document of batches.flat()) {
+    byId.set(String(document._id), document);
+  }
+  return [...byId.values()];
+};
+
+const fieldMissing = (field) => ({ [field]: null });
+const fieldPresent = (field) => ({ [field]: { $ne: null } });
+
+const effectiveDatePartitions = (fields, direction = 1) => [
+  ...fields.map((field, index) => ({
+    filter: combineMongoFilters(
+      {},
+      ...fields.slice(0, index).map(fieldMissing),
+      fieldPresent(field),
+    ),
+    sort: { [field]: direction, _id: direction },
+  })),
+  {
+    filter: combineMongoFilters({}, ...fields.map(fieldMissing)),
+    sort: { _id: direction },
+  },
+];
+
+const workQueueDatePartitions = (fields, workState, todayStart) => {
+  if (workState === "completed") return effectiveDatePartitions(fields, 1);
+  const [scheduledField, ...fallbackFields] = fields;
+  return [
+    {
+      filter: {
+        [scheduledField]: { $ne: null, $lt: todayStart },
+      },
+      sort: { [scheduledField]: 1, _id: 1 },
+    },
+    {
+      filter: { [scheduledField]: { $gte: todayStart } },
+      sort: { [scheduledField]: 1, _id: 1 },
+    },
+    ...fallbackFields.map((field, index) => ({
+      filter: combineMongoFilters(
+        {},
+        fieldMissing(scheduledField),
+        ...fallbackFields.slice(0, index).map(fieldMissing),
+        fieldPresent(field),
+      ),
+      sort: { [field]: 1, _id: 1 },
+    })),
+    {
+      filter: combineMongoFilters(
+        {},
+        fieldMissing(scheduledField),
+        ...fallbackFields.map(fieldMissing),
+      ),
+      sort: { _id: 1 },
+    },
+  ];
+};
+
+const crossPartitions = (left, right) =>
+  left.flatMap((leftPartition) =>
+    right.map((rightPartition) => ({
+      filter: combineMongoFilters(
+        {},
+        leftPartition.filter,
+        rightPartition.filter,
+      ),
+      sort: rightPartition.sort,
+    })),
+  );
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -1126,57 +1236,40 @@ export const walkInInsemination = async (req, res) => {
 
     // 1. Resolve or Create Farmer
     let farmer;
+    let farmerResolution = null;
     if (farmerId) {
       farmer = await User.findById(farmerId);
-    } else if (phoneNumber) {
-      farmer = await User.findOne({ phoneNumber });
-      if (!farmer) {
-        if (email) {
-          try {
-            const clientUrl = (
-              process.env.CLIENT_URL || "http://localhost:5173"
-            ).trim();
-            const normalizedClientUrl = /^https?:\/\//i.test(clientUrl)
-              ? clientUrl
-              : `https://${clientUrl}`;
-            const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
-
-            await clerkClient.invitations.createInvitation({
-              emailAddress: email,
-              publicMetadata: { role: "farmer" },
-              redirectUrl: finalRedirectUrl,
-            });
-          } catch (clerkError) {
-            console.error("[walkInAI CLERK ERROR]", clerkError.message);
-          }
-        }
-
-        farmer = await User.create({
-          name: `${firstName || ""} ${lastName || ""}`.trim(),
-          phoneNumber,
-          email: email || undefined,
-          address: {
-            street:
-              typeof address === "object" && address?.street
-                ? address.street
-                : "",
-            barangay:
-              typeof address === "string"
-                ? address
-                : address?.barangay || "Not Provided",
-            city:
-              typeof address === "object" && address?.city
-                ? address.city
-                : "Oton",
-            province:
-              typeof address === "object" && address?.province
-                ? address.province
-                : "Iloilo",
-          },
-          role: "farmer",
-          isVerified: true,
-        });
-      }
+    } else {
+      farmerResolution = await resolveOrCreateAssistedFarmer({
+        email,
+        phoneNumber,
+        name: `${firstName || ""} ${lastName || ""}`.trim(),
+        address: {
+          street:
+            typeof address === "object" && address?.street
+              ? address.street
+              : "",
+          barangay:
+            typeof address === "string"
+              ? address
+              : address?.barangay || "Not Provided",
+          city:
+            typeof address === "object" && address?.city
+              ? address.city
+              : "Oton",
+          province:
+            typeof address === "object" && address?.province
+              ? address.province
+              : "Iloilo",
+        },
+        source: "walk-in-ai",
+        invitationMode: email ? "best-effort" : "none",
+        inviteExistingUnclaimed: false,
+        allowClaimedExisting: true,
+        redirectUrl: getFarmerInvitationRedirectUrl(),
+        isVerified: true,
+      });
+      farmer = farmerResolution.farmer;
     }
 
     if (!farmer) {
@@ -1270,6 +1363,14 @@ export const walkInInsemination = async (req, res) => {
       task: result.task,
       farmer,
       animal,
+      invitationAttempted: Boolean(farmerResolution?.invitationAttempted),
+      invitationSent: Boolean(farmerResolution?.invitationSent),
+      invitationStatus: farmerResolution?.invitationSent
+        ? "sent"
+        : farmerResolution?.invitationAttempted
+          ? "failed"
+          : "not_applicable",
+      farmerProfileReused: farmerId ? true : Boolean(farmerResolution?.reused),
     });
   } catch (error) {
     console.error("[walkInInsemination ERROR]", error);
@@ -1645,75 +1746,42 @@ export const registerFarmer = async (req, res) => {
       });
     }
 
-    const fullName = `${firstName} ${lastName}`.trim();
-
-    // 2. Check for existing user
-    // We check both email and phone number to prevent duplicate accounts
-    const existingUser = await User.findOne({
-      $or: [{ phoneNumber }, ...(email ? [{ email }] : [])],
-    });
-
-    if (existingUser) {
-      const conflict =
-        existingUser.phoneNumber === phoneNumber ? "phone number" : "email";
-      return res.status(400).json({
-        message: `A farmer with this ${conflict} is already registered.`,
-      });
-    }
-
-    // 3. Handle Clerk Invitation (for tech-enabled farmers)
-    if (email) {
-      try {
-        const clientUrl = (
-          process.env.CLIENT_URL || "http://localhost:5173"
-        ).trim();
-        const normalizedClientUrl = /^https?:\/\//i.test(clientUrl)
-          ? clientUrl
-          : `https://${clientUrl}`;
-        const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
-
-        await clerkClient.invitations.createInvitation({
-          emailAddress: email,
-          publicMetadata: { role: "farmer" },
-          redirectUrl: finalRedirectUrl,
-          expiresInDays: 1,
-        });
-      } catch (clerkError) {
-        console.error("[registerFarmer CLERK ERROR]", clerkError.message);
-        // Continue even if invitation fails, as we still want the local record
-      }
-    }
-
-    // 4. Create local User record
-    const user = await User.create({
-      clerkId: email
-        ? undefined
-        : `manual_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      name: fullName,
-      email: email || undefined,
+    const resolution = await resolveOrCreateAssistedFarmer({
+      email,
       phoneNumber,
+      name: `${firstName} ${lastName}`.trim(),
       address: {
         street: address?.street || "",
         barangay: address?.barangay || "Unknown",
         city: address?.city || "Oton",
         province: address?.province || "Iloilo",
       },
-      role: "farmer",
-      isVerified: !!email,
-      status: "active",
+      source: "register-farmer",
+      invitationMode: email ? "required" : "none",
+      inviteExistingUnclaimed: true,
+      allowClaimedExisting: false,
+      redirectUrl: getFarmerInvitationRedirectUrl(),
+      expiresInDays: 1,
+      isVerified: false,
     });
 
-    res.status(201).json({
-      message: email
-        ? "Registration successful! Invitation sent to email."
-        : "Farmer profile registered successfully.",
-      user,
+    res.status(resolution.reused ? 200 : 201).json({
+      message: resolution.invitationResent
+        ? "Farmer profile found. Invitation resent successfully."
+        : resolution.invitationSent
+          ? "Registration successful! Invitation sent to email."
+          : "Farmer profile registered successfully.",
+      user: resolution.farmer,
+      invitationSent: resolution.invitationSent,
+      invitationResent: resolution.invitationResent,
+      profileReused: resolution.reused,
     });
   } catch (error) {
     console.error("[registerFarmer ERROR]", error);
-    res.status(500).json({
-      message: "An internal error occurred during farmer registration.",
-      error: error.message,
+    res.status(error.status || 500).json({
+      message:
+        error.message || "An internal error occurred during farmer registration.",
+      code: error.code,
     });
   }
 };
@@ -2181,13 +2249,14 @@ export const walkInLivestock = async (req, res) => {
       isVerified: true,
     });
 
-    await notifyUser({
+    await notifyUserBestEffort({
       recipient: farmer,
       senderId: req.user._id,
       type: "system",
       relatedId: animal._id,
       category: "animal",
       eventType: "animal_registered",
+      dedupeKey: `animal-registered:${animal._id}:${farmer._id}`,
       linkType: "animal",
       title: "New animal registered",
       message: `A new ${species} (${breed}) with Tag #${earTag} has been added by technician ${req.user.name}.`,
@@ -2196,7 +2265,7 @@ export const walkInLivestock = async (req, res) => {
         animalTag: earTag,
         technicianName: req.user.name,
       },
-    });
+    }, "walkInLivestock");
 
     req.app.get("io").emit("dashboardUpdate", { type: "LIVESTOCK_REGISTERED" });
     res
@@ -3095,9 +3164,9 @@ export const claimRequest = async (req, res) => {
     let updated = null;
 
     if (type === "ai") {
-      if (!["technician", "admin"].includes(req.user.role)) {
+      if (req.user.role !== "technician") {
         return res.status(403).json({
-          message: "Only technicians or administrators can claim AI requests.",
+          message: "Only technicians can claim AI requests.",
           code: "AI_REQUEST_CLAIM_FORBIDDEN",
         });
       }
@@ -3124,6 +3193,11 @@ export const claimRequest = async (req, res) => {
           code: "REQUEST_ALREADY_CLAIMED",
         });
       }
+      assertTechnicianEligibleForNewRequest({
+        technician: req.user,
+        requestType: "AI",
+        dispatch: existing.dispatch,
+      });
 
       updated = await Insemination.findOneAndUpdate(
         {
@@ -3148,6 +3222,12 @@ export const claimRequest = async (req, res) => {
         .populate("farmerId", "name address imageUrl phoneNumber")
         .populate("animalId", "animalId earTag species breed imageUrl");
     } else if (type === "health") {
+      if (req.user.role !== "technician") {
+        return res.status(403).json({
+          message: "Only technicians can claim Health requests.",
+          code: "HEALTH_REQUEST_CLAIM_FORBIDDEN",
+        });
+      }
       const existing = await HealthRequest.findById(id);
       if (!existing) {
         return res
@@ -3167,6 +3247,11 @@ export const claimRequest = async (req, res) => {
           code: "REQUEST_NOT_CLAIMABLE",
         });
       }
+      assertTechnicianEligibleForNewRequest({
+        technician: req.user,
+        requestType: "HEALTH",
+        dispatch: existing.dispatch,
+      });
 
       updated = await HealthRequest.findOneAndUpdate(
         {
@@ -3258,9 +3343,10 @@ export const claimRequest = async (req, res) => {
     });
   } catch (error) {
     console.error("[claimRequest ERROR]", error);
-    return res.status(500).json({
-      message: "Failed to claim request.",
-      error: error.message,
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to claim request.",
+      code: error.code,
+      ...(error.details || {}),
     });
   }
 };
@@ -3282,10 +3368,11 @@ export const getTechnicianRequests = async (req, res) => {
       municipality,
       barangay,
       includeOperationalTasks,
+      includeCounts,
       requestId,
     } = req.query;
-    page = parseInt(page, 10) || 1;
-    limit = parseInt(limit, 10) || 10;
+    page = Math.max(Number.parseInt(page, 10) || 1, 1);
+    limit = Math.min(Math.max(Number.parseInt(limit, 10) || 10, 1), 50);
     const skip = (page - 1) * limit;
 
     const now = new Date();
@@ -3299,6 +3386,13 @@ export const getTechnicianRequests = async (req, res) => {
     const healthQuery = { deletedAt: null };
     const taskQuery = { taskType: "PD" };
     const taskAndFilters = [];
+    const technician = req.user.role === "technician" ? req.user : null;
+    const aiDispatch = technician
+      ? buildNewRequestDispatchFilter({ technician, requestType: "AI" })
+      : null;
+    const healthDispatch = technician
+      ? buildNewRequestDispatchFilter({ technician, requestType: "HEALTH" })
+      : null;
 
     if (requestId) {
       if (!mongoose.Types.ObjectId.isValid(requestId)) {
@@ -3360,12 +3454,16 @@ export const getTechnicianRequests = async (req, res) => {
       ];
       taskQuery.technicianId = req.user._id;
     } else if (assignment === "unassigned" || assignment === "available") {
-      aiQuery.approvedBy = { $in: [null, undefined] };
-      healthQuery.handledBy = { $in: [null, undefined] };
+      aiQuery.approvedBy = null;
+      aiQuery.technicianId = null;
+      healthQuery.handledBy = null;
+      healthQuery.assignedTechnicianId = null;
       taskQuery.technicianId = { $in: [null, undefined] };
       if (req.user.role !== "admin") {
         aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
         healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        appendMongoCondition(aiQuery, aiDispatch?.filter);
+        appendMongoCondition(healthQuery, healthDispatch?.filter);
       }
       aiQuery.status = {
         $in: ["pending", "approved", "unassigned", "triaged"],
@@ -3375,15 +3473,74 @@ export const getTechnicianRequests = async (req, res) => {
       };
       taskQuery.status = { $in: ["Pending", "unassigned"] };
     } else if (assignment === "all") {
-      // No assignment filter
-    } else {
-      aiQuery.approvedBy = { $in: [req.user._id, null, undefined] };
-      healthQuery.handledBy = { $in: [req.user._id, null, undefined] };
-      taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
       if (req.user.role !== "admin") {
-        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
-        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        appendMongoCondition(aiQuery, {
+          $or: [
+            { approvedBy: req.user._id },
+            { technicianId: req.user._id },
+            {
+              $and: [
+                { approvedBy: null },
+                { technicianId: null },
+                { declinedByTechnicianIds: { $ne: req.user._id } },
+                aiDispatch.filter,
+              ],
+            },
+          ],
+        });
+        appendMongoCondition(healthQuery, {
+          $or: [
+            { handledBy: req.user._id },
+            { assignedTechnicianId: req.user._id },
+            {
+              $and: [
+                { handledBy: null },
+                { assignedTechnicianId: null },
+                { declinedByTechnicianIds: { $ne: req.user._id } },
+                healthDispatch.filter,
+              ],
+            },
+          ],
+        });
       }
+    } else {
+      appendMongoCondition(aiQuery, {
+        $or: [
+          { approvedBy: req.user._id },
+          { technicianId: req.user._id },
+          ...(req.user.role === "admin"
+            ? [{ approvedBy: null, technicianId: null }]
+            : [
+                {
+                  $and: [
+                    { approvedBy: null },
+                    { technicianId: null },
+                    { declinedByTechnicianIds: { $ne: req.user._id } },
+                    aiDispatch.filter,
+                  ],
+                },
+              ]),
+        ],
+      });
+      appendMongoCondition(healthQuery, {
+        $or: [
+          { handledBy: req.user._id },
+          { assignedTechnicianId: req.user._id },
+          ...(req.user.role === "admin"
+            ? [{ handledBy: null, assignedTechnicianId: null }]
+            : [
+                {
+                  $and: [
+                    { handledBy: null },
+                    { assignedTechnicianId: null },
+                    { declinedByTechnicianIds: { $ne: req.user._id } },
+                    healthDispatch.filter,
+                  ],
+                },
+              ]),
+        ],
+      });
+      taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
     }
 
     // 2. Urgency Filter
@@ -3509,44 +3666,126 @@ export const getTechnicianRequests = async (req, res) => {
     const fetchPregnancyChecks =
       includeOperationalTasks !== "false" &&
       (type === "all" || type === "breeding_verification" || !type);
+    const sortByVal = sortBy || "newest";
+    const boundedMerge = sortByVal !== "distance";
+    const candidateLimit = skip + limit;
+    const requestDateDirection = sortByVal === "oldest" ? 1 : -1;
+    const aiDatePartitions =
+      sortByVal === "preferredDate"
+        ? effectiveDatePartitions(["preferredDate", "createdAt"], 1)
+        : effectiveDatePartitions(["createdAt"], requestDateDirection);
+    const healthUrgencyPartitions = [
+      { filter: { urgency: { $in: ["high", "emergency"] } } },
+      { filter: { urgency: { $nin: ["high", "emergency"] } } },
+    ];
+    const taskUrgencyPartitions = [
+      {
+        filter: {
+          $or: [
+            { priority: 1 },
+            { category: { $in: ["Urgent", "Emergency"] } },
+          ],
+        },
+      },
+      {
+        filter: {
+          $nor: [
+            { priority: 1 },
+            { category: { $in: ["Urgent", "Emergency"] } },
+          ],
+        },
+      },
+    ];
+    const healthDatePartitions =
+      sortByVal === "preferredDate"
+        ? effectiveDatePartitions(["preferredDate", "createdAt"], 1)
+        : effectiveDatePartitions(["createdAt"], requestDateDirection);
+    const taskDatePartitions =
+      sortByVal === "preferredDate"
+        ? effectiveDatePartitions(["dueDate", "createdAt"], 1)
+        : effectiveDatePartitions(["createdAt"], requestDateDirection);
 
-    const [aiRecords, healthRecords, pregnancyCheckTasks] = await Promise.all([
+    const populateAIRequest = (query) =>
+      query
+        .populate(
+          "farmerId",
+          "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
+        )
+        .populate("animalId", "animalId earTag species breed imageUrl")
+        .populate("approvedBy", "name")
+        .populate({
+          path: "previousAttemptId",
+          select:
+            "attemptNumber inseminationDate outcome failureReason farmerOutcomeReport isSuccess status outcomeVerificationStatus outcomeConfirmationSource outcomeConfirmedAt approvedBy technicianId",
+          populate: { path: "approvedBy technicianId", select: "name" },
+        });
+    const populateHealthRequest = (query) =>
+      query
+        .populate(
+          "farmerId",
+          "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
+        )
+        .populate("animalId", "animalId earTag species breed imageUrl")
+        .populate("handledBy", "name");
+    const populatePregnancyTask = (query) =>
+      query
+        .populate(
+          "farmerId",
+          "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
+        )
+        .populate("animalIds", "animalId earTag species breed imageUrl")
+        .populate("technicianId", "name");
+
+    const [
+      aiRecords,
+      healthRecords,
+      pregnancyCheckTasks,
+      aiTotal,
+      healthTotal,
+      pregnancyTotal,
+    ] = await Promise.all([
       fetchAI
-        ? Insemination.find(aiQuery)
-            .populate(
-              "farmerId",
-              "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
-            )
-            .populate("animalId", "animalId earTag species breed imageUrl")
-            .populate("approvedBy", "name")
-            .populate({
-              path: "previousAttemptId",
-              select:
-                "attemptNumber inseminationDate outcome failureReason farmerOutcomeReport isSuccess status outcomeVerificationStatus outcomeConfirmationSource outcomeConfirmedAt approvedBy technicianId",
-              populate: { path: "approvedBy technicianId", select: "name" },
+        ? boundedMerge
+          ? fetchBoundedPartitions({
+              Model: Insemination,
+              baseFilter: aiQuery,
+              partitions: aiDatePartitions,
+              windowLimit: candidateLimit,
+              populate: populateAIRequest,
             })
-            .lean()
+          : populateAIRequest(Insemination.find(aiQuery)).lean()
         : [],
       fetchHealth
-        ? HealthRequest.find(healthQuery)
-            .populate(
-              "farmerId",
-              "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
-            )
-            .populate("animalId", "animalId earTag species breed imageUrl")
-            .populate("handledBy", "name")
-            .lean()
+        ? boundedMerge
+          ? fetchBoundedPartitions({
+              Model: HealthRequest,
+              baseFilter: healthQuery,
+              partitions: crossPartitions(
+                healthUrgencyPartitions,
+                healthDatePartitions,
+              ),
+              windowLimit: candidateLimit,
+              populate: populateHealthRequest,
+            })
+          : populateHealthRequest(HealthRequest.find(healthQuery)).lean()
         : [],
       fetchPregnancyChecks
-        ? Task.find(taskQuery)
-            .populate(
-              "farmerId",
-              "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
-            )
-            .populate("animalIds", "animalId earTag species breed imageUrl")
-            .populate("technicianId", "name")
-            .lean()
+        ? boundedMerge
+          ? fetchBoundedPartitions({
+              Model: Task,
+              baseFilter: taskQuery,
+              partitions: crossPartitions(
+                taskUrgencyPartitions,
+                taskDatePartitions,
+              ),
+              windowLimit: candidateLimit,
+              populate: populatePregnancyTask,
+            })
+          : populatePregnancyTask(Task.find(taskQuery)).lean()
         : [],
+      fetchAI ? Insemination.countDocuments(aiQuery) : 0,
+      fetchHealth ? HealthRequest.countDocuments(healthQuery) : 0,
+      fetchPregnancyChecks ? Task.countDocuments(taskQuery) : 0,
     ]);
 
     const linkedObservationIds = pregnancyCheckTasks
@@ -4018,7 +4257,6 @@ export const getTechnicianRequests = async (req, res) => {
     });
 
     // Combine & Sort
-    const sortByVal = sortBy || "newest";
     const combined = [
       ...normalizedAI,
       ...normalizedHealth,
@@ -4055,8 +4293,68 @@ export const getTechnicianRequests = async (req, res) => {
     });
 
     // Apply pagination slice
-    const total = combined.length;
+    const total = aiTotal + healthTotal + pregnancyTotal;
     const paginated = combined.slice(skip, skip + limit);
+
+    let counts;
+    if (includeCounts === "true") {
+      const unassignedAIQuery = {
+        deletedAt: null,
+        approvedBy: null,
+        technicianId: null,
+        status: { $in: ["pending", "approved", "unassigned", "triaged"] },
+        ...(req.user.role !== "admin"
+          ? { declinedByTechnicianIds: { $ne: req.user._id } }
+          : {}),
+      };
+      const unassignedHealthQuery = {
+        deletedAt: null,
+        handledBy: null,
+        assignedTechnicianId: null,
+        status: {
+          $in: ["pending", "triaged", "assigned", "approved", "unassigned"],
+        },
+        ...(req.user.role !== "admin"
+          ? { declinedByTechnicianIds: { $ne: req.user._id } }
+          : {}),
+      };
+      if (req.user.role !== "admin") {
+        appendMongoCondition(unassignedAIQuery, aiDispatch?.filter);
+        appendMongoCondition(unassignedHealthQuery, healthDispatch?.filter);
+      }
+      const unassignedPregnancyQuery = {
+        taskType: "PD",
+        technicianId: { $in: [null, undefined] },
+        status: { $in: ["Pending", "unassigned"] },
+        ...(includeUpcoming === "true"
+          ? {}
+          : {
+              $or: [
+                {
+                  sourceType: {
+                    $in: ["manual", "farmer_requested_verification"],
+                  },
+                },
+                {
+                  sourceType: "automatic_pd_followup",
+                  dueDate: { $lte: now },
+                },
+                { sourceType: { $exists: false } },
+              ],
+            }),
+      };
+      const [aiCount, healthCount, pregnancyCount] = await Promise.all([
+        Insemination.countDocuments(unassignedAIQuery),
+        HealthRequest.countDocuments(unassignedHealthQuery),
+        Task.countDocuments(unassignedPregnancyQuery),
+      ]);
+      counts = {
+        all: aiCount + healthCount + pregnancyCount,
+        ai: aiCount,
+        health: healthCount,
+        pregnancy: pregnancyCount,
+      };
+    }
 
     res.status(200).json({
       requests: paginated,
@@ -4066,6 +4364,7 @@ export const getTechnicianRequests = async (req, res) => {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+      ...(counts ? { counts } : {}),
     });
   } catch (error) {
     console.error("[getTechnicianRequests ERROR]", error);
@@ -4080,6 +4379,31 @@ export const getWorkQueue = async (req, res) => {
   try {
     const isAdmin = req.user?.role === "admin";
     const authenticatedUserId = req.user?._id;
+    const {
+      workState = "active",
+      type = "all",
+      search = "",
+    } = req.query || {};
+    const page = Math.max(Number.parseInt(req.query?.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query?.limit, 10) || 20, 1),
+      50,
+    );
+    const skip = (page - 1) * limit;
+    const candidateLimit = skip + limit;
+    if (!["active", "completed"].includes(workState)) {
+      return res.status(400).json({ message: "Invalid work state." });
+    }
+    const supportedTypes = new Set([
+      "all",
+      "ai",
+      "health",
+      "pregnancy",
+      "calving",
+    ]);
+    if (!supportedTypes.has(type)) {
+      return res.status(400).json({ message: "Invalid work type." });
+    }
     const now = new Date();
     const PHT_OFFSET = 8 * 60 * 60 * 1000;
     const todayStart = new Date(now.getTime() + PHT_OFFSET);
@@ -4087,10 +4411,11 @@ export const getWorkQueue = async (req, res) => {
     todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
-    const aiQuery = {
-      status: {
-        $in: [...ACTIVE_AI_REQUEST_STATUSES, AI_STATUS.DONE],
-      },
+    const aiStateQuery = {
+      status:
+        workState === "completed"
+          ? AI_STATUS.DONE
+          : { $in: ACTIVE_AI_REQUEST_STATUSES },
       deletedAt: null,
       ...(isAdmin
         ? {}
@@ -4104,20 +4429,21 @@ export const getWorkQueue = async (req, res) => {
     };
 
     const healthAssigneeField = "assignedTechnicianId";
-    const healthQuery = {
-      status: {
-        $in: [
-          "pending",
-          "triaged",
-          "assigned",
-          "approved",
-          "scheduled",
-          "in-progress",
-          "in_progress",
-          "resolved",
-          "done",
-        ],
-      },
+    const healthStateQuery = {
+      status:
+        workState === "completed"
+          ? { $in: ["resolved", "done"] }
+          : {
+              $in: [
+                "pending",
+                "triaged",
+                "assigned",
+                "approved",
+                "scheduled",
+                "in-progress",
+                "in_progress",
+              ],
+            },
       deletedAt: null,
       ...(isAdmin
         ? {}
@@ -4130,8 +4456,11 @@ export const getWorkQueue = async (req, res) => {
           }),
     };
 
-    const taskQuery = {
-      status: { $in: ["Pending", "In Progress", "Completed"] },
+    const taskStateQuery = {
+      status:
+        workState === "completed"
+          ? "Completed"
+          : { $in: ["Pending", "In Progress"] },
       $and: [
         {
           $or: [
@@ -4139,7 +4468,7 @@ export const getWorkQueue = async (req, res) => {
             {
               taskType: { $in: ["PD", "BreedingFollowUp"] },
               $or: [
-                { status: "Pending", dueDate: { $ne: null, $lte: new Date() } },
+                { status: "Pending", dueDate: { $ne: null, $lte: now } },
                 { status: "In Progress" },
               ],
             },
@@ -4149,16 +4478,104 @@ export const getWorkQueue = async (req, res) => {
       ...(isAdmin
         ? {}
         : {
-            $or: [
-              { technicianId: authenticatedUserId },
-              { technicianId: null },
-              { technicianId: { $exists: false } },
-            ],
+            technicianId: authenticatedUserId,
           }),
     };
+    const standaloneTaskQuery = combineMongoFilters(taskStateQuery, {
+      $nor: [
+        {
+          taskType: {
+            $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
+          },
+        },
+        { relatedRecordType: { $in: ["insemination", "health"] } },
+      ],
+    });
 
-    const [inseminations, healthReqs, scheduledTasks] = await Promise.all([
-      Insemination.find(aiQuery)
+    const searchText = String(search || "").trim();
+    let farmerIds = [];
+    let animalIds = [];
+    if (searchText) {
+      const [farmers, animals] = await Promise.all([
+        User.find({
+          role: "farmer",
+          name: { $regex: searchText, $options: "i" },
+        })
+          .select("_id")
+          .lean(),
+        Animal.find({
+          $or: [
+            { earTag: { $regex: searchText, $options: "i" } },
+            { animalId: { $regex: searchText, $options: "i" } },
+          ],
+        })
+          .select("_id")
+          .lean(),
+      ]);
+      farmerIds = farmers.map((item) => item._id);
+      animalIds = animals.map((item) => item._id);
+    }
+
+    const aiTitleMatches = /artificial insemination|insemination|ai service/i.test(
+      searchText,
+    );
+    const healthTitleMatches = /health|health check|health assistance/i.test(
+      searchText,
+    );
+    const aiQuery = searchText && !aiTitleMatches
+      ? combineMongoFilters(aiStateQuery, {
+          $or: [
+            { farmerId: { $in: farmerIds } },
+            { animalId: { $in: animalIds } },
+          ],
+        })
+      : aiStateQuery;
+    const healthQuery = searchText && !healthTitleMatches
+      ? combineMongoFilters(healthStateQuery, {
+          $or: [
+            { farmerId: { $in: farmerIds } },
+            { animalId: { $in: animalIds } },
+          ],
+        })
+      : healthStateQuery;
+    const taskQuery = searchText
+      ? combineMongoFilters(standaloneTaskQuery, {
+          $or: [
+            { farmerId: { $in: farmerIds } },
+            { animalIds: { $in: animalIds } },
+            { taskType: { $regex: searchText, $options: "i" } },
+          ],
+        })
+      : standaloneTaskQuery;
+
+    const includeAI = type === "all" || type === "ai";
+    const includeHealth = type === "all" || type === "health";
+    const includeTasks = ["all", "pregnancy", "calving"].includes(type);
+    const typedTaskQuery =
+      type === "pregnancy"
+        ? combineMongoFilters(taskQuery, { taskType: "PD" })
+        : type === "calving"
+          ? combineMongoFilters(taskQuery, {
+              taskType: { $in: ["CD", "Calving"] },
+            })
+          : taskQuery;
+    const aiPartitions = workQueueDatePartitions(
+      ["scheduledDate", "completedAt", "createdAt"],
+      workState,
+      todayStart,
+    );
+    const healthPartitions = workQueueDatePartitions(
+      ["scheduledDate", "resolvedAt", "updatedAt", "createdAt"],
+      workState,
+      todayStart,
+    );
+    const taskPartitions = workQueueDatePartitions(
+      ["dueDate", "completedAt", "updatedAt", "createdAt"],
+      workState,
+      todayStart,
+    );
+    const populateAIWork = (query) =>
+      query
         .populate(
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
@@ -4167,28 +4584,147 @@ export const getWorkQueue = async (req, res) => {
         .populate(
           "previousAttemptId",
           "attemptNumber outcome isSuccess outcomeVerificationStatus reviewedBy status",
-        )
-        .sort({ createdAt: -1 })
-        .lean(),
-
-      HealthRequest.find(healthQuery)
+        );
+    const populateHealthWork = (query) =>
+      query
         .populate(
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
-        .populate("animalId", "name animalId earTag imageUrl breed species")
-        .sort({ urgency: -1, createdAt: -1 })
-        .lean(),
-
-      Task.find(taskQuery)
+        .populate("animalId", "name animalId earTag imageUrl breed species");
+    const populateTaskWork = (query) =>
+      query
         .populate(
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
-        .populate("animalIds", "name animalId earTag imageUrl breed species")
-        .sort({ dueDate: 1, createdAt: -1 })
-        .lean(),
+        .populate("animalIds", "name animalId earTag imageUrl breed species");
+
+    const [inseminations, healthReqs, standaloneTasks] = await Promise.all([
+      includeAI
+        ? fetchBoundedPartitions({
+            Model: Insemination,
+            baseFilter: aiQuery,
+            partitions: aiPartitions,
+            windowLimit: candidateLimit,
+            populate: populateAIWork,
+          })
+        : [],
+      includeHealth
+        ? fetchBoundedPartitions({
+            Model: HealthRequest,
+            baseFilter: healthQuery,
+            partitions: healthPartitions,
+            windowLimit: candidateLimit,
+            populate: populateHealthWork,
+          })
+        : [],
+      includeTasks
+        ? fetchBoundedPartitions({
+            Model: Task,
+            baseFilter: typedTaskQuery,
+            partitions: taskPartitions,
+            windowLimit: candidateLimit,
+            populate: populateTaskWork,
+          })
+        : [],
     ]);
+
+    const workflowIds = [
+      ...inseminations.map((item) => item._id),
+      ...healthReqs.map((item) => item._id),
+    ];
+    const executionTasks = workflowIds.length
+      ? await Task.find({
+          status: { $in: ["Pending", "In Progress", "Completed"] },
+          ...(isAdmin
+            ? {}
+            : {
+                $or: [
+                  { technicianId: authenticatedUserId },
+                  { technicianId: null },
+                  { technicianId: { $exists: false } },
+                ],
+              }),
+          $and: [
+            {
+              $or: [
+                { relatedRecordId: { $in: workflowIds } },
+                { requestId: { $in: workflowIds } },
+                { sourceId: { $in: workflowIds } },
+                { inseminationId: { $in: workflowIds } },
+                { "metadata.relatedRecordId": { $in: workflowIds } },
+                { "metadata.requestId": { $in: workflowIds } },
+                { "metadata.sourceId": { $in: workflowIds } },
+                { "metadata.inseminationId": { $in: workflowIds } },
+                { "metadata.healthRequestId": { $in: workflowIds } },
+              ],
+            },
+          ],
+        }).lean()
+      : [];
+    const scheduledTasks = [...standaloneTasks, ...executionTasks];
+    const pregnancyCountQuery = combineMongoFilters(standaloneTaskQuery, {
+      taskType: "PD",
+    });
+    const calvingCountQuery = combineMongoFilters(standaloneTaskQuery, {
+      taskType: { $in: ["CD", "Calving"] },
+    });
+    // Execute each Mongoose Query once and retain its native Promise. Some
+    // selected totals intentionally share an all-type count; sharing the Query
+    // object itself would cause Mongoose to execute the same Query twice.
+    const allAICountPromise = Insemination.countDocuments(aiStateQuery).exec();
+    const allHealthCountPromise = HealthRequest.countDocuments(
+      healthStateQuery,
+    ).exec();
+    const allTaskCountPromise = Task.countDocuments(standaloneTaskQuery).exec();
+    const pregnancyCountPromise = Task.countDocuments(
+      pregnancyCountQuery,
+    ).exec();
+    const calvingCountPromise = Task.countDocuments(calvingCountQuery).exec();
+    const selectedAICountPromise = includeAI
+      ? aiQuery === aiStateQuery
+        ? allAICountPromise
+        : Insemination.countDocuments(aiQuery).exec()
+      : 0;
+    const selectedHealthCountPromise = includeHealth
+      ? healthQuery === healthStateQuery
+        ? allHealthCountPromise
+        : HealthRequest.countDocuments(healthQuery).exec()
+      : 0;
+    const selectedTaskCountPromise = includeTasks
+      ? typedTaskQuery === standaloneTaskQuery
+        ? allTaskCountPromise
+        : Task.countDocuments(typedTaskQuery).exec()
+      : 0;
+    const [
+      allAICount,
+      allHealthCount,
+      allTaskCount,
+      pregnancyCount,
+      calvingCount,
+      selectedAITotal,
+      selectedHealthTotal,
+      selectedTaskTotal,
+    ] = await Promise.all([
+      allAICountPromise,
+      allHealthCountPromise,
+      allTaskCountPromise,
+      pregnancyCountPromise,
+      calvingCountPromise,
+      selectedAICountPromise,
+      selectedHealthCountPromise,
+      selectedTaskCountPromise,
+    ]);
+    const workCounts = {
+      all: allAICount + allHealthCount + allTaskCount,
+      ai: allAICount,
+      health: allHealthCount,
+      pregnancy: pregnancyCount,
+      calving: calvingCount,
+    };
+    const selectedTotal =
+      selectedAITotal + selectedHealthTotal + selectedTaskTotal;
 
     const idOf = (value) => {
       let current = value;
@@ -4726,14 +5262,16 @@ export const getWorkQueue = async (req, res) => {
       return aDate - bDate;
     });
 
+    const items = unifiedQueue.slice(skip, skip + limit);
     res.status(200).json({
-      data: unifiedQueue,
+      data: items,
       pagination: {
-        total: unifiedQueue.length,
-        page: 1,
-        limit: unifiedQueue.length,
-        totalPages: 1,
+        total: selectedTotal,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(selectedTotal / limit)),
       },
+      counts: workCounts,
     });
   } catch (error) {
     console.error("[getWorkQueue ERROR]", error);
@@ -4761,7 +5299,6 @@ export const updateDispatchStatus = async (req, res) => {
           .status(400)
           .json({ message: "Invalid availability status." });
       }
-      updates["dispatchProfile.availabilityStatus"] = availabilityStatus;
     }
 
     if (acceptsNewRequests !== undefined) {
@@ -4770,7 +5307,30 @@ export const updateDispatchStatus = async (req, res) => {
           .status(400)
           .json({ message: "acceptsNewRequests must be a boolean." });
       }
+    }
+
+    if (
+      availabilityStatus !== undefined &&
+      acceptsNewRequests !== undefined &&
+      ((acceptsNewRequests && availabilityStatus !== "available") ||
+        (!acceptsNewRequests && availabilityStatus === "available"))
+    ) {
+      return res.status(400).json({
+        message:
+          "Receive Requests and availability must describe the same operational state.",
+        code: "DISPATCH_STATUS_CONFLICT",
+      });
+    }
+
+    if (acceptsNewRequests !== undefined) {
       updates["dispatchProfile.acceptsNewRequests"] = acceptsNewRequests;
+      updates["dispatchProfile.availabilityStatus"] =
+        availabilityStatus ||
+        (acceptsNewRequests ? "available" : "off_duty");
+    } else if (availabilityStatus !== undefined) {
+      updates["dispatchProfile.availabilityStatus"] = availabilityStatus;
+      updates["dispatchProfile.acceptsNewRequests"] =
+        availabilityStatus === "available";
     }
 
     if (Object.keys(updates).length > 0) {
@@ -4785,12 +5345,8 @@ export const updateDispatchStatus = async (req, res) => {
       }
 
       if (!user.dispatchProfile) {
-        if (!updates["dispatchProfile.availabilityStatus"]) {
-          updates["dispatchProfile.availabilityStatus"] = "off_duty";
-        }
-        if (updates["dispatchProfile.acceptsNewRequests"] === undefined) {
-          updates["dispatchProfile.acceptsNewRequests"] = false;
-        }
+        updates["dispatchProfile.availabilityStatus"] ??= "off_duty";
+        updates["dispatchProfile.acceptsNewRequests"] ??= false;
       }
 
       const updatedUser = await User.findByIdAndUpdate(

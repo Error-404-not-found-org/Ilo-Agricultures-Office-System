@@ -63,6 +63,7 @@ import {
   getPregnancyCheckReadiness,
 } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
+import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -890,6 +891,23 @@ export const claimAndScheduleAIRequest = async (req, res) => {
       samePeriodConfirmed: req.body.samePeriodConfirmed === true,
     });
 
+    const candidate = await Insemination.findOne({
+      _id: req.params.id,
+      deletedAt: null,
+      status: AI_STATUS.PENDING,
+      approvedBy: null,
+      technicianId: null,
+    })
+      .select("dispatch")
+      .lean();
+    if (candidate) {
+      assertTechnicianEligibleForNewRequest({
+        technician: req.user,
+        requestType: "AI",
+        dispatch: candidate.dispatch,
+      });
+    }
+
     const changedAt = new Date();
     const request = await Insemination.findOneAndUpdate(
       {
@@ -926,7 +944,7 @@ export const claimAndScheduleAIRequest = async (req, res) => {
 
       if (!current) {
         return res.status(404).json({
-          message: "AI request record not found.",
+        message: "AI request record not found.",
           code: "AI_REQUEST_NOT_FOUND",
         });
       }
@@ -1812,8 +1830,11 @@ export const getUpcomingVisits = async (req, res) => {
     const aiRequests = await Insemination.find({
       farmerId,
       deletedAt: null,
-      status: { $in: ["pending", "approved", "in-progress"] },
+      status: { $in: ["scheduled", "in-progress"] },
+      scheduledDate: { $ne: null },
     })
+      .sort({ scheduledDate: 1 })
+      .limit(10)
       .populate("animalId", "animalId earTag species breed")
       .populate("approvedBy", "name")
       .lean();
@@ -1824,8 +1845,12 @@ export const getUpcomingVisits = async (req, res) => {
     const healthRequests = await HealthRequest.find({
       farmerId,
       deletedAt: null,
-      status: { $in: ["pending", "approved", "in-progress"] },
+      status: { $in: ["scheduled", "in-progress", "in_progress"] },
+      scheduledDate: { $ne: null },
+      handlingMethod: { $nin: ["advice", "office_pickup"] },
     })
+      .sort({ scheduledDate: 1 })
+      .limit(10)
       .populate("animalId", "animalId earTag species breed")
       .populate("handledBy", "name")
       .lean();
@@ -1838,7 +1863,7 @@ export const getUpcomingVisits = async (req, res) => {
       status: r.status,
       serviceType: "ai",
       animalId: r.animalId,
-      scheduledAt: r.scheduledDate || r.preferredDate || r.createdAt,
+      scheduledDate: r.scheduledDate,
       visitPeriod: r.visitPeriod,
       technician: r.approvedBy?.name || null,
       createdAt: r.createdAt,
@@ -1852,7 +1877,8 @@ export const getUpcomingVisits = async (req, res) => {
       status: r.status,
       serviceType: "health",
       animalId: r.animalId,
-      scheduledAt: r.scheduledDate || r.preferredDate || r.createdAt,
+      scheduledDate: r.scheduledDate,
+      visitPeriod: r.visitPeriod,
       technician: r.handledBy?.name || null,
       createdAt: r.createdAt,
     }));
@@ -1861,7 +1887,7 @@ export const getUpcomingVisits = async (req, res) => {
     // MERGE + SORT
     // =========================
     const merged = [...ai, ...health].sort((a, b) => {
-      return new Date(a.scheduledAt) - new Date(b.scheduledAt);
+      return new Date(a.scheduledDate) - new Date(b.scheduledDate);
     });
 
     return res.status(200).json({

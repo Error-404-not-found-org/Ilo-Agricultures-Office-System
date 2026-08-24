@@ -1,7 +1,6 @@
 import { HealthRequest } from "../models/health-request.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
-import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Insemination } from "../models/insemination.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
@@ -20,7 +19,10 @@ import {
   createHealthRequestWithGuard,
   findActiveHealthCase,
 } from "../services/health-request-creation.service.js";
-import { notifyUser } from "../services/notification-delivery.service.js";
+import {
+  notifyUser,
+  notifyUserBestEffort,
+} from "../services/notification-delivery.service.js";
 import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
 import {
   assertVisitDaypartAvailable,
@@ -38,6 +40,11 @@ import {
   legacyRequestTypeForAssistance,
   normalizeHealthRequestDetails,
 } from "../domain/health-request-input.js";
+import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
+import {
+  getFarmerInvitationRedirectUrl,
+  resolveOrCreateAssistedFarmer,
+} from "../services/farmer-profile-resolution.service.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -450,6 +457,13 @@ export const updateHealthRequestStatus = async (req, res) => {
 
     const mayAtomicallyClaimPending =
       existing.status === "pending" && status === "scheduled";
+    if (mayAtomicallyClaimPending && req.user.role === "technician") {
+      assertTechnicianEligibleForNewRequest({
+        technician: req.user,
+        requestType: "HEALTH",
+        dispatch: existing.dispatch,
+      });
+    }
     assertHealthRequestMutationOwnership(req.user, existing, {
       allowUnassigned: mayAtomicallyClaimPending,
     });
@@ -662,7 +676,16 @@ export const updateHealthRequestStatus = async (req, res) => {
 };
 
 // POST /api/health-request/walk-in — technician recording a done service
+const presentWalkInRequest = (request) => {
+  const presented = request?.toObject ? request.toObject() : { ...request };
+  delete presented.sourceOperationKey;
+  return presented;
+};
+
 export const walkInHealthRequest = async (req, res) => {
+  const sourceOperationKey = String(
+    req.headers?.["idempotency-key"] || "",
+  ).trim() || undefined;
   try {
     const {
       farmerId,
@@ -684,6 +707,20 @@ export const walkInHealthRequest = async (req, res) => {
       technicianNote,
     } = req.body;
 
+    if (sourceOperationKey) {
+      const existingRequest = await HealthRequest.findOne({
+        handledBy: req.user._id,
+        sourceOperationKey,
+      });
+      if (existingRequest) {
+        return res.status(200).json({
+          message: "Walk-in health service was already recorded.",
+          code: "WALKIN_HEALTH_REPLAYED",
+          request: presentWalkInRequest(existingRequest),
+        });
+      }
+    }
+
     if (!farmerId && (!phoneNumber || !animalDetails?.earTag)) {
       return res.status(400).json({ message: "Phone number and Animal Ear Tag are required for manual entry." });
     }
@@ -694,53 +731,46 @@ export const walkInHealthRequest = async (req, res) => {
 
     // 1. Resolve or Create Farmer
     let farmer;
+    let farmerResolution = null;
     if (farmerId) {
       farmer = await User.findById(farmerId);
-    } else if (phoneNumber) {
-      farmer = await User.findOne({ phoneNumber });
-      if (!farmer) {
-      if (email) {
-        try {
-          const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
-          const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
-          const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
-
-          await clerkClient.invitations.createInvitation({
-            emailAddress: email,
-            publicMetadata: { role: "farmer" },
-            redirectUrl: finalRedirectUrl,
-          });
-        } catch (clerkError) {
-          console.error("[walkInHealth CLERK ERROR]", clerkError.message);
-        }
-      }
-
-      farmer = await User.create({
-        name: `${firstName || ""} ${lastName || ""}`.trim() || "Manual Entry Farmer",
+    } else {
+      farmerResolution = await resolveOrCreateAssistedFarmer({
+        email,
         phoneNumber,
-        email: email || undefined,
+        name:
+          `${firstName || ""} ${lastName || ""}`.trim() ||
+          "Manual Entry Farmer",
         address: {
           street: typeof address === 'object' && address?.street ? address.street : "",
           barangay: typeof address === 'string' ? address : (address?.barangay || "Not Provided"),
           city: typeof address === 'object' && address?.city ? address.city : "Oton",
           province: typeof address === 'object' && address?.province ? address.province : "Iloilo"
         },
-        role: "farmer",
-        isVerified: true, // Technician-verified
+        source: "walk-in-health",
+        invitationMode: email ? "best-effort" : "none",
+        inviteExistingUnclaimed: false,
+        allowClaimedExisting: true,
+        redirectUrl: getFarmerInvitationRedirectUrl(),
+        isVerified: true,
       });
+      farmer = farmerResolution.farmer;
     }
-  }
 
-  if (!farmer) {
-    return res.status(400).json({ message: "Farmer details are required." });
-  }
+    if (!farmer) {
+      return res.status(400).json({ message: "Farmer details are required." });
+    }
 
     // 2. Resolve or Create Animal
     let animal;
     if (bodyAnimalId) {
       animal = await Animal.findById(bodyAnimalId);
     } else {
-      animal = await Animal.findOne({ earTag: animalDetails.earTag });
+      animal = await Animal.findOne({
+        farmerId: farmer._id,
+        earTag: animalDetails.earTag,
+        deletedAt: null,
+      });
       if (!animal) {
         let animalImageUrl = "";
         if (animalDetails.imageUrl && animalDetails.imageUrl.startsWith("data:image")) {
@@ -793,6 +823,7 @@ export const walkInHealthRequest = async (req, res) => {
       advice: advice || "",
       preferredDate: pDate,
       scheduledDate: pDate,
+      sourceOperationKey,
     };
 
     let recordType = "Check-up";
@@ -848,13 +879,14 @@ export const walkInHealthRequest = async (req, res) => {
           const warningTitle = "Active withdrawal warning";
           const warningBody = `Meat and milk from animal Tag #${animal.earTag} are unsafe for consumption or sale until ${formattedDate} due to treatment with ${treatment || 'medicine'}.`;
 
-          await notifyUser({
+          await notifyUserBestEffort({
             recipient: farmer,
             senderId: req.user._id,
             type: "system",
             relatedId: animal._id,
             category: "health",
             eventType: "withdrawal_safety_active",
+            dedupeKey: `walkin-health-withdrawal:${request._id}:${farmer._id}`,
             linkType: "animal",
             title: warningTitle,
             message: warningBody,
@@ -864,7 +896,7 @@ export const walkInHealthRequest = async (req, res) => {
               withdrawalEndDate,
               medicineName: treatment || "medicine",
             },
-          });
+          }, "walkInHealthWithdrawal");
         }
       } catch (medErr) {
         console.error("[Medical Record Cascade Walk-in Error]", medErr.message);
@@ -876,7 +908,7 @@ export const walkInHealthRequest = async (req, res) => {
       ? `A walk-in health service for your animal (${animal.earTag}) has been recorded by technician ${req.user.name}.`
       : `A health visit for your animal (${animal.earTag}) has been scheduled for ${pDate.toLocaleDateString()} at ${pDate.toLocaleTimeString()}.`;
 
-    await notifyUser({
+    await notifyUserBestEffort({
       recipient: farmer,
       senderId: req.user._id,
       type: "health-request",
@@ -886,6 +918,7 @@ export const walkInHealthRequest = async (req, res) => {
         requestedStatus === "resolved"
           ? "service_completed"
           : "service_visit_scheduled",
+      dedupeKey: `walkin-health-result:${request._id}:${farmer._id}`,
       linkType: "request",
       title,
       message,
@@ -897,7 +930,7 @@ export const walkInHealthRequest = async (req, res) => {
         technicianName: req.user.name,
         scheduledDate: request.scheduledDate || pDate,
       },
-    });
+    }, "walkInHealthResult");
 
     // Trigger Socket
     req.app.get("io").emit("dashboardUpdate", { 
@@ -906,10 +939,36 @@ export const walkInHealthRequest = async (req, res) => {
 
     res.status(201).json({ 
       message: requestedStatus === "resolved" ? "Walk-in health service recorded." : "Health visit scheduled.", 
-      request 
+      request: presentWalkInRequest(request),
+      invitationAttempted: Boolean(farmerResolution?.invitationAttempted),
+      invitationSent: Boolean(farmerResolution?.invitationSent),
+      invitationStatus: farmerResolution?.invitationSent
+        ? "sent"
+        : farmerResolution?.invitationAttempted
+          ? "failed"
+          : "not_applicable",
+      farmerProfileReused: farmerId ? true : Boolean(farmerResolution?.reused),
     });
   } catch (error) {
     console.error("[walkInHealthRequest ERROR]", error.message);
+    if (
+      sourceOperationKey &&
+      error?.code === 11000 &&
+      (error?.keyPattern?.sourceOperationKey ||
+        error?.keyValue?.sourceOperationKey)
+    ) {
+      const existingRequest = await HealthRequest.findOne({
+        handledBy: req.user._id,
+        sourceOperationKey,
+      });
+      if (existingRequest) {
+        return res.status(200).json({
+          message: "Walk-in health service was already recorded.",
+          code: "WALKIN_HEALTH_REPLAYED",
+          request: presentWalkInRequest(existingRequest),
+        });
+      }
+    }
     res.status(error.status || 500).json({
       message: error.message || "Failed to process health service.",
       code: error.code,

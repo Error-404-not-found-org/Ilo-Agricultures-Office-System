@@ -17,7 +17,13 @@ import {
   triageHealthRequest,
   scheduleHealthFollowUp,
 } from "../controllers/health-workflow.controllers.js";
-import { ClinicalOnly, protectedRoute, TechnicianOnly, AdminOnly } from "../middleware/auth.middleware.js";
+import {
+  ClinicalOnly,
+  protectedRoute,
+  TechnicianOnly,
+  AdminOnly,
+  requireRole,
+} from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
