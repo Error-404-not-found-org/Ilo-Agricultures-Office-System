@@ -46,6 +46,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     healthFind: HealthRequest.find,
     healthCount: HealthRequest.countDocuments,
     taskFind: Task.find,
+    taskCount: Task.countDocuments,
     pregnancyCount: Pregnancy.countDocuments,
     calvingCount: Calving.countDocuments,
     animalCount: Animal.countDocuments,
@@ -57,6 +58,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     HealthRequest.find = originals.healthFind;
     HealthRequest.countDocuments = originals.healthCount;
     Task.find = originals.taskFind;
+    Task.countDocuments = originals.taskCount;
     Pregnancy.countDocuments = originals.pregnancyCount;
     Calving.countDocuments = originals.calvingCount;
     Animal.countDocuments = originals.animalCount;
@@ -129,10 +131,10 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     const candidateItem = res2.body.pendingRequests[0];
     // Farmer display name is required by the request-card contract.
     // Contact information and precise location remain claim-gated.
-    // Only the display name is exposed.
+    // The display name and profile image are card presentation fields.
     const expectedKeys = [
       "id", "type", "status", "isReadyToday", "time", "preferredTime",
-      "displayDate", "farmer", "animalTag", "municipality", "barangay", "displayStatus",
+      "displayDate", "farmer", "farmerImageUrl", "animalTag", "municipality", "barangay", "displayStatus",
       "task", "urgent", "overdue", "sentTime", "createdAt"
     ].sort();
     assert.deepEqual(Object.keys(candidateItem).sort(), expectedKeys);
@@ -169,6 +171,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
   });
 
   await t.test("Requests: unassigned AI and Health responses contain Farmer name while remaining candidate-safe", async () => {
+    Task.countDocuments = () => Promise.resolve(0);
     Insemination.find = () => queryResult([{
       _id: "ai-unassigned",
       status: "pending",

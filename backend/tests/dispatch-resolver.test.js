@@ -1,10 +1,13 @@
 import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveRequestLocation } from "../src/domain/geographic/municipalityResolver.js";
-import { findMunicipalityByText } from "../src/domain/geographic/psgcRegistry.js";
+import {
+  findMunicipalityByText,
+  getMunicipalityByCode,
+} from "../src/domain/geographic/psgcRegistry.js";
 
 describe("Dispatch Geographic Resolver", () => {
-  it("1. resolves from confirmed farmLocation.administrativeArea first", () => {
+  it("uses the registered administrative area instead of farmLocation", () => {
     const farmer = {
       farmLocation: {
         isConfirmed: true,
@@ -16,11 +19,12 @@ describe("Dispatch Geographic Resolver", () => {
       }
     };
     const result = resolveRequestLocation(farmer);
-    assert.equal(result.source, "confirmed_farm_location");
-    assert.equal(result.municipalityCode, "063043000");
+    assert.equal(result.source, "canonical_contact_address");
+    assert.equal(result.municipalityCode, "0603034000");
+    assert.equal(result.municipalityName, "Oton");
   });
 
-  it("2. ignores unconfirmed farmLocation and falls back to address.administrativeArea", () => {
+  it("canonicalizes a legacy registered administrative-area code", () => {
     const farmer = {
       farmLocation: {
         isConfirmed: false,
@@ -33,7 +37,7 @@ describe("Dispatch Geographic Resolver", () => {
     };
     const result = resolveRequestLocation(farmer);
     assert.equal(result.source, "canonical_contact_address");
-    assert.equal(result.municipalityCode, "063034000");
+    assert.equal(result.municipalityCode, "0603034000");
   });
 
   it("3. falls back to legacy address.city when administrative areas are missing", () => {
@@ -75,7 +79,13 @@ describe("Dispatch Geographic Resolver", () => {
 
 describe("Production PSGC Registry", () => {
   it("resolves Oton successfully", () => {
-    const res = findMunicipalityByText("Oton");
+    const res = findMunicipalityByText("Oton", "Iloilo");
+    assert.ok(res);
+    assert.equal(res.psgcCode, "0603034000");
+  });
+
+  it("maps the legacy Oton correspondence code to the canonical PSGC entry", () => {
+    const res = getMunicipalityByCode("063034000");
     assert.ok(res);
     assert.equal(res.psgcCode, "0603034000");
   });

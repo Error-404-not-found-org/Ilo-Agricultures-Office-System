@@ -56,11 +56,13 @@ const createResponseRecorder = () => {
 
 const installHarness = (t, overrides = {}) => {
   const originals = {
+    findOne: Insemination.findOne,
     findOneAndUpdate: Insemination.findOneAndUpdate,
     findById: Insemination.findById,
     notificationFindOneAndUpdate: Notification.findOneAndUpdate,
   };
   t.after(() => {
+    Insemination.findOne = originals.findOne;
     Insemination.findOneAndUpdate = originals.findOneAndUpdate;
     Insemination.findById = originals.findById;
     Notification.findOneAndUpdate = originals.notificationFindOneAndUpdate;
@@ -76,6 +78,10 @@ const installHarness = (t, overrides = {}) => {
             approvedBy: null,
             deletedAt: null,
             cancellationStatus: "none",
+            dispatch: {
+              stage: "local",
+              location: { municipalityCode: "063034000" },
+            },
             farmerId: { _id: ids.farmer, name: "Farmer One" },
             animalId: { _id: ids.animal, earTag: "AI-001" },
             ...overrides.request,
@@ -84,6 +90,21 @@ const installHarness = (t, overrides = {}) => {
     updates: [],
     notifications: [],
   };
+
+  Insemination.findOne = () => ({
+    select() {
+      return this;
+    },
+    async lean() {
+      const request = state.request;
+      return request &&
+        request.deletedAt === null &&
+        request.status === "pending" &&
+        !request.approvedBy
+        ? { dispatch: request.dispatch }
+        : null;
+    },
+  });
 
   Insemination.findOneAndUpdate = (filter, update) => {
     state.filters.push(filter);
@@ -118,6 +139,7 @@ const createRequest = ({
   technicianId = ids.technician1,
   role = "technician",
   body = {},
+  userOverrides = {},
 } = {}) => ({
   params: { id: ids.request },
   body: {
@@ -125,7 +147,22 @@ const createRequest = ({
     visitPeriod: "morning",
     ...body,
   },
-  user: { _id: technicianId, role, name: `Technician ${technicianId.slice(-1)}` },
+  user: {
+    _id: technicianId,
+    role,
+    name: `Technician ${technicianId.slice(-1)}`,
+    status: "active",
+    deletedAt: null,
+    isVerified: true,
+    profileClaimStatus: "claimed",
+    dispatchProfile: {
+      acceptsNewRequests: true,
+      availabilityStatus: "available",
+      serviceCapabilities: ["AI"],
+      serviceMunicipalities: [{ municipalityCode: "063034000" }],
+    },
+    ...userOverrides,
+  },
   app: { get: () => ({ emit() {} }) },
 });
 
@@ -237,6 +274,57 @@ test("AI claim schedule rejects frontend-supplied technician identifiers", async
     assert.equal(recorder.statusCode, 400);
     assert.equal(recorder.body.code, "TECHNICIAN_ASSIGNMENT_NOT_ALLOWED");
     assert.equal(state.filters.length, 0);
+  }
+});
+
+test("AI claim schedule enforces Receive Requests, Field Area, and capability", async (t) => {
+  const cases = [
+    [
+      {
+        dispatchProfile: {
+          acceptsNewRequests: false,
+          availabilityStatus: "off_duty",
+          serviceCapabilities: ["AI"],
+          serviceMunicipalities: [{ municipalityCode: "063034000" }],
+        },
+      },
+      "NOT_ACCEPTING_REQUESTS",
+    ],
+    [
+      {
+        dispatchProfile: {
+          acceptsNewRequests: true,
+          availabilityStatus: "available",
+          serviceCapabilities: ["AI"],
+          serviceMunicipalities: [{ municipalityCode: "063022000" }],
+        },
+      },
+      "OUTSIDE_SERVICE_AREA",
+    ],
+    [
+      {
+        dispatchProfile: {
+          acceptsNewRequests: true,
+          availabilityStatus: "available",
+          serviceCapabilities: ["HEALTH"],
+          serviceMunicipalities: [{ municipalityCode: "063034000" }],
+        },
+      },
+      "SERVICE_CAPABILITY_REQUIRED",
+    ],
+  ];
+
+  for (const [userOverrides, expectedCode] of cases) {
+    const state = installHarness(t);
+    const recorder = createResponseRecorder();
+    await claimAndScheduleAIRequest(
+      createRequest({ userOverrides }),
+      recorder.response,
+    );
+    assert.equal(recorder.statusCode, 403);
+    assert.equal(recorder.body.code, expectedCode);
+    assert.equal(state.filters.length, 0);
+    assert.equal(state.notifications.length, 0);
   }
 });
 

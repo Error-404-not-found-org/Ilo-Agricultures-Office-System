@@ -56,6 +56,30 @@ const reqRes = (body, userRole = "farmer", overrideId = null) => {
   return { req, res, _id };
 };
 
+const otonHealthDispatch = {
+  location: {
+    municipalityCode: "063034000",
+    municipalityName: "Oton",
+    localityType: "municipality",
+  },
+  stage: "local",
+};
+
+const makeEligibleHealthTechnician = (req) => {
+  Object.assign(req.user, {
+    status: "active",
+    deletedAt: null,
+    isVerified: true,
+    profileClaimStatus: "claimed",
+    dispatchProfile: {
+      acceptsNewRequests: true,
+      availabilityStatus: "available",
+      serviceCapabilities: ["HEALTH"],
+      serviceMunicipalities: [{ municipalityCode: "063034000" }],
+    },
+  });
+};
+
 test("FARMER AI", async (t) => {
   const farmerId = new mongoose.Types.ObjectId();
 
@@ -331,8 +355,9 @@ test("HEALTH SCHEDULING", async (t) => {
   await t.test("valid Morning", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-SCH4", species: "Carabao", breed: "Native" });
-    const hr = await HealthRequest.create({ farmerId, animalId, symptoms: "Test", status: "pending" });
+    const hr = await HealthRequest.create({ farmerId, animalId, symptoms: "Test", status: "pending", dispatch: otonHealthDispatch });
     const { req, res } = reqRes({ status: "scheduled", scheduledDate: "2026-10-10", visitPeriod: "morning" }, "technician", techId);
+    makeEligibleHealthTechnician(req);
     req.params.id = hr._id;
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 200);
@@ -343,8 +368,9 @@ test("HEALTH SCHEDULING", async (t) => {
   await t.test("valid Afternoon", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-SCH5", species: "Carabao", breed: "Native" });
-    const hr = await HealthRequest.create({ farmerId, animalId, symptoms: "Test", status: "pending" });
+    const hr = await HealthRequest.create({ farmerId, animalId, symptoms: "Test", status: "pending", dispatch: otonHealthDispatch });
     const { req, res } = reqRes({ status: "scheduled", scheduledDate: "2026-10-10", visitPeriod: "afternoon" }, "technician", techId);
+    makeEligibleHealthTechnician(req);
     req.params.id = hr._id;
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 200);
@@ -367,8 +393,9 @@ test("HEALTH SCHEDULING", async (t) => {
   await t.test("same-period concurrency permitted", async () => {
     const animalId2 = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId2, farmerId, animalId: "HL-SCH2", species: "Carabao", breed: "Native" });
-    const hr2 = await HealthRequest.create({ farmerId, animalId: animalId2, symptoms: "Test 2", status: "pending" });
+    const hr2 = await HealthRequest.create({ farmerId, animalId: animalId2, symptoms: "Test 2", status: "pending", dispatch: otonHealthDispatch });
     const { req, res } = reqRes({ status: "scheduled", scheduledDate: "2026-10-10", visitPeriod: "morning" }, "technician", techId);
+    makeEligibleHealthTechnician(req);
     req.params.id = hr2._id;
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 200);

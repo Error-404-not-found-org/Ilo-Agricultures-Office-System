@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import mongoose from "mongoose";
 import { User } from "../src/models/user.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { Notification } from "../src/models/notification.model.js";
@@ -43,8 +44,19 @@ const ANIMAL_ID = "507f1f77bcf86cd799439012";
 const TECH1_ID = "507f1f77bcf86cd799439013";
 const TECH2_ID = "507f1f77bcf86cd799439014";
 const CALVING_ID = "507f1f77bcf86cd799439015";
+const CALVING_DATE = new Date("2026-08-01T00:00:00.000Z");
+
+const mockCalvingDate = (t) => {
+  t.mock.method(Calving, "findById", async () => ({
+    _id: CALVING_ID,
+    date: CALVING_DATE,
+  }));
+};
 
 test("calving notification inngest handler", async (t) => {
+  t.after(async () => {
+    await mongoose.disconnect();
+  });
   // 1. farmer + live birth → technician in-app notification & push
   await t.test("Farmer live birth notifies pooled technicians", async (subT) => {
     const pushes = [];
@@ -64,6 +76,7 @@ test("calving notification inngest handler", async (t) => {
     });
 
     const notifications = [];
+    mockCalvingDate(subT);
     subT.mock.method(Notification, "create", async (data) => notifications.push(data));
 
     await invokeInngest({
@@ -99,6 +112,7 @@ test("calving notification inngest handler", async (t) => {
     });
 
     const notifications = [];
+    mockCalvingDate(subT);
     subT.mock.method(Notification, "create", async (data) => notifications.push(data));
 
     const pushes = [];
@@ -124,6 +138,7 @@ test("calving notification inngest handler", async (t) => {
     subT.mock.method(Animal, "findById", async () => ({ _id: ANIMAL_ID, earTag: "OTN-010" }));
     subT.mock.method(User, "find", async () => [{ _id: TECH1_ID }]);
     const notifications = [];
+    mockCalvingDate(subT);
     subT.mock.method(Notification, "create", async (data) => notifications.push(data));
     subT.mock.method(axios, "post", async () => ({ data: {} }));
 

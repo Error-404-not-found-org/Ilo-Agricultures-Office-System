@@ -17,6 +17,10 @@ test("Idempotency: bypasses if no key provided", async () => {
 });
 
 test("Idempotency: returns 409 conflict if key status is pending", async () => {
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ foo: "bar" }))
+    .digest("hex");
   const req = {
     method: "POST",
     headers: { "idempotency-key": "test-key-1" },
@@ -48,7 +52,12 @@ test("Idempotency: returns 409 conflict if key status is pending", async () => {
   const originalFindOne = Idempotency.findOne;
   Idempotency.findOne = async (query) => {
     assert.equal(query.key, "test-key-1");
-    return { key: "test-key-1", status: "pending", createdAt: new Date() };
+    return {
+      key: "test-key-1",
+      status: "pending",
+      requestHash,
+      createdAt: new Date(),
+    };
   };
 
   try {
@@ -196,6 +205,153 @@ test("Idempotency: replaying the original key returns the original success", asy
   } finally {
     Idempotency.create = originalCreate;
     Idempotency.findOne = originalFindOne;
+  }
+});
+
+test("Idempotency: only one concurrent requester reclaims a stale pending key", async () => {
+  const body = { farmerId: "farmer-1", animalId: "animal-1" };
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(body))
+    .digest("hex");
+  const staleCreatedAt = new Date(Date.now() - 60_000);
+  const stored = {
+    _id: "stale-idempotency-1",
+    key: "walkin-health-1",
+    userId: "technician-1",
+    method: "POST",
+    path: "/health-request/walk-in",
+    requestHash,
+    status: "pending",
+    createdAt: staleCreatedAt,
+  };
+  const originals = {
+    create: Idempotency.create,
+    findOne: Idempotency.findOne,
+    findOneAndUpdate: Idempotency.findOneAndUpdate,
+  };
+  let reclaimAttempts = 0;
+  let nextCalls = 0;
+  Idempotency.create = async () => {
+    const error = new Error("Duplicate key");
+    error.code = 11000;
+    throw error;
+  };
+  Idempotency.findOne = async () => ({ ...stored });
+  Idempotency.findOneAndUpdate = async (filter, update) => {
+    assert.equal(filter.createdAt, staleCreatedAt);
+    assert.equal(filter.requestHash, requestHash);
+    reclaimAttempts += 1;
+    return reclaimAttempts === 1
+      ? { ...stored, createdAt: update.$set.createdAt }
+      : null;
+  };
+  const makeRequest = () => ({
+    method: "POST",
+    headers: { "idempotency-key": stored.key },
+    body,
+    user: { _id: stored.userId },
+    path: stored.path,
+  });
+  const makeResponse = () => ({
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+    send(value) {
+      this.body = value;
+      return this;
+    },
+  });
+  const firstResponse = makeResponse();
+  const secondResponse = makeResponse();
+
+  try {
+    await Promise.all([
+      idempotencyMiddleware(makeRequest(), firstResponse, () => {
+        nextCalls += 1;
+      }),
+      idempotencyMiddleware(makeRequest(), secondResponse, () => {
+        nextCalls += 1;
+      }),
+    ]);
+
+    assert.equal(reclaimAttempts, 2);
+    assert.equal(nextCalls, 1);
+    assert.equal(secondResponse.statusCode, 409);
+    assert.equal(secondResponse.body.code, "IDEMPOTENCY_IN_PROGRESS");
+  } finally {
+    Idempotency.create = originals.create;
+    Idempotency.findOne = originals.findOne;
+    Idempotency.findOneAndUpdate = originals.findOneAndUpdate;
+  }
+});
+
+test("Idempotency: direct MedicalRecord retry returns the committed response without a second write", async () => {
+  const body = {
+    animalId: "animal-1",
+    type: "Treatment",
+    details: { medicineName: "Vitamin B" },
+  };
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(body))
+    .digest("hex");
+  const originals = {
+    create: Idempotency.create,
+    findOne: Idempotency.findOne,
+  };
+  Idempotency.create = async () => {
+    const error = new Error("Duplicate key");
+    error.code = 11000;
+    throw error;
+  };
+  Idempotency.findOne = async () => ({
+    status: "resolved",
+    requestHash,
+    responseStatus: 201,
+    responseBody: {
+      message: "Medical record added successfully",
+      record: { _id: "medical-1" },
+    },
+  });
+  const req = {
+    method: "POST",
+    headers: { "idempotency-key": "direct-medical-operation-1" },
+    body,
+    user: { _id: "technician-1" },
+    path: "/medical",
+  };
+  const res = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+  };
+  let routeWrites = 0;
+
+  try {
+    await idempotencyMiddleware(req, res, () => {
+      routeWrites += 1;
+    });
+    assert.equal(routeWrites, 0);
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.record._id, "medical-1");
+  } finally {
+    Idempotency.create = originals.create;
+    Idempotency.findOne = originals.findOne;
   }
 });
 

@@ -19,6 +19,9 @@ const queryResult = (data) => ({
   sort() {
     return this;
   },
+  limit() {
+    return this;
+  },
   populate() {
     return this;
   },
@@ -136,6 +139,7 @@ test("per-animal and global official Records use the same completed AI status bo
     pregnancy: Pregnancy.find,
     calving: Calving.find,
     medical: MedicalRecord.find,
+    inseminationCount: Insemination.countDocuments,
   };
   const queries = [];
   const inseminations = [
@@ -161,6 +165,7 @@ test("per-animal and global official Records use the same completed AI status bo
   Pregnancy.find = () => queryResult([]);
   Calving.find = () => queryResult([]);
   MedicalRecord.find = () => queryResult([]);
+  Insemination.countDocuments = async () => 1;
 
   const animalRecorder = responseRecorder();
   const globalRecorder = responseRecorder();
@@ -195,6 +200,7 @@ test("per-animal and global official Records use the same completed AI status bo
     Pregnancy.find = originals.pregnancy;
     Calving.find = originals.calving;
     MedicalRecord.find = originals.medical;
+    Insemination.countDocuments = originals.inseminationCount;
   }
 });
 
@@ -253,6 +259,10 @@ test("Official records: farmer scope overrides a supplied farmer id", async () =
     pregnancy: Pregnancy.find,
     calving: Calving.find,
     medical: MedicalRecord.find,
+    inseminationCount: Insemination.countDocuments,
+    pregnancyCount: Pregnancy.countDocuments,
+    calvingCount: Calving.countDocuments,
+    medicalCount: MedicalRecord.countDocuments,
   };
   let inseminationQuery = null;
   const animal = {
@@ -292,6 +302,10 @@ test("Official records: farmer scope overrides a supplied farmer id", async () =
       createdAt: new Date("2026-07-11T00:00:00.000Z"),
     },
   ]);
+  Insemination.countDocuments = async () => 1;
+  Pregnancy.countDocuments = async () => 0;
+  Calving.countDocuments = async () => 0;
+  MedicalRecord.countDocuments = async () => 1;
 
   const recorder = responseRecorder();
   try {
@@ -314,6 +328,10 @@ test("Official records: farmer scope overrides a supplied farmer id", async () =
     Pregnancy.find = originals.pregnancy;
     Calving.find = originals.calving;
     MedicalRecord.find = originals.medical;
+    Insemination.countDocuments = originals.inseminationCount;
+    Pregnancy.countDocuments = originals.pregnancyCount;
+    Calving.countDocuments = originals.calvingCount;
+    MedicalRecord.countDocuments = originals.medicalCount;
   }
 });
 
@@ -323,6 +341,7 @@ test("Official records: request-linked Health outcome stays one MedicalRecord wi
     pregnancy: Pregnancy.find,
     calving: Calving.find,
     medical: MedicalRecord.find,
+    medicalCount: MedicalRecord.countDocuments,
   };
   const populateCalls = [];
   const linkedHealthRequest = {
@@ -359,8 +378,15 @@ test("Official records: request-linked Health outcome stays one MedicalRecord wi
       populateCalls.push({ path, selection });
       return this;
     },
+    sort() {
+      return this;
+    },
+    limit() {
+      return this;
+    },
     lean: async () => [medicalRecord],
   });
+  MedicalRecord.countDocuments = async () => 1;
 
   const recorder = responseRecorder();
   try {
@@ -403,6 +429,7 @@ test("Official records: request-linked Health outcome stays one MedicalRecord wi
     Pregnancy.find = originals.pregnancy;
     Calving.find = originals.calving;
     MedicalRecord.find = originals.medical;
+    MedicalRecord.countDocuments = originals.medicalCount;
   }
 });
 
@@ -563,6 +590,54 @@ test("Official record detail: AI exposes canonical service and follow-up context
   } finally {
     Animal.findOne = originals.animal;
     Insemination.findOne = originals.insemination;
+  }
+});
+
+test("Official records bounds each source query to the requested global page window", async () => {
+  const originals = {
+    find: Insemination.find,
+    count: Insemination.countDocuments,
+  };
+  let appliedLimit = null;
+  const records = Array.from({ length: 4 }, (_, index) => ({
+    _id: `ai-window-${index}`,
+    status: "done",
+    attemptNumber: index + 1,
+    inseminationDate: new Date(`2026-08-0${4 - index}T00:00:00.000Z`),
+    createdAt: new Date(`2026-08-0${4 - index}T00:00:00.000Z`),
+  }));
+  Insemination.find = () => ({
+    populate() {
+      return this;
+    },
+    sort() {
+      return this;
+    },
+    limit(value) {
+      appliedLimit = value;
+      return this;
+    },
+    lean: async () => records,
+  });
+  Insemination.countDocuments = async () => 10;
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecords(
+      {
+        user: { _id: "tech-1", role: "technician" },
+        query: { type: "ai", page: "2", limit: "2" },
+      },
+      recorder.response,
+    );
+
+    assert.equal(appliedLimit, 4);
+    assert.equal(recorder.body.total, 10);
+    assert.equal(recorder.body.data.length, 2);
+    assert.equal(recorder.body.page, 2);
+  } finally {
+    Insemination.find = originals.find;
+    Insemination.countDocuments = originals.count;
   }
 });
 

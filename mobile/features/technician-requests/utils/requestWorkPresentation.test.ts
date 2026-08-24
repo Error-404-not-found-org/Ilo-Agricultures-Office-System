@@ -1,7 +1,62 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeTechnicianWorkItem } from "./requestWorkPresentation.ts";
+import {
+  normalizeTechnicianWorkItem,
+  normalizeTechnicianWorkItems,
+} from "./requestWorkPresentation.ts";
+
+test("work queue normalization is safe for empty and loading input", () => {
+  assert.deepEqual(normalizeTechnicianWorkItems([]), []);
+  assert.deepEqual(normalizeTechnicianWorkItems(undefined), []);
+  assert.deepEqual(
+    normalizeTechnicianWorkItems({ data: [] } as unknown as any[]),
+    [],
+  );
+});
+
+test("one AI Work Queue item is normalized from the canonical item array", () => {
+  const [item] = normalizeTechnicianWorkItems([
+    {
+      id: "ai-1",
+      workflowId: "ai-1",
+      workflowType: "AI",
+      type: "ai",
+      status: "scheduled",
+      schedule: {
+        date: "2026-08-30T08:00:00.000Z",
+        visitPeriod: "morning",
+      },
+    } as any,
+  ]);
+
+  assert.equal(item.id, "ai-1");
+  assert.equal(item.workType, "ai");
+});
+
+test("mixed Work Queue item arrays remain normalized", () => {
+  const items = normalizeTechnicianWorkItems([
+    {
+      id: "ai-1",
+      workflowId: "ai-1",
+      workflowType: "AI",
+      type: "ai",
+      status: "pending",
+    } as any,
+    {
+      id: "health-1",
+      workflowId: "health-1",
+      workflowType: "HEALTH",
+      serviceType: "health",
+      status: "assigned",
+    } as any,
+  ]);
+
+  assert.deepEqual(
+    items.map((item) => item.workType),
+    ["ai", "health"],
+  );
+});
 
 test("Farmer return-to-heat task is presented as an update review in My Work", () => {
   const item = normalizeTechnicianWorkItem({

@@ -412,6 +412,10 @@ test("Security: only one Technician can atomically claim a valid pending Health 
     status: "pending",
     handledBy: null,
     assignedTechnicianId: null,
+    dispatch: {
+      stage: "local",
+      location: { municipalityCode: "063034000" },
+    },
   });
   let claimed = false;
   let capturedFilter;
@@ -432,11 +436,25 @@ test("Security: only one Technician can atomically claim a valid pending Health 
   };
   const first = responseRecorder();
   const second = responseRecorder();
+  const readyTechnician = (id) => ({
+    _id: id,
+    role: "technician",
+    status: "active",
+    deletedAt: null,
+    isVerified: true,
+    profileClaimStatus: "claimed",
+    dispatchProfile: {
+      acceptsNewRequests: true,
+      availabilityStatus: "available",
+      serviceCapabilities: ["HEALTH"],
+      serviceMunicipalities: [{ municipalityCode: "063034000" }],
+    },
+  });
   await Promise.all([
     claimRequest(
       {
         params: { type: "health", id: "health-pending" },
-        user: { _id: "technician-1", role: "technician" },
+        user: readyTechnician("technician-1"),
         app,
       },
       first.response,
@@ -444,7 +462,7 @@ test("Security: only one Technician can atomically claim a valid pending Health 
     claimRequest(
       {
         params: { type: "health", id: "health-pending" },
-        user: { _id: "technician-2", role: "technician" },
+        user: readyTechnician("technician-2"),
         app,
       },
       second.response,

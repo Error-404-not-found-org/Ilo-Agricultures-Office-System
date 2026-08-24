@@ -1,17 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveDispatchNotificationMode, DISPATCH_NOTIFICATION_MODES } from "../src/domain/geographic/dispatchMode.js";
+import { ENV } from "../src/config/env.js";
 
 test("Dispatch Mode Parser", async (t) => {
-  await t.test("missing mode defaults to observe", () => {
-    assert.equal(resolveDispatchNotificationMode(undefined), DISPATCH_NOTIFICATION_MODES.OBSERVE);
-    assert.equal(resolveDispatchNotificationMode(null), DISPATCH_NOTIFICATION_MODES.OBSERVE);
-    assert.equal(resolveDispatchNotificationMode(""), DISPATCH_NOTIFICATION_MODES.OBSERVE);
+  await t.test("missing mode defaults to targeted", () => {
+    const original = ENV.DISPATCH_NOTIFICATION_MODE;
+    ENV.DISPATCH_NOTIFICATION_MODE = undefined;
+    assert.equal(resolveDispatchNotificationMode(undefined), DISPATCH_NOTIFICATION_MODES.TARGETED);
+    assert.equal(resolveDispatchNotificationMode(null), DISPATCH_NOTIFICATION_MODES.TARGETED);
+    assert.equal(resolveDispatchNotificationMode(""), DISPATCH_NOTIFICATION_MODES.TARGETED);
+    ENV.DISPATCH_NOTIFICATION_MODE = original;
   });
 
-  await t.test("invalid mode defaults to observe", () => {
-    assert.equal(resolveDispatchNotificationMode("random"), DISPATCH_NOTIFICATION_MODES.OBSERVE);
-    assert.equal(resolveDispatchNotificationMode("LEGACY_2"), DISPATCH_NOTIFICATION_MODES.OBSERVE);
+  await t.test("invalid mode fails closed to targeted", () => {
+    assert.equal(resolveDispatchNotificationMode("random"), DISPATCH_NOTIFICATION_MODES.TARGETED);
+    assert.equal(resolveDispatchNotificationMode("LEGACY_2"), DISPATCH_NOTIFICATION_MODES.TARGETED);
   });
 
   await t.test("legacy resolves correctly", () => {

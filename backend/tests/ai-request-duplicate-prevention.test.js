@@ -734,6 +734,10 @@ test("two technicians cannot claim the same request concurrently", async () => {
     animalId: "animal-1",
     status: "pending",
     approvedBy: null,
+    dispatch: {
+      stage: "local",
+      location: { municipalityCode: "063034000" },
+    },
   });
   let claimed = false;
   Insemination.findOneAndUpdate = () => {
@@ -764,9 +768,23 @@ test("two technicians cannot claim the same request concurrently", async () => {
   const app = { get: () => ({ to: () => ({ emit: () => {} }) }) };
   const firstRes = makeRes();
   const secondRes = makeRes();
+  const readyTechnician = (id) => ({
+    _id: id,
+    role: "technician",
+    status: "active",
+    deletedAt: null,
+    isVerified: true,
+    profileClaimStatus: "claimed",
+    dispatchProfile: {
+      acceptsNewRequests: true,
+      availabilityStatus: "available",
+      serviceCapabilities: ["AI"],
+      serviceMunicipalities: [{ municipalityCode: "063034000" }],
+    },
+  });
   await Promise.all([
-    claimRequest({ params: { type: "ai", id: "request-1" }, user: { _id: "technician-1", role: "technician" }, app }, firstRes),
-    claimRequest({ params: { type: "ai", id: "request-1" }, user: { _id: "technician-2", role: "technician" }, app }, secondRes),
+    claimRequest({ params: { type: "ai", id: "request-1" }, user: readyTechnician("technician-1"), app }, firstRes),
+    claimRequest({ params: { type: "ai", id: "request-1" }, user: readyTechnician("technician-2"), app }, secondRes),
   ]);
   assert.deepEqual([firstRes.statusCode, secondRes.statusCode].sort(), [200, 409]);
   assert.equal(secondRes.body.code, "REQUEST_ALREADY_CLAIMED");
