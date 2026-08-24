@@ -1,5 +1,6 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "@/components/ui/Text";
 import {
   AlertTriangle,
   CalendarClock,
@@ -140,29 +141,9 @@ export function ReproductionNextActionCard({
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  color: colors.textMuted,
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 10,
-                  letterSpacing: 0.8,
-                  textTransform: "uppercase",
-                }}
-              >
-                {title}
-              </Text>
+              <Text textRole="label" color="muted" style={{ textTransform: "uppercase" }}>{title}</Text>
 
-              <Text
-                style={{
-                  color: colors.textPrimary,
-                  fontFamily: "Outfit_800ExtraBold",
-                  fontSize: compact ? 15 : 17,
-                  lineHeight: compact ? 20 : 23,
-                  marginTop: 3,
-                }}
-              >
-                {action.label}
-              </Text>
+              <Text textRole="title" style={{ marginTop: 3 }}>{action.label}</Text>
             </View>
 
             {isOverdue ? (
@@ -176,17 +157,7 @@ export function ReproductionNextActionCard({
                   paddingVertical: 4,
                 }}
               >
-                <Text
-                  style={{
-                    color: accentColor,
-                    fontFamily: "Outfit_800ExtraBold",
-                    fontSize: 9,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Overdue
-                </Text>
+                <Text textRole="label" style={{ color: accentColor, textTransform: "uppercase" }}>Overdue</Text>
               </View>
             ) : null}
           </View>
@@ -208,27 +179,11 @@ export function ReproductionNextActionCard({
                 paddingVertical: 4,
               }}
             >
-              <Text
-                style={{
-                  color: accentColor,
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 10,
-                }}
-              >
-                {formatPhase(action.phase)}
-              </Text>
+              <Text textRole="label" style={{ color: accentColor }}>{formatPhase(action.phase)}</Text>
             </View>
 
             {action.dateKind ? (
-              <Text
-                style={{
-                  color: colors.textMuted,
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 10,
-                }}
-              >
-                {getDateKindLabel(action.dateKind)}
-              </Text>
+              <Text textRole="caption" color="muted">{getDateKindLabel(action.dateKind)}</Text>
             ) : null}
           </View>
 
@@ -242,28 +197,10 @@ export function ReproductionNextActionCard({
             >
               <CalendarClock size={14} color={colors.textSecondary} />
 
-              <Text
-                style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_600SemiBold",
-                  fontSize: 12,
-                  marginLeft: 6,
-                }}
-              >
-                {overrideDateLabel || formattedDate}
-              </Text>
+              <Text textRole="body" color="secondary" style={{ marginLeft: 6 }}>{overrideDateLabel || formattedDate}</Text>
             </View>
           ) : (
-            <Text
-              style={{
-                color: colors.textMuted,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 11,
-                marginTop: 9,
-              }}
-            >
-              No specific date has been assigned yet.
-            </Text>
+            <Text textRole="body" color="muted" style={{ marginTop: 9 }}>No specific date has been assigned yet.</Text>
           )}
         </View>
       </View>

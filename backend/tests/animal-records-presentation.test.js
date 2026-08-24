@@ -145,15 +145,41 @@ test("animal records show one official outcome per linked health request", () =>
 });
 
 test("AI records separate service completion from breeding outcome and expose attempt linkage", () => {
-  const pending = formatAnimalRecord(
+  const animalDetailsBackend = source(
+    "backend/src/controllers/animals.controllers.js",
+  );
+  const animalRecordsBackend = source(
+    "backend/src/controllers/animal-workflow.controllers.js",
+  );
+  assert.match(animalDetailsBackend, /\.\.\.insemination\.toObject\(\)/);
+  assert.match(animalRecordsBackend, /\.\.\.inseminations\.map\(\(item\) => \(\{[\s\S]*?\.\.\.item/);
+  assert.match(animalRecordsBackend, /summary: item\.outcome \|\| item\.status/);
+
+  const completedAwaitingOutcome = formatAnimalRecord(
     { recordKind: "insemination", attemptNumber: 1, status: "done" },
     animal,
   );
-  assert.equal(pending.title, "AI attempt 1 · RC26-05");
+  assert.equal(completedAwaitingOutcome.title, "AI attempt 1 · RC26-05");
   assert.deepEqual(
-    pending.badges.map((badge) => badge.label),
+    completedAwaitingOutcome.badges.map((badge) => badge.label),
     ["AI service completed", "Outcome awaiting confirmation"],
   );
+
+  const pendingAttempt2 = formatAnimalRecord(
+    {
+      recordKind: "insemination",
+      attemptNumber: 2,
+      status: "pending",
+      previousAttemptReference: 1,
+    },
+    animal,
+  );
+  assert.deepEqual(
+    pendingAttempt2.badges.map((badge) => badge.label),
+    ["Pending"],
+  );
+  assert.ok(pendingAttempt2.details.includes("Status: Pending"));
+  assert.doesNotMatch(JSON.stringify(pendingAttempt2), /AI service completed/i);
 
   const failed = formatAnimalRecord(
     {
@@ -184,6 +210,9 @@ test("AI records separate service completion from breeding outcome and expose at
     animal,
   );
   assert.ok(second.details.includes("Previous attempt: 1"));
+  assert.ok(
+    second.badges.some((badge) => badge.label === "AI service completed"),
+  );
 });
 
 test("pregnancy records format method, stage, continuation state, technician, and related attempt", () => {

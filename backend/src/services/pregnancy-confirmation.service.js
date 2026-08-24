@@ -18,6 +18,7 @@ import {
 import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
 import { calculateTargetCalvingDate } from "../utils/cattleCore.js";
 import { AppError } from "../utils/app-error.js";
+import { closeBreedingFollowUpTask } from "./breeding-observation-followup.service.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTHORIZED_ROLES = new Set(["admin", "technician"]);
@@ -82,7 +83,7 @@ const loadContext = async ({ animalId, inseminationId, session }) => {
   return { animal, insemination };
 };
 
-const completeInitialConfirmationTask = async ({
+export const completeInitialConfirmationTask = async ({
   taskId,
   animal,
   insemination,
@@ -244,6 +245,125 @@ const ensureContinuationTask = async ({
   { upsert: true, returnDocument: "after", session },
 );
 
+export const executePregnancyFinalization = async ({
+  animal,
+  insemination,
+  confirmedAt,
+  actor,
+  confirmationStage,
+  thresholdSnapshot = null,
+  methodCode = null,
+  policyVersion = null,
+  recheckRequired = false,
+  recheckDueAt = null,
+  technicianNote = "",
+  sourceType,
+  session,
+}) => {
+  const targetCalvingDate = calculateTargetCalvingDate(
+    insemination.inseminationDate,
+    animal.species,
+    undefined,
+    animal.breed,
+  );
+
+  const [pregnancy] = await Pregnancy.create([{
+    animalId: animal._id,
+    farmerId: animal.farmerId,
+    inseminationId: insemination._id,
+    pregnancyDiagnosis: { date: confirmedAt, result: "Pregnant" },
+    confirmation: {
+      methodCode,
+      stage: confirmationStage,
+      confirmedAt,
+      confirmedBy: actor._id,
+      policyVersion,
+      earliestThresholdSnapshot: thresholdSnapshot,
+      recheckRequired,
+      recheckDueAt,
+    },
+    recheckStatus: recheckRequired ? "pending" : "not_required",
+    targetCalvingDate,
+    technicianNote,
+  }], { session });
+
+  await Insemination.updateOne(
+    { _id: insemination._id },
+    {
+      $set: {
+        status: "done",
+        outcome: "Pregnant",
+        isSuccess: true,
+        pregnancyId: pregnancy._id,
+        outcomeVerificationStatus: "verified",
+        outcomeConfirmationSource: sourceType,
+        outcomeConfirmedBy: actor._id,
+        outcomeConfirmedAt: confirmedAt,
+        failureReason: null,
+      },
+      $unset: { activeRequestKey: 1 },
+    },
+    { session },
+  );
+
+  await Animal.updateOne(
+    { _id: animal._id },
+    {
+      $set: {
+        reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.PREGNANT,
+        expectedCalvingDate: targetCalvingDate,
+      },
+      $push: {
+        activityLogs: {
+          event: "Pregnancy Diagnosis",
+          date: confirmedAt,
+          description: `Pregnant diagnosis recorded${methodCode ? ` using ${methodCode}` : ""}.`,
+        },
+      },
+    },
+    { session },
+  );
+
+  await AnimalTimelineEvent.create([{
+    animalId: animal._id,
+    eventType: "pregnancy_confirmed",
+    occurredAt: confirmedAt,
+    actorId: actor._id,
+    sourceType: "Pregnancy",
+    sourceId: pregnancy._id,
+    title: "Pregnancy confirmed",
+    summary: `Pregnant${methodCode ? ` via ${methodCode}` : " via accepted farmer report"}.`,
+    metadata: {
+      inseminationId: insemination._id,
+      methodCode: methodCode || null,
+      policyVersion,
+      confirmationStage,
+      recheckRequired,
+    },
+  }], { session });
+
+  await AuditLog.create([{
+    entityType: "Pregnancy",
+    entityId: pregnancy._id,
+    action: "record_pregnancy_diagnosis",
+    actorId: actor._id,
+    after: {
+      result: "Pregnant",
+      animalStatus: "Pregnant",
+      confirmationStage,
+      recheckStatus: pregnancy.recheckStatus,
+    },
+    metadata: {
+      inseminationId: insemination._id,
+      methodCode: methodCode || null,
+      policyVersion,
+      earliestThresholdSnapshot: thresholdSnapshot,
+    },
+  }], { session });
+
+  return pregnancy;
+};
+
 export const confirmPregnancyDiagnosis = ({
   animalId,
   inseminationId,
@@ -375,74 +495,116 @@ export const confirmPregnancyDiagnosis = ({
         : "standard";
     const thresholdSnapshot = readiness.selectedMethod?.earliestDaysPostAI
       ?? LEGACY_PREGNANCY_DIAGNOSIS_DAYS;
-    const targetCalvingDate = officialResult === "Pregnant"
-      ? calculateTargetCalvingDate(
-          insemination.inseminationDate,
-          animal.species,
-          undefined,
-          animal.breed,
-        )
-      : undefined;
-
-    const [pregnancy] = await Pregnancy.create([{
-      animalId: animal._id,
-      farmerId: animal.farmerId,
-      inseminationId: insemination._id,
-      pregnancyDiagnosis: { date: confirmedAt, result: officialResult },
-      confirmation: {
-        methodCode: readiness.policyMode === "method_based" ? methodCode : null,
-        stage: confirmationStage,
+    let pregnancy;
+    if (officialResult === "Pregnant") {
+      pregnancy = await executePregnancyFinalization({
+        animal,
+        insemination,
         confirmedAt,
-        confirmedBy: actor._id,
+        actor,
+        confirmationStage,
+        thresholdSnapshot,
+        methodCode: readiness.policyMode === "method_based" ? methodCode : null,
         policyVersion: readiness.policyVersion,
-        earliestThresholdSnapshot: thresholdSnapshot,
         recheckRequired,
         recheckDueAt: recheckRequired ? recheckDueAt : null,
-      },
-      recheckStatus: recheckRequired ? "pending" : "not_required",
-      targetCalvingDate,
-      technicianNote,
-    }], { session });
+        technicianNote,
+        sourceType: "technician_pregnancy_diagnosis",
+        session,
+      });
+    } else {
+      [pregnancy] = await Pregnancy.create([{
+        animalId: animal._id,
+        farmerId: animal.farmerId,
+        inseminationId: insemination._id,
+        pregnancyDiagnosis: { date: confirmedAt, result: officialResult },
+        confirmation: {
+          methodCode: readiness.policyMode === "method_based" ? methodCode : null,
+          stage: confirmationStage,
+          confirmedAt,
+          confirmedBy: actor._id,
+          policyVersion: readiness.policyVersion,
+          earliestThresholdSnapshot: thresholdSnapshot,
+          recheckRequired: false,
+          recheckDueAt: null,
+        },
+        recheckStatus: "not_required",
+        targetCalvingDate: undefined,
+        technicianNote,
+      }], { session });
 
-    await Insemination.updateOne(
-      { _id: insemination._id },
-      {
-        $set: {
-          status: "done",
-          outcome: officialResult === "Pregnant" ? "Pregnant" : "Failed (Negative PD)",
-          isSuccess: officialResult === "Pregnant",
-          pregnancyId: pregnancy._id,
-          outcomeVerificationStatus: "verified",
-          outcomeConfirmationSource: officialResult === "Pregnant"
-            ? "technician_pregnancy_diagnosis"
-            : "technician_negative_pd",
-          outcomeConfirmedBy: actor._id,
-          outcomeConfirmedAt: confirmedAt,
-          failureReason: officialResult === "Pregnant" ? null : "negative_pd",
+      await Insemination.updateOne(
+        { _id: insemination._id },
+        {
+          $set: {
+            status: "done",
+            outcome: "Failed (Negative PD)",
+            isSuccess: false,
+            pregnancyId: pregnancy._id,
+            outcomeVerificationStatus: "verified",
+            outcomeConfirmationSource: "technician_negative_pd",
+            outcomeConfirmedBy: actor._id,
+            outcomeConfirmedAt: confirmedAt,
+            failureReason: "negative_pd",
+          },
+          $unset: { activeRequestKey: 1 },
         },
-        $unset: { activeRequestKey: 1 },
-      },
-      { session },
-    );
-    await Animal.updateOne(
-      { _id: animal._id },
-      {
-        $set: {
-          reproductiveStatus: officialResult === "Pregnant"
-            ? ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
-            : ANIMAL_REPRODUCTIVE_STATUS.NORMAL,
-          expectedCalvingDate: targetCalvingDate || null,
-        },
-        $push: {
-          activityLogs: {
-            event: "Pregnancy Diagnosis",
-            date: confirmedAt,
-            description: `${officialResult} diagnosis recorded${methodCode ? ` using ${methodCode}` : " under legacy policy"}.`,
+        { session },
+      );
+      await Animal.updateOne(
+        { _id: animal._id },
+        {
+          $set: {
+            reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.NORMAL,
+            expectedCalvingDate: null,
+          },
+          $push: {
+            activityLogs: {
+              event: "Pregnancy Diagnosis",
+              date: confirmedAt,
+              description: `${officialResult} diagnosis recorded${methodCode ? ` using ${methodCode}` : " under legacy policy"}.`,
+            },
           },
         },
-      },
-      { session },
-    );
+        { session },
+      );
+
+      await AnimalTimelineEvent.create([{
+        animalId: animal._id,
+        eventType: "pregnancy_checked",
+        occurredAt: confirmedAt,
+        actorId: actor._id,
+        sourceType: "Pregnancy",
+        sourceId: pregnancy._id,
+        title: "Pregnancy check recorded",
+        summary: `${officialResult}${methodCode ? ` via ${methodCode}` : " under the legacy Day-60 policy"}.`,
+        metadata: {
+          inseminationId: insemination._id,
+          methodCode: methodCode || null,
+          policyVersion: readiness.policyVersion,
+          confirmationStage,
+          recheckRequired: false,
+        },
+      }], { session });
+      await AuditLog.create([{
+        entityType: "Pregnancy",
+        entityId: pregnancy._id,
+        action: "record_pregnancy_diagnosis",
+        actorId: actor._id,
+        after: {
+          result: officialResult,
+          animalStatus: "Normal",
+          confirmationStage,
+          recheckStatus: pregnancy.recheckStatus,
+        },
+        metadata: {
+          inseminationId: insemination._id,
+          methodCode: methodCode || null,
+          policyVersion: readiness.policyVersion,
+          earliestThresholdSnapshot: thresholdSnapshot,
+        },
+      }], { session });
+    }
 
     const completedTask = await completeInitialConfirmationTask({
       taskId,
@@ -467,41 +629,13 @@ export const confirmPregnancyDiagnosis = ({
         })
       : null;
 
-    await AnimalTimelineEvent.create([{
-      animalId: animal._id,
-      eventType: officialResult === "Pregnant" ? "pregnancy_confirmed" : "pregnancy_checked",
-      occurredAt: confirmedAt,
+    await closeBreedingFollowUpTask({
+      inseminationId: insemination._id,
+      reason: `Definitive pregnancy diagnosis recorded: ${officialResult}`,
+      at: confirmedAt,
       actorId: actor._id,
-      sourceType: "Pregnancy",
-      sourceId: pregnancy._id,
-      title: officialResult === "Pregnant" ? "Pregnancy confirmed" : "Pregnancy check recorded",
-      summary: `${officialResult}${methodCode ? ` via ${methodCode}` : " under the legacy Day-60 policy"}.`,
-      metadata: {
-        inseminationId: insemination._id,
-        methodCode: methodCode || null,
-        policyVersion: readiness.policyVersion,
-        confirmationStage,
-        recheckRequired,
-      },
-    }], { session });
-    await AuditLog.create([{
-      entityType: "Pregnancy",
-      entityId: pregnancy._id,
-      action: "record_pregnancy_diagnosis",
-      actorId: actor._id,
-      after: {
-        result: officialResult,
-        animalStatus: officialResult === "Pregnant" ? "Pregnant" : "Normal",
-        confirmationStage,
-        recheckStatus: pregnancy.recheckStatus,
-      },
-      metadata: {
-        inseminationId: insemination._id,
-        methodCode: methodCode || null,
-        policyVersion: readiness.policyVersion,
-        earliestThresholdSnapshot: thresholdSnapshot,
-      },
-    }], { session });
+      session,
+    });
 
     return {
       pregnancy,

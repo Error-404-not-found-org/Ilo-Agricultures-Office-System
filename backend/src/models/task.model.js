@@ -34,6 +34,7 @@ const TaskSchema = new mongoose.Schema(
         "Deworming",
         "Treatment",
         "Registration",
+        "BreedingFollowUp",
         "Other",
       ],
       default: "Other",

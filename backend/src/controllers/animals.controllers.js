@@ -26,27 +26,57 @@ import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.se
 
 export const registerAnimal = async (req, res) => {
   try {
-    let { farmerId, animalId, earTag, brand, species, breed, color, imageUrl, birthDate, gender } = req.body;
- 
+    let {
+      farmerId,
+      animalId,
+      earTag,
+      brand,
+      species,
+      breed,
+      color,
+      imageUrl,
+      birthDate,
+      gender,
+    } = req.body;
+
     if (req.user?.role === "farmer") {
-        farmerId = req.user._id.toString();
+      farmerId = req.user._id.toString();
     }
 
-    if (!farmerId) return res.status(400).json({ message: "A farmer must be assigned to this animal." });
-    if (!species) return res.status(400).json({ message: "Species is required." });
+    if (!farmerId)
+      return res
+        .status(400)
+        .json({ message: "A farmer must be assigned to this animal." });
+    if (!species)
+      return res.status(400).json({ message: "Species is required." });
     if (!breed) return res.status(400).json({ message: "Breed is required." });
 
     const farmer = await User.findById(farmerId);
     if (!farmer) return res.status(404).json({ message: "Farmer not found." });
 
+    // Check for duplicate ear tag if provided
+    if (earTag && earTag.trim() !== "") {
+      const existingAnimal = await Animal.findOne({
+        farmerId,
+        earTag: earTag.trim(),
+      });
+      if (existingAnimal) {
+        return res
+          .status(409)
+          .json({
+            message: "There's already an animal that owns this eartag.",
+          });
+      }
+    }
+
     if (!animalId || animalId.trim() === "") {
-      const SPECIES_PREFIX = { 
-        "Beef Cattle": "BEF", 
-        "Dairy Cattle": "DAI", 
-        "Cattle": "CAT",
-        "Carabao": "CBU", 
-        "Goat": "GOT", 
-        "Swine": "SWN" 
+      const SPECIES_PREFIX = {
+        "Beef Cattle": "BEF",
+        "Dairy Cattle": "DAI",
+        Cattle: "CAT",
+        Carabao: "CBU",
+        Goat: "GOT",
+        Swine: "SWN",
       };
       const prefix = SPECIES_PREFIX[species] || "ANM";
 
@@ -87,17 +117,34 @@ export const registerAnimal = async (req, res) => {
       barangay: farmer.address?.barangay || "Not Provided",
     });
 
-    console.log(`[Animal Registered] ID: ${animal._id} | AnimalID: ${animalId} | Farmer: ${farmer.name}`);
+    console.log(
+      `[Animal Registered] ID: ${animal._id} | AnimalID: ${animalId} | Farmer: ${farmer.name}`,
+    );
     res.status(201).json({ message: "Animal registered", animal });
   } catch (error) {
     console.error("[registerAnimal ERROR]", error.message, error.errors || "");
-    res.status(500).json({ message: error.message || "Failed to register animal" });
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to register animal" });
   }
 };
 
 export const getAllAnimals = async (req, res) => {
   try {
-    const { page, limit, search, barangay, city, species, gender, status, reproductiveStatus, breed, sortBy = "createdAt", sortOrder = "desc" } = req.query;
+    const {
+      page,
+      limit,
+      search,
+      barangay,
+      city,
+      species,
+      gender,
+      status,
+      reproductiveStatus,
+      breed,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.query;
     let query = { deletedAt: null };
 
     if (city || barangay) {
@@ -108,21 +155,22 @@ export const getAllAnimals = async (req, res) => {
       const addressFilters = [];
       if (city) {
         addressFilters.push({
-          $or: [
-            { "address.city": city },
-            { "address.municipality": city },
-          ],
+          $or: [{ "address.city": city }, { "address.municipality": city }],
         });
       }
       if (barangay) addressFilters.push({ "address.barangay": barangay });
       if (addressFilters.length) locationQuery.$and = addressFilters;
 
-      const farmersInLocation = await User.find(locationQuery).select("_id").lean();
+      const farmersInLocation = await User.find(locationQuery)
+        .select("_id")
+        .lean();
       query.farmerId = { $in: farmersInLocation.map((farmer) => farmer._id) };
     }
 
     if (species === "Cattle") {
-      query.species = { $in: ["Beef", "Dairy", "Beef Cattle", "Dairy Cattle", "Cattle"] };
+      query.species = {
+        $in: ["Beef", "Dairy", "Beef Cattle", "Dairy Cattle", "Cattle"],
+      };
     } else if (species) {
       query.species = species;
     }
@@ -133,32 +181,40 @@ export const getAllAnimals = async (req, res) => {
         status || reproductiveStatus,
       );
     }
- 
+
     if (search) {
-      const matchedFarmers = await User.find({ 
-          name: { $regex: search, $options: "i" },
-          role: "farmer" 
+      const matchedFarmers = await User.find({
+        name: { $regex: search, $options: "i" },
+        role: "farmer",
       }).select("_id");
-      const farmerIds = matchedFarmers.map(f => f._id);
- 
+      const farmerIds = matchedFarmers.map((f) => f._id);
+
       const searchFilter = {
         $or: [
           { animalId: { $regex: search, $options: "i" } },
           { earTag: { $regex: search, $options: "i" } },
           { brand: { $regex: search, $options: "i" } },
           { species: { $regex: search, $options: "i" } },
-          { farmerId: { $in: farmerIds } }
-        ]
+          { farmerId: { $in: farmerIds } },
+        ],
       };
- 
+
       query = { $and: [query, searchFilter] };
     }
- 
+
     if (page && limit) {
       const { page: pageNum, limit: limitNum, skip } = getPagination(req.query);
- 
+
       const sortDirection = sortOrder === "asc" ? 1 : -1;
-      const safeSortBy = ["createdAt", "updatedAt", "animalId", "earTag", "species", "breed", "reproductiveStatus"].includes(sortBy)
+      const safeSortBy = [
+        "createdAt",
+        "updatedAt",
+        "animalId",
+        "earTag",
+        "species",
+        "breed",
+        "reproductiveStatus",
+      ].includes(sortBy)
         ? sortBy
         : "createdAt";
 
@@ -168,24 +224,37 @@ export const getAllAnimals = async (req, res) => {
         .skip(skip)
         .limit(limitNum)
         .lean();
- 
-      const [total, cattleCount, pregnantCount, availableCount] = await Promise.all([
-        Animal.countDocuments(query),
-        Animal.countDocuments({
-          $and: [
-            query,
-            { species: { $in: ["Beef", "Dairy", "Beef Cattle", "Dairy Cattle", "Cattle"] } },
-          ],
-        }),
-        Animal.countDocuments({ $and: [query, { reproductiveStatus: "Pregnant" }] }),
-        Animal.countDocuments({
-          $and: [
-            query,
-            { reproductiveStatus: reproductiveStatusQuery("Normal") },
-          ],
-        }),
-      ]);
- 
+
+      const [total, cattleCount, pregnantCount, availableCount] =
+        await Promise.all([
+          Animal.countDocuments(query),
+          Animal.countDocuments({
+            $and: [
+              query,
+              {
+                species: {
+                  $in: [
+                    "Beef",
+                    "Dairy",
+                    "Beef Cattle",
+                    "Dairy Cattle",
+                    "Cattle",
+                  ],
+                },
+              },
+            ],
+          }),
+          Animal.countDocuments({
+            $and: [query, { reproductiveStatus: "Pregnant" }],
+          }),
+          Animal.countDocuments({
+            $and: [
+              query,
+              { reproductiveStatus: reproductiveStatusQuery("Normal") },
+            ],
+          }),
+        ]);
+
       res.status(200).json({
         data: animals,
         animals,
@@ -205,7 +274,7 @@ export const getAllAnimals = async (req, res) => {
       const animals = await Animal.find(query)
         .populate("farmerId", "name address")
         .sort({ createdAt: -1 })
-        .limit(100) 
+        .limit(100)
         .lean();
       res.status(200).json(animals);
     }
@@ -235,7 +304,11 @@ export const getMyAnimals = async (req, res) => {
     }
 
     const [animals, total] = await Promise.all([
-      Animal.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Animal.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
       Animal.countDocuments(query),
     ]);
 
@@ -244,7 +317,7 @@ export const getMyAnimals = async (req, res) => {
       total,
       page: pageNum,
       limit: limitNum,
-      totalPages: Math.ceil(total / limitNum)
+      totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
     console.error("[getMyAnimals ERROR]", error.message);
@@ -293,10 +366,7 @@ export const getAnimalById = async (req, res) => {
           $in: ["AI", "PD", "Calving", "CD"],
         },
         status: {
-          $in: [
-            TASK_STATUS.PENDING,
-            TASK_STATUS.IN_PROGRESS,
-          ],
+          $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS],
         },
       })
         .sort({
@@ -312,12 +382,21 @@ export const getAnimalById = async (req, res) => {
     }
     assertAnimalAccess(req.user, animal);
     const policyResolution = await loadPregnancyConfirmationPolicy();
+    const idOf = (value) => String(value?._id || value || "");
+    const followUpTaskFor = (insemination) =>
+      reproductiveTasks.find(
+        (task) =>
+          task.taskType === "PD" &&
+          (idOf(task._id) === idOf(insemination.verificationTaskId) ||
+            idOf(task.metadata?.inseminationId) === idOf(insemination._id) ||
+            (task.relatedRecordType === "insemination" &&
+              idOf(task.relatedRecordId) === idOf(insemination._id))),
+      ) || null;
     const inseminations = inseminationsList.map((insemination) => {
       const pregnancy = pregnancies.find(
         (item) =>
           item.inseminationId &&
-          item.inseminationId.toString() ===
-            insemination._id.toString(),
+          item.inseminationId.toString() === insemination._id.toString(),
       );
       return {
         ...insemination.toObject(),
@@ -336,13 +415,16 @@ export const getAnimalById = async (req, res) => {
           policy: policyResolution.policy,
           species: animal.species,
         }),
+        pregnancyFollowUpTask: followUpTaskFor(insemination),
       };
     });
     const activeRequest =
       inseminationsList.find((insemination) =>
         isActiveAIRequestStatus(insemination.status),
       ) || null;
-    const calvedPregnancyIds = new Set(calvings.map((item) => String(item.pregnancyId?._id || item.pregnancyId)));
+    const calvedPregnancyIds = new Set(
+      calvings.map((item) => String(item.pregnancyId?._id || item.pregnancyId)),
+    );
     const latestPregnantRecord =
       pregnancies.find(
         (pregnancy) =>
@@ -353,8 +435,7 @@ export const getAnimalById = async (req, res) => {
     // Pregnancy records are historical. Only treat one as active
     // while the animal itself is currently marked Pregnant.
     const activePregnancy =
-      animal.reproductiveStatus ===
-      ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
+      animal.reproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
         ? latestPregnantRecord
         : null;
     const nextAction = resolveReproductionNextAction({
@@ -416,13 +497,13 @@ export const updateAnimalWizard = async (req, res) => {
         fields: suppliedLifecycleFields,
       });
     }
-    
+
     // Step 1: Handle Animal identity
     const animal = await Animal.findOne({ _id: id, deletedAt: null });
     if (!animal) return res.status(404).json({ message: "Animal not found" });
- 
+
     assertAnimalAccess(req.user, animal);
- 
+
     if (payload.animalId) animal.animalId = payload.animalId;
     if (payload.earTag) animal.earTag = payload.earTag;
     if (payload.brand) animal.brand = payload.brand;
@@ -431,13 +512,16 @@ export const updateAnimalWizard = async (req, res) => {
     if (payload.color) animal.color = payload.color;
     if (payload.gender) animal.gender = payload.gender;
     if (payload.birthDate) animal.birthDate = new Date(payload.birthDate);
-    
+
     if (payload.imageUrl) {
       if (payload.imageUrl.startsWith("data:image")) {
         try {
-          const uploadResponse = await cloudinary.uploader.upload(payload.imageUrl, {
-            folder: "livestock_profiles",
-          });
+          const uploadResponse = await cloudinary.uploader.upload(
+            payload.imageUrl,
+            {
+              folder: "livestock_profiles",
+            },
+          );
           animal.imageUrl = uploadResponse.secure_url;
         } catch (uploadError) {
           console.error("[updateAnimalWizard IMAGE UPLOAD ERROR]", uploadError);
@@ -451,16 +535,22 @@ export const updateAnimalWizard = async (req, res) => {
       const farmer = await User.findById(animal.farmerId);
       if (farmer) animal.barangay = farmer.address?.barangay || "Not Provided";
     }
-    
+
     await animal.save();
 
-    res.status(200).json({ message: "Animal profile updated successfully", animal });
+    res
+      .status(200)
+      .json({ message: "Animal profile updated successfully", animal });
   } catch (error) {
     console.error("Wizard Update API Error:", error);
     if (error.status) {
-      return res.status(error.status).json({ message: error.message, code: error.code });
+      return res
+        .status(error.status)
+        .json({ message: error.message, code: error.code });
     }
-    res.status(500).json({ message: "Failed to construct full medical updates" });
+    res
+      .status(500)
+      .json({ message: "Failed to construct full medical updates" });
   }
 };
 
@@ -468,16 +558,21 @@ export const deleteAnimal = async (req, res) => {
   try {
     const { id } = req.params;
     const animal = await Animal.findOne({ _id: id, deletedAt: null });
- 
+
     if (!animal) {
       return res.status(404).json({ message: "Animal not found" });
     }
- 
+
     // Permission Check: Only the owner (farmer) or an admin/tech can delete.
-    if (req.user.role === "farmer" && animal.farmerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Unauthorized to delete this animal" });
+    if (
+      req.user.role === "farmer" &&
+      animal.farmerId.toString() !== req.user._id.toString()
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to delete this animal" });
     }
- 
+
     const deleteTime = new Date();
     // Cleanup related records - Soft Delete
     await Promise.all([
@@ -490,9 +585,12 @@ export const deleteAnimal = async (req, res) => {
         { animalId: id },
         { $set: { deletedAt: deleteTime }, $unset: { activeCaseKey: 1 } },
       ),
-      Pregnancy.updateMany({ animalId: id }, { $set: { deletedAt: deleteTime } })
+      Pregnancy.updateMany(
+        { animalId: id },
+        { $set: { deletedAt: deleteTime } },
+      ),
     ]);
- 
+
     // Cleanup Cloudinary Image
     if (animal.imageUrl && animal.imageUrl.includes("cloudinary.com")) {
       try {
@@ -504,7 +602,7 @@ export const deleteAnimal = async (req, res) => {
         console.error("[Cloudinary Cleanup Error]", cloudinaryError);
       }
     }
- 
+
     animal.deletedAt = deleteTime;
     await animal.save();
 
@@ -513,7 +611,9 @@ export const deleteAnimal = async (req, res) => {
       animalId: id,
     });
 
-    res.status(200).json({ message: "Animal and related records deleted successfully" });
+    res
+      .status(200)
+      .json({ message: "Animal and related records deleted successfully" });
   } catch (error) {
     console.error("Delete Animal Error:", error);
     res.status(500).json({ message: "Failed to delete animal" });
@@ -524,42 +624,57 @@ export const updateReproductiveStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, note } = req.body;
-    
+
     const animal = await Animal.findById(id);
     if (!animal) return res.status(404).json({ message: "Animal not found" });
 
-    if (animal.farmerId.toString() !== req.user._id.toString() && req.user.role !== "technician") {
-      return res.status(403).json({ message: "Unauthorized to update this animal's status" });
+    if (
+      animal.farmerId.toString() !== req.user._id.toString() &&
+      req.user.role !== "technician"
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to update this animal's status" });
     }
 
     // --- HARDENED REHEAT LOGIC ---
     if (status === "In Heat") {
-        // If they observed a reheat, the last insemination attempt is officially a failure
-        const lastInsem = await Insemination.findOne({ animalId: id, status: "done", deletedAt: null }).sort({ createdAt: -1 });
-        if (lastInsem) {
-            lastInsem.isSuccess = false;
-            lastInsem.outcome = "Failed (Re-heat)";
-            lastInsem.comment = (lastInsem.comment || "") + ` | Reheat observed on ${new Date().toLocaleDateString()}`;
-            await lastInsem.save();
-            console.log(`[Reheat Sync] Insemination ${lastInsem._id} marked as Failed (Re-heat).`);
-        }
-        
-        // Clear any future calving dates since she's back in heat
-        animal.expectedCalvingDate = undefined;
+      // If they observed a reheat, the last insemination attempt is officially a failure
+      const lastInsem = await Insemination.findOne({
+        animalId: id,
+        status: "done",
+        deletedAt: null,
+      }).sort({ createdAt: -1 });
+      if (lastInsem) {
+        lastInsem.isSuccess = false;
+        lastInsem.outcome = "Failed (Re-heat)";
+        lastInsem.comment =
+          (lastInsem.comment || "") +
+          ` | Reheat observed on ${new Date().toLocaleDateString()}`;
+        await lastInsem.save();
+        console.log(
+          `[Reheat Sync] Insemination ${lastInsem._id} marked as Failed (Re-heat).`,
+        );
+      }
+
+      // Clear any future calving dates since she's back in heat
+      animal.expectedCalvingDate = undefined;
     }
 
     animal.reproductiveStatus = status;
-    
+
     animal.activityLogs = animal.activityLogs || [];
     animal.activityLogs.push({
-        event: "Reproductive Status Update",
-        date: new Date(),
-        description: `Farmer observed: ${status}. Note: ${note || "Observed during field check."}`
+      event: "Reproductive Status Update",
+      date: new Date(),
+      description: `Farmer observed: ${status}. Note: ${note || "Observed during field check."}`,
     });
 
     await animal.save();
 
-    res.status(200).json({ message: "Animal status updated successfully", animal });
+    res
+      .status(200)
+      .json({ message: "Animal status updated successfully", animal });
   } catch (error) {
     console.error("Update Reproductive Status Error:", error);
     res.status(500).json({ message: "Failed to update animal status" });
@@ -569,7 +684,9 @@ export const updateReproductiveStatus = async (req, res) => {
 export const getAnimalsByFarmer = async (req, res) => {
   try {
     const { farmerId } = req.params;
-    const animals = await Animal.find({ farmerId, deletedAt: null }).sort({ earTag: 1 }).lean();
+    const animals = await Animal.find({ farmerId, deletedAt: null })
+      .sort({ earTag: 1 })
+      .lean();
     res.status(200).json({ data: animals });
   } catch (error) {
     console.error("[getAnimalsByFarmer ERROR]", error);
@@ -594,13 +711,20 @@ export const recordCalving = async (req, res) => {
 
     // 1. Validate Mother & Pregnancy
     const mother = await Animal.findOne({ _id: animalId, deletedAt: null });
-    if (!mother) return res.status(404).json({ message: "Mother animal not found" });
+    if (!mother)
+      return res.status(404).json({ message: "Mother animal not found" });
 
     // Permission check: Farmer can only record for their own animals
-    if (req.user.role === "farmer" && mother.farmerId.toString() !== req.user._id.toString()) {
+    if (
+      req.user.role === "farmer" &&
+      mother.farmerId.toString() !== req.user._id.toString()
+    ) {
       return res.status(403).json({ message: "Unauthorized." });
     }
-    if (req.user.role === "farmer" && (req.body.earlyCalvingOverride || req.body.allowEarlyCalving)) {
+    if (
+      req.user.role === "farmer" &&
+      (req.body.earlyCalvingOverride || req.body.allowEarlyCalving)
+    ) {
       return res.status(403).json({
         message: "Farmers cannot override early-calving safeguards.",
         code: "EARLY_CALVING_OVERRIDE_FORBIDDEN",
@@ -613,22 +737,27 @@ export const recordCalving = async (req, res) => {
     const pregnancy = pregnancyId
       ? await Pregnancy.findOne({ _id: pregnancyId, deletedAt: null })
       : null;
-    
-    if (!pregnancy) return res.status(404).json({ message: "Pregnancy record not found. Please ensure the animal is confirmed pregnant first." });
 
-    const { calving, offspring, outcome, alreadyRecorded } = await persistCalving({
-      mother,
-      pregnancy,
-      calves,
-      nonLivingCalves,
-      date,
-      calvingEase,
-      outcome: submittedOutcome,
-      numberOfCalves,
-      technicianNote,
-      actor: req.user,
-      taskId,
-    });
+    if (!pregnancy)
+      return res.status(404).json({
+        message:
+          "Pregnancy record not found. Please ensure the animal is confirmed pregnant first.",
+      });
+
+    const { calving, offspring, outcome, alreadyRecorded } =
+      await persistCalving({
+        mother,
+        pregnancy,
+        calves,
+        nonLivingCalves,
+        date,
+        calvingEase,
+        outcome: submittedOutcome,
+        numberOfCalves,
+        technicianNote,
+        actor: req.user,
+        taskId,
+      });
 
     // 6. Trigger Inngest & Socket
     if (!alreadyRecorded) {
@@ -640,8 +769,9 @@ export const recordCalving = async (req, res) => {
             farmerId: mother.farmerId,
             calvingId: calving._id,
             numberOfCalves: offspring.length,
-            offspringIds: offspring.map(c => c._id),
+            offspringIds: offspring.map((c) => c._id),
             outcome,
+            actorRole: req.user.role,
           },
         });
       } catch (inngestErr) {
@@ -679,9 +809,10 @@ export const recordCalving = async (req, res) => {
 
 export const getArchivedAnimals = async (req, res) => {
   try {
-    const isTechnicianOrAdmin = req.user.role === "technician" || req.user.role === "admin";
-    const query = isTechnicianOrAdmin 
-      ? { deletedAt: { $ne: null } } 
+    const isTechnicianOrAdmin =
+      req.user.role === "technician" || req.user.role === "admin";
+    const query = isTechnicianOrAdmin
+      ? { deletedAt: { $ne: null } }
       : { farmerId: req.user._id, deletedAt: { $ne: null } };
 
     const animals = await Animal.find(query)
@@ -692,7 +823,10 @@ export const getArchivedAnimals = async (req, res) => {
     res.status(200).json(animals);
   } catch (error) {
     console.error("[getArchivedAnimals ERROR]", error);
-    res.status(500).json({ message: "Failed to fetch archived animals.", error: error.message });
+    res.status(500).json({
+      message: "Failed to fetch archived animals.",
+      error: error.message,
+    });
   }
 };
 
@@ -705,15 +839,32 @@ export const restoreAnimal = async (req, res) => {
       return res.status(404).json({ message: "Animal not found" });
     }
 
-    if (req.user.role === "farmer" && animal.farmerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Unauthorized to restore this animal" });
+    if (
+      req.user.role === "farmer" &&
+      animal.farmerId.toString() !== req.user._id.toString()
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to restore this animal" });
     }
 
     await Promise.all([
-      Insemination.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }),
-      Calving.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }),
-      HealthRequest.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }),
-      Pregnancy.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } })
+      Insemination.updateMany(
+        { animalId: id, deletedAt: { $ne: null } },
+        { $set: { deletedAt: null } },
+      ),
+      Calving.updateMany(
+        { animalId: id, deletedAt: { $ne: null } },
+        { $set: { deletedAt: null } },
+      ),
+      HealthRequest.updateMany(
+        { animalId: id, deletedAt: { $ne: null } },
+        { $set: { deletedAt: null } },
+      ),
+      Pregnancy.updateMany(
+        { animalId: id, deletedAt: { $ne: null } },
+        { $set: { deletedAt: null } },
+      ),
     ]);
 
     animal.deletedAt = null;
@@ -724,11 +875,14 @@ export const restoreAnimal = async (req, res) => {
       animalId: id,
     });
 
-    res.status(200).json({ message: "Animal and associated records restored successfully.", animal });
+    res.status(200).json({
+      message: "Animal and associated records restored successfully.",
+      animal,
+    });
   } catch (error) {
     console.error("[restoreAnimal ERROR]", error);
-    res.status(500).json({ message: "Failed to restore animal", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to restore animal", error: error.message });
   }
 };
-
-

@@ -4,6 +4,7 @@ import {
   BreedingObservationPayload,
   submitBreedingObservation,
 } from "../services/breedingObservation.service";
+import { invalidateBreedingObservationQueries } from "../utils/breedingObservationSubmission";
 
 export function useSubmitBreedingObservation() {
   const api = useApi();
@@ -13,19 +14,15 @@ export function useSubmitBreedingObservation() {
     mutationFn: ({
       requestId,
       payload,
+      idempotencyKey,
     }: {
       requestId: string;
       payload: BreedingObservationPayload;
       animalId?: string;
-    }) => submitBreedingObservation(api, requestId, payload),
-    onSuccess: async (_data, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["animal", variables.animalId] }),
-        queryClient.invalidateQueries({ queryKey: ["animal", variables.animalId, "pregnancy-tracker"] }),
-        queryClient.invalidateQueries({ queryKey: ["animal-records"] }),
-        queryClient.invalidateQueries({ queryKey: ["ai-requests"] }),
-        queryClient.invalidateQueries({ queryKey: ["farmer", "dashboard"] }),
-      ]);
+      idempotencyKey?: string;
+    }) => submitBreedingObservation(api, requestId, payload, idempotencyKey || Date.now().toString()),
+    onSuccess: (_data, variables) => {
+      invalidateBreedingObservationQueries(queryClient, variables.animalId);
     },
   });
 }

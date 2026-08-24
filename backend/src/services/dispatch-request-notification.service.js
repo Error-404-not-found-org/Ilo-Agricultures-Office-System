@@ -39,6 +39,41 @@ export const resolveDispatchDisplayLocation = (
   return confirmedDetectedAddress || "location not provided";
 };
 
+export const getDispatchRequestNotificationPresentation = ({
+  request,
+  requestType,
+  animal,
+  farmer,
+  displayLocation,
+}) => {
+  const isReInsemination =
+    requestType === "AI" && Boolean(request?.previousAttemptId);
+  const animalTag = animal?.earTag || animal?.animalId || "the animal";
+  const farmerName = cleanLocationPart(farmer?.name) || "A farmer";
+
+  if (isReInsemination) {
+    return {
+      eventType: "re_insemination_requested",
+      title: `Re-insemination request in ${displayLocation}`,
+      message: `${farmerName} requested another AI service for ${animalTag} after the previous attempt was confirmed unsuccessful.`,
+      requestKind: "re_insemination",
+    };
+  }
+
+  return {
+    eventType: "request_submitted",
+    title:
+      requestType === "AI"
+        ? `New AI request in ${displayLocation}`
+        : `New health request in ${displayLocation}`,
+    message:
+      requestType === "AI"
+        ? `An artificial insemination request is available in ${displayLocation}.`
+        : `A ${request?.urgency || "normal"} health request is available in ${displayLocation}.`,
+    requestKind: requestType === "AI" ? "initial_ai" : "health",
+  };
+};
+
 /**
  * Orchestrates dispatch notifications, ensuring safe isolation from request creation.
  */
@@ -102,16 +137,21 @@ export async function notifyDispatchRequestSubmitted({
     barangayName: dispatchLocation.barangayName,
     location: displayLocation,
     dispatchStage,
+    attemptNumber: request.attemptNumber || null,
+    previousAttemptId: request.previousAttemptId || null,
   };
 
   const locString = displayLocation;
-  const notificationTitle = requestType === "AI" 
-    ? `New AI request in ${locString}` 
-    : `New health request in ${locString}`;
-
-  const notificationMessage = requestType === "AI" 
-    ? `An artificial insemination request is available in ${locString}.` 
-    : `A ${request.urgency || "normal"} health request is available in ${locString}.`;
+  const notificationPresentation = getDispatchRequestNotificationPresentation({
+    request,
+    requestType,
+    animal,
+    farmer,
+    displayLocation: locString,
+  });
+  const notificationTitle = notificationPresentation.title;
+  const notificationMessage = notificationPresentation.message;
+  technicianMetadata.requestKind = notificationPresentation.requestKind;
 
   // Deliver to technicians with failure isolation
   const results = await Promise.allSettled(
@@ -127,7 +167,7 @@ export async function notifyDispatchRequestSubmitted({
             senderId: farmer._id,
             type: requestType === "AI" ? "ai-request" : "health-request",
             category: "dispatch",
-            eventType: "request_submitted",
+            eventType: notificationPresentation.eventType,
             relatedId: request._id,
             linkType: "request",
             dedupeKey,
@@ -151,9 +191,10 @@ export async function notifyDispatchRequestSubmitted({
 
       if (wasInserted && technician.pushToken) {
         await sendPushNotification(technician.pushToken, notificationTitle, notificationMessage, {
-          eventType: "request_submitted",
+          eventType: notificationPresentation.eventType,
           type: requestType === "AI" ? "ai" : "health",
           requestId: String(request._id),
+          requestKind: notificationPresentation.requestKind,
         });
       }
 

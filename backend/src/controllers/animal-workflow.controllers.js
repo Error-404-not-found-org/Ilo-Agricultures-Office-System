@@ -173,19 +173,41 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       details: {
         serviceDate: eventDate,
         serviceDateLabel: dateLabel,
-        entryDate: record.createdAt,
-        entryDateLabel: "Recorded in BreedSmart at",
+        entryDate: record.completedAt || null,
+        entryDateLabel: "Record completed at",
+        requestedAt: record.createdAt,
+        requestedAtLabel: "Workflow created at",
+        completedAt: record.completedAt || null,
+        completedAtLabel: "Record completed at",
         status: record.status,
         scheduledDate: record.scheduledDate,
         visitPeriod: record.visitPeriod || null,
+        serviceStartedAt: record.serviceStartedAt || null,
+        earlyStartMinutes: record.earlyStartMinutes,
         sireBreed: record.sireBreed,
         sireCode: record.sireCode,
         semenDosesUsed: record.semenDosesUsed,
         attemptNumber: record.attemptNumber,
         previousAttemptNumber: record.previousAttemptId?.attemptNumber,
+        previousAttemptDate: record.previousAttemptId?.inseminationDate,
+        previousAttemptOutcome: record.previousAttemptId?.outcome,
+        previousAttemptFailureReason: record.previousAttemptId?.failureReason,
         estrus: record.estrus,
         outcome: record.outcome,
         failureReason: record.failureReason,
+        outcomeVerificationStatus: record.outcomeVerificationStatus,
+        outcomeConfirmationSource: record.outcomeConfirmationSource,
+        outcomeConfirmedBy: record.outcomeConfirmedBy?.name || "",
+        outcomeConfirmedAt: record.outcomeConfirmedAt,
+        farmerOutcomeReport: record.farmerOutcomeReport,
+        farmerOutcomeReportedAt: record.farmerOutcomeReportedAt,
+        farmerObservationSigns: record.farmerObservationSigns || [],
+        farmerObservationNotes: record.farmerObservationNotes,
+        pregnancyLinked: Boolean(record.pregnancyId),
+        pregnancyResult: record.pregnancyId?.pregnancyDiagnosis?.result,
+        pregnancyDiagnosisDate: record.pregnancyId?.pregnancyDiagnosis?.date,
+        pregnancyConfirmationMethod:
+          record.pregnancyId?.confirmation?.methodCode,
         technician: technician?.name || "",
         technicianNote: record.technicianNote,
       },
@@ -458,8 +480,15 @@ export const getOfficialRecordDetail = async (req, res) => {
 
     if (recordKind === "insemination") {
       query = Insemination.findOne({ ...scope, deletedAt: null })
-        .populate("technicianId approvedBy", "name role")
-        .populate("previousAttemptId", "attemptNumber");
+        .populate("technicianId approvedBy outcomeConfirmedBy", "name role")
+        .populate(
+          "previousAttemptId",
+          "attemptNumber inseminationDate outcome failureReason outcomeVerificationStatus",
+        )
+        .populate(
+          "pregnancyId",
+          "pregnancyDiagnosis confirmation targetCalvingDate",
+        );
     } else if (recordKind === "pregnancy") {
       query = Pregnancy.findOne({ ...scope, deletedAt: null })
         .populate("confirmation.confirmedBy", "name role")

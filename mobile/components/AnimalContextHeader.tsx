@@ -107,7 +107,9 @@ export default function AnimalContextHeader({
                     textTransform: "uppercase",
                   }}
                 >
-                  {animal.reproductiveStatus}
+                  {animal.reproductiveStatus === "Likely Pregnant"
+                    ? "No return to heat observed"
+                    : animal.reproductiveStatus}
                 </Text>
               </View>
             )}

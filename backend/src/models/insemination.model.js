@@ -162,6 +162,7 @@ const InseminationSchema = new mongoose.Schema(
         "technician_pregnancy_diagnosis",
         "technician_negative_pd",
         "technician_return_to_heat",
+        "technician_accepted_farmer_report",
         "legacy",
         null,
       ],
@@ -192,6 +193,15 @@ const InseminationSchema = new mongoose.Schema(
       enum: ["possible_pregnancy", "return_to_heat", "unsure", null],
       default: null,
     },
+    observationSource: {
+      type: String,
+      enum: ["farmer", "technician", "farmer_app", "technician_phone", "technician_field", null],
+      default: null,
+    },
+    observationRecordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     farmerOutcomeReportedAt: { type: Date },
     farmerObservationSigns: {
       type: [String],
@@ -205,6 +215,29 @@ const InseminationSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    farmerPregnancyReport: {
+      type: Boolean,
+      default: false,
+    },
+    farmerPregnancyReportedAt: { type: Date },
+    farmerPregnancyNotes: {
+      type: String,
+      default: "",
+    },
+    farmerPregnancyPhotos: {
+      type: [String],
+      default: [],
+    },
+    pregnancyReportVerificationStatus: {
+      type: String,
+      enum: ["not_requested", "pending", "more_info_requested", "accepted", "rejected"],
+      default: "not_requested",
+    },
+    pregnancyReportReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    pregnancyReportReviewedAt: { type: Date },
     verificationRequested: {
       type: Boolean,
       default: false,

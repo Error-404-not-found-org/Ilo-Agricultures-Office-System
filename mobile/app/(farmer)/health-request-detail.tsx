@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Image,
   Text,
@@ -25,6 +25,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  ImageViewerModal,
+  type ImageViewerItem,
+} from "@/components/shared";
 import { getHealthRequestDetail } from "@/features/health-requests/services/healthRequests.service";
 import {
   FarmerScreen,
@@ -183,12 +187,29 @@ export default function HealthRequestDetailScreen() {
   const [reasonModalVisible, setReasonModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
 
   const query = useQuery({
     queryKey: ["health-request", id],
     enabled: Boolean(id),
     queryFn: () => getHealthRequestDetail(api, id),
   });
+
+  const galleryImages = useMemo<ImageViewerItem[]>(() => {
+    const request = query.data;
+    if (!request) return [];
+
+    const photoUris = getRequestList(
+      request.photos?.length ? request.photos : [request.imageUrl],
+    ).slice(0, 5);
+
+    return photoUris.map((uri, index) => ({
+      uri,
+      fileName: `health-request-photo-${index + 1}`,
+      accessibilityLabel: `Health request photo ${index + 1} of ${photoUris.length}`,
+    }));
+  }, [query.data]);
 
   if (query.isLoading) {
     return <HealthRequestDetailSkeleton />;
@@ -251,9 +272,6 @@ export default function HealthRequestDetailScreen() {
     ["Dosage", getRequestText(request.dosage)],
     ["Resolution", getRequestText(request.resolutionNotes)],
   ].filter((entry): entry is [string, string] => entry[1] !== null);
-  const photos = getRequestList(
-    request.photos?.length ? request.photos : [request.imageUrl],
-  );
   const showProgress =
     status !== "unknown" && status !== "cancelled" && status !== "rejected";
 
@@ -338,15 +356,35 @@ export default function HealthRequestDetailScreen() {
             </Text>
           ) : null}
 
-          {photos.length ? (
+          {galleryImages.length ? (
             <View className="flex-row flex-wrap gap-2 mt-3">
-              {photos.slice(0, 4).map((uri: string) => (
-                <Image
-                  key={uri}
-                  source={{ uri }}
-                  className="w-16 h-16"
-                  style={{ borderRadius: 10 }}
-                />
+              {galleryImages.map((photo, index) => (
+                <TouchableOpacity
+                  key={`${photo.fileName}-${index}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${photo.accessibilityLabel}`}
+                  onPress={() => {
+                    setGalleryInitialIndex(index);
+                    setGalleryVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
+                >
+                  <Image
+                    source={{ uri: photo.uri }}
+                    resizeMode="cover"
+                    accessibilityLabel={photo.accessibilityLabel}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </TouchableOpacity>
               ))}
             </View>
           ) : null}
@@ -584,6 +622,14 @@ export default function HealthRequestDetailScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        <ImageViewerModal
+          visible={galleryVisible}
+          images={galleryImages}
+          initialIndex={galleryInitialIndex}
+          title="Health request photos"
+          onClose={() => setGalleryVisible(false)}
+        />
 
         {/* Cancellation Reason Modal */}
         <Modal

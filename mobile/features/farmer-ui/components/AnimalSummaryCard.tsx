@@ -27,7 +27,9 @@ export function AnimalSummaryCard({
   const { colors } = useTheme();
   const name = formatAnimalReference(animal);
   const fullIdentifier = getFullAnimalReference(animal);
-  const status = animal.reproductiveStatus || "Normal";
+  const status = animal.reproductiveStatus === "Likely Pregnant"
+    ? "No return to heat observed"
+    : animal.reproductiveStatus || "Normal";
   const secondaryMetadata =
     [animal.breed, animal.species]
       .filter(Boolean)

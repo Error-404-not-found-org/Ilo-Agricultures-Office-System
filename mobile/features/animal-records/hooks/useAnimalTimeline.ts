@@ -1,9 +1,10 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import {
   getAnimalHealthHistory,
   getAnimalRecords,
   getAnimalTimeline,
+  getReproductionEligibility,
 } from "../services/animalRecords.service";
 import { deduplicateAnimalRecords } from "../utils/deduplicateAnimalRecords";
 
@@ -102,7 +103,7 @@ export function useAnimalRecords(params: AnimalPagedRecordParams) {
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
     staleTime: 30_000,
-    refetchOnMount: false,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     select: (data) => {
       const records = deduplicateAnimalRecords(
@@ -115,5 +116,19 @@ export function useAnimalRecords(params: AnimalPagedRecordParams) {
         loaded: records.length,
       };
     },
+  });
+}
+
+export function useReproductionEligibility(
+  animalId?: string,
+  enabled = true,
+) {
+  const api = useApi();
+
+  return useQuery({
+    queryKey: ["animal-records", "reproduction-eligibility", animalId],
+    queryFn: () => getReproductionEligibility(api, animalId || ""),
+    enabled: enabled && Boolean(animalId),
+    staleTime: 30_000,
   });
 }

@@ -9,6 +9,7 @@ import {
   presentNotificationDocument,
   sanitizeNotificationText,
 } from "../src/domain/notification-presentation.js";
+import { getDispatchRequestNotificationPresentation } from "../src/services/dispatch-request-notification.service.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const source = (relativePath) =>
@@ -56,9 +57,61 @@ test("structured service copy tells each role what happened and what to do next"
   assert.match(fieldRecord.message, /Juan Dela Cruz recorded the completed AI service/);
 });
 
+test("dispatch copy identifies re-insemination without claiming service completion", () => {
+  const copy = getDispatchRequestNotificationPresentation({
+    request: {
+      _id: "attempt-2",
+      previousAttemptId: "attempt-1",
+      attemptNumber: 2,
+    },
+    requestType: "AI",
+    animal: { earTag: "CB-014" },
+    farmer: { name: "Maria Santos" },
+    displayLocation: "Buray, Oton",
+  });
+
+  assert.equal(copy.eventType, "re_insemination_requested");
+  assert.equal(copy.requestKind, "re_insemination");
+  assert.match(copy.title, /Re-insemination request/i);
+  assert.match(copy.message, /Maria Santos requested another AI service/i);
+  assert.match(copy.message, /previous attempt was confirmed unsuccessful/i);
+  assert.doesNotMatch(`${copy.title} ${copy.message}`, /service completed/i);
+});
+
+test("re-insemination context survives the scheduled service lifecycle", () => {
+  const scheduledDate = "2026-08-18T05:00:00.000Z";
+  const cases = [
+    ["service_visit_scheduled", "Re-insemination scheduled", /Aug 18, 2026/],
+    ["service_visit_rescheduled", "Re-insemination rescheduled", /Aug 18, 2026/],
+    ["service_started", "Re-insemination started", /started the re-insemination service/],
+    ["service_completed", "Re-insemination completed", /re-insemination service.*complete/],
+  ];
+
+  for (const [eventType, expectedTitle, expectedMessage] of cases) {
+    const copy = presentNotificationCopy({
+      eventType,
+      metadata: {
+        serviceType: "ai",
+        requestKind: "re_insemination",
+        animalTag: "CB-014",
+        technicianName: "Juan Dela Cruz",
+        scheduledDate,
+        visitPeriod: "afternoon",
+      },
+    });
+
+    assert.equal(copy.title, expectedTitle);
+    assert.match(copy.message, expectedMessage);
+  }
+});
+
 test("pregnancy, safety, and cancellation copy uses approved user-facing terms", () => {
   const pregnancy = presentNotificationCopy({
     eventType: "pregnancy_not_confirmed",
+    metadata: { animalTag: "CB-014" },
+  });
+  const returnToHeat = presentNotificationCopy({
+    eventType: "return_to_heat_confirmed",
     metadata: { animalTag: "CB-014" },
   });
   const withdrawal = presentNotificationCopy({
@@ -81,6 +134,9 @@ test("pregnancy, safety, and cancellation copy uses approved user-facing terms",
 
   assert.equal(pregnancy.title, "Pregnancy not confirmed for CB-014");
   assert.doesNotMatch(pregnancy.message, /Empty|negative PD/i);
+  assert.equal(returnToHeat.title, "Return to heat confirmed");
+  assert.match(returnToHeat.message, /CB-014 returned to heat after insemination/i);
+  assert.doesNotMatch(returnToHeat.title, /pregnancy not confirmed/i);
   assert.equal(withdrawal.title, "Food safety withdrawal period active");
   assert.match(withdrawal.message, /Do not consume or sell meat or milk/);
   assert.match(cancellation.message, /needs review|asked to cancel|Reason:/i);
@@ -119,7 +175,7 @@ test("notification delivery contracts use valid schema fields and mobile handles
   assert.match(delivery, /includeResultMetadata:\s*true/);
   assert.match(delivery, /!result\.lastErrorObject\.updatedExisting/);
   assert.match(layout, /addNotificationResponseReceivedListener/);
-  assert.match(layout, /getLastNotificationResponseAsync/);
+  assert.match(layout, /getLastNotificationResponse(?:Async)?/);
   assert.match(layout, /getPushNotificationTarget/);
 });
 

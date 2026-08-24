@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getNotificationTarget, presentNotification } from '@/features/notifications/utils/notificationPresentation';
+import { invalidateNotificationLinkedQueries } from '@/features/notifications/utils/notificationQueryInvalidation';
 
 interface NotificationDetails {
   notification: {
@@ -146,6 +147,10 @@ export default function NotificationDetailsScreen() {
   );
 
   const openLinkedRequest = () => {
+    void invalidateNotificationLinkedQueries(
+      queryClient,
+      notification as unknown as Record<string, unknown>,
+    );
     const taskId = notification.metadata?.taskId;
     if (taskId && (role === "technician")) {
       router.push({

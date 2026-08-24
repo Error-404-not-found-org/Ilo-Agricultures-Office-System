@@ -92,7 +92,10 @@ test("Dispatch Notification Privacy", async (t) => {
       "barangayCode",
       "barangayName",
       "location",
-      "dispatchStage"
+      "dispatchStage",
+      "attemptNumber",
+      "previousAttemptId",
+      "requestKind",
     ];
 
     const actualKeys = Object.keys(metadata);

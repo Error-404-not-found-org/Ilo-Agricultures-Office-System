@@ -36,6 +36,7 @@ import {
   claimRequest,
   getAIServiceContext,
   updateDispatchStatus,
+  previousInsemination,
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import {
@@ -76,6 +77,7 @@ router.get("/profile", getMyProfile);
 
 router.get("/ai-service-context", getAIServiceContext);
 router.post("/walk-in-insemination", walkInInsemination);
+router.post("/previous-insemination", previousInsemination);
 router.post("/walk-in-livestock", walkInLivestock);
 // Compatibility alias for installed clients and queued offline mutations.
 router.patch(

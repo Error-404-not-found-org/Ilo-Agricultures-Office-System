@@ -933,7 +933,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-[11px] leading-4 mt-0.5"
                   >
-                    Products from this animal are unsafe for consumption or
+                    Meat and milk from this animal are unsafe for consumption or
                     sale until{" "}
                     <Text className="font-outfit-bold text-red-600 dark:text-red-400">
                       {new Date(
@@ -1662,7 +1662,6 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                     animalId: id,
                                     requestId: latestInsemination?._id,
                                     defaultReport: "unsure",
-                                    requestVerification: "true",
                                   },
                                 } as any)
                               }

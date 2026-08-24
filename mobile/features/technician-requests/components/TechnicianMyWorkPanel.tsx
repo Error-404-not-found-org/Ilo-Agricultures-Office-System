@@ -5,35 +5,50 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import {
   Plus,
   CheckCircle,
   ClipboardList,
   ArrowLeft,
+  Sunrise,
+  Sunset,
+  Calendar,
+  Clock,
+  MapPin,
+  User,
+  PawPrint,
+  ChevronRight,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Clock as ClockIcon,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
-import { SearchBar } from "@/components/shared";
+import { SearchBar, SelectDropdown } from "@/components/shared";
 import { toast } from "sonner-native";
 import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
 import {
   MY_WORK_FILTERS,
   getServicePresentation,
-  getTechnicianWorkStatePresentation,
   matchesServiceFilter,
   normalizeServiceType,
   normalizeTechnicianWorkItems,
 } from "../utils/requestWorkPresentation";
-import { RequestWorkBadge, RequestWorkFilterChips } from "./RequestWorkBadge";
 import type { RequestWorkFilterOption } from "../utils/requestWorkPresentation";
+import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
   standalone?: boolean;
 }
+
+
+// ─── Main Panel Component ─────────────────────────────────────────────────────
 
 export default function TechnicianMyWorkPanel({
   standalone = false,
@@ -107,7 +122,13 @@ export default function TechnicianMyWorkPanel({
 
       router.push({
         pathname: "/(technician)/request-details",
-        params: { id: item.workflowId || item.id, type: "ai", viewOnly: item.allowedAction === "VIEW_RECORD" ? "true" : undefined, taskId: item.taskId || undefined, workflowId: item.workflowId || undefined },
+        params: {
+          id: item.workflowId || item.id,
+          type: "ai",
+          viewOnly: item.allowedAction === "VIEW_RECORD" ? "true" : undefined,
+          taskId: item.taskId || undefined,
+          workflowId: item.workflowId || undefined,
+        },
       });
       return;
     }
@@ -115,13 +136,29 @@ export default function TechnicianMyWorkPanel({
     if (item.workType === "health" && (item.id || item.workflowId)) {
       router.push({
         pathname: "/(technician)/request-details",
-        params: { id: item.workflowId || item.id, type: "health", taskId: item.taskId || undefined, workflowId: item.workflowId || undefined },
+        params: {
+          id: item.workflowId || item.id,
+          type: "health",
+          taskId: item.taskId || undefined,
+          workflowId: item.workflowId || undefined,
+        },
       });
       return;
     }
 
-    if (item.taskId) {
-      router.push(`/(technician)/task-details?id=${item.taskId}` as any);
+    if (item.workType === "breeding_follow_up") {
+      const taskId = item.taskId ?? item.id;
+      if (!taskId) {
+        toast.error("This Breeding Follow-up is missing its task identifier.");
+        return;
+      }
+      router.push(`/(technician)/task-details?id=${taskId}` as any);
+      return;
+    }
+
+    const fallbackTaskId = item.taskId ?? item.id;
+    if (fallbackTaskId) {
+      router.push(`/(technician)/task-details?id=${fallbackTaskId}` as any);
       return;
     }
     toast.error("This work item is missing its task identifier.");
@@ -139,29 +176,45 @@ export default function TechnicianMyWorkPanel({
         />
       </View>
 
-      {/* Work-state filters */}
-      <View className="mt-2">
-        <RequestWorkFilterChips
-          options={
-            [
+      {/* Filters Row */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 8,
+          marginTop: 12,
+          marginBottom: 12,
+          paddingHorizontal: 16,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <SelectDropdown
+            label="Status"
+            options={[
               { value: "active", label: "Active" },
               { value: "completed", label: "Completed" },
-            ] as any
-          }
-          value={workStateFilter as any}
-          onChange={(val: any) => setWorkStateFilter(val)}
-        />
-      </View>
-
-      {/* Canonical service filters */}
-      <View className="mt-2 mb-3">
-        <RequestWorkFilterChips
-          options={MY_WORK_FILTERS}
-          value={serviceFilter}
-          onChange={setServiceFilter}
-          counts={serviceCounts}
-          countsLoading={isLoading}
-        />
+            ]}
+            value={workStateFilter}
+            onChange={(val) => setWorkStateFilter(val as any)}
+            highlightSelection={false}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SelectDropdown
+            label="Request Type"
+            options={MY_WORK_FILTERS.map((opt) => {
+              const count =
+                serviceCounts?.[opt.value as keyof typeof serviceCounts];
+              return {
+                label:
+                  count !== undefined ? `${opt.label} (${count})` : opt.label,
+                value: opt.value,
+              };
+            })}
+            value={serviceFilter}
+            onChange={(val) => setServiceFilter(val as any)}
+            highlightSelection={false}
+          />
+        </View>
       </View>
 
       {/* Task List Feed */}
@@ -204,189 +257,13 @@ export default function TechnicianMyWorkPanel({
               </Text>
             </View>
           ) : (
-            filteredTasks.map((t) => {
-              const servicePresentation = getServicePresentation(
-                normalizeServiceType(t),
-              );
-              const statusPresentation = getTechnicianWorkStatePresentation(
-                t.state,
-              );
-              return (
-                <TouchableOpacity
-                  key={t.id}
-                  activeOpacity={0.7}
-                  className="rounded-2xl p-4 mb-4 border shadow-sm"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                  onPress={() => openWorkItem(t)}
-                >
-                  {/* Badge Row */}
-                  <View className="flex-row justify-between items-center mb-2">
-                    <RequestWorkBadge
-                      label={t.workType === "ai" ? t.title : servicePresentation.label}
-                      tone={servicePresentation.tone}
-                      accessibilityPrefix="Service"
-                    />
-                    <RequestWorkBadge
-                      label={statusPresentation.label}
-                      tone={statusPresentation.tone}
-                      accessibilityPrefix="Status"
-                    />
-                  </View>
-
-                  <Text
-                    className="font-bold text-base mt-1 flex-1"
-                    numberOfLines={2}
-                    style={{ color: colors.textPrimary }}
-                  >
-                    {t.title}
-                  </Text>
-
-                  {t.workType === "ai" && t.attemptNumber ? (
-                    <View className="mt-2">
-                      <Text
-                        style={{
-                          color: colors.textSecondary,
-                          fontFamily: "Outfit_700Bold",
-                          fontSize: 12,
-                        }}
-                      >
-                        Attempt {t.attemptNumber}
-                      </Text>
-                      {t.previousAttemptVerified ? (
-                        <Text
-                          style={{
-                            color: colors.textMuted,
-                            fontFamily: "Outfit_500Medium",
-                            fontSize: 11,
-                            marginTop: 2,
-                          }}
-                        >
-                          Previous attempt · Unsuccessful
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  {t.readinessMessage ? (
-                    <View
-                      className="rounded-xl p-3 mt-3 border"
-                      style={{
-                        backgroundColor: isDark
-                          ? "rgba(245,158,11,0.10)"
-                          : "#fffbeb",
-                        borderColor: isDark
-                          ? "rgba(245,158,11,0.30)"
-                          : "#fde68a",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: isDark ? "#fbbf24" : "#92400e",
-                          fontFamily: "Outfit_700Bold",
-                          fontSize: 12,
-                        }}
-                      >
-                        Pregnancy check not yet available
-                      </Text>
-                      <Text
-                        style={{
-                          color: colors.textSecondary,
-                          fontFamily: "Outfit_500Medium",
-                          fontSize: 11,
-                          marginTop: 3,
-                          lineHeight: 16,
-                        }}
-                      >
-                        {t.readinessMessage}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  <View
-                    className="rounded-lg p-3 mt-3"
-                    style={{
-                      backgroundColor: isDark
-                        ? "rgba(255,255,255,0.03)"
-                        : "#f8fafc",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: "Outfit_700Bold",
-                        color: colors.textPrimary,
-                        fontSize: 13,
-                      }}
-                    >
-                      {t.farmerName || "Farmer"}
-                    </Text>
-                    {t.timingLabel ? (
-                      <Text
-                        style={{
-                          fontFamily: "Outfit_500Medium",
-                          color: colors.textSecondary,
-                          fontSize: 11,
-                          marginTop: 2,
-                        }}
-                      >
-                        {t.timingLabel}
-                      </Text>
-                    ) : t.state === "needs_scheduling" ? (
-                      <Text
-                        style={{
-                          fontFamily: "Outfit_500Medium",
-                          color: colors.textSecondary,
-                          fontSize: 11,
-                          marginTop: 2,
-                        }}
-                      >
-                        Claimed · Needs scheduling
-                      </Text>
-                    ) : null}
-                    {t.animalName || t.animalTag ? (
-                      <Text
-                        style={{
-                          fontFamily: "Outfit_500Medium",
-                          color: colors.textMuted,
-                          fontSize: 11,
-                          marginTop: 4,
-                        }}
-                      >
-                        Animal: {t.animalName || t.animalTag}
-                        {t.animalName && t.animalTag ? ` · ${t.animalTag}` : ""}
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  <View
-                    className="flex-row justify-end border-t pt-3 mt-3"
-                    style={{ borderColor: colors.border }}
-                  >
-                    <View
-                      className="flex-row items-center border px-3 py-1.5 rounded-lg"
-                      style={{ borderColor: colors.border }}
-                    >
-                      <ClipboardList
-                        size={14}
-                        color={isDark ? "#10b981" : "#00643B"}
-                      />
-                      <Text
-                        style={{
-                          fontFamily: "Outfit_700Bold",
-                          color: isDark ? "#10b981" : "#00643B",
-                          fontSize: 11,
-                          marginLeft: 6,
-                        }}
-                      >
-                        {t.actionLabel}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+            filteredTasks.map((t) => (
+              <RequestListCard
+                key={t.id}
+                item={t}
+                onPress={() => openWorkItem(t)}
+              />
+            ))
           )}
         </ScrollView>
       )}

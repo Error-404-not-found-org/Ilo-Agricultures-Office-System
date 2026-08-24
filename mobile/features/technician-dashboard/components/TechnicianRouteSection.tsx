@@ -166,13 +166,14 @@ function VisitRow({
     : item.animalTag
       ? `Animal ${item.animalTag}`
       : null;
-  const ServiceIcon = item.workType === "health"
-    ? Stethoscope
-    : item.workType === "pregnancy_check"
-      ? HeartPulse
-      : item.workType === "ai"
-        ? Syringe
-        : CalendarDays;
+  const ServiceIcon =
+    item.workType === "health"
+      ? Stethoscope
+      : item.workType === "pregnancy_check"
+        ? HeartPulse
+        : item.workType === "ai"
+          ? Syringe
+          : CalendarDays;
   const statusVariant = item.overdue
     ? "danger"
     : item.state === "in_progress"
@@ -185,7 +186,7 @@ function VisitRow({
   const actionColumn = (
     <View
       style={{
-        width: compact ? "100%" : 80,
+        width: compact ? "100%" : 110,
         marginTop: compact ? 8 : 0,
         marginLeft: compact ? 0 : 8,
         flexDirection: compact ? "row" : "column",
@@ -268,49 +269,29 @@ function VisitRow({
               </Text>
             ) : null}
 
-            {item.location ? <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                marginTop: 3,
-              }}
-            >
-              <MapPin size={13} color={colors.textMuted} />
-
-              <Text
-                textRole="caption"
-                color="secondary"
-                numberOfLines={1}
+            {item.location ? (
+              <View
                 style={{
-                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 3,
                 }}
               >
-                {formatDashboardLocation(item, item.location)}
-              </Text>
-            </View> : null}
+                <MapPin size={13} color={colors.textMuted} />
 
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                marginTop: 2,
-              }}
-            >
-              <CalendarDays size={13} color={colors.textMuted} />
-
-              <Text
-                textRole="caption"
-                color="secondary"
-                numberOfLines={1}
-                style={{
-                  flex: 1,
-                }}
-              >
-                {item.timingLabel || "Timing not set"}
-              </Text>
-            </View>
+                <Text
+                  textRole="caption"
+                  color="secondary"
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                  }}
+                >
+                  {formatDashboardLocation(item, item.location)}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </TouchableOpacity>
 

@@ -227,6 +227,11 @@ export interface AIRequest extends ServiceRequest {
   farmerObservationSigns?: string[];
   farmerObservationNotes?: string | null;
   evidencePhotos?: string[];
+  farmerPregnancyReport?: boolean;
+  pregnancyReportVerificationStatus?: 'pending' | 'more_info_requested' | 'accepted' | 'rejected' | null;
+  pregnancyReportReviewedBy?: string | Technician | null;
+  farmerPregnancyNotes?: string | null;
+  farmerPregnancyPhotos?: string[];
   verificationRequested?: boolean;
   verificationStatus?: "not_requested" | "pending" | "verified" | "rejected";
   verificationTaskId?: string;
@@ -234,11 +239,13 @@ export interface AIRequest extends ServiceRequest {
   technicianId?: string | Technician;
   nextAction?: ReproductionNextAction | null;
   nextActionAt?: string | null;
+  pregnancyFollowUpTask?: Record<string, any> | null;
 }
 
 export interface HealthRequest extends ServiceRequest {
   serviceType?: "health";
   symptoms?: string;
+  imageUrl?: string | null;
   handledBy?: string | Technician;
   requestType?: string;
   urgency?: "low" | "medium" | "high" | "emergency";

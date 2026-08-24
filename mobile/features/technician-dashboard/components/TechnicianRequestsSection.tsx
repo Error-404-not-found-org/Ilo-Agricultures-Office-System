@@ -258,7 +258,6 @@ function RequestRow({ item, onPress, isUpdating }: any) {
               marginTop: 4,
             }}
           >
-            <Hand size={13} color={colors.warning} />
             <Text
               variant="semibold"
               size={12}

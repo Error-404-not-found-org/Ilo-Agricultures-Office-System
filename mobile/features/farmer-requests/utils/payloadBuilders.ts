@@ -1,13 +1,13 @@
 export interface FarmerAIRequestPayload {
   animalId: string;
-  imageUrl?: string | null;
+  photos: string[];
   comment: string;
   heatSigns: string[];
 }
 
 export function buildFarmerAIRequestPayload(
   animalId: string,
-  imageUrl: string | null,
+  photos: string[],
   comment: string,
   heatSigns: string[],
   heatSignsMap: { id: string; label: string }[]
@@ -25,7 +25,7 @@ export function buildFarmerAIRequestPayload(
 
   return {
     animalId,
-    imageUrl: imageUrl || null,
+    photos: photos.slice(0, 5),
     comment: formattedComment,
     heatSigns,
   };

@@ -31,6 +31,7 @@ import {
   presentNotification,
   type NotificationData,
 } from "@/features/notifications/utils/notificationPresentation";
+import { invalidateNotificationLinkedQueries } from "@/features/notifications/utils/notificationQueryInvalidation";
 
 type NotificationFilter =
   | "all"
@@ -250,6 +251,10 @@ export default function NotificationsScreen() {
   };
 
   const openNotification = (item: NotificationItem) => {
+    void invalidateNotificationLinkedQueries(
+      queryClient,
+      item as unknown as Record<string, unknown>,
+    );
     router.push(getNotificationTarget(item, role) as any);
   };
 

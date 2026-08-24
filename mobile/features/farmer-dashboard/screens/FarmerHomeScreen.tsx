@@ -205,7 +205,6 @@ export function FarmerHomeScreen() {
           animalId,
           requestId: item.relatedId,
           defaultReport: item.farmerObservation?.reportType || "unsure",
-          requestVerification: "true",
         },
       } as never);
       return;
@@ -231,41 +230,6 @@ export function FarmerHomeScreen() {
       selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
     [activityFeed],
   );
-
-  const handleOutcome = async (
-    requestId: string,
-    isSuccess: boolean,
-    animalName: string,
-    animalId: string,
-    req?: any,
-  ) => {
-    if (outcomeMutation.isPending) return;
-    try {
-      await outcomeMutation.mutateAsync({ requestId, isSuccess });
-
-      if (!isSuccess) {
-        setReInseminateInfo({
-          requestId,
-          animalId,
-          animalName,
-        });
-        setReInseminateModalVisible(true);
-      } else {
-        toast.success(
-          "Possible pregnancy signs saved. A technician pregnancy check is still required.",
-        );
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to record pregnancy outcome.");
-    }
-  };
-
-  const handleCancelRequest = (id: string, type: string, animalTag: string) => {
-    setCancelInfo({ id, type, animalTag });
-    setCancellationReason("");
-    setModalVisible(true);
-  };
 
   const handleConfirmCancel = async () => {
     if (!cancelInfo) return;
@@ -732,9 +696,7 @@ export function FarmerHomeScreen() {
                       reproductiveOutcome={reproductiveOutcome}
                       accessibilityLabel={`${
                         isHealthVisit ? "Health check" : "AI service"
-                      } for ${getFullAnimalReference(
-                        visit.animalId,
-                      )}.${
+                      } for ${getFullAnimalReference(visit.animalId)}.${
                         visitSchedule ? ` Scheduled ${visitSchedule}.` : ""
                       } Service status ${visit.status}.`}
                       icon={
@@ -906,6 +868,7 @@ export function FarmerHomeScreen() {
                   variant="preview"
                   cardWidth={dashboardLayout.animalCardWidth}
                   nextAction={
+                    animal.reproductiveStatus === "Pregnant" &&
                     animal.expectedCalvingDate
                       ? `Calving ${format(new Date(animal.expectedCalvingDate), "MMM d")}`
                       : undefined

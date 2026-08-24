@@ -44,6 +44,7 @@ type FormData = {
   color: string;
   gender: string;
   birthDate: string;
+  weight: string;
 };
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
@@ -56,6 +57,7 @@ const initialFormData: FormData = {
   color: "",
   gender: "Female",
   birthDate: "",
+  weight: "",
 };
 
 export function AddAnimalScreen() {
@@ -115,6 +117,7 @@ export function AddAnimalScreen() {
     if (!formData.earTag.trim()) nextErrors.earTag = "Ear tag is required.";
     if (!formData.species) nextErrors.species = "Select the animal species.";
     if (!formData.breed) nextErrors.breed = "Select the animal breed.";
+    if (!formData.birthDate) nextErrors.birthDate = "Birth date is required.";
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -161,9 +164,7 @@ export function AddAnimalScreen() {
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
-      <AppPageHeader
-        title="Add Animal"
-      />
+      <AppPageHeader title="Add Animal" />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -184,12 +185,8 @@ export function AddAnimalScreen() {
               alignItems: "flex-start",
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: isDark
-                ? "rgba(52,211,153,0.25)"
-                : "#bbf7d0",
-              backgroundColor: isDark
-                ? "rgba(16,185,129,0.10)"
-                : "#f0fdf4",
+              borderColor: isDark ? "rgba(52,211,153,0.25)" : "#bbf7d0",
+              backgroundColor: isDark ? "rgba(16,185,129,0.10)" : "#f0fdf4",
               padding: 14,
               marginBottom: 24,
             }}
@@ -201,9 +198,7 @@ export function AddAnimalScreen() {
                 borderRadius: 11,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: isDark
-                  ? "rgba(52,211,153,0.14)"
-                  : "#dcfce7",
+                backgroundColor: isDark ? "rgba(52,211,153,0.14)" : "#dcfce7",
               }}
             >
               <MaterialCommunityIcons
@@ -241,8 +236,10 @@ export function AddAnimalScreen() {
             <TouchableOpacity
               onPress={() => setPhotoModalVisible(true)}
               accessibilityRole="button"
-              accessibilityLabel={imageUri ? "Change animal photo" : "Add animal photo"}
-              className="h-28 w-28 rounded-2xl items-center justify-center border border-dashed overflow-hidden"
+              accessibilityLabel={
+                imageUri ? "Change animal photo" : "Add animal photo"
+              }
+              className="h-28 w-28 rounded-full items-center justify-center border border-dashed overflow-hidden"
               style={{
                 backgroundColor: colors.card,
                 borderColor: isDark ? colors.textMuted : "#94a3b8",
@@ -278,7 +275,7 @@ export function AddAnimalScreen() {
             <InputField
               label="Ear Tag"
               value={formData.earTag}
-              maxLength={10}
+              maxLength={6}
               onChangeText={(text: string) => setField("earTag", text)}
               placeholder="Enter the ear tag number"
               error={errors.earTag}
@@ -299,97 +296,129 @@ export function AddAnimalScreen() {
             </View>
           </View>
 
-          <SelectField
-            label="Species"
-            value={formData.species}
-            onPress={() =>
-              openModal("species", "Select Species", SPECIES_OPTIONS)
-            }
-            error={errors.species}
-            required
-          />
-          <SelectField
-            label="Breed"
-            value={formData.breed}
-            onPress={() => {
-              if (!formData.species) {
-                setErrors((prev) => ({
-                  ...prev,
-                  species: "Select species before choosing a breed.",
-                }));
-                toast.dismiss();
-                toast.error("Please select a species first.");
-                return;
-              }
-              openModal(
-                "breed",
-                "Select Breed",
-                BREED_OPTIONS_BY_SPECIES[formData.species] || [],
-              );
-            }}
-            error={errors.breed}
-            required
-          />
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <SelectField
+                label="Species"
+                value={formData.species}
+                onPress={() =>
+                  openModal("species", "Select Species", SPECIES_OPTIONS)
+                }
+                error={errors.species}
+                required
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SelectField
+                label="Breed"
+                value={formData.breed}
+                onPress={() => {
+                  if (!formData.species) {
+                    setErrors((prev) => ({
+                      ...prev,
+                      species: "Select species before choosing a breed.",
+                    }));
+                    toast.dismiss();
+                    toast.error("Please select a species first.");
+                    return;
+                  }
+                  openModal(
+                    "breed",
+                    "Select Breed",
+                    BREED_OPTIONS_BY_SPECIES[formData.species] || [],
+                  );
+                }}
+                error={errors.breed}
+                required
+              />
+            </View>
+          </View>
 
           <SectionLabel title="Additional details" />
 
-          <SelectField
-            label="Color"
-            value={formData.color}
-            onPress={() => {
-              if (!formData.species) {
-                setErrors((prev) => ({
-                  ...prev,
-                  species: "Select species before choosing a color.",
-                }));
-                toast.dismiss();
-                toast.error("Please select a species first.");
-                return;
-              }
-              openModal(
-                "color",
-                "Select Color",
-                COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
-              );
-            }}
-          />
-          <InputField
-            label="Brand or markings"
-            value={formData.brand}
-            maxLength={15}
-            onChangeText={(text: string) => setField("brand", text)}
-            placeholder="Enter markings if available"
-          />
-          <SelectField
-            label="Sex"
-            value={formData.gender}
-            onPress={() =>
-              openModal("gender", "Select Sex", ["Female", "Male"])
-            }
-          />
-          <SelectField
-            label="Birth date"
-            value={
-              formData.birthDate
-                ? new Date(
-                    `${formData.birthDate}T00:00:00`,
-                  ).toLocaleDateString(undefined, {
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : ""
-            }
-            placeholder="Select the birth date"
-            onPress={() => {
-              setTempDate(
-                formData.birthDate
-                  ? new Date(`${formData.birthDate}T00:00:00`)
-                  : new Date(),
-              );
-              setShowDatePicker(true);
-            }}
-          />
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <SelectField
+                label="Color"
+                value={formData.color}
+                onPress={() => {
+                  if (!formData.species) {
+                    setErrors((prev) => ({
+                      ...prev,
+                      species: "Select species before choosing a color.",
+                    }));
+                    toast.dismiss();
+                    toast.error("Please select a species first.");
+                    return;
+                  }
+                  openModal(
+                    "color",
+                    "Select Color",
+                    COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
+                  );
+                }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SelectField
+                label="Sex"
+                value={formData.gender}
+                onPress={() =>
+                  openModal("gender", "Select Sex", ["Female", "Male"])
+                }
+              />
+            </View>
+          </View>
+
+          <View style={{ marginBottom: 4 }}>
+            <InputField
+              label="Brand/Markings (optional)"
+              value={formData.brand}
+              maxLength={15}
+              onChangeText={(text: string) => setField("brand", text)}
+              placeholder="Markings"
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <InputField
+                label="Estimated Weight (kg)"
+                value={formData.weight}
+                maxLength={6}
+                keyboardType="numeric"
+                onChangeText={(text: string) => setField("weight", text)}
+                placeholder="e.g. 50"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SelectField
+                label="Birth date"
+                value={
+                  formData.birthDate
+                    ? new Date(
+                        `${formData.birthDate}T00:00:00`,
+                      ).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : ""
+                }
+                placeholder="Select date"
+                onPress={() => {
+                  setTempDate(
+                    formData.birthDate
+                      ? new Date(`${formData.birthDate}T00:00:00`)
+                      : new Date(),
+                  );
+                  setShowDatePicker(true);
+                }}
+                error={errors.birthDate}
+                required
+              />
+            </View>
+          </View>
 
           <TouchableOpacity
             onPress={handleSave}
@@ -400,11 +429,11 @@ export function AddAnimalScreen() {
               backgroundColor: loadingForm ? "#34d399" : primaryColor,
               shadowColor: primaryColor,
               minHeight: 56,
-              borderRadius: 16,
+              borderRadius: 50,
               alignItems: "center",
               justifyContent: "center",
               flexDirection: "row",
-              marginTop: 8,
+              marginTop: 14,
             }}
           >
             {loadingForm ? (
@@ -439,8 +468,13 @@ export function AddAnimalScreen() {
                     if (selectedDate) {
                       setTempDate(selectedDate);
                       const year = selectedDate.getFullYear();
-                      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
-                      const day = String(selectedDate.getDate()).padStart(2, "0");
+                      const month = String(
+                        selectedDate.getMonth() + 1,
+                      ).padStart(2, "0");
+                      const day = String(selectedDate.getDate()).padStart(
+                        2,
+                        "0",
+                      );
                       setField("birthDate", `${year}-${month}-${day}`);
                     }
                   } else if (event.type === "dismissed") {
@@ -450,7 +484,10 @@ export function AddAnimalScreen() {
                   if (selectedDate) {
                     setTempDate(selectedDate);
                     const year = selectedDate.getFullYear();
-                    const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                    const month = String(selectedDate.getMonth() + 1).padStart(
+                      2,
+                      "0",
+                    );
                     const day = String(selectedDate.getDate()).padStart(2, "0");
                     setField("birthDate", `${year}-${month}-${day}`);
                   }
@@ -496,12 +533,12 @@ export function AddAnimalScreen() {
                     setModal({ ...modal, visible: false });
                   }}
                   style={{
-                    minHeight: 52,
-                    borderRadius: 14,
+                    minHeight: 46,
+                    borderRadius: 12,
                     paddingHorizontal: 16,
                     alignItems: "flex-start",
                     justifyContent: "center",
-                    marginBottom: 10,
+                    marginBottom: 8,
                     borderWidth: 1,
                     backgroundColor: isDark ? colors.background : "#f8fafc",
                     borderColor: isDark ? colors.border : "#e2e8f0",
@@ -511,7 +548,7 @@ export function AddAnimalScreen() {
                     style={{
                       color: colors.textPrimary,
                       fontFamily: "Outfit_600SemiBold",
-                      fontSize: 15,
+                      fontSize: 14,
                     }}
                   >
                     {opt}
@@ -546,13 +583,13 @@ const InputField = ({
   const { colors, isDark } = useTheme();
   const [isFocused, setIsFocused] = useState(false);
   return (
-    <View style={{ marginBottom: 18 }}>
+    <View style={{ marginBottom: 16 }}>
       <Text
         style={{
           color: colors.textSecondary,
           fontFamily: "Outfit_700Bold",
-          fontSize: 13,
-          marginBottom: 8,
+          fontSize: 12,
+          marginBottom: 6,
         }}
       >
         {label}
@@ -577,11 +614,11 @@ const InputField = ({
               : colors.border,
           color: colors.textPrimary,
           borderWidth: isFocused || error ? 2 : 1,
-          borderRadius: 14,
-          height: 56,
-          paddingHorizontal: 16,
+          borderRadius: 12,
+          height: 48,
+          paddingHorizontal: 14,
           fontFamily: "Outfit_500Medium",
-          fontSize: 16,
+          fontSize: 15,
           textAlignVertical: "center",
         }}
         placeholderTextColor={colors.textMuted}
@@ -592,8 +629,8 @@ const InputField = ({
           style={{
             color: colors.error,
             fontFamily: "Outfit_600SemiBold",
-            fontSize: 12,
-            marginTop: 6,
+            fontSize: 11,
+            marginTop: 4,
             marginLeft: 2,
           }}
         >
@@ -609,18 +646,18 @@ const SelectField = ({
   value,
   onPress,
   error,
-  placeholder = "Select an option",
+  placeholder = "Select",
   required = false,
 }: any) => {
   const { colors } = useTheme();
   return (
-    <View style={{ marginBottom: 18 }}>
+    <View style={{ marginBottom: 16 }}>
       <Text
         style={{
           color: colors.textSecondary,
           fontFamily: "Outfit_700Bold",
-          fontSize: 13,
-          marginBottom: 8,
+          fontSize: 12,
+          marginBottom: 6,
         }}
       >
         {label}
@@ -634,9 +671,9 @@ const SelectField = ({
           backgroundColor: colors.card,
           borderColor: error ? colors.error : colors.border,
           borderWidth: error ? 2 : 1,
-          borderRadius: 14,
-          minHeight: 56,
-          paddingHorizontal: 16,
+          borderRadius: 12,
+          minHeight: 48,
+          paddingHorizontal: 14,
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "center",
@@ -649,20 +686,20 @@ const SelectField = ({
             marginRight: 10,
             color: value ? colors.textPrimary : colors.textMuted,
             fontFamily: "Outfit_500Medium",
-            fontSize: 16,
+            fontSize: 15,
           }}
         >
           {value || placeholder}
         </Text>
-        <ChevronDown size={19} color={colors.textMuted} />
+        <ChevronDown size={18} color={colors.textMuted} />
       </TouchableOpacity>
       {error ? (
         <Text
           style={{
             color: colors.error,
             fontFamily: "Outfit_600SemiBold",
-            fontSize: 12,
-            marginTop: 6,
+            fontSize: 11,
+            marginTop: 4,
             marginLeft: 2,
           }}
         >

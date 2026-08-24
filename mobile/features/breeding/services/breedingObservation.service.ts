@@ -14,7 +14,12 @@ export const submitBreedingObservation = async (
   api: AxiosInstance,
   requestId: string,
   payload: BreedingObservationPayload,
+  idempotencyKey: string,
 ) => {
-  const response = await api.post(`/ai-request/${requestId}/farmer-observation`, payload);
+  const response = await api.post(
+    `/ai-request/${requestId}/farmer-observation`,
+    payload,
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  );
   return response.data;
 };

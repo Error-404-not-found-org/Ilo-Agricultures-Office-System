@@ -4,6 +4,7 @@ import test from "node:test";
 import { getTaskById } from "../src/controllers/tasks.controllers.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Task } from "../src/models/task.model.js";
+import { readFileSync } from "node:fs";
 
 const queryResult = (value) => {
   const query = {
@@ -79,4 +80,22 @@ test("calving task details include canonical pregnancy and AI context", async (t
   assert.equal(res.body.pregnancy._id, "pregnancy-1");
   assert.equal(res.body.insemination._id, "ai-1");
   assert.equal(res.body.insemination.attemptNumber, 2);
+});
+
+test("PD task details project the complete persisted Farmer breeding update", () => {
+  const source = readFileSync(
+    new URL("../src/controllers/tasks.controllers.js", import.meta.url),
+    "utf8",
+  );
+
+  for (const field of [
+    "farmerOutcomeReport",
+    "farmerOutcomeReportedAt",
+    "farmerObservationSigns",
+    "farmerObservationNotes",
+    "evidencePhotos",
+  ]) {
+    assert.match(source, new RegExp(`\\b${field}\\b`));
+  }
+  assert.match(source, /taskObj\.insemination = insemination \|\| null/);
 });

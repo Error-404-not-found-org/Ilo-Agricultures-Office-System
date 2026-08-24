@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Image,
   Text,
@@ -20,12 +20,14 @@ import {
   Ban,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { aiRequestKeys } from "@/lib/queryKeys";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ImageViewerModal, type ImageViewerItem } from "@/components/shared";
 import {
   FarmerScreen,
   AsyncState,
@@ -52,6 +54,7 @@ import {
 import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
+  getFarmerBreedingObservationReadiness,
 } from "@/features/breeding/utils/breedingObservationPresentation";
 import type { AIRequest } from "@/types";
 
@@ -143,6 +146,13 @@ function AiRequestDetailSkeleton() {
               <Skeleton width={110} height={22} radius={11} />
               <Skeleton width={70} height={22} radius={11} />
             </View>
+          </View>
+
+          {/* Image Gallery Skeleton */}
+          <View className="flex-row gap-2 mt-1">
+            {[1, 2].map((item) => (
+              <Skeleton key={item} width={64} height={64} radius={10} />
+            ))}
           </View>
         </View>
 
@@ -248,15 +258,43 @@ export default function AiRequestDetailScreen() {
   const [reasonModalVisible, setReasonModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
 
   const query = useQuery({
-    queryKey: ["ai-request", id],
+    queryKey: aiRequestKeys.detail(id || ""),
     enabled: Boolean(id),
     queryFn: async () => {
       const res = await api.get(`/ai-request/${id}`);
       return res.data.data;
     },
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      void queryClient.invalidateQueries({
+        queryKey: aiRequestKeys.detail(id),
+        exact: true,
+        refetchType: "active",
+      });
+    }, [id, queryClient]),
+  );
+
+  const galleryImages = useMemo<ImageViewerItem[]>(() => {
+    const request = query.data;
+    if (!request) return [];
+
+    const photoUris = getRequestList(
+      request.photos?.length ? request.photos : [request.imageUrl],
+    ).slice(0, 5);
+
+    return photoUris.map((uri, index) => ({
+      uri,
+      fileName: `ai-request-photo-${index + 1}`,
+      accessibilityLabel: `AI request photo ${index + 1} of ${photoUris.length}`,
+    }));
+  }, [query.data]);
 
   if (query.isLoading) {
     return <AiRequestDetailSkeleton />;
@@ -297,7 +335,6 @@ export default function AiRequestDetailScreen() {
   const notes = getRequestText(
     getAdditionalNotesOnly(getRequestText(request.comment) || ""),
   );
-  const imageUrl = getRequestText(request.imageUrl);
   const cancellationReasonDisplay = getRequestText(request.cancellationReason);
   const cancellationResponseReason = getRequestText(
     request.cancellationResponseReason,
@@ -308,7 +345,7 @@ export default function AiRequestDetailScreen() {
   const handlerName = getRequestText(handler?.name);
   const hasHandlerReference = Boolean(
     handlerName ||
-      (typeof handler === "string" ? getRequestText(handler) : handler?._id),
+    (typeof handler === "string" ? getRequestText(handler) : handler?._id),
   );
   const handlerRole = getRequestText(handler?.role) || "technician";
   const visitSchedule = formatVisitSchedule(
@@ -322,6 +359,7 @@ export default function AiRequestDetailScreen() {
   );
   const technicianNote = getRequestText(request.technicianNote);
   const hasRecordedObservation = Boolean(request.farmerOutcomeReport);
+  const observationReadiness = getFarmerBreedingObservationReadiness(request);
   const observationLabel = getBreedingObservationLabel(
     request.farmerOutcomeReport,
   );
@@ -466,13 +504,36 @@ export default function AiRequestDetailScreen() {
             </Text>
           ) : null}
 
-          {imageUrl ? (
-            <View className="mt-3">
-              <Image
-                source={{ uri: imageUrl }}
-                className="w-20 h-20"
-                style={{ borderRadius: 10 }}
-              />
+          {galleryImages.length ? (
+            <View className="flex-row flex-wrap gap-2 mt-3">
+              {galleryImages.map((photo, index) => (
+                <TouchableOpacity
+                  key={`${photo.fileName}-${index}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${photo.accessibilityLabel}`}
+                  onPress={() => {
+                    setGalleryInitialIndex(index);
+                    setGalleryVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
+                >
+                  <Image
+                    source={{ uri: photo.uri }}
+                    resizeMode="cover"
+                    accessibilityLabel={photo.accessibilityLabel}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </TouchableOpacity>
+              ))}
             </View>
           ) : null}
         </View>
@@ -541,11 +602,7 @@ export default function AiRequestDetailScreen() {
                   ? "Legacy preferred date"
                   : "Visit schedule"
             }
-            value={
-              visitSchedule ||
-              preferredDate ||
-              "Not scheduled yet"
-            }
+            value={visitSchedule || preferredDate || "Not scheduled yet"}
             isLast={!inseminationDate}
           />
           {inseminationDate ? (
@@ -616,11 +673,12 @@ export default function AiRequestDetailScreen() {
                 >
                   {hasRecordedObservation
                     ? "Your report is visible to the technician. It does not confirm pregnancy until an official pregnancy check is completed."
-                    : "Report what you observe after insemination. A technician pregnancy check is still required to confirm pregnancy."}
+                    : observationReadiness.message}
                 </Text>
               </View>
             </View>
 
+            {(hasRecordedObservation || observationReadiness.isAvailable) ? (
             <TouchableOpacity
               onPress={() =>
                 router.push({
@@ -631,8 +689,7 @@ export default function AiRequestDetailScreen() {
                         ? request.animalId?._id
                         : request.animalId,
                     requestId: id,
-                    defaultReport:
-                      request.farmerOutcomeReport || "unsure",
+                    defaultReport: request.farmerOutcomeReport || "unsure",
                   },
                 } as never)
               }
@@ -640,10 +697,13 @@ export default function AiRequestDetailScreen() {
             >
               <Text className="text-white text-xs font-bold">
                 {hasRecordedObservation
-                  ? "Update observation"
+                  ? observationReadiness.isAvailable
+                    ? "Update observation"
+                    : "View observation"
                   : "Report an observation"}
               </Text>
             </TouchableOpacity>
+            ) : null}
           </View>
         )}
 
@@ -752,6 +812,14 @@ export default function AiRequestDetailScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        <ImageViewerModal
+          visible={galleryVisible}
+          images={galleryImages}
+          initialIndex={galleryInitialIndex}
+          title="AI request photos"
+          onClose={() => setGalleryVisible(false)}
+        />
 
         {/* Cancellation Reason Modal */}
         <Modal

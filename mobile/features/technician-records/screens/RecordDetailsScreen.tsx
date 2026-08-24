@@ -88,12 +88,28 @@ export default function RecordDetailsScreen() {
   const record = recordQuery.data;
   const hasCanonicalIdentity = Boolean(animalId && sourceId && sourceKind);
 
+  const getHeaderTitle = () => {
+    if (!record) return "Record Details";
+    switch (record.type) {
+      case "ai":
+        return "Artificial Insemination";
+      case "pregnancy":
+        return "Pregnancy Check";
+      case "calving":
+        return "Calving Record";
+      case "health":
+        return "Health Record";
+      default:
+        return record.title || "Record Details";
+    }
+  };
+
   const goBack = () => safeBack("/(technician)/(tabs)/technician.records");
 
   return (
     <ScreenLayout edges={[]} contentStyle={{ minHeight: 0 }}>
       <AppPageHeader
-        title={record?.title || "Record Details"}
+        title={getHeaderTitle()}
         showBackButton
         onBack={goBack}
         variant="detail"

@@ -21,7 +21,7 @@ import {
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
 import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
-import { RequestWorkFilterChips } from "../components/RequestWorkBadge";
+import { FilterChips } from "@/components/ui/AppBadge";
 import type { RequestItem } from "../types/technicianRequests.types";
 import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
 import { OPEN_REQUEST_FILTERS } from "../utils/requestWorkPresentation";
@@ -387,13 +387,21 @@ export default function TechnicianRequestsScreen({
                 variant="directory"
               />
 
-              <RequestWorkFilterChips
-                options={OPEN_REQUEST_FILTERS}
-                value={type}
-                onChange={setType}
-                counts={openRequestCounts}
-                countsLoading={areOpenRequestCountsLoading}
-              />
+              <View style={{ marginTop: 12, marginBottom: 8 }}>
+                <SelectDropdown
+                  label="Request Type"
+                  options={OPEN_REQUEST_FILTERS.map(opt => {
+                    const count = openRequestCounts?.[opt.value as keyof typeof openRequestCounts];
+                    return {
+                      label: count !== undefined ? `${opt.label} (${count})` : opt.label,
+                      value: opt.value,
+                    };
+                  })}
+                  value={type}
+                  onChange={(val) => setType(val as any)}
+                  highlightSelection={false}
+                />
+              </View>
 
               <View
                 style={{

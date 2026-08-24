@@ -151,7 +151,7 @@ export function checkInseminationAgeEligibility(
     return {
       isEligible: false,
       code: "BELOW_MINIMUM_BREEDING_AGE",
-      reason: `Animal is too young for insemination. Current age is ${ageInMonths === 0 ? "Newborn" : ageInMonths + " months"}. Minimum required for ${species} is ${profile.minBreedingAgeMonths} months.`,
+      reason: "Animal is too young for insemination.",
     };
   }
 

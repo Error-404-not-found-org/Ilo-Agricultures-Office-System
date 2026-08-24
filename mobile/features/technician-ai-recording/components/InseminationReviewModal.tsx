@@ -10,6 +10,7 @@ interface InseminationReviewModalProps {
   visible: boolean;
   snapshot: ReviewSnapshot | null;
   saving: boolean;
+  isHistoricalMode?: boolean;
   onGoBack: () => void;
   onComplete: () => void;
 }
@@ -75,6 +76,7 @@ export function InseminationReviewModal({
   visible,
   snapshot,
   saving,
+  isHistoricalMode,
   onGoBack,
   onComplete,
 }: InseminationReviewModalProps) {
@@ -83,13 +85,7 @@ export function InseminationReviewModal({
 
   if (!snapshot) return null;
 
-  const animalLabel =
-    snapshot.animal.name ||
-    snapshot.animal.earTag ||
-    snapshot.animal.animalId ||
-    "Animal";
-  const animalReference =
-    snapshot.animal.earTag || snapshot.animal.animalId || "No ear tag";
+  const animalLabel = snapshot.animal.earTag || "Animal";
 
   return (
     <Modal
@@ -149,7 +145,9 @@ export function InseminationReviewModal({
                     fontSize: 20,
                   }}
                 >
-                  Review Insemination
+                  {isHistoricalMode
+                    ? "Review Previous AI"
+                    : "Review Insemination"}
                 </Text>
                 <Text
                   style={{
@@ -160,27 +158,29 @@ export function InseminationReviewModal({
                     marginTop: 2,
                   }}
                 >
-                  Confirm these are the actual service details before saving.
+                  {isHistoricalMode
+                    ? "Confirm these previous service details before saving."
+                    : "Confirm these are the actual service details before saving."}
                 </Text>
               </View>
             </View>
 
             <View style={{ marginTop: 16 }}>
               <ReviewRow label="Farmer" value={snapshot.farmer.name} />
+              <ReviewRow label="Animal Ear Tag" value={animalLabel} />
               <ReviewRow
-                label="Animal"
-                value={`${animalLabel} · ${animalReference}`}
-              />
-              <ReviewRow
-                label="Actual Date"
+                label={isHistoricalMode ? "Service Date" : "Actual Date"}
                 value={formatDate(snapshot.details.inseminationDate)}
               />
               <ReviewRow
-                label="Actual Time"
+                label={isHistoricalMode ? "Service Time" : "Actual Time"}
                 value={formatTime(snapshot.details.time)}
               />
               <ReviewRow label="Estrus Type" value={snapshot.details.estrus} />
-              <ReviewRow label="Sire Breed" value={snapshot.details.sireBreed} />
+              <ReviewRow
+                label="Sire Breed"
+                value={snapshot.details.sireBreed}
+              />
               <ReviewRow label="Sire Code" value={snapshot.details.sireCode} />
               <ReviewRow
                 label="Semen Doses Used"

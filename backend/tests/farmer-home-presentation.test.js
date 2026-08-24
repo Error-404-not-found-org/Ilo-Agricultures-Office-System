@@ -26,6 +26,7 @@ test("Farmer Home applies the two-visit, two-action, and three-activity limits",
     title: "Heat watch",
     daysLeft: index,
     date: `2026-07-${18 + index}T00:00:00.000Z`,
+    pregnancyReadiness: { daysPostAI: 18 + index, isEligible: false },
   }));
   const activities = Array.from({ length: 5 }, (_, index) => ({
     id: `activity-${index}`,
@@ -56,10 +57,10 @@ test("Upcoming visits deduplicate linked records and retain service status separ
   assert.match(screen, /reproductiveOutcome=/);
 });
 
-test("Needs Attention removes resolved items and ranks overdue, today, actionable, then awaiting", () => {
+test("Needs Attention contains Farmer actions and ranks overdue, today, then actionable", () => {
   const result = selectNeedsAttention([
     { type: "pd_check", title: "Preg-Check Due", daysLeft: 19, date: "2026-08-06" },
-    { type: "heat_check", title: "Heat watch", daysLeft: 2, date: "2026-07-20" },
+    { type: "heat_check", title: "Heat watch", daysLeft: 2, date: "2026-07-20", pregnancyReadiness: { daysPostAI: 20 } },
     { type: "heat_check", title: "Resolved heat watch", daysLeft: -4, status: "resolved" },
     { type: "calving", title: "Calving check", daysLeft: 0, date: "2026-07-18" },
     { type: "calving", title: "Overdue calving", daysLeft: -1, date: "2026-07-17" },
@@ -70,18 +71,16 @@ test("Needs Attention removes resolved items and ranks overdue, today, actionabl
 
   const lowerPriority = selectNeedsAttention([
     { type: "pd_check", title: "Preg-Check Due", daysLeft: 10, date: "2026-07-28" },
-    { type: "heat_check", title: "Heat watch", daysLeft: 2, date: "2026-07-20" },
+    { type: "heat_check", title: "Heat watch", daysLeft: 2, date: "2026-07-20", pregnancyReadiness: { daysPostAI: 20 } },
   ]);
-  assert.deepEqual(lowerPriority.map((item) => item.urgency), ["actionable", "awaiting"]);
+  assert.deepEqual(lowerPriority.map((item) => item.urgency), ["actionable"]);
 });
 
-test("Future pregnancy checks use availability wording without an urgent due label", () => {
-  const [item] = selectNeedsAttention([
+test("Future pregnancy checks remain in details instead of Farmer Needs Attention", () => {
+  const items = selectNeedsAttention([
     { type: "pd_check", title: "Preg-Check Due", daysLeft: 19, date: "2026-08-06" },
   ]);
-  assert.equal(item.displayTitle, "Pregnancy check available in 19 days");
-  assert.equal(item.urgency, "awaiting");
-  assert.doesNotMatch(item.displayTitle, /due/i);
+  assert.deepEqual(items, []);
 });
 
 test("Animal and activity presentation removes seed prefixes and exposes outcomes", () => {
@@ -144,5 +143,7 @@ test("Farmer cattle cards show one status and preserve responsive 320, 360, and 
     (previewCard.match(/<StatusBadge[\s\S]*?label=\{status\}/g) || []).length,
     1,
   );
+  assert.match(card, /animal\.reproductiveStatus === "Likely Pregnant"/);
+  assert.match(card, /"Possible pregnancy"/);
   assert.match(card, /accessibilityLabel=\{`\$\{fullIdentifier\}/);
 });

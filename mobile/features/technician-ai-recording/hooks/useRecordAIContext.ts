@@ -128,6 +128,11 @@ const normalizeRequestContext = (
         request?.imageUrl,
         request?.evidencePhotos,
       ]),
+      requestKind:
+        request?.requestKind === "re_insemination" ||
+        isCanonicalWorkflowId(previousAttemptId)
+          ? "re_insemination"
+          : "initial_ai",
       attemptNumber:
         Number.isInteger(request?.attemptNumber) && request.attemptNumber > 0
           ? request.attemptNumber

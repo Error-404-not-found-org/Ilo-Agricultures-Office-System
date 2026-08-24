@@ -7,7 +7,7 @@ import { HealthRequest } from "../models/health-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { Notification } from "../models/notification.model.js";
-import { AIRequest } from "../models/ai-request.model.js";
+
 import { Config } from "../models/config.model.js";
 import { FieldNote } from "../models/field-note.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
@@ -30,6 +30,7 @@ import {
   createAIRequestWithGuard,
   findActiveAIRequest,
   isVerifiedFailedAIAttempt,
+  isVerifiedReturnToHeatAIAttempt,
 } from "../services/ai-request-creation.service.js";
 import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
 import { buildAIServiceContext } from "../domain/ai-service-context.js";
@@ -51,6 +52,12 @@ import { presentNotificationDocument } from "../domain/notification-presentation
 import { buildAIRequestAssignmentGuard } from "../policies/request.policy.js";
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
+import { getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
+import {
+  ACTIVE_AI_REQUEST_STATUSES,
+  AI_STATUS,
+  normalizeAIStatus,
+} from "../domain/status-vocabulary.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -268,7 +275,20 @@ export const getTechnicianDashboardData = async (req, res) => {
       // 8. Tasks (Claimed/Scheduled tasks)
       Task.find({
         status: { $in: ["Pending", "In Progress"] },
-        dueDate: { $ne: null },
+        $and: [
+          {
+            $or: [
+              { taskType: { $nin: ["PD", "BreedingFollowUp"] }, dueDate: { $ne: null } },
+              {
+                taskType: { $in: ["PD", "BreedingFollowUp"] },
+                $or: [
+                  { status: "Pending", dueDate: { $ne: null, $lte: new Date() } },
+                  { status: "In Progress", dueDate: { $ne: null } },
+                ],
+              },
+            ],
+          },
+        ],
         ...(req.user.role !== "admin" ? { technicianId: req.user._id } : {}),
       })
         .populate("farmerId", "name phoneNumber phone address farmLocation")
@@ -1254,6 +1274,168 @@ export const walkInInsemination = async (req, res) => {
     console.error("[walkInInsemination ERROR]", error);
     res.status(error.status || 500).json({
       message: error.message || "Error recording insemination",
+      code: error.code,
+      ...(error.details || {}),
+    });
+  }
+};
+
+export const previousInsemination = async (req, res) => {
+  try {
+    const {
+      farmerId,
+      animalId: bodyAnimalId,
+      animalDetails,
+      inseminationDetails,
+    } = req.body;
+    const technicianNote = normalizeTechnicianNoteInput(
+      inseminationDetails || {},
+    );
+
+    // 1. Resolve Farmer
+    if (!farmerId) {
+      return res.status(400).json({ message: "Farmer ID is required." });
+    }
+    const farmer = await User.findById(farmerId);
+    if (!farmer) {
+      return res.status(404).json({ message: "Farmer not found." });
+    }
+
+    // 2. Resolve Animal
+    let animal;
+    if (bodyAnimalId) {
+      animal = await Animal.findById(bodyAnimalId);
+    } else if (animalDetails?.earTag) {
+      animal = await Animal.findOne({ earTag: animalDetails.earTag });
+    } else if (animalDetails?.animalId) {
+      animal = await Animal.findOne({ animalId: animalDetails.animalId });
+    }
+
+    if (!animal) {
+      return res.status(400).json({
+        code: "ANIMAL_SELECTION_REQUIRED",
+        message: "Select an existing animal before recording historical AI.",
+      });
+    }
+    if (String(animal.farmerId) !== String(farmer._id)) {
+      return res.status(400).json({
+        code: "ANIMAL_FARMER_MISMATCH",
+        message: "The selected animal does not belong to the selected farmer.",
+      });
+    }
+
+    const entryDate = new Date(inseminationDetails?.inseminationDate);
+    // Remove time specificity if only date is passed (fallback)
+    if (inseminationDetails?.time) {
+      const [hours, minutes] = inseminationDetails.time.split(":");
+      entryDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+    }
+
+    if (entryDate.getTime() > Date.now()) {
+      return res.status(400).json({ message: "Previous AI service date cannot be in the future." });
+    }
+
+    // 3. Historical State Guard
+    const [newerInsemination, activeInsemination, blockingPregnancy, newerCalving] = await Promise.all([
+      Insemination.findOne({ animalId: animal._id, inseminationDate: { $gt: entryDate }, deletedAt: null }),
+      Insemination.findOne({ animalId: animal._id, status: { $in: ["pending", "approved", "in_progress"] }, deletedAt: null }),
+      Pregnancy.findOne({
+        animalId: animal._id,
+        deletedAt: null,
+        $or: [
+          { cycleStatus: "active" },
+          { cycleStatus: { $in: ["completed", "lost"] }, completedAt: { $gt: entryDate } }
+        ]
+      }),
+      Calving.findOne({ animalId: animal._id, calvingDate: { $gt: entryDate }, deletedAt: null }),
+    ]);
+
+    if (newerInsemination || activeInsemination || blockingPregnancy || newerCalving || animal.reproductiveStatus === "Pregnant") {
+      return res.status(400).json({
+        code: "NEWER_REPRODUCTIVE_RECORD_EXISTS",
+        message: "This animal has a newer or active reproductive record. The previous AI cannot be added here as it would corrupt the current state.",
+      });
+    }
+
+    // 4. Record the AI Service
+    const result = await recordTechnicianAIService({
+      farmerId: farmer._id,
+      animalId: animal._id,
+      inseminationDate: entryDate,
+      sireBreed: inseminationDetails?.sireBreed,
+      sireCode: inseminationDetails?.sireCode,
+      semenDosesUsed: inseminationDetails?.semenDosesUsed,
+      estrus: inseminationDetails?.estrus,
+      technicianNote,
+      actorId: req.user._id,
+      isAdmin: req.user.role === "admin",
+    });
+
+    // Mark as historical/paper record explicitly
+    await Insemination.findByIdAndUpdate(result.insemination._id, {
+      $set: { observationSource: "paper_record" }
+    });
+
+    const dates = getHeatReturnMonitoringDates(entryDate);
+
+    await Task.updateOne(
+      {
+        taskType: "BreedingFollowUp",
+        "metadata.inseminationId": result.insemination._id,
+      },
+      {
+        $setOnInsert: {
+          technicianId: req.user._id,
+          farmerId: farmer._id,
+          animalIds: [animal._id],
+          taskType: "BreedingFollowUp",
+          category: "Follow-up",
+          priority: 2,
+          notes: `Scheduled Breeding Follow-up for Animal Tag #${animal.earTag || "Unknown"}. Contact the farmer to check if the animal returned to heat.`,
+          status: "Pending",
+          dueDate: dates.technicianFollowUpDate,
+          sourceType: "automatic_breeding_followup",
+          metadata: {
+            animalId: animal._id,
+            farmerId: farmer._id,
+            inseminationId: result.insemination._id,
+          },
+        },
+      },
+      { upsert: true }
+    );
+
+    // 5. Trigger Inngest Lifecycle
+    try {
+      await inngest.send({
+        name: "insemination/approved",
+        data: {
+          inseminationId: result.insemination._id,
+          animalId: animal._id,
+          farmerId: farmer._id,
+        },
+      });
+    } catch (inngestErr) {
+      console.error("[previousInsemination INNGEST ERROR]", inngestErr.message);
+    }
+
+    // Trigger Socket Update
+    req.app
+      .get("io")
+      .emit("dashboardUpdate", { type: "PREVIOUS_INSEMINATION_CREATED" });
+
+    res.status(201).json({
+      message: "Previous AI recorded successfully",
+      insemination: result.insemination,
+      outcome: result.outcome,
+      task: result.task,
+      farmer,
+      animal,
+    });
+  } catch (error) {
+    console.error("[previousInsemination ERROR]", error);
+    res.status(error.status || 500).json({
+      message: error.message || "Error recording previous insemination",
       code: error.code,
       ...(error.details || {}),
     });
@@ -3312,14 +3494,14 @@ export const getTechnicianRequests = async (req, res) => {
         ? Insemination.find(aiQuery)
             .populate(
               "farmerId",
-              "name address imageUrl phoneNumber farmLocation",
+              "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
             )
             .populate("animalId", "animalId earTag species breed imageUrl")
             .populate("approvedBy", "name")
             .populate({
               path: "previousAttemptId",
               select:
-                "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId",
+                "attemptNumber inseminationDate outcome failureReason farmerOutcomeReport isSuccess status outcomeVerificationStatus outcomeConfirmationSource outcomeConfirmedAt approvedBy technicianId",
               populate: { path: "approvedBy technicianId", select: "name" },
             })
             .lean()
@@ -3328,7 +3510,7 @@ export const getTechnicianRequests = async (req, res) => {
         ? HealthRequest.find(healthQuery)
             .populate(
               "farmerId",
-              "name address imageUrl phoneNumber farmLocation",
+              "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
             )
             .populate("animalId", "animalId earTag species breed imageUrl")
             .populate("handledBy", "name")
@@ -3338,7 +3520,7 @@ export const getTechnicianRequests = async (req, res) => {
         ? Task.find(taskQuery)
             .populate(
               "farmerId",
-              "name address imageUrl phoneNumber farmLocation",
+              "name address imageUrl avatarUrl profilePicture avatar phoneNumber farmLocation",
             )
             .populate("animalIds", "animalId earTag species breed imageUrl")
             .populate("technicianId", "name")
@@ -3427,6 +3609,28 @@ export const getTechnicianRequests = async (req, res) => {
       const assignedTechnicianId =
         rec.approvedBy?._id || rec.approvedBy || rec.technicianId || null;
       const isUnassigned = !assignedTechnicianId;
+      const previousAttempt =
+        rec.previousAttemptId && typeof rec.previousAttemptId === "object"
+          ? rec.previousAttemptId
+          : null;
+      const previousAttemptContext = previousAttempt
+        ? {
+            _id: previousAttempt._id,
+            attemptNumber: previousAttempt.attemptNumber,
+            inseminationDate: previousAttempt.inseminationDate,
+            outcome: previousAttempt.outcome,
+            failureReason: previousAttempt.failureReason,
+            outcomeVerificationStatus:
+              previousAttempt.outcomeVerificationStatus,
+            outcomeConfirmationSource:
+              previousAttempt.outcomeConfirmationSource,
+            outcomeConfirmedAt: previousAttempt.outcomeConfirmedAt,
+          }
+        : null;
+      const requestKind = previousAttempt ? "re_insemination" : "initial_ai";
+      const previousAttemptVerified = previousAttempt
+        ? isVerifiedReturnToHeatAIAttempt(previousAttempt)
+        : false;
 
       const safeFarmerPhone = isUnassigned ? null : farmer.phoneNumber || "";
       const safeFarmerPhoneAlt = isUnassigned ? null : farmer.phone || null;
@@ -3479,11 +3683,15 @@ export const getTechnicianRequests = async (req, res) => {
           workflowType: "AI",
           type: "ai",
           serviceType: "Artificial Insemination",
+          requestKind,
+          attemptNumber: rec.attemptNumber || 1,
+          previousAttemptId: previousAttemptContext,
+          previousAttemptOutcome: previousAttempt?.outcome || null,
+          previousAttemptVerified,
           status: rec.status,
           allowedAction,
           actionLabel,
           farmer: farmer.name || "Unknown Farmer",
-          farmerImageUrl: farmer.imageUrl || "",
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -3513,6 +3721,11 @@ export const getTechnicianRequests = async (req, res) => {
         workflowType: "AI",
         type: "ai",
         serviceType: "Artificial Insemination",
+        requestKind,
+        attemptNumber: rec.attemptNumber || 1,
+        previousAttemptId: previousAttemptContext,
+        previousAttemptOutcome: previousAttempt?.outcome || null,
+        previousAttemptVerified,
         status: rec.status,
         allowedAction,
         actionLabel,
@@ -3525,7 +3738,7 @@ export const getTechnicianRequests = async (req, res) => {
         urgency: "normal",
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
-        farmerImageUrl: farmer.imageUrl || "",
+        farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
         farmerPhone: farmer.phoneNumber || "",
         phone: farmer.phone || null,
         farmerDetails: {
@@ -3619,7 +3832,7 @@ export const getTechnicianRequests = async (req, res) => {
           requestType: rec.requestType || "health",
           status: rec.status,
           farmer: farmer.name || "Unknown Farmer",
-          farmerImageUrl: farmer.imageUrl || "",
+          farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -3660,7 +3873,7 @@ export const getTechnicianRequests = async (req, res) => {
             : "normal",
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
-        farmerImageUrl: farmer.imageUrl || "",
+        farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
         farmerPhone: farmer.phoneNumber || "",
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
         animalId: rec.animalId?._id || rec.animalId,
@@ -3730,7 +3943,7 @@ export const getTechnicianRequests = async (req, res) => {
             : "normal",
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
-        farmerImageUrl: farmer.imageUrl || "",
+        farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
         farmerPhone: farmer.phoneNumber || "",
         animal: animal?.animalId || animal?.earTag || "Unknown",
         animalId: animal?._id || animal,
@@ -3855,7 +4068,7 @@ export const getWorkQueue = async (req, res) => {
 
     const aiQuery = {
       status: {
-        $in: ["pending", "approved", "scheduled", "in-progress", "done"],
+        $in: [...ACTIVE_AI_REQUEST_STATUSES, AI_STATUS.DONE],
       },
       deletedAt: null,
       ...(isAdmin
@@ -3898,6 +4111,20 @@ export const getWorkQueue = async (req, res) => {
 
     const taskQuery = {
       status: { $in: ["Pending", "In Progress", "Completed"] },
+      $and: [
+        {
+          $or: [
+            { taskType: { $nin: ["PD", "BreedingFollowUp"] } },
+            {
+              taskType: { $in: ["PD", "BreedingFollowUp"] },
+              $or: [
+                { status: "Pending", dueDate: { $ne: null, $lte: new Date() } },
+                { status: "In Progress" },
+              ],
+            },
+          ],
+        },
+      ],
       ...(isAdmin
         ? {}
         : {
@@ -3935,7 +4162,7 @@ export const getWorkQueue = async (req, res) => {
       Task.find(taskQuery)
         .populate(
           "farmerId",
-          "name phoneNumber phone address farmLocation avatarUrl profilePicture avatar",
+          "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
         .populate("animalIds", "name animalId earTag imageUrl breed species")
         .sort({ dueDate: 1, createdAt: -1 })
@@ -4055,6 +4282,7 @@ export const getWorkQueue = async (req, res) => {
       name: farmer?.name || "Unknown Farmer",
       phone: farmer?.phoneNumber || farmer?.phone || null,
       location: formatAddress(farmer?.address),
+      imageUrl: farmer?.imageUrl || farmer?.avatarUrl || farmer?.profilePicture || farmer?.avatar || null,
     });
 
     const serializeAnimal = (animal) => ({
@@ -4139,9 +4367,12 @@ export const getWorkQueue = async (req, res) => {
     inseminations.forEach((ins) => {
       const workflowId = idOf(ins);
       if (!workflowId) return;
+      const canonicalStatus = normalizeAIStatus(ins.status);
+      const presentedInsemination = { ...ins, status: canonicalStatus };
 
       const assignedTechnicianId = idOf(ins.approvedBy);
-      if (ins.status === "pending" && !assignedTechnicianId) return;
+      if (canonicalStatus === AI_STATUS.PENDING && !assignedTechnicianId)
+        return;
 
       const matchedTask = findExecutionTask("AI", workflowId);
       const taskId = idOf(matchedTask);
@@ -4150,12 +4381,10 @@ export const getWorkQueue = async (req, res) => {
       const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
       const scheduleDate = ins.scheduledDate || null;
       const completedAt =
-        ins.status === "done"
-          ? ins.inseminationDate || ins.updatedAt || null
-          : null;
+        canonicalStatus === AI_STATUS.DONE ? ins.completedAt || null : null;
       const itemDisplayDate =
         scheduleDate || completedAt || ins.createdAt || null;
-      const terminal = ins.status === "done";
+      const terminal = canonicalStatus === AI_STATUS.DONE;
       const attemptNumber = Number.isInteger(ins.attemptNumber)
         ? ins.attemptNumber
         : null;
@@ -4167,18 +4396,20 @@ export const getWorkQueue = async (req, res) => {
       let allowedAction = null;
       let actionLabel = null;
       let stateIssue = null;
-      if (ins.status === "pending") {
+      if (canonicalStatus === AI_STATUS.PENDING) {
         actionLabel = "Schedule review required";
         stateIssue = scheduleDate
           ? "PENDING_WITH_SCHEDULE"
           : "PENDING_ASSIGNED_WITHOUT_SCHEDULE";
-      } else if (ins.status === "approved") {
+      } else if (canonicalStatus === AI_STATUS.APPROVED) {
         allowedAction = "SCHEDULE_VISIT";
         actionLabel = "Schedule Visit";
-      } else if (["scheduled", "in-progress"].includes(ins.status)) {
+      } else if (
+        [AI_STATUS.SCHEDULED, AI_STATUS.IN_PROGRESS].includes(canonicalStatus)
+      ) {
         allowedAction = "RECORD_SERVICE";
         actionLabel = "Record Insemination";
-      } else if (ins.status === "done") {
+      } else if (canonicalStatus === AI_STATUS.DONE) {
         allowedAction = "VIEW_RECORD";
         actionLabel = "View Record";
       }
@@ -4200,7 +4431,7 @@ export const getWorkQueue = async (req, res) => {
         previousAttemptVerified: previousAttempt
           ? isVerifiedFailedAIAttempt(previousAttempt)
           : false,
-        status: ins.status,
+        status: canonicalStatus,
         allowedAction,
         actionLabel,
         stateIssue,
@@ -4213,7 +4444,7 @@ export const getWorkQueue = async (req, res) => {
         requestedAt: ins.createdAt || null,
         completedAt,
         isReadyToday:
-          ["approved", "scheduled"].includes(ins.status) &&
+          [AI_STATUS.APPROVED, AI_STATUS.SCHEDULED].includes(canonicalStatus) &&
           isToday(scheduleDate),
         time: formatTime(itemDisplayDate),
         preferredTime: formatTime(itemDisplayDate),
@@ -4232,17 +4463,17 @@ export const getWorkQueue = async (req, res) => {
         animalId: ins.animalId || null,
         animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
         displayStatus:
-          ["approved", "scheduled"].includes(ins.status) &&
+          [AI_STATUS.APPROVED, AI_STATUS.SCHEDULED].includes(canonicalStatus) &&
           isToday(scheduleDate)
             ? "Ready Today"
-            : ins.status,
+            : canonicalStatus,
         task: `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
         urgent: false,
         overdue: isOverdue(scheduleDate, terminal),
         sentTime: formatTime(ins.createdAt),
         scheduledDate: scheduleDate,
         visitPeriod: ins.visitPeriod || null,
-        raw: ins,
+        raw: presentedInsemination,
       };
 
       unifiedQueue.push(item);
@@ -4414,6 +4645,7 @@ export const getWorkQueue = async (req, res) => {
         farmerPhone:
           taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
         farmerImageUrl:
+          taskDoc.farmerId?.imageUrl ||
           taskDoc.farmerId?.avatarUrl ||
           taskDoc.farmerId?.profilePicture ||
           taskDoc.farmerId?.avatar ||

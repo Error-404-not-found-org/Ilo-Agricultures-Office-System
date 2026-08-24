@@ -51,6 +51,7 @@ export interface RequestLinkedContext {
   heatSigns: string[];
   farmerNotes: string[];
   attachmentUrls: string[];
+  requestKind: "initial_ai" | "re_insemination";
   attemptNumber: number | null;
   previousAttempt: {
     id: string;

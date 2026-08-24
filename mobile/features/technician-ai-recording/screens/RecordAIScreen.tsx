@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { toast } from "sonner-native";
 import { AppPageHeader } from "@/components/AppPageHeader";
@@ -10,6 +10,7 @@ import { getAIEligibility } from "@/lib/reproductionEligibility";
 import { safeBack } from "@/utils/navigation";
 import {
   useWalkInInseminationMutation,
+  usePreviousInseminationMutation,
   useCompleteAIRequestMutation,
 } from "@/features/technician/hooks/useTechnicianFieldRecords";
 import {
@@ -58,6 +59,8 @@ export default function RecordAIScreen() {
     mode.kind === "request-linked" ? mode.workflowId : "placeholder",
   );
   const walkInMutation = useWalkInInseminationMutation();
+  const previousMutation = usePreviousInseminationMutation();
+  const [isHistoricalMode, setIsHistoricalMode] = useState(false);
   const submissionLockRef = useRef(false);
   const initializedWorkflowRef = useRef<string | null>(null);
   const [values, setValues] = useState<AIRecordingValues>(initialValues);
@@ -68,7 +71,7 @@ export default function RecordAIScreen() {
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(
     null,
   );
-  const saving = requestMutation.isPending || walkInMutation.isPending;
+  const saving = requestMutation.isPending || walkInMutation.isPending || previousMutation.isPending;
 
   useEffect(() => {
     if (
@@ -210,6 +213,8 @@ export default function RecordAIScreen() {
       let result;
       if (mode.kind === "request-linked") {
         result = await requestMutation.mutateAsync(payload);
+      } else if (isHistoricalMode) {
+        result = await previousMutation.mutateAsync(payload);
       } else {
         result = await walkInMutation.mutateAsync(payload);
       }
@@ -239,7 +244,7 @@ export default function RecordAIScreen() {
         endpoint:
           mode.kind === "request-linked"
             ? `/ai-request/${mode.workflowId}/status`
-            : "/technician/walk-in-insemination",
+            : isHistoricalMode ? "/technician/previous-insemination" : "/technician/walk-in-insemination",
         responseStatus: error?.response?.status,
         code: error?.response?.data?.code,
         message: error?.response?.data?.message || error?.message,
@@ -253,7 +258,7 @@ export default function RecordAIScreen() {
   };
 
   const title =
-    mode.kind === "direct" ? "Record Direct AI Service" : "Record Insemination";
+    mode.kind === "direct" ? (isHistoricalMode ? "Record Previous AI" : "Record Direct AI Service") : "Record Insemination";
   const blockingError =
     mode.kind === "invalid" ? mode.message : requestError || contextError;
 
@@ -349,10 +354,40 @@ export default function RecordAIScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <View style={{ flexDirection: "row", marginHorizontal: 16, marginTop: 16, marginBottom: 8, padding: 4, backgroundColor: colors.card, borderRadius: 8 }}>
+            <TouchableOpacity
+              onPress={() => setIsHistoricalMode(false)}
+              disabled={saving}
+              style={{
+                flex: 1,
+                paddingVertical: 8,
+                alignItems: "center",
+                borderRadius: 6,
+                backgroundColor: !isHistoricalMode ? colors.primary : "transparent",
+              }}
+            >
+              <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: !isHistoricalMode ? "#FFFFFF" : colors.textSecondary }}>Current AI Service</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setIsHistoricalMode(true)}
+              disabled={saving}
+              style={{
+                flex: 1,
+                paddingVertical: 8,
+                alignItems: "center",
+                borderRadius: 6,
+                backgroundColor: isHistoricalMode ? colors.primary : "transparent",
+              }}
+            >
+              <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: isHistoricalMode ? "#FFFFFF" : colors.textSecondary }}>Previous AI Record</Text>
+            </TouchableOpacity>
+          </View>
+
           <DirectAIRecordForm
             route={mode}
             values={values}
             saving={saving}
+            isHistoricalMode={isHistoricalMode}
             onValuesChange={updateValues}
             onReview={openReview}
           />
@@ -361,6 +396,7 @@ export default function RecordAIScreen() {
 
       <InseminationReviewModal
         visible={Boolean(reviewSnapshot)}
+        isHistoricalMode={isHistoricalMode}
         snapshot={reviewSnapshot}
         saving={saving}
         onGoBack={() => {
