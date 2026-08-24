@@ -12,16 +12,16 @@ import { useRouter } from "expo-router";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
-import { SearchBar, SelectDropdown } from "@/components/shared";
+import { Pagination, SearchBar, SelectDropdown } from "@/components/shared";
 import { toast } from "sonner-native";
-import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
+import type {
+  TechnicianWorkItem,
+  WorkQueueFilters,
+} from "@/features/technician-requests/types/technicianRequests.types";
 import {
   MY_WORK_FILTERS,
-  matchesServiceFilter,
-  normalizeServiceType,
   normalizeTechnicianWorkItems,
 } from "../utils/requestWorkPresentation";
-import type { RequestWorkFilterOption } from "../utils/requestWorkPresentation";
 import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
@@ -40,64 +40,48 @@ export default function TechnicianMyWorkPanel({
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [serviceFilter, setServiceFilter] =
-    useState<RequestWorkFilterOption["value"]>("all");
+    useState<WorkQueueFilters["type"]>("all");
   const [workStateFilter, setWorkStateFilter] = useState<
     "active" | "completed"
   >(initialWorkState);
 
   useEffect(() => {
     setWorkStateFilter(initialWorkState);
+    setPage(1);
   }, [initialWorkState]);
 
-  const { tasksQuery } = useTechnicianTasks(undefined, { scope: "mine" });
-  const { data: tasks = [], isLoading, refetch, isRefetching } = tasksQuery;
-  const workItems = useMemo(() => normalizeTechnicianWorkItems(tasks), [tasks]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  const workStateTasks = useMemo(() => {
-    return workItems.filter((item) => {
-      if (workStateFilter === "active") {
-        return item.state !== "completed" && item.state !== "cancelled";
-      } else {
-        return item.state === "completed";
-      }
-    });
-  }, [workItems, workStateFilter]);
-
-  const serviceCounts = useMemo(() => {
-    const source = workStateTasks || [];
-    return {
-      all: source.length,
-      ai: source.filter((item: any) => normalizeServiceType(item) === "ai")
-        .length,
-      health: source.filter(
-        (item: any) => normalizeServiceType(item) === "health",
-      ).length,
-      pregnancy: source.filter(
-        (item: any) => normalizeServiceType(item) === "pregnancy",
-      ).length,
-      calving: source.filter(
-        (item: any) => normalizeServiceType(item) === "calving",
-      ).length,
-    };
-  }, [workStateTasks]);
-
-  const filteredTasks = (workStateTasks || []).filter((item) => {
-    if (!matchesServiceFilter(item, serviceFilter)) return false;
-    const text = searchQuery.toLowerCase();
-    const farmerName = String(item.farmerName || "").toLowerCase();
-    const title = item.title.toLowerCase();
-    const animalTags = [item.animalName, item.animalTag]
-      .filter(Boolean)
-      .map((value) => String(value).toLowerCase());
-    const searchMatch =
-      !searchQuery ||
-      farmerName.includes(text) ||
-      title.includes(text) ||
-      animalTags.some((tag: string) => tag.includes(text));
-
-    return searchMatch;
+  const { tasksQuery } = useTechnicianTasks(undefined, {
+    scope: "mine",
+    workState: workStateFilter,
+    type: serviceFilter,
+    search: debouncedSearch,
+    page,
+    limit: 20,
   });
+  const { data, isLoading, refetch, isRefetching } = tasksQuery;
+  const workItems = useMemo(
+    () => normalizeTechnicianWorkItems(data?.data),
+    [data?.data],
+  );
+  const serviceCounts = data?.counts || {};
+  const pagination = data?.pagination || {
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 1,
+  };
+  const filteredTasks = workItems;
 
   const openWorkItem = (item: TechnicianWorkItem) => {
     if (item.workType === "ai") {
@@ -157,7 +141,7 @@ export default function TechnicianMyWorkPanel({
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search by farmer name, ear tag or notes..."
+          placeholder="Search by farmer, ear tag, or service..."
           variant="directory"
         />
       </View>
@@ -180,7 +164,10 @@ export default function TechnicianMyWorkPanel({
               { value: "completed", label: "Completed" },
             ]}
             value={workStateFilter}
-            onChange={(val) => setWorkStateFilter(val as any)}
+            onChange={(val) => {
+              setWorkStateFilter(val as any);
+              setPage(1);
+            }}
             highlightSelection={false}
           />
         </View>
@@ -197,7 +184,10 @@ export default function TechnicianMyWorkPanel({
               };
             })}
             value={serviceFilter}
-            onChange={(val) => setServiceFilter(val as any)}
+            onChange={(val) => {
+              setServiceFilter(val as any);
+              setPage(1);
+            }}
             highlightSelection={false}
           />
         </View>
@@ -237,19 +227,29 @@ export default function TechnicianMyWorkPanel({
                   textAlign: "center",
                 }}
               >
-                {tasks.length === 0
+                {workItems.length === 0
                   ? "No assigned work."
                   : "No work items match this filter."}
               </Text>
             </View>
           ) : (
-            filteredTasks.map((t) => (
-              <RequestListCard
-                key={t.id}
-                item={t}
-                onPress={() => openWorkItem(t)}
-              />
-            ))
+            <>
+              {filteredTasks.map((t) => (
+                <RequestListCard
+                  key={t.id}
+                  item={t}
+                  onPress={() => openWorkItem(t)}
+                />
+              ))}
+              {pagination.totalPages > 1 ? (
+                <Pagination
+                  page={page}
+                  totalPages={pagination.totalPages}
+                  onPrevious={() => setPage((current) => current - 1)}
+                  onNext={() => setPage((current) => current + 1)}
+                />
+              ) : null}
+            </>
           )}
         </ScrollView>
       )}

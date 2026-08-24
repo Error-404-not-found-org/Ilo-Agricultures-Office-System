@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Alert } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
@@ -38,6 +37,7 @@ export const useUserDetail = (userId: string) => {
       toast.success("Account suspended successfully.");
       refetch();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to suspend account.");
     } finally {
@@ -52,6 +52,7 @@ export const useUserDetail = (userId: string) => {
       toast.success("Account reactivated successfully.");
       refetch();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to reactivate account.");
     } finally {
@@ -66,6 +67,7 @@ export const useUserDetail = (userId: string) => {
       toast.success("Account marked as verified.");
       refetch();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to verify account.");
     } finally {
@@ -94,6 +96,7 @@ export const useUserDetail = (userId: string) => {
       toast.success(`Role updated to ${newRole} successfully.`);
       refetch();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to update role.");
     } finally {
@@ -107,6 +110,7 @@ export const useUserDetail = (userId: string) => {
       await deleteUser(api, userId);
       toast.success("User deleted successfully.");
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
       if (onSuccess) onSuccess();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to delete user.");

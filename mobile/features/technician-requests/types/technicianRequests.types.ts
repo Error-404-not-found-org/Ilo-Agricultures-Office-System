@@ -163,6 +163,22 @@ export interface WorkQueueItem {
   [key: string]: any;
 }
 
+export interface WorkQueueResponse {
+  data: WorkQueueItem[];
+  pagination: PaginationInfo;
+  counts: Partial<
+    Record<"all" | "ai" | "health" | "pregnancy" | "calving", number>
+  >;
+}
+
+export interface WorkQueueFilters {
+  workState: "active" | "completed";
+  type: "all" | "ai" | "health" | "pregnancy" | "calving";
+  search?: string;
+  page: number;
+  limit: number;
+}
+
 export type TechnicianWorkType =
   | "ai"
   | "health"
@@ -232,6 +248,7 @@ export interface TechnicianWorkItem {
 export interface RequestsResponse {
   requests: RequestItem[];
   pagination: PaginationInfo;
+  counts?: Partial<Record<"all" | "ai" | "health" | "pregnancy", number>>;
 }
 export interface RequestFilters {
   type:
@@ -260,6 +277,7 @@ export interface RequestFilters {
   sortBy?: "newest" | "distance" | "preferredDate" | "oldest";
   municipality?: string;
   barangay?: string;
+  includeCounts?: boolean;
 }
 
 export interface PaginationInfo {

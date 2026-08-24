@@ -45,6 +45,14 @@ export const createTechnician = async (
       district?: string;
       province?: string;
     };
+    serviceMunicipalities?: {
+      municipalityCode: string;
+      municipalityName: string;
+      localityType: string;
+      provinceCode: string;
+      provinceName: string;
+    }[];
+    serviceCapabilities?: string[];
   }
 ) => {
   const res = await api.post("/admin/technicians", userData);

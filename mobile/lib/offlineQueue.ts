@@ -2,6 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { queryClient } from "./queryClient";
 import * as FileSystem from "expo-file-system/legacy";
 import { getApiErrorDetails } from "./api";
+import {
+  aiRequestKeys,
+  animalKeys,
+  animalRecordKeys,
+  healthRequestKeys,
+  technicianKeys,
+} from "./queryKeys";
 
 const QUEUE_STORAGE_KEY = "OFFLINE_MUTATION_QUEUE";
 const HISTORY_STORAGE_KEY = "OFFLINE_SYNC_HISTORY";
@@ -99,6 +106,45 @@ export const classifySyncError = (error: any) => {
   const retryableStatus = apiError.status === undefined || apiError.status === 408 || apiError.status === 425 || apiError.status === 429 || apiError.status >= 500;
   const retryable = !isRestorationError && (retryableCodes.has(apiError.code || "") || retryableStatus || apiError.status === 401);
   return { retryable, message: apiError.message || error?.message || "Sync failed", apiError };
+};
+
+const invalidateReplayQueries = async (item: QueuedMutation) => {
+  const url = item.url.toLowerCase();
+  const invalidations: readonly (readonly unknown[])[] = url.startsWith("/tasks")
+    ? [technicianKeys.tasks(), technicianKeys.workQueue(), technicianKeys.dashboard()]
+    : url.startsWith("/ai-request") || url.startsWith("/insemination")
+      ? [
+          aiRequestKeys.all,
+          technicianKeys.requests(),
+          technicianKeys.workQueue(),
+          technicianKeys.dashboard(),
+          technicianKeys.records(),
+          animalRecordKeys.all,
+          ["visits", "upcoming"],
+        ]
+      : url.startsWith("/health-request") || url.startsWith("/medical")
+        ? [
+            healthRequestKeys.all,
+            technicianKeys.requests(),
+            technicianKeys.workQueue(),
+            technicianKeys.dashboard(),
+            technicianKeys.records(),
+            animalRecordKeys.all,
+            ["visits", "upcoming"],
+          ]
+        : url.startsWith("/animals")
+          ? [animalKeys.all, animalRecordKeys.all, technicianKeys.dashboard()]
+          : [];
+
+  if (invalidations.length === 0) {
+    await queryClient.invalidateQueries();
+    return;
+  }
+  await Promise.all(
+    invalidations.map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey: [...queryKey] }),
+    ),
+  );
 };
 
 const ensureDirExists = async () => {
@@ -448,7 +494,7 @@ export const processOfflineQueue = async (api: any, getCurrentUserId?: () => str
         await clearQueueItem(item.id);
         const activeUserIdPostRequest = getCurrentUserId ? getCurrentUserId() : undefined;
         if (!activeUserIdPostRequest || activeUserIdPostRequest === item.ownerUserId) {
-          queryClient.invalidateQueries();
+          await invalidateReplayQueries(item);
         }
       } catch (error: any) {
         const { retryable, message, apiError } = classifySyncError(error);

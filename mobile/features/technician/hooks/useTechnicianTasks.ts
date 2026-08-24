@@ -8,6 +8,7 @@ import {
 } from "../services/tasks.service";
 import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
 import { technicianKeys } from "@/lib/queryKeys";
+import type { WorkQueueFilters } from "@/features/technician-requests/types/technicianRequests.types";
 
 export const tasksQueryKeys = {
   all: ["technician", "tasks"] as const,
@@ -16,18 +17,33 @@ export const tasksQueryKeys = {
   workQueue: () => technicianKeys.workQueue(),
 };
 
-export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) => {
+type TechnicianTaskFilters = {
+  scope?: string;
+  workState?: WorkQueueFilters["workState"];
+  type?: WorkQueueFilters["type"];
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters) => {
   const api = useApi();
   const queryClient = useQueryClient();
 
   const tasksQuery = useQuery({
     queryKey:
       filters?.scope === "mine"
-        ? tasksQueryKeys.workQueue()
+        ? [...tasksQueryKeys.workQueue(), filters]
         : [...tasksQueryKeys.lists(), filters || {}],
     queryFn: () =>
       filters?.scope === "mine"
-        ? getTechnicianWorkQueue(api)
+        ? getTechnicianWorkQueue(api, {
+            workState: filters.workState || "active",
+            type: filters.type || "all",
+            search: filters.search || "",
+            page: filters.page || 1,
+            limit: filters.limit || 20,
+          })
         : getTasks(api, filters),
   });
 

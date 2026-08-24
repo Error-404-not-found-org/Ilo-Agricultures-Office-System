@@ -1,16 +1,25 @@
 export const OTON_MUNICIPALITY = {
-  municipalityCode: "063034000",
+  municipalityCode: "0603034000",
   municipalityName: "Oton",
   localityType: "municipality",
-  provinceCode: "063000000",
+  provinceCode: "0603000000",
   provinceName: "Iloilo",
 };
 
+const OTON_LEGACY_CORRESPONDENCE_CODE = "063034000";
+
+export function isOtonMunicipalityCode(code?: string) {
+  return (
+    code === OTON_MUNICIPALITY.municipalityCode ||
+    code === OTON_LEGACY_CORRESPONDENCE_CODE
+  );
+}
+
 export const CAPABILITIES_MAP = [
   { id: "AI", label: "Artificial Insemination" },
-  { id: "HEALTH", label: "Health Assistance" },
+  { id: "HEALTH", label: "Health Requests" },
   { id: "PREGNANCY_DIAGNOSIS", label: "Pregnancy Diagnosis" },
-  { id: "CALVING", label: "Calving Assistance" },
+  { id: "CALVING", label: "Calving Services" },
 ];
 
 export function buildDispatchProfileUpdatePayload(

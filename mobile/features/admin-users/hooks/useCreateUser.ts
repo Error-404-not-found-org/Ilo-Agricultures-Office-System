@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Share } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { createUser, createTechnician } from '../services/adminUsers.service';
+import { OTON_MUNICIPALITY } from '../utils/dispatchPayloadBuilders';
 
-const ROLES = ['farmer', 'technician', 'admin'] as const;
-type Role = typeof ROLES[number];
+type Role = 'farmer' | 'technician' | 'admin';
 
 export const useCreateUser = () => {
   const api = useApi();
@@ -23,13 +23,16 @@ export const useCreateUser = () => {
   const [barangay, setBarangay] = useState('');
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [serviceCapabilities, setServiceCapabilities] = useState<string[]>([]);
 
   // Success state
   const [createdAccount, setCreatedAccount] = useState<{
+    id?: string;
     email?: string;
     phoneNumber?: string;
     role: Role;
     invitationSent: boolean;
+    serviceCapabilities?: string[];
   } | null>(null);
 
   const handleCreate = async () => {
@@ -62,7 +65,7 @@ export const useCreateUser = () => {
     }
     if (role === 'technician') {
       if (!city || !barangay) {
-        toast.error('Municipality and Barangay are required for technician assignment.');
+        toast.error('Municipality and Barangay are required for the Technician contact address.');
         return;
       }
     }
@@ -87,24 +90,36 @@ export const useCreateUser = () => {
         },
       };
 
-      if (role === 'technician') {
-        await createTechnician(api, payload);
-      } else {
-        await createUser(api, { ...payload, role });
-      }
+      const result = role === 'technician'
+        ? await createTechnician(api, {
+            ...payload,
+            serviceMunicipalities: [OTON_MUNICIPALITY],
+            serviceCapabilities,
+          })
+        : await createUser(api, { ...payload, role });
 
-      toast.success(`${role.charAt(0).toUpperCase() + role.slice(1)} created successfully!`);
+      toast.success(
+        role === 'farmer'
+          ? 'Farmer profile created.'
+          : `${role === 'technician' ? 'Technician' : 'Administrator'} invitation sent.`,
+      );
       setCreatedAccount({
+        id: result?.technician?._id || result?.user?._id || result?._id,
         email: trimmedEmail,
         phoneNumber: trimmedPhone,
         role,
         invitationSent: Boolean(trimmedEmail),
+        serviceCapabilities:
+          role === 'technician'
+            ? result?.technician?.dispatchProfile?.serviceCapabilities ||
+              serviceCapabilities
+            : undefined,
       });
 
       // Invalidate relevant query keys so directory & workload update immediately
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       queryClient.invalidateQueries({ queryKey: ['admin-technicians-list'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-workload-techs'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       queryClient.invalidateQueries({ queryKey: ['admin-alerts-users'] });
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to create user.';
@@ -123,7 +138,7 @@ export const useCreateUser = () => {
           : `BreedSmart farmer profile created.\nPhone: ${createdAccount.phoneNumber || 'N/A'}\n\nThe farmer can claim this profile later using their verified phone number.`,
         title: 'BreedSmart Account Setup',
       });
-    } catch (e) {
+    } catch {
       toast.error('Failed to share credentials.');
     }
   };
@@ -139,6 +154,15 @@ export const useCreateUser = () => {
     setCity('');
     setDistrict('');
     setBarangay('');
+    setServiceCapabilities([]);
+  };
+
+  const toggleServiceCapability = (capability: string) => {
+    setServiceCapabilities((current) =>
+      current.includes(capability)
+        ? current.filter((item) => item !== capability)
+        : [...current, capability],
+    );
   };
 
   return {
@@ -163,6 +187,8 @@ export const useCreateUser = () => {
     showRolePicker,
     setShowRolePicker,
     loading,
+    serviceCapabilities,
+    toggleServiceCapability,
     createdAccount,
     handleCreate,
     shareCredentials,

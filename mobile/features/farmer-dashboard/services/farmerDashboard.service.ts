@@ -1,5 +1,5 @@
 import type { AxiosInstance } from "axios";
-import type { AIRequest, Animal, HealthRequest } from "@/types";
+import type { AIRequest, Animal } from "@/types";
 import type {
   FarmerActivity,
   FarmerMilestone,
@@ -8,7 +8,6 @@ import type {
   UpcomingVisit,
 } from "../types/farmerDashboard.types";
 import {
-  buildUpcomingVisits,
   filterPendingOutcomes,
   responseToArray,
 } from "../utils/farmerDashboard.transforms";
@@ -30,26 +29,8 @@ export const getUnreadNotificationSummary = async (
 export const getUpcomingVisits = async (
   api: AxiosInstance,
 ): Promise<UpcomingVisit[]> => {
-  const statuses = ["approved", "scheduled", "in-progress"];
-  const [aiResponses, healthResponses] = await Promise.all([
-    Promise.all(
-      statuses.map((status) =>
-        api.get(`/ai-request/my?page=1&limit=10&status=${status}`),
-      ),
-    ),
-    Promise.all(
-      statuses.map((status) =>
-        api.get(`/health-request/my?page=1&limit=10&status=${status}`),
-      ),
-    ),
-  ]);
-
-  return buildUpcomingVisits(
-    aiResponses.flatMap((response) => responseToArray<AIRequest>(response.data)),
-    healthResponses.flatMap((response) =>
-      responseToArray<HealthRequest>(response.data),
-    ),
-  );
+  const response = await api.get("/ai-request/upcoming");
+  return responseToArray<UpcomingVisit>(response.data);
 };
 
 export const getPendingOutcomes = async (

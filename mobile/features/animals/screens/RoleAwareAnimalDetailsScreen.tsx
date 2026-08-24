@@ -399,15 +399,22 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   const { colors, isDark } = useTheme();
   const [showAllRecords, setShowAllRecords] = useState(false);
   const animalQuery = useAnimalDetailsQuery(id);
+  const animal = animalQuery.data as AnimalDetailsData | undefined;
   const api = useApi();
   const { data: workQueue } = useQuery({
-    queryKey: technicianKeys.workQueue(),
-    queryFn: () => getTechnicianWorkQueue(api),
-    enabled: role === "technician",
+    queryKey: [...technicianKeys.workQueue(), "animal", id],
+    queryFn: () =>
+      getTechnicianWorkQueue(api, {
+        workState: "active",
+        type: "all",
+        search: animal?.earTag || animal?.animalId || "",
+        page: 1,
+        limit: 20,
+      }),
+    enabled: role === "technician" && Boolean(animal),
   });
 
   const recordsQuery = useAnimalRecords({ animalId: id, limit: 10 });
-  const animal = animalQuery.data as AnimalDetailsData | undefined;
 
   const services = useMemo(() => getServices(animal), [animal]);
   const activeServices = useMemo(
@@ -1343,7 +1350,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {
-                    const activeFollowUpTaskId = workQueue?.find(
+                    const activeFollowUpTaskId = workQueue?.data.find(
                       (t: any) =>
                         t.taskType === "BreedingFollowUp" &&
                         (t.raw?.metadata?.inseminationId === latestObservation._id ||

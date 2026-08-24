@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { View, ScrollView, Text } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { toast } from "sonner-native";
@@ -17,6 +17,7 @@ import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianC
 import { getTechnicianRequestDetail } from "@/features/technician/services/technician.service";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
+import { createStableId } from "@/lib/offlineQueue";
 
 const MY_WORK_PATH = "/(technician)/(tabs)/technician.requests?section=myWork";
 
@@ -27,6 +28,7 @@ export default function RecordHealthScreen() {
   const { colors } = useTheme();
   const [reviewSnapshot, setReviewSnapshot] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const walkInIdempotencyKey = useRef<string | null>(null);
 
   const { clientsQuery } = useTechnicianClients();
   const walkInMutation = useWalkInHealthMutation();
@@ -81,6 +83,7 @@ export default function RecordHealthScreen() {
       }
     }
 
+    walkInIdempotencyKey.current = null;
     setReviewSnapshot({
       farmer: selectedFarmer,
       animal: selectedAnimal,
@@ -103,12 +106,15 @@ export default function RecordHealthScreen() {
         };
         await requestMutation.mutateAsync(payload);
       } else {
+        walkInIdempotencyKey.current ||= createStableId();
         payload = {
           farmerId: reviewSnapshot.farmer._id,
           animalId: reviewSnapshot.animal._id,
+          idempotencyKey: walkInIdempotencyKey.current,
           ...reviewSnapshot.details,
         };
         await walkInMutation.mutateAsync(payload);
+        walkInIdempotencyKey.current = null;
       }
       
       toast.success(

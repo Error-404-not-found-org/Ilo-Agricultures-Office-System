@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Alert, Share } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
@@ -46,9 +46,9 @@ export const useAdminUsers = (initialSearch: string = "") => {
   const isError = isUsersError || isArchivedError;
   const isRefetching = isRefetchingActive || isRefetchingArchived;
 
-  const refetch = async () => {
+  const refetch = useCallback(async () => {
     await Promise.all([refetchActive(), refetchArchived()]);
-  };
+  }, [refetchActive, refetchArchived]);
 
   const { data: allAnimals = [] } = useQuery({
     queryKey: ["admin-all-animals", "counts-preview", 1, 50],
@@ -207,6 +207,7 @@ export const useAdminUsers = (initialSearch: string = "") => {
         toast.success(`${userItem.name || "User"} suspended.`);
       }
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || `Failed to ${action} user.`);
     }
@@ -221,6 +222,7 @@ export const useAdminUsers = (initialSearch: string = "") => {
       await verifyUser(api, userItem._id);
       toast.success(`${userItem.name || "User"} verified.`);
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to verify user.");
     }
@@ -231,6 +233,7 @@ export const useAdminUsers = (initialSearch: string = "") => {
       await restoreUser(api, userItem._id);
       toast.success(`${userItem.name || "User"} successfully restored.`);
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
       queryClient.invalidateQueries({ queryKey: ["admin-archived-users"] });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to restore user.");

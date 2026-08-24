@@ -38,6 +38,7 @@ import {
   type PregnancyContinuationResult,
   type TechnicianBreedingVerificationResult,
 } from "@/features/breeding/utils/technicianBreedingVerification";
+import type { WorkQueueResponse } from "@/features/technician-requests/types/technicianRequests.types";
 
 export default function PregnancyVerificationScreen() {
   const routeParams = useLocalSearchParams<{
@@ -186,23 +187,36 @@ export default function PregnancyVerificationScreen() {
 
       // Optimistically synchronize the Work Queue cache for conclusive results
       if (isContinuationWorkflow || verificationResult !== "needs_recheck") {
-        queryClient.setQueryData(technicianKeys.workQueue(), (oldData: any[]) => {
-          if (!oldData || !Array.isArray(oldData)) return oldData;
-          return oldData.filter((item) => {
-            // Remove the completed PD task
-            if (task?._id && item.id === task._id) return false;
+        queryClient.setQueriesData<WorkQueueResponse>(
+          { queryKey: technicianKeys.workQueue() },
+          (oldData) => {
+            if (!oldData || !Array.isArray(oldData.data)) return oldData;
+            return {
+              ...oldData,
+              data: oldData.data.filter((item) => {
+                // Remove the completed PD task
+                if (task?._id && item.id === task._id) return false;
 
-            // Remove the Insemination item itself
-            if (insem?._id && item.id === insem._id) return false;
-            if (insem?._id && item.workflowId === insem._id) return false;
+                // Remove the Insemination item itself
+                if (insem?._id && item.id === insem._id) return false;
+                if (insem?._id && item.workflowId === insem._id) return false;
 
-            // Remove related tasks (like BreedingFollowUp)
-            if (insem?._id && item.raw?.metadata?.inseminationId === insem._id) return false;
-            if (insem?._id && item.raw?.inseminationId === insem._id) return false;
+                // Remove related tasks (like BreedingFollowUp)
+                if (
+                  insem?._id &&
+                  item.raw?.metadata?.inseminationId === insem._id
+                ) {
+                  return false;
+                }
+                if (insem?._id && item.raw?.inseminationId === insem._id) {
+                  return false;
+                }
 
-            return true;
-          });
-        });
+                return true;
+              }),
+            };
+          },
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });

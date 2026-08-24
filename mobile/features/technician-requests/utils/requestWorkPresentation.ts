@@ -460,9 +460,12 @@ export function normalizeTechnicianWorkItem(
 }
 
 export const normalizeTechnicianWorkItems = (
-  items: WorkQueueItem[] = [],
+  items: WorkQueueItem[] | null | undefined = [],
   now: Date = new Date(),
-) => items.map((item) => normalizeTechnicianWorkItem(item, now));
+) =>
+  (Array.isArray(items) ? items : []).map((item) =>
+    normalizeTechnicianWorkItem(item, now),
+  );
 
 export function summarizeTechnicianWork(
   items: TechnicianWorkItem[],

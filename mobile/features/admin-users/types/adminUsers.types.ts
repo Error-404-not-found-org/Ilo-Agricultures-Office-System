@@ -5,6 +5,7 @@ export interface UserItem {
   role: 'farmer' | 'technician' | 'admin';
   clerkId?: string;
   isVerified?: boolean;
+  profileClaimStatus?: "none" | "unclaimed" | "claimed" | "blocked";
   createdAt?: string;
   updatedAt?: string;
   status?: string;
@@ -31,5 +32,10 @@ export interface UserItem {
     serviceCapabilities?: string[];
     availabilityStatus?: string;
     acceptsNewRequests?: boolean;
+  };
+  dispatchReadiness?: {
+    eligible: boolean;
+    blockingReasons: string[];
+    informationalReasons?: string[];
   };
 }

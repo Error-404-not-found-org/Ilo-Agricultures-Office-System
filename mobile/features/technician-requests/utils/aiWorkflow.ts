@@ -94,6 +94,24 @@ export const getClaimScheduleErrorMessage = (error: any) => {
   ) {
     return "Select today or a future visit date.";
   }
+  if (code === "NOT_ACCEPTING_REQUESTS") {
+    return "Turn on Receive Requests before claiming new work.";
+  }
+  if (code === "TECHNICIAN_NOT_AVAILABLE") {
+    return "You are not currently available for new requests.";
+  }
+  if (code === "OUTSIDE_SERVICE_AREA") {
+    return "This request is outside your assigned Field Area.";
+  }
+  if (code === "SERVICE_CAPABILITY_REQUIRED") {
+    return "You are not assigned to handle this type of request.";
+  }
+  if (code === "TECHNICIAN_NOT_OPERATIONAL") {
+    return "Your Technician account is not currently available for new requests.";
+  }
+  if (code === "REQUEST_SERVICE_AREA_UNRESOLVED") {
+    return "This request does not have a valid service municipality yet.";
+  }
   if (status === 401 || status === 403) {
     return "You are not authorized to schedule this request.";
   }

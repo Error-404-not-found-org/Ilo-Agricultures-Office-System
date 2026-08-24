@@ -26,8 +26,8 @@ export function useTechnicianDashboardScreen() {
     scope: "mine",
   });
   const workItems = useMemo(
-    () => normalizeTechnicianWorkItems(workQueueQuery.data || []),
-    [workQueueQuery.data],
+    () => normalizeTechnicianWorkItems(workQueueQuery.data?.data),
+    [workQueueQuery.data?.data],
   );
   const todayWorkItems = useMemo(
     () =>

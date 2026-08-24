@@ -40,7 +40,11 @@ export default function BottomNavigator({
         page: 1,
         limit: 1,
       }),
-    enabled: Boolean(isLoaded && isSignedIn),
+    enabled: Boolean(
+      isLoaded &&
+        isSignedIn &&
+        !REQUEST_ROUTES.includes(state.routes[state.index]?.name),
+    ),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
