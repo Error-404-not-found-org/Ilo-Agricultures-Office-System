@@ -18,6 +18,7 @@ import {
   ListChecks,
   ChevronLeft,
   ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useSidebar } from "../../contexts/SidebarContext";

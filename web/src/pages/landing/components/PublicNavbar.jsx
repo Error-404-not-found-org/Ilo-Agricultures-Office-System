@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   SignInButton,
-  SignedIn,
   SignOutButton,
   useUser,
 } from "@clerk/clerk-react";

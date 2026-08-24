@@ -35,7 +35,6 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     const [searchFarmer, setSearchFarmer] = useState("");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [selectedAnimalId, setSelectedAnimalId] = useState("");
-    const [fieldErrors, setFieldErrors] = useState({});
 
     const [formData, setFormData] = useState({
         pregnancyId: '',
@@ -195,10 +194,9 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         }
         
         setFormData({ ...formData, numberOfCalves: count, calves: newCalves });
-        setFieldErrors((current) => ({ ...current, calves: null }));
     };
 
-    const _handleOutcomeChange = (outcome) => {
+    const handleOutcomeChange = (outcome) => {
         if (outcome === "abortion") {
             setFormData((current) => ({
                 ...current,
@@ -206,7 +204,6 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                 numberOfCalves: 0,
                 calves: [],
             }));
-            setFieldErrors((current) => ({ ...current, calves: null }));
             return;
         }
 
@@ -237,7 +234,6 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                 calves,
             };
         });
-        setFieldErrors((current) => ({ ...current, calves: null }));
     };
 
     const updateCalf = (index, field, value) => {
@@ -563,7 +559,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                         <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Outcome</label>
                                         <select 
                                             value={formData.outcome}
-                                            onChange={(e) => setFormData({...formData, outcome: e.target.value})}
+                                            onChange={(e) => handleOutcomeChange(e.target.value)}
                                             className="w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:outline-none transition-all cursor-pointer"
                                         >
                                             <option value="live_birth">Live Birth</option>
