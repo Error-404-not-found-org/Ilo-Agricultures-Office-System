@@ -8,14 +8,24 @@ import {
   ShieldCheck,
   Sprout,
 } from "lucide-react";
-import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
+import {
+  SignedIn,
+  SignedOut,
+  SignUp,
+  UserButton,
+  useAuth,
+} from "@clerk/clerk-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import axiosInstance from "../lib/axios";
+import {
+  APP_DOWNLOAD_URL,
+  getDownloadQrUrl,
+} from "../config/appDistribution";
+import { resolveFarmerDownloadAccess } from "../config/onboardingBridge";
 
-const APK_URL =
-  "https://expo.dev/accounts/johndong28/projects/mobile/builds/3fdaa274-212f-435e-9ceb-626608c66ebe";
-const QR_URL = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-  APK_URL,
-)}`;
+const APK_URL = APP_DOWNLOAD_URL;
+const QR_URL = getDownloadQrUrl();
 const LOGO_URL =
   "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
 const MOCKUP_URL =
@@ -24,13 +34,76 @@ const OTON_LOGO =
   "https://res.cloudinary.com/donhulins/image/upload/v1780316603/OtonImg2_fwxtsh.png";
 
 export default function DownloadApp() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const [accessState, setAccessState] = useState("loading");
+  const [accessMessage, setAccessMessage] = useState("");
+  const hasInvitationTicket = Boolean(searchParams.get("__clerk_ticket"));
   const source = searchParams.get("source") || searchParams.get("mode");
   const isInviteFlow =
     source === "invite" ||
     source === "invite-complete" ||
     source === "account-ready";
+  const displayState = !isLoaded
+    ? "loading"
+    : !isSignedIn
+      ? hasInvitationTicket
+        ? "invitation"
+        : "public"
+      : accessState;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isLoaded || !isSignedIn) return () => {};
+
+    const resolveIdentity = async () => {
+      try {
+        const token = await getToken();
+        const response = await axiosInstance.post(
+          "/user/bootstrap",
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (cancelled) return;
+
+        const nextAccess = resolveFarmerDownloadAccess(response.data?.user);
+        setAccessState(nextAccess);
+        if (nextAccess !== "farmer") {
+          setAccessMessage(
+            "This signed-in account is not a Farmer account. Please use the appropriate BreedSmart workspace.",
+          );
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setAccessState("error");
+        setAccessMessage(
+          error.response?.data?.message ||
+            "We could not confirm this account. Please try signing in again.",
+        );
+      }
+    };
+
+    resolveIdentity();
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken, isLoaded, isSignedIn]);
+
+  if (
+    displayState === "loading" ||
+    displayState === "invitation" ||
+    displayState === "not-farmer" ||
+    displayState === "error"
+  ) {
+    return (
+      <FarmerInvitationState
+        displayState={displayState}
+        message={accessMessage}
+      />
+    );
+  }
 
   const headline = isInviteFlow
     ? "Your BreedSmart account is ready"
@@ -119,11 +192,17 @@ export default function DownloadApp() {
               className="mt-8 grid max-w-xl gap-4 rounded-4xl border border-emerald-900/10 bg-white/85 p-4 shadow-xl shadow-emerald-900/10 backdrop-blur sm:grid-cols-[148px_1fr]"
             >
               <div className="rounded-3xl border border-emerald-900/10 bg-white p-3 shadow-sm">
-                <img
-                  src={QR_URL}
-                  alt="QR code to download the BreedSmart APK"
-                  className="aspect-square w-full rounded-2xl object-contain"
-                />
+                {QR_URL ? (
+                  <img
+                    src={QR_URL}
+                    alt="QR code to download the BreedSmart APK"
+                    className="aspect-square w-full rounded-2xl object-contain"
+                  />
+                ) : (
+                  <div className="flex aspect-square items-center justify-center rounded-2xl bg-slate-50 p-4 text-center text-xs font-bold text-slate-500">
+                    Download link not configured
+                  </div>
+                )}
               </div>
               <div className="flex flex-col justify-center">
                 <p className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
@@ -133,14 +212,20 @@ export default function DownloadApp() {
                   Use your phone camera to scan the QR code, or tap the download
                   button to get the Android APK.
                 </p>
-                <a
-                  href={APK_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-4 inline-flex h-14 items-center justify-center gap-3 rounded-full bg-emerald-700 px-6 text-sm font-black uppercase tracking-wider text-white shadow-xl shadow-emerald-900/20 transition hover:-translate-y-0.5 hover:bg-emerald-800"
-                >
-                  <Download size={19} /> Download APK
-                </a>
+                {APK_URL ? (
+                  <a
+                    href={APK_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex h-14 items-center justify-center gap-3 rounded-full bg-emerald-700 px-6 text-sm font-black uppercase tracking-wider text-white shadow-xl shadow-emerald-900/20 transition hover:-translate-y-0.5 hover:bg-emerald-800"
+                  >
+                    <Download size={19} /> Download APK
+                  </a>
+                ) : (
+                  <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+                    Ask your BreedSmart administrator for the current app build.
+                  </p>
+                )}
               </div>
             </motion.div>
 
@@ -223,6 +308,78 @@ export default function DownloadApp() {
           </motion.div>
         </section>
       </div>
+    </main>
+  );
+}
+
+function FarmerInvitationState({ displayState, message }) {
+  const showAccountMenu =
+    displayState === "not-farmer" || displayState === "error";
+  const title =
+    displayState === "invitation"
+      ? "Complete your Farmer invitation"
+      : displayState === "not-farmer"
+        ? "Farmer account required"
+        : displayState === "error"
+          ? "We could not confirm your account"
+          : "Confirming your BreedSmart account";
+  const intro =
+    displayState === "invitation"
+      ? "Create your account to continue to BreedSmart Mobile."
+      : "Please wait while BreedSmart securely checks your account.";
+
+  return (
+    <main className="min-h-dvh bg-base-200 px-4 py-8 text-base-content sm:px-6">
+      <div className="mx-auto flex max-w-2xl justify-end pb-4">
+        {showAccountMenu && <UserButton afterSignOutUrl="/" />}
+      </div>
+
+      <section className="card card-border mx-auto max-w-2xl bg-base-100 shadow-xl">
+        <div className="card-body gap-6 p-6 sm:p-10">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-base-200 text-base-content">
+            <Sprout aria-hidden="true" size={24} />
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-base-content/60">
+              BreedSmart Farmer onboarding
+            </p>
+            <h1 className="card-title mt-2 text-3xl">{title}</h1>
+            <p className="mt-3 text-base text-base-content/70">
+              {intro}
+            </p>
+          </div>
+
+          {displayState === "loading" && (
+            <div className="flex items-center gap-3" role="status">
+              <span className="loading loading-spinner loading-md" />
+              <span>Confirming your account…</span>
+            </div>
+          )}
+
+          {displayState === "invitation" && (
+            <div className="flex flex-col items-center gap-4">
+              <div className="alert alert-info alert-soft w-full">
+                <span>
+                  Complete the invitation using the email address that received
+                  it.
+                </span>
+              </div>
+              <SignUp
+                routing="virtual"
+                forceRedirectUrl="/download-app"
+                signInForceRedirectUrl="/download-app"
+              />
+            </div>
+          )}
+
+          {(displayState === "not-farmer" || displayState === "error") && (
+            <div className="alert alert-warning alert-soft" role="alert">
+              <span>{message}</span>
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

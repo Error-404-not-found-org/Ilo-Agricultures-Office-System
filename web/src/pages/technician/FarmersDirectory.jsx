@@ -53,6 +53,7 @@ const cleanLocationPart = (value) => {
 };
 
 const getAppStatus = (farmer) => {
+  if (farmer.appAccountStatus) return farmer.appAccountStatus;
   const realClerkAccount = farmer.clerkId && !String(farmer.clerkId).startsWith("manual_");
   if (farmer.profileClaimStatus === "blocked") return "blocked";
   if (farmer.profileClaimStatus === "claimed" || realClerkAccount) return "connected";

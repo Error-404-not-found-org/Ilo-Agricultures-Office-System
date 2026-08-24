@@ -14,6 +14,7 @@ import ProtectedTechnicianRoute from "./components/layout/ProtectedTechnicianRou
 // Public Pages
 import Landing from "./pages/Landing";
 import DownloadApp from "./pages/DownloadApp";
+const TechnicianWelcome = lazy(() => import("./pages/TechnicianWelcome"));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
@@ -155,6 +156,7 @@ function App() {
             {/* Public Landing Page */}
             <Route path="/" element={<Landing />} />
             <Route path="/download-app" element={<DownloadApp />} />
+            <Route path="/technician/welcome" element={<TechnicianWelcome />} />
 
             {/* Protected Admin Routes */}
             <Route

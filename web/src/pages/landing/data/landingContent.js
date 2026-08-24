@@ -1,9 +1,14 @@
+import {
+  APP_DOWNLOAD_URL,
+  getDownloadQrUrl,
+} from "../../../config/appDistribution";
+
 export const HERO_BG = "https://res.cloudinary.com/donhulins/image/upload/v1785461083/ChatGPT_Image_Jul_31_2026_09_22_42_AM_qs3wcd.png";
 export const OTON_LOGO = "https://res.cloudinary.com/donhulins/image/upload/v1780316603/OtonImg2_fwxtsh.png";
 export const MUNICIPAL_SEAL = "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
 export const MOCKUP_IMG = "https://res.cloudinary.com/donhulins/image/upload/v1780318231/mockup_1.png";
-export const APK_URL = "https://expo.dev/accounts/johndong28/projects/mobile/builds/3fdaa274-212f-435e-9ceb-626608c66ebe";
-export const QR_URL = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(APK_URL)}`;
+export const APK_URL = APP_DOWNLOAD_URL;
+export const QR_URL = getDownloadQrUrl(APP_DOWNLOAD_URL);
 
 export const NAV_LINKS = [
   { label: "Home", href: "#home" },
