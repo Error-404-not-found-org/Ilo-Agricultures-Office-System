@@ -59,51 +59,57 @@ export const idempotencyMiddleware = async (req, res, next) => {
 
     if (!isNewRecord) {
       // Handle existing record
-      if (record.status === "resolved") {
-        // Validate request hashes
-        if (record.requestHash !== requestHash) {
-          return res.status(400).json({
-            message: "Idempotency key body mismatch. The request payload differs from the initial request.",
-            code: "IDEMPOTENCY_BODY_MISMATCH",
-          });
-        }
+      if (record.requestHash !== requestHash) {
+        return res.status(400).json({
+          message: "Idempotency key body mismatch. The request payload differs from the initial request.",
+          code: "IDEMPOTENCY_BODY_MISMATCH",
+        });
+      }
 
+      if (record.status === "resolved") {
         // Return cached response
         return res.status(record.responseStatus).json(record.responseBody);
       }
 
       if (record.status === "pending") {
-      // Handle stale pending records (older than 30s)
-      const STALE_TIMEOUT_MS = 30000;
-      const isStale = (Date.now() - new Date(record.createdAt).getTime()) > STALE_TIMEOUT_MS;
+        // Handle stale pending records (older than 30s)
+        const STALE_TIMEOUT_MS = 30000;
+        const isStale =
+          Date.now() - new Date(record.createdAt).getTime() > STALE_TIMEOUT_MS;
 
-      if (isStale) {
-        // Try to atomically reclaim the stale record by updating createdAt and requestHash
-        const updated = await Idempotency.findOneAndUpdate(
-          { _id: record._id, status: "pending" },
-          { $set: { createdAt: new Date(), requestHash } },
-          { new: true }
-        );
+        if (isStale) {
+          // Compare-and-swap the exact stale claim. Only one retry can win.
+          const staleCreatedAt = record.createdAt;
+          const updated = await Idempotency.findOneAndUpdate(
+            {
+              _id: record._id,
+              status: "pending",
+              createdAt: staleCreatedAt,
+              requestHash,
+            },
+            { $set: { createdAt: new Date() } },
+            { new: true },
+          );
 
-        if (updated) {
-          record = updated;
+          if (updated) {
+            record = updated;
+          } else {
+            // Another retry already reclaimed this operation.
+            return res.status(409).json({
+              message: "Request is currently being processed. Please retry shortly.",
+              code: "IDEMPOTENCY_IN_PROGRESS",
+              retryable: true,
+            });
+          }
         } else {
-          // If update fails (someone else updated it first), return retryable response
+          // Return a retryable contract for requests still processing
           return res.status(409).json({
             message: "Request is currently being processed. Please retry shortly.",
             code: "IDEMPOTENCY_IN_PROGRESS",
             retryable: true,
           });
         }
-      } else {
-        // Return a retryable contract for requests still processing
-        return res.status(409).json({
-          message: "Request is currently being processed. Please retry shortly.",
-          code: "IDEMPOTENCY_IN_PROGRESS",
-          retryable: true,
-        });
       }
-    }
     }
 
     // Intercept response methods to save outcomes

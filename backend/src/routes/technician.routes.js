@@ -20,7 +20,6 @@ import {
   walkInLivestock,
   toggleFarmerVerification,
   getTechnicianAnalytics,
-  deleteAnimal,
   deletePregnancyCheck,
   deleteCalving,
   correctPregnancyCheck,
@@ -38,6 +37,7 @@ import {
   updateDispatchStatus,
   previousInsemination,
 } from "../controllers/technician.controllers.js";
+import { deleteAnimal as archiveAnimal } from "../controllers/animals.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import {
   getCleanupSurvey,
@@ -94,7 +94,8 @@ router.post(
 );
 router.post("/record-calving", recordCalving);
 router.patch("/farmers/:id/verify", toggleFarmerVerification);
-router.delete("/animals/:id", deleteAnimal);
+// Compatibility alias: legacy Technician clients share the canonical archive workflow.
+router.delete("/animals/:id", archiveAnimal);
 router.delete(
   "/pregnancy-checks/:id",
   requireRole(["admin"]),

@@ -1,7 +1,7 @@
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
-import { notifyUser } from "../services/notification-delivery.service.js";
+import { notifyUserBestEffort } from "../services/notification-delivery.service.js";
 import { getPagination } from "../utils/pagination.js";
 import { sendList } from "../utils/api-response.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
@@ -72,7 +72,7 @@ export const addMedicalRecord = async (req, res) => {
     const farmer = await User.findById(animal.farmerId);
 
     // Notify the farmer in-app and by push when a device is registered.
-    await notifyUser({
+    await notifyUserBestEffort({
       recipient: farmer,
       recipientId: animal.farmerId,
       senderId: req.user._id,
@@ -80,6 +80,7 @@ export const addMedicalRecord = async (req, res) => {
       relatedId: animal._id,
       category: "health",
       eventType: "medical_record_added",
+      dedupeKey: `medical-record-added:${record._id}:${animal.farmerId}`,
       linkType: "animal",
       title: `New ${type} Recorded`,
       message: `A new ${type.toLowerCase()} record has been added to the profile of ${animal.earTag || animal.animalId}.`,
@@ -89,7 +90,7 @@ export const addMedicalRecord = async (req, res) => {
         recordId: record._id,
         recordType: type,
       },
-    });
+    }, "addMedicalRecord");
 
     // Send a withdrawal period alert if active
     if (withdrawalDays && Number(withdrawalDays) > 0 && withdrawalEndDate) {
@@ -101,7 +102,7 @@ export const addMedicalRecord = async (req, res) => {
       const title = "Active withdrawal warning";
       const body = `Meat and milk from animal Tag #${animal.earTag || animal.animalId} are unsafe for consumption or sale until ${formattedDate} due to recent treatment with ${details?.medicineName || 'medicine'}.`;
 
-      await notifyUser({
+      await notifyUserBestEffort({
         recipient: farmer,
         recipientId: animal.farmerId,
         senderId: req.user._id,
@@ -109,6 +110,7 @@ export const addMedicalRecord = async (req, res) => {
         relatedId: animal._id,
         category: "health",
         eventType: "withdrawal_safety_active",
+        dedupeKey: `medical-withdrawal-active:${record._id}:${animal.farmerId}`,
         linkType: "animal",
         title,
         message: body,
@@ -119,7 +121,7 @@ export const addMedicalRecord = async (req, res) => {
           withdrawalEndDate,
           medicineName: details?.medicineName || "medicine",
         },
-      });
+      }, "addMedicalRecordWithdrawal");
     }
 
     res.status(201).json({ message: "Medical record added successfully", record });

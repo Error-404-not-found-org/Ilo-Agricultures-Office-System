@@ -23,6 +23,10 @@ import {
 } from "../services/calving.service.js";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
+import {
+  archiveAnimalLifecycle,
+  restoreAnimalLifecycle,
+} from "../services/animal-archive.service.js";
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -563,67 +567,29 @@ export const updateAnimalWizard = async (req, res) => {
 
 export const deleteAnimal = async (req, res) => {
   try {
-    const { id } = req.params;
-    const animal = await Animal.findOne({ _id: id, deletedAt: null });
-
-    if (!animal) {
-      return res.status(404).json({ message: "Animal not found" });
-    }
-
-    // Permission Check: Only the owner (farmer) or an admin/tech can delete.
-    if (
-      req.user.role === "farmer" &&
-      animal.farmerId.toString() !== req.user._id.toString()
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to delete this animal" });
-    }
-
-    const deleteTime = new Date();
-    // Cleanup related records - Soft Delete
-    await Promise.all([
-      Insemination.updateMany(
-        { animalId: id },
-        { $set: { deletedAt: deleteTime }, $unset: { activeRequestKey: 1 } },
-      ),
-      Calving.updateMany({ animalId: id }, { $set: { deletedAt: deleteTime } }),
-      HealthRequest.updateMany(
-        { animalId: id },
-        { $set: { deletedAt: deleteTime }, $unset: { activeCaseKey: 1 } },
-      ),
-      Pregnancy.updateMany(
-        { animalId: id },
-        { $set: { deletedAt: deleteTime } },
-      ),
-    ]);
-
-    // Cleanup Cloudinary Image
-    if (animal.imageUrl && animal.imageUrl.includes("cloudinary.com")) {
-      try {
-        const parts = animal.imageUrl.split("/");
-        const filename = parts[parts.length - 1]; // e.g. "abcd123.jpg"
-        const publicIdWithFolder = `livestock_profiles/${filename.split(".")[0]}`;
-        await cloudinary.uploader.destroy(publicIdWithFolder);
-      } catch (cloudinaryError) {
-        console.error("[Cloudinary Cleanup Error]", cloudinaryError);
-      }
-    }
-
-    animal.deletedAt = deleteTime;
-    await animal.save();
+    const animal = await archiveAnimalLifecycle({
+      animalId: req.params.id,
+      actor: req.user,
+    });
 
     req.app.get("io").emit("dashboardUpdate", {
       type: "ANIMAL_DELETED",
-      animalId: id,
+      animalId: animal._id,
     });
 
     res
       .status(200)
-      .json({ message: "Animal and related records deleted successfully" });
+      .json({ message: "Animal and related records archived successfully" });
   } catch (error) {
     console.error("Delete Animal Error:", error);
-    res.status(500).json({ message: "Failed to delete animal" });
+    const transactionUnavailable = /Transaction numbers are only allowed|replica set|mongos/i.test(error.message);
+    res.status(transactionUnavailable ? 503 : error.status || 500).json({
+      message: transactionUnavailable
+        ? "This operation requires a transaction-capable database."
+        : error.message || "Failed to archive animal",
+      code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+      details: error.details,
+    });
   }
 };
 
@@ -838,47 +804,14 @@ export const getArchivedAnimals = async (req, res) => {
 
 export const restoreAnimal = async (req, res) => {
   try {
-    const { id } = req.params;
-    const animal = await Animal.findById(id);
-
-    if (!animal) {
-      return res.status(404).json({ message: "Animal not found" });
-    }
-
-    if (
-      req.user.role === "farmer" &&
-      animal.farmerId.toString() !== req.user._id.toString()
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to restore this animal" });
-    }
-
-    await Promise.all([
-      Insemination.updateMany(
-        { animalId: id, deletedAt: { $ne: null } },
-        { $set: { deletedAt: null } },
-      ),
-      Calving.updateMany(
-        { animalId: id, deletedAt: { $ne: null } },
-        { $set: { deletedAt: null } },
-      ),
-      HealthRequest.updateMany(
-        { animalId: id, deletedAt: { $ne: null } },
-        { $set: { deletedAt: null } },
-      ),
-      Pregnancy.updateMany(
-        { animalId: id, deletedAt: { $ne: null } },
-        { $set: { deletedAt: null } },
-      ),
-    ]);
-
-    animal.deletedAt = null;
-    await animal.save();
+    const animal = await restoreAnimalLifecycle({
+      animalId: req.params.id,
+      actor: req.user,
+    });
 
     req.app.get("io").emit("dashboardUpdate", {
       type: "ANIMAL_RESTORED",
-      animalId: id,
+      animalId: animal._id,
     });
 
     res.status(200).json({
@@ -887,8 +820,13 @@ export const restoreAnimal = async (req, res) => {
     });
   } catch (error) {
     console.error("[restoreAnimal ERROR]", error);
-    res
-      .status(500)
-      .json({ message: "Failed to restore animal", error: error.message });
+    const transactionUnavailable = /Transaction numbers are only allowed|replica set|mongos/i.test(error.message);
+    res.status(transactionUnavailable ? 503 : error.status || 500).json({
+      message: transactionUnavailable
+        ? "This operation requires a transaction-capable database."
+        : error.message || "Failed to restore animal",
+      code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+      details: error.details,
+    });
   }
 };

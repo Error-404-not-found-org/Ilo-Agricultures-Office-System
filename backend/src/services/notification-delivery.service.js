@@ -127,3 +127,17 @@ export const notifyUser = async ({
 
   return notification;
 };
+
+export const notifyUserBestEffort = async (payload, context = "notification") => {
+  try {
+    return await notifyUser(payload);
+  } catch (error) {
+    console.error(`[${context}] Post-commit notification failed`, {
+      message: error?.message || String(error),
+      recipientId: payload?.recipientId || payload?.recipient?._id || null,
+      relatedId: payload?.relatedId || null,
+      eventType: payload?.eventType || null,
+    });
+    return null;
+  }
+};

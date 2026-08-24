@@ -2,6 +2,8 @@ export const HEAT_RETURN_MONITORING_POLICY = {
   observationWindowStartDays: 18,
   expectedEstrousCycleDays: 21,
   technicianFollowUpDays: 25,
+  pregnancyDiagnosisDueDays: 60,
+  pregnancyDiagnosisOverdueDays: 75,
 };
 
 export const getHeatReturnMonitoringDates = (inseminationDate) => {
@@ -21,10 +23,24 @@ export const getHeatReturnMonitoringDates = (inseminationDate) => {
     technicianFollowUpDate.getUTCDate() + HEAT_RETURN_MONITORING_POLICY.technicianFollowUpDays
   );
 
+  const pregnancyDiagnosisDueDate = new Date(start);
+  pregnancyDiagnosisDueDate.setUTCDate(
+    pregnancyDiagnosisDueDate.getUTCDate() +
+      HEAT_RETURN_MONITORING_POLICY.pregnancyDiagnosisDueDays,
+  );
+
+  const pregnancyDiagnosisOverdueDate = new Date(start);
+  pregnancyDiagnosisOverdueDate.setUTCDate(
+    pregnancyDiagnosisOverdueDate.getUTCDate() +
+      HEAT_RETURN_MONITORING_POLICY.pregnancyDiagnosisOverdueDays,
+  );
+
   return {
     observationWindowStartDate,
     expectedEstrousCycleDate,
     technicianFollowUpDate,
+    pregnancyDiagnosisDueDate,
+    pregnancyDiagnosisOverdueDate,
   };
 };
 

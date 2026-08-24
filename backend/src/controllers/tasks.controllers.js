@@ -187,26 +187,54 @@ export const getTasks = async (req, res) => {
 
     const tasks = await taskQuery;
     const policyResolution = await loadPregnancyConfirmationPolicy();
-    const tasksWithReadiness = await Promise.all(
-      tasks.map(async (task) => {
-        const taskObj = typeof task.toObject === "function" ? task.toObject() : task;
-        if (task.taskType !== "PD") return taskObj;
-
-        const inseminationQuery = task.metadata?.inseminationId
-          ? { _id: task.metadata.inseminationId, deletedAt: null }
-          : { verificationTaskId: task._id, deletedAt: null };
-        const insemination = await Insemination.findOne(inseminationQuery);
-        return {
-          ...taskObj,
-          metadata: withNormalizedPregnancyTaskMetadata(taskObj),
-          pregnancyReadiness: getPregnancyCheckReadiness({
-            insemination,
-            policy: policyResolution.policy,
-            species: taskObj.animalIds?.[0]?.species,
-          }),
-        };
-      }),
+    const pregnancyTasks = tasks.filter((task) => task.taskType === "PD");
+    const linkedInseminationIds = pregnancyTasks
+      .map((task) => task.metadata?.inseminationId)
+      .filter(Boolean);
+    const verificationTaskIds = pregnancyTasks
+      .filter((task) => !task.metadata?.inseminationId)
+      .map((task) => task._id)
+      .filter(Boolean);
+    const inseminationFilters = [
+      ...(linkedInseminationIds.length
+        ? [{ _id: { $in: linkedInseminationIds } }]
+        : []),
+      ...(verificationTaskIds.length
+        ? [{ verificationTaskId: { $in: verificationTaskIds } }]
+        : []),
+    ];
+    const linkedInseminations = inseminationFilters.length
+      ? await Insemination.find({
+          deletedAt: null,
+          $or: inseminationFilters,
+        }).lean()
+      : [];
+    const inseminationById = new Map(
+      linkedInseminations.map((item) => [String(item._id), item]),
     );
+    const inseminationByVerificationTaskId = new Map(
+      linkedInseminations
+        .filter((item) => item.verificationTaskId)
+        .map((item) => [String(item.verificationTaskId), item]),
+    );
+
+    const tasksWithReadiness = tasks.map((task) => {
+      const taskObj = typeof task.toObject === "function" ? task.toObject() : task;
+      if (task.taskType !== "PD") return taskObj;
+
+      const insemination = task.metadata?.inseminationId
+        ? inseminationById.get(String(task.metadata.inseminationId))
+        : inseminationByVerificationTaskId.get(String(task._id));
+      return {
+        ...taskObj,
+        metadata: withNormalizedPregnancyTaskMetadata(taskObj),
+        pregnancyReadiness: getPregnancyCheckReadiness({
+          insemination,
+          policy: policyResolution.policy,
+          species: taskObj.animalIds?.[0]?.species,
+        }),
+      };
+    });
 
     res.status(200).json(tasksWithReadiness);
   } catch (error) {

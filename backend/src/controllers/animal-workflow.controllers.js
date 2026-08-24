@@ -68,6 +68,14 @@ const recordMatchesSearch = (record, search) => {
     .some((value) => String(value).toLowerCase().includes(search));
 };
 
+const executeOfficialRecordQuery = async (query, sort, windowLimit) => {
+  let boundedQuery = query.sort(sort);
+  if (windowLimit && typeof boundedQuery.limit === "function") {
+    boundedQuery = boundedQuery.limit(windowLimit);
+  }
+  return boundedQuery.lean();
+};
+
 const OFFICIAL_RECORD_KINDS = new Set([
   "insemination",
   "pregnancy",
@@ -515,63 +523,87 @@ export const getOfficialRecords = async (req, res) => {
     const includeNotes = ["all", "note", "notes", "general note"].includes(
       requestedType,
     );
+    const windowLimit = search ? null : pageInfo.skip + pageInfo.limit;
+    const inseminationFilter = {
+      ...scope,
+      status: "done",
+      deletedAt: null,
+      ...(hasDateRange ? { inseminationDate: dateRange } : {}),
+    };
+    const pregnancyFilter = {
+      ...scope,
+      deletedAt: null,
+      ...(hasDateRange ? { "pregnancyDiagnosis.date": dateRange } : {}),
+    };
+    const calvingFilter = {
+      ...scope,
+      deletedAt: null,
+      ...(hasDateRange ? { date: dateRange } : {}),
+    };
+    const medicalRecordFilter = {
+      ...scope,
+      ...(hasDateRange ? { date: dateRange } : {}),
+      ...(!includeHealth && includeNotes
+        ? { type: "General Note" }
+        : includeHealth && !includeNotes
+          ? { type: { $ne: "General Note" } }
+          : {}),
+    };
 
-    const [inseminations, pregnancies, calvings, medicalRecords] =
+    const [
+      inseminations,
+      pregnancies,
+      calvings,
+      medicalRecords,
+      inseminationCount,
+      pregnancyCount,
+      calvingCount,
+      medicalRecordCount,
+    ] =
       await Promise.all([
         includeAI
-          ? Insemination.find({
-              ...scope,
-              status: "done",
-              deletedAt: null,
-              ...(hasDateRange ? { inseminationDate: dateRange } : {}),
-            })
+          ? executeOfficialRecordQuery(
+              Insemination.find(inseminationFilter)
               .populate(
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
               .populate("farmerId", "name phoneNumber address")
-              .populate("technicianId approvedBy", "name role")
-              .lean()
+              .populate("technicianId approvedBy", "name role"),
+              { inseminationDate: -1, createdAt: -1 },
+              windowLimit,
+            )
           : [],
         includePregnancy
-          ? Pregnancy.find({
-              ...scope,
-              deletedAt: null,
-              ...(hasDateRange ? { "pregnancyDiagnosis.date": dateRange } : {}),
-            })
+          ? executeOfficialRecordQuery(
+              Pregnancy.find(pregnancyFilter)
               .populate(
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
               .populate("farmerId", "name phoneNumber address")
               .populate("inseminationId", "attemptNumber sireBreed sireCode")
-              .populate("confirmation.confirmedBy", "name role")
-              .lean()
+              .populate("confirmation.confirmedBy", "name role"),
+              { "pregnancyDiagnosis.date": -1, createdAt: -1 },
+              windowLimit,
+            )
           : [],
         includeCalving
-          ? Calving.find({
-              ...scope,
-              deletedAt: null,
-              ...(hasDateRange ? { date: dateRange } : {}),
-            })
+          ? executeOfficialRecordQuery(
+              Calving.find(calvingFilter)
               .populate(
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
               .populate("farmerId", "name phoneNumber address")
-              .populate("technicianId", "name role")
-              .lean()
+              .populate("technicianId", "name role"),
+              { date: -1, createdAt: -1 },
+              windowLimit,
+            )
           : [],
         includeHealth || includeNotes
-          ? MedicalRecord.find({
-              ...scope,
-              ...(hasDateRange ? { date: dateRange } : {}),
-              ...(!includeHealth && includeNotes
-                ? { type: "General Note" }
-                : includeHealth && !includeNotes
-                  ? { type: { $ne: "General Note" } }
-                  : {}),
-            })
+          ? executeOfficialRecordQuery(
+              MedicalRecord.find(medicalRecordFilter)
               .populate(
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
@@ -581,9 +613,21 @@ export const getOfficialRecords = async (req, res) => {
               .populate(
                 "healthRequestId",
                 "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes",
-              )
-              .lean()
+              ),
+              { date: -1, createdAt: -1 },
+              windowLimit,
+            )
           : [],
+        !search && includeAI
+          ? Insemination.countDocuments(inseminationFilter)
+          : 0,
+        !search && includePregnancy
+          ? Pregnancy.countDocuments(pregnancyFilter)
+          : 0,
+        !search && includeCalving ? Calving.countDocuments(calvingFilter) : 0,
+        !search && (includeHealth || includeNotes)
+          ? MedicalRecord.countDocuments(medicalRecordFilter)
+          : 0,
       ]);
 
     const records = [
@@ -659,7 +703,17 @@ export const getOfficialRecords = async (req, res) => {
           new Date(a.recordDate || a.enteredAt || 0),
       );
 
-    return sendList(res, paginateArray(records, pageInfo));
+    if (search) {
+      return sendList(res, paginateArray(records, pageInfo));
+    }
+
+    return sendList(res, {
+      data: records.slice(pageInfo.skip, pageInfo.skip + pageInfo.limit),
+      page: pageInfo.page,
+      limit: pageInfo.limit,
+      total:
+        inseminationCount + pregnancyCount + calvingCount + medicalRecordCount,
+    });
   } catch (error) {
     return res.status(error.status || 500).json({
       message: error.message || "Failed to load official records.",
