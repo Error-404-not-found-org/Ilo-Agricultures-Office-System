@@ -7,6 +7,10 @@ import { SocketProvider } from "./contexts/SocketContext.jsx";
 import "./index.css";
 import App from "./App.jsx";
 import AppToaster from "./components/ui/AppToaster.jsx";
+import {
+  clerkAppearance,
+  clerkLocalization,
+} from "./config/clerkAppearance.js";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -18,7 +22,11 @@ const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      appearance={clerkAppearance}
+      localization={clerkLocalization}
+    >
       <SocketProvider>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>

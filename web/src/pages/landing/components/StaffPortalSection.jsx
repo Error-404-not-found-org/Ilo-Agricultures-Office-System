@@ -1,5 +1,5 @@
-import { SignInButton } from "@clerk/clerk-react";
-import { ShieldCheck, CheckCircle, Lock } from "lucide-react";
+import { ShieldCheck, CheckCircle } from "lucide-react";
+import StaffSignInButton from "../../../components/auth/StaffSignInButton";
 import { TECH_CAPABILITIES, ADMIN_CAPABILITIES } from "../data/landingContent";
 
 export default function StaffPortalSection() {
@@ -68,12 +68,7 @@ export default function StaffPortalSection() {
 
         {/* Action Row */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-slate-200/60">
-          <SignInButton mode="modal">
-            <button className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full border border-[#074033] bg-[#074033] hover:bg-[#052E24] text-white text-sm font-bold transition-all shadow-xs cursor-pointer">
-              <Lock size={16} />
-              Staff Sign In
-            </button>
-          </SignInButton>
+          <StaffSignInButton variant="primary" />
 
           <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             <ShieldCheck size={14} className="text-[#074033]" />

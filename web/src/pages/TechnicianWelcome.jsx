@@ -1,26 +1,45 @@
-import { SignInButton, SignUp, UserButton, useAuth } from "@clerk/clerk-react";
-import { CheckCircle2, Download, ExternalLink, Smartphone } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-
-import axiosInstance from "../lib/axios";
 import {
-  APP_DEEP_LINK_URL,
-  APP_DOWNLOAD_URL,
-} from "../config/appDistribution";
+  SignIn,
+  SignUp,
+  UserButton,
+  useAuth,
+  useClerk,
+} from "@clerk/clerk-react";
+import {
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  Smartphone,
+  TriangleAlert,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+
+import AuthShell from "../components/auth/AuthShell";
+import {
+  clerkEmbeddedAppearance,
+  clerkStaffSignInAppearance,
+} from "../config/clerkAppearance";
+import axiosInstance from "../lib/axios";
+import { APP_DEEP_LINK_URL, APP_DOWNLOAD_URL } from "../config/appDistribution";
 import { resolveTechnicianWelcomeAccess } from "../config/onboardingBridge";
+import { getStaffAccessNavigationState } from "../config/staffAccess";
 
 const hasClerkInvitationTicket = (search) =>
   Boolean(new URLSearchParams(search).get("__clerk_ticket"));
 
 export default function TechnicianWelcome() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
   const location = useLocation();
+  const navigate = useNavigate();
   const [accessState, setAccessState] = useState("loading");
   const [message, setMessage] = useState("");
   const hasInvitationTicket = hasClerkInvitationTicket(location.search);
   const displayState = !isLoaded
     ? "loading"
+    : accessState === "rejecting"
+      ? "rejecting"
     : !isSignedIn
       ? hasInvitationTicket
         ? "invitation"
@@ -32,6 +51,25 @@ export default function TechnicianWelcome() {
 
     if (!isLoaded || !isSignedIn) return () => {};
 
+    const rejectStaffAccess = async (role) => {
+      const navigationState = getStaffAccessNavigationState(role);
+      setAccessState("rejecting");
+
+      try {
+        await signOut(() => {
+          navigate("/", { replace: true, state: navigationState });
+        });
+      } catch {
+        if (cancelled) return;
+        setAccessState("error");
+        setMessage(
+          "We could not sign out this account. Please try signing out again.",
+        );
+        return;
+      }
+
+    };
+
     const resolveIdentity = async () => {
       try {
         const token = await getToken();
@@ -42,20 +80,22 @@ export default function TechnicianWelcome() {
         );
         if (cancelled) return;
 
-        const nextAccess = resolveTechnicianWelcomeAccess(response.data?.user);
-        setAccessState(nextAccess);
-        if (nextAccess !== "technician") {
-          setMessage(
-            "This signed-in account is not an approved Technician account.",
-          );
+        const role = response.data?.user?.role;
+        if (role === "admin") {
+          navigate("/admin/dashboard", { replace: true });
+          return;
         }
-      } catch (error) {
+
+        const nextAccess = resolveTechnicianWelcomeAccess(response.data?.user);
+        if (nextAccess === "technician") {
+          setAccessState(nextAccess);
+          return;
+        }
+
+        await rejectStaffAccess(role);
+      } catch {
         if (cancelled) return;
-        setAccessState("error");
-        setMessage(
-          error.response?.data?.message ||
-            "We could not confirm this account. Please try signing in again.",
-        );
+        await rejectStaffAccess();
       }
     };
 
@@ -63,110 +103,145 @@ export default function TechnicianWelcome() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [getToken, isLoaded, isSignedIn, navigate, signOut]);
+
+  if (displayState === "signed-out") {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title="Staff Sign In"
+        description="Sign in with your authorized BreedSmart staff account to access the staff workspace."
+        helper="Need access? Contact your BreedSmart administrator."
+      >
+        <SignIn
+          routing="virtual"
+          forceRedirectUrl="/technician/welcome"
+          withSignUp={false}
+          appearance={clerkStaffSignInAppearance}
+        />
+      </AuthShell>
+    );
+  }
+
+  if (displayState === "invitation") {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title="Complete your Technician account"
+        description="You've been invited to join BreedSmart. Create your account using the same email address that received the invitation."
+        helper="After setup, you can use the BreedSmart mobile app or continue on the web."
+      >
+        <SignUp
+          routing="virtual"
+          forceRedirectUrl="/technician/welcome"
+          signInForceRedirectUrl="/technician/welcome"
+          appearance={clerkEmbeddedAppearance}
+        />
+      </AuthShell>
+    );
+  }
+
+  if (displayState === "loading" || displayState === "rejecting") {
+    const isRejecting = displayState === "rejecting";
+
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title={isRejecting ? "Signing you out" : "Confirming your account"}
+        description={
+          isRejecting
+            ? "This account cannot access the staff workspace."
+            : "BreedSmart is securely checking your staff access."
+        }
+      >
+        <div
+          className="flex items-center justify-center gap-3 rounded-xl bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-600"
+          role="status"
+        >
+          <span className="loading loading-dots loading-sm text-[#17663a]" />
+          <span>
+            {isRejecting ? "Signing you out…" : "Confirming your account"}
+          </span>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (displayState === "not-technician" || displayState === "error") {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title={
+          displayState === "not-technician"
+            ? "This account cannot access the staff workspace"
+            : "We could not confirm your account"
+        }
+        description={
+          displayState === "not-technician"
+            ? "You're currently signed in with a different BreedSmart role."
+            : "Your staff access could not be verified. Review the message below, then sign in again if needed."
+        }
+        accountAction={<UserButton afterSignOutUrl="/" />}
+      >
+        <div
+          className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-5 text-amber-950"
+          role="alert"
+        >
+          <TriangleAlert
+            className="mt-0.5 h-5 w-5 shrink-0"
+            aria-hidden="true"
+          />
+          <span>{message}</span>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
-    <main className="min-h-dvh bg-base-200 px-4 py-8 text-base-content sm:px-6">
-      <div className="mx-auto flex max-w-2xl justify-end pb-4">
-        {isSignedIn && <UserButton afterSignOutUrl="/" />}
+    <AuthShell
+      context="BreedSmart Staff"
+      title="Your Technician account is ready"
+      description="Your account has been confirmed. You can now open BreedSmart Mobile or continue to the staff workspace."
+      helper={
+        APP_DOWNLOAD_URL
+          ? "Use the same BreedSmart account when signing in on mobile or web."
+          : "If the app is not installed, ask your BreedSmart administrator for the current approved build."
+      }
+      accountAction={<UserButton afterSignOutUrl="/" />}
+    >
+      <div className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+        <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+        <span>Technician access confirmed</span>
       </div>
 
-      <section className="card card-border mx-auto max-w-2xl bg-base-100 shadow-xl">
-        <div className="card-body gap-6 p-6 sm:p-10">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-base-200 text-base-content">
-            <Smartphone aria-hidden="true" size={24} />
-          </div>
+      <div className="grid gap-3">
+        <a
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17663a] px-5 font-bold text-white transition-colors hover:bg-[#12512e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17663a] focus-visible:ring-offset-2"
+          href={APP_DEEP_LINK_URL}
+        >
+          <Smartphone className="h-5 w-5" aria-hidden="true" />
+          Open BreedSmart App
+        </a>
+        <Link
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 font-bold text-slate-800 transition-colors hover:border-[#17663a] hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17663a] focus-visible:ring-offset-2"
+          to="/technician/dashboard"
+        >
+          Continue on Web
+          <ExternalLink className="h-[18px] w-[18px]" aria-hidden="true" />
+        </Link>
+      </div>
 
-          <div>
-            <p className="text-sm font-semibold text-base-content/60">
-              BreedSmart Technician onboarding
-            </p>
-            <h1 className="card-title mt-2 text-3xl">
-              Welcome to BreedSmart
-            </h1>
-          </div>
-
-          {displayState === "loading" && (
-            <div className="flex items-center gap-3" role="status">
-              <span className="loading loading-spinner loading-md" />
-              <span>Confirming your account…</span>
-            </div>
-          )}
-
-          {displayState === "signed-out" && (
-            <div className="alert alert-info alert-soft">
-              <span>
-                Sign in with the same email address that received the Technician
-                invitation.
-              </span>
-              <SignInButton mode="modal">
-                <button className="btn btn-sm">Sign in</button>
-              </SignInButton>
-            </div>
-          )}
-
-          {displayState === "invitation" && (
-            <div className="flex flex-col items-center gap-4">
-              <div className="alert alert-info alert-soft w-full">
-                <span>
-                  Complete your Technician invitation to create your account.
-                </span>
-              </div>
-              <SignUp
-                routing="virtual"
-                forceRedirectUrl="/technician/welcome"
-                signInForceRedirectUrl="/technician/welcome"
-              />
-            </div>
-          )}
-
-          {(displayState === "not-technician" || displayState === "error") && (
-            <div className="alert alert-warning alert-soft" role="alert">
-              <span>{message}</span>
-            </div>
-          )}
-
-          {displayState === "technician" && (
-            <>
-              <div className="alert alert-success alert-soft">
-                <CheckCircle2 aria-hidden="true" size={20} />
-                <span>
-                  Your Technician account is confirmed. You can now open the
-                  mobile app or continue to the existing web workspace.
-                </span>
-              </div>
-
-              <div className="card-actions grid gap-3 sm:grid-cols-2">
-                <a className="btn btn-primary" href={APP_DEEP_LINK_URL}>
-                  <Smartphone aria-hidden="true" size={18} />
-                  Open BreedSmart App
-                </a>
-                <Link className="btn" to="/technician/dashboard">
-                  Continue on Web
-                  <ExternalLink aria-hidden="true" size={17} />
-                </Link>
-              </div>
-
-              {APP_DOWNLOAD_URL ? (
-                <a
-                  className="btn btn-outline"
-                  href={APP_DOWNLOAD_URL}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  <Download aria-hidden="true" size={18} />
-                  Download BreedSmart App
-                </a>
-              ) : (
-                <p className="text-sm text-base-content/65">
-                  If the app is not installed, ask your BreedSmart administrator
-                  for the current approved build.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-    </main>
+      {APP_DOWNLOAD_URL ? (
+        <a
+          className="mx-auto mt-5 flex w-fit items-center gap-2 rounded-lg px-2 py-1 text-sm font-semibold text-[#17663a] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17663a]"
+          href={APP_DOWNLOAD_URL}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          Download BreedSmart
+        </a>
+      ) : null}
+    </AuthShell>
   );
 }

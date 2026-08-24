@@ -1,5 +1,5 @@
-import { SignInButton } from "@clerk/clerk-react";
-import { OTON_LOGO, NAV_LINKS } from "../data/landingContent";
+import StaffSignInButton from "../../../components/auth/StaffSignInButton";
+import { BRAND_LOGO, OTON_LOGO, NAV_LINKS } from "../data/landingContent";
 
 export default function PublicFooter() {
   return (
@@ -10,9 +10,9 @@ export default function PublicFooter() {
           <div className="md:col-span-5 space-y-3">
             <div className="flex items-center gap-3">
               <img
-                src={OTON_LOGO}
-                alt="Oton Agriculture Logo"
-                className="w-8 h-8 object-contain"
+                src={BRAND_LOGO}
+                alt="BreedSmart"
+                className="w-10 h-10 object-contain"
                 width="32"
                 height="32"
               />
@@ -25,6 +25,11 @@ export default function PublicFooter() {
               platform for cattle Farmers and Technicians in Oton, Iloilo.
             </p>
             <p className="text-xs font-semibold text-slate-400">
+              <img
+                src={OTON_LOGO}
+                alt="Municipality of Oton"
+                className="mr-2 inline-block h-5 w-5 object-contain"
+              />
               Oton, Iloilo, Philippines
             </p>
           </div>
@@ -57,11 +62,12 @@ export default function PublicFooter() {
               Authorized Technicians & Administrators portal access.
             </p>
             <div>
-              <SignInButton mode="modal">
-                <button className="text-xs font-bold text-emerald-400 hover:text-emerald-300 underline cursor-pointer">
-                  Staff Sign In
-                </button>
-              </SignInButton>
+              <StaffSignInButton
+                variant="link"
+                size="sm"
+                showIcon={false}
+                className="min-h-0 p-0 text-xs font-bold text-emerald-400 underline hover:bg-transparent hover:text-emerald-300"
+              />
             </div>
           </div>
         </div>

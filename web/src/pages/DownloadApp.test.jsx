@@ -8,8 +8,6 @@ import DownloadApp from "./DownloadApp";
 
 vi.mock("@clerk/clerk-react", () => ({
   useAuth: vi.fn(),
-  SignedIn: ({ children }) => children,
-  SignedOut: ({ children }) => children,
   SignUp: (props) => (
     <div
       data-testid="clerk-farmer-invitation-sign-up"
@@ -19,23 +17,6 @@ vi.mock("@clerk/clerk-react", () => ({
     />
   ),
   UserButton: () => <div data-testid="user-button" />,
-}));
-
-vi.mock("framer-motion", () => ({
-  motion: new Proxy(
-    {},
-    {
-      get: (_target, element) =>
-        function MotionElement({ children, ...props }) {
-          const domProps = { ...props };
-          delete domProps.initial;
-          delete domProps.animate;
-          delete domProps.transition;
-          const Element = element;
-          return <Element {...domProps}>{children}</Element>;
-        },
-    },
-  ),
 }));
 
 vi.mock("../lib/axios", () => ({
@@ -71,9 +52,14 @@ describe("DownloadApp Farmer invitation acceptance", () => {
     renderDownload();
 
     expect(
-      screen.getByRole("heading", { name: /Install BreedSmart Mobile/i }),
+      screen.getByRole("heading", { name: /^BreedSmart Mobile$/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Download link not configured")).toBeInTheDocument();
+    expect(screen.getByText("Need the BreedSmart app?")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Please contact your agricultural technician or BreedSmart administrator for the latest installer/i,
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.queryByTestId("clerk-farmer-invitation-sign-up"),
     ).not.toBeInTheDocument();
@@ -86,7 +72,7 @@ describe("DownloadApp Farmer invitation acceptance", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: /Complete your Farmer invitation/i }),
+      screen.getByRole("heading", { name: /Complete your Farmer account/i }),
     ).toBeInTheDocument();
     const signUp = screen.getByTestId("clerk-farmer-invitation-sign-up");
     expect(signUp).toHaveAttribute("data-routing", "virtual");
@@ -122,7 +108,7 @@ describe("DownloadApp Farmer invitation acceptance", () => {
       "Confirming your account",
     );
     expect(
-      await screen.findByRole("heading", { name: /Install BreedSmart Mobile/i }),
+      await screen.findByRole("heading", { name: /Your Farmer account is ready/i }),
     ).toBeInTheDocument();
     expect(axiosInstance.post).toHaveBeenCalledWith(
       "/user/bootstrap",
@@ -150,7 +136,7 @@ describe("DownloadApp Farmer invitation acceptance", () => {
         expect(screen.getByText(/not a Farmer account/i)).toBeInTheDocument();
       });
       expect(
-        screen.queryByRole("heading", { name: /Install BreedSmart Mobile/i }),
+        screen.queryByRole("heading", { name: /^BreedSmart Mobile$/i }),
       ).not.toBeInTheDocument();
     },
   );

@@ -2,9 +2,12 @@ import {
   APP_DOWNLOAD_URL,
   getDownloadQrUrl,
 } from "../../../config/appDistribution";
+import BRAND_LOGO_ASSET from "../../../assets/branding/logo.png";
+import OTON_LOGO_ASSET from "../../../assets/branding/OtonImg2.png";
 
 export const HERO_BG = "https://res.cloudinary.com/donhulins/image/upload/v1785461083/ChatGPT_Image_Jul_31_2026_09_22_42_AM_qs3wcd.png";
-export const OTON_LOGO = "https://res.cloudinary.com/donhulins/image/upload/v1780316603/OtonImg2_fwxtsh.png";
+export const BRAND_LOGO = BRAND_LOGO_ASSET;
+export const OTON_LOGO = OTON_LOGO_ASSET;
 export const MUNICIPAL_SEAL = "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
 export const MOCKUP_IMG = "https://res.cloudinary.com/donhulins/image/upload/v1780318231/mockup_1.png";
 export const APK_URL = APP_DOWNLOAD_URL;
@@ -15,7 +18,7 @@ export const NAV_LINKS = [
   { label: "How It Works", href: "#how-it-works" },
   { label: "For Farmers", href: "#for-farmers" },
   { label: "For Staff", href: "#for-staff" },
-  { label: "Download App", href: "#download-app" },
+  { label: "Download App", href: "/download-app" },
 ];
 
 export const VALUE_STRIP_ITEMS = [

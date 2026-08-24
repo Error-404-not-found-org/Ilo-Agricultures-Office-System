@@ -1,5 +1,5 @@
-import { SignInButton } from "@clerk/clerk-react";
-import { Smartphone, ShieldCheck } from "lucide-react";
+import { Smartphone } from "lucide-react";
+import StaffSignInButton from "../../../components/auth/StaffSignInButton";
 
 export default function FinalCTA() {
   return (
@@ -12,19 +12,18 @@ export default function FinalCTA() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
-            href="#download-app"
-            className="inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-white text-[#074033] hover:bg-[#FAF9F5] text-base font-extrabold transition-all shadow-md hover:shadow-lg w-full sm:w-auto"
+            href="/download-app"
+            className="inline-flex min-h-12 items-center justify-center gap-2.5 px-8 py-3 rounded-xl bg-white text-[#074033] hover:bg-[#FAF9F5] text-base font-extrabold transition-colors w-full sm:w-auto"
           >
             <Smartphone size={20} />
             Download Farmer App
           </a>
 
-          <SignInButton mode="modal">
-            <button className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full border border-white/30 hover:border-white text-white text-base font-bold transition-all cursor-pointer w-full sm:w-auto">
-              <ShieldCheck size={20} />
-              Staff Sign In
-            </button>
-          </SignInButton>
+          <StaffSignInButton
+            variant="inverse"
+            size="lg"
+            className="w-full sm:w-auto"
+          />
         </div>
       </div>
     </section>

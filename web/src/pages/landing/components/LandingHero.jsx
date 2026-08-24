@@ -1,5 +1,5 @@
-import { SignInButton } from "@clerk/clerk-react";
-import { Smartphone, ShieldCheck } from "lucide-react";
+import { Smartphone } from "lucide-react";
+import StaffSignInButton from "../../../components/auth/StaffSignInButton";
 import { HERO_BG } from "../data/landingContent";
 
 export default function LandingHero() {
@@ -24,19 +24,14 @@ export default function LandingHero() {
           {/* Action Buttons Row */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
             <a
-              href="#download-app"
-              className="inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-full bg-[#074033] hover:bg-[#052E24] text-white text-sm sm:text-base font-bold transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#074033]"
+              href="/download-app"
+              className="inline-flex min-h-12 items-center justify-center gap-2.5 px-7 py-3 rounded-xl bg-[#074033] hover:bg-[#052E24] text-white text-sm sm:text-base font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#074033] focus-visible:ring-offset-2"
             >
               <Smartphone size={18} />
               Download Farmer App
             </a>
 
-            <SignInButton mode="modal">
-              <button className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full border border-slate-300 hover:border-[#074033] bg-white text-slate-800 hover:text-[#074033] text-sm sm:text-base font-bold transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#074033]">
-                <ShieldCheck size={18} />
-                Staff Sign In
-              </button>
-            </SignInButton>
+            <StaffSignInButton size="lg" />
           </div>
         </div>
 

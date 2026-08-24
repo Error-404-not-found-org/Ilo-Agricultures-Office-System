@@ -78,6 +78,20 @@
   --font-sans: "Outfit", sans-serif;
 }
 
+html {
+  font-family: "Outfit", sans-serif;
+}
+
+.auth-shell :where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #17663a;
+  outline-offset: 2px;
+}
+
+.auth-shell .cl-rootBox,
+.auth-shell .cl-cardBox {
+  width: 100%;
+}
+
 /* Custom scrollbar utility for navigation panels */
 .custom-scrollbar {
   scrollbar-width: thin;
