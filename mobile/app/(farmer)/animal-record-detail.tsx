@@ -192,6 +192,7 @@ export default function AnimalRecordDetailScreen() {
             relatedAttempt: record.inseminationId?.attemptNumber,
             technician:
               record.confirmation?.confirmedBy?.name ||
+              record.technicianDisplayName ||
               record.technicianId?.name ||
               record.handledBy?.name ||
               "",

@@ -14,17 +14,21 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { StatusBadge, SelectDropdown } from "@/components/shared";
+import { AsyncState, StatusBadge, SelectDropdown } from "@/components/shared";
 import { toast } from "sonner-native";
+import { CalendarDays, CircleAlert, MapPin, Phone, TriangleAlert, UserRound } from "lucide-react-native";
+import { getStructuredHealthRequestPresentation } from "@/features/farmer-requests/utils/healthRequestInput";
+import {
+  getAdminRequestLocation,
+  getAdminRequestSchedule,
+  getAdminRequestStatusLabel,
+  getFriendlyReassignmentError,
+  getReassignmentCandidatePresentation,
+  isMeaningfullyUrgent,
+} from "../utils/adminRequestPresentation";
 
 const PRIMARY = "#1e3a5f";
 
-const URGENCY_OPTIONS = [
-  { label: "Low", value: "low" },
-  { label: "Medium", value: "medium" },
-  { label: "High", value: "high" },
-  { label: "Emergency", value: "emergency" },
-];
 
 export default function AdminRequestDetailsScreen() {
   const { colors, isDark } = useTheme();
@@ -35,12 +39,12 @@ export default function AdminRequestDetailsScreen() {
 
   const isHealth = type === "health";
   const [cancellationReason, setCancellationReason] = useState("");
-  const [updating, setUpdating] = useState(false);
 
   // 1. Fetch Request Details
   const {
     data: request,
     isLoading: isRequestLoading,
+    isError: isRequestError,
     refetch: refetchRequest,
   } = useQuery<any>({
     queryKey: ["admin-request-detail", id, type],
@@ -61,48 +65,51 @@ export default function AdminRequestDetailsScreen() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Convert technicians list to dropdown options
-  const techOptions = useMemo(() => {
-    return technicians.map((tech) => ({
-      label: tech.name || "Technician",
-      value: tech._id,
-    }));
-  }, [technicians]);
-
   // Current assigned technician ID
   const currentTechId = useMemo(() => {
     if (!request) return null;
     return isHealth
-      ? request.handledBy?._id || request.handledBy || null
+      ? request.handledBy?._id || request.assignedTechnicianId?._id || request.handledBy || request.assignedTechnicianId || null
       : request.technicianId?._id || request.approvedBy?._id || request.technicianId || request.approvedBy || null;
   }, [request, isHealth]);
 
-  // 3. Mutation: Reassign Technician / Update Status
+  const requestMunicipalityCode = request?.dispatch?.location?.municipalityCode;
+  const candidatePresentations = useMemo(
+    () => technicians
+      .filter((technician) => technician._id !== currentTechId)
+      .map((technician) => getReassignmentCandidatePresentation({
+        technician,
+        requestType: isHealth ? "HEALTH" : "AI",
+        requestMunicipalityCode,
+      })),
+    [currentTechId, isHealth, requestMunicipalityCode, technicians],
+  );
+  const eligibleCandidates = candidatePresentations.filter((candidate) => candidate.eligible);
+  const excludedCandidates = candidatePresentations.filter((candidate) => !candidate.eligible);
+  const techOptions = eligibleCandidates.map((candidate) => ({
+    label: `${candidate.name} · ${candidate.fieldArea}`,
+    value: candidate.id,
+  }));
+  const structuredHealthInput = getStructuredHealthRequestPresentation(request || {});
+
+  // 3. Mutation: Reassign Technician
   const updateStatusMutation = useMutation({
-    mutationFn: async (params: { newTechId?: string; status?: string; urgency?: string }) => {
-      const endpoint = isHealth ? `/health-request/${id}/status` : `/ai-request/${id}/status`;
-      const body: any = {
-        status: params.status || request?.status || "pending",
-      };
-
-      if (isHealth) {
-        if (params.newTechId) body.handledBy = params.newTechId;
-        if (params.urgency) body.urgency = params.urgency;
-      } else {
-        if (params.newTechId) body.approvedBy = params.newTechId;
-      }
-
-      const res = await api.patch(endpoint, body);
+    mutationFn: async (params: { newTechId: string }) => {
+      const res = await api.post(`/admin/requests/${type}/${id}/reassign`, {
+        technicianId: params.newTechId,
+      });
       return res.data;
     },
-    onSuccess: () => {
-      toast.success("Request updated successfully.");
-      queryClient.invalidateQueries({ queryKey: ["admin-request-detail", id, type] });
-      queryClient.invalidateQueries({ queryKey: ["admin-ai-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-health-requests"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-ai-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-health-requests"] }),
+        refetchRequest(),
+      ]);
+      toast.success("Request reassigned.");
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Failed to update request.");
+      toast.error(getFriendlyReassignmentError(err));
     },
   });
 
@@ -118,14 +125,16 @@ export default function AdminRequestDetailsScreen() {
       });
       return res.data;
     },
-    onSuccess: (_, approved) => {
+    onSuccess: async (_, approved) => {
       toast.success(
         approved ? "Cancellation request approved." : "Cancellation request declined."
       );
       setCancellationReason("");
-      queryClient.invalidateQueries({ queryKey: ["admin-request-detail", id, type] });
-      queryClient.invalidateQueries({ queryKey: ["admin-ai-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-health-requests"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-ai-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-health-requests"] }),
+        refetchRequest(),
+      ]);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Failed to respond to cancellation.");
@@ -148,9 +157,6 @@ export default function AdminRequestDetailsScreen() {
     );
   };
 
-  const handleUrgencyChange = (newUrgency: string) => {
-    updateStatusMutation.mutate({ urgency: newUrgency });
-  };
 
   if (isRequestLoading) {
     return (
@@ -176,6 +182,22 @@ export default function AdminRequestDetailsScreen() {
         </View>
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
           <ActivityIndicator size="large" color={PRIMARY} />
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  if (isRequestError) {
+    return (
+      <ScreenLayout>
+        <View style={{ flex: 1, justifyContent: "center", padding: 24 }}>
+          <AsyncState
+            state="error"
+            title="Request unavailable"
+            message="The latest request details could not be loaded."
+            actionLabel="Retry"
+            onAction={refetchRequest}
+          />
         </View>
       </ScreenLayout>
     );
@@ -213,6 +235,12 @@ export default function AdminRequestDetailsScreen() {
   }
 
   const isCancellationRequested = request.cancellationStatus === "requested";
+  const canReassign =
+    Boolean(currentTechId) &&
+    !["done", "completed", "resolved", "rejected", "cancelled"].includes(request.status);
+  const requestLocation = getAdminRequestLocation(request);
+  const requestSchedule = getAdminRequestSchedule(request);
+  const isUrgent = isMeaningfullyUrgent(request.urgency);
 
   return (
     <ScreenLayout>
@@ -228,7 +256,7 @@ export default function AdminRequestDetailsScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
@@ -248,29 +276,50 @@ export default function AdminRequestDetailsScreen() {
               {isHealth ? "Health Assistance" : "Breeding/AI Service"}
             </Text>
           </View>
-          <StatusBadge label={request.status || "pending"} />
+          <StatusBadge label={getAdminRequestStatusLabel(request.status)} />
+        </View>
+
+        <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+          <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>Operational overview</Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+            <MapPin size={17} color="#2563eb" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textMuted }}>Field location</Text>
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary }}>{requestLocation}</Text>
+            </View>
+          </View>
+          {requestSchedule ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+              <CalendarDays size={17} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textMuted }}>Schedule</Text>
+                <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary }}>{requestSchedule}</Text>
+              </View>
+            </View>
+          ) : null}
+          {isUrgent ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TriangleAlert size={17} color="#dc2626" />
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: "#dc2626" }}>Needs urgent attention</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Farmer Information */}
         <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 8 }}>
-            FARMER INFORMATION
+          <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginBottom: 10 }}>
+            Farmer and contact
           </Text>
           <Text style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 4 }}>
             {request.farmerId?.name || "No Farmer Name"}
           </Text>
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 4 }}>
-            Phone: {request.farmerId?.phoneNumber || "Not provided"}
-          </Text>
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>
-            Barangay: {request.farmerId?.address?.barangay || "Not provided"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}><Phone size={15} color={colors.textMuted} /><Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>{request.farmerId?.phoneNumber || "No phone provided"}</Text></View>
         </View>
 
         {/* Animal Details */}
         <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 8 }}>
-            LIVESTOCK DETAILS
+            Animal
           </Text>
           <Text style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 4 }}>
             Ear Tag: {request.animalId?.earTag || "Not Tagged"}
@@ -278,24 +327,40 @@ export default function AdminRequestDetailsScreen() {
           <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 4 }}>
             Species/Breed: {request.animalId?.species || "Cattle"} ({request.animalId?.breed || "Unknown"})
           </Text>
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>
-            Animal ID: {request.animalId?.animalId || request.animalId || "Unknown"}
-          </Text>
         </View>
 
         {/* Symptoms / Notes / Details */}
         <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 8 }}>
-            REQUEST DESCRIPTION
+            Request details
           </Text>
           {isHealth ? (
             <>
-              <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary, marginBottom: 8 }}>
-                Symptoms: {request.symptoms || "None listed"}
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textMuted }}>Assistance requested</Text>
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 10 }}>
+                {structuredHealthInput?.assistanceLabel || request.requestType || "Health assistance"}
               </Text>
-              <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
-                Farmer Notes: {request.farmerNotes || "None"}
-              </Text>
+              {structuredHealthInput ? (
+                <>
+                  {structuredHealthInput.observedSigns.length ? (
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textMuted, marginBottom: 3 }}>Observed signs</Text>
+                      {structuredHealthInput.observedSigns.map((sign) => <Text key={sign} style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary }}>• {sign}</Text>)}
+                    </View>
+                  ) : null}
+                  {structuredHealthInput.farmerDescription ? (
+                    <View>
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textMuted, marginBottom: 3 }}>Farmer description</Text>
+                      <Text style={{ fontSize: 14, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{structuredHealthInput.farmerDescription}</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary, marginBottom: 8 }}>{request.symptoms || "No observations listed"}</Text>
+                  {request.farmerNotes ? <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{request.farmerNotes}</Text> : null}
+                </>
+              )}
             </>
           ) : (
             <>
@@ -314,34 +379,56 @@ export default function AdminRequestDetailsScreen() {
         {/* Technician Assignment */}
         <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 12 }}>
-            ASSIGNED TECHNICIAN & REASSIGNMENT
+            Technician assignment
           </Text>
           
-          <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 12 }}>
-            Current: {isHealth ? request.handledBy?.name || "Unassigned" : request.technicianId?.name || request.approvedBy?.name || "Unassigned"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}><UserRound size={17} color="#2563eb" /><Text style={{ flex: 1, fontSize: 15, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>{isHealth ? request.handledBy?.name || request.assignedTechnicianId?.name || "Unassigned" : request.technicianId?.name || request.approvedBy?.name || "Unassigned"}</Text></View>
 
-          <SelectDropdown
-            label="Reassign Technician"
-            options={techOptions}
-            value={currentTechId || "all"}
-            onChange={handleReassign}
-            searchable
-          />
+          {canReassign ? (
+            <SelectDropdown
+              label="Reassign Technician"
+              options={techOptions}
+              value=""
+              onChange={handleReassign}
+              searchable
+              placeholder={isTechsLoading ? "Loading eligible Technicians…" : "Choose an eligible Technician"}
+              disabled={isTechsLoading || updateStatusMutation.isPending || techOptions.length === 0}
+            />
+          ) : (
+            <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+              {currentTechId
+                ? "Completed or closed work cannot be reassigned."
+                : "Unassigned requests must use the normal Technician dispatch flow."}
+            </Text>
+          )}
+          {canReassign && !isTechsLoading && techOptions.length === 0 ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 10 }}><CircleAlert size={16} color="#d97706" /><Text style={{ flex: 1, fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>No other Technician currently meets the request’s Field Area, capability, account, and availability requirements.</Text></View>
+          ) : null}
+          {canReassign && excludedCandidates.length ? (
+            <View style={{ marginTop: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 6 }}>Not eligible now</Text>
+              {excludedCandidates.slice(0, 4).map((candidate) => (
+                <Text key={candidate.id} style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary, marginBottom: 4 }}>{candidate.name} · {candidate.blockerLabel}</Text>
+              ))}
+            </View>
+          ) : null}
         </View>
 
-        {/* Urgency Tuning (Health Requests only) */}
+        {/* Health urgency is visible for oversight, but remains clinical workflow data. */}
         {isHealth && (
           <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 12 }}>
-              CASE URGENCY
+              Urgency oversight
             </Text>
-            <SelectDropdown
-              label="Update Urgency"
-              options={URGENCY_OPTIONS}
-              value={request.urgency || "medium"}
-              onChange={handleUrgencyChange}
-            />
+            <Text
+              style={{
+                fontSize: 14,
+                fontFamily: "Outfit_600SemiBold",
+                color: colors.textPrimary,
+              }}
+            >
+              Current urgency: {request.urgency || "medium"}
+            </Text>
           </View>
         )}
 
@@ -391,12 +478,16 @@ export default function AdminRequestDetailsScreen() {
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
                 onPress={() => cancelRespondMutation.mutate(true)}
+                disabled={cancelRespondMutation.isPending}
                 style={{
                   flex: 1,
                   backgroundColor: "#d97706",
                   paddingVertical: 12,
                   borderRadius: 12,
                   alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 48,
+                  opacity: cancelRespondMutation.isPending ? 0.65 : 1,
                 }}
               >
                 <Text style={{ color: "#fff", fontSize: 13, fontFamily: "Outfit_700Bold" }}>
@@ -406,6 +497,7 @@ export default function AdminRequestDetailsScreen() {
 
               <TouchableOpacity
                 onPress={() => cancelRespondMutation.mutate(false)}
+                disabled={cancelRespondMutation.isPending}
                 style={{
                   flex: 1,
                   backgroundColor: colors.card,
@@ -414,6 +506,9 @@ export default function AdminRequestDetailsScreen() {
                   paddingVertical: 12,
                   borderRadius: 12,
                   alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 48,
+                  opacity: cancelRespondMutation.isPending ? 0.65 : 1,
                 }}
               >
                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontFamily: "Outfit_700Bold" }}>

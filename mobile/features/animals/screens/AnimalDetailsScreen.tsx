@@ -171,6 +171,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
           "",
         recordedBy:
           selectedRecord.technicianId?.name ||
+          selectedRecord.technicianDisplayName ||
           selectedRecord.handledBy?.name ||
           "",
         withdrawalPeriodDays:
@@ -2488,6 +2489,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       "";
                     const recordedByVal =
                       record.technicianId?.name ||
+                      record.technicianDisplayName ||
                       record.handledBy?.name ||
                       record.approvedBy?.name ||
                       "";

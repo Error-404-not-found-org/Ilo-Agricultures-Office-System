@@ -450,8 +450,9 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
               : getRequestText(req.symptoms || req.comment || req.reason);
             const farmerNotes = getRequestText(req.farmerNotes);
             const assignedTechnician = getRequestText(
-              req.approvedBy?.name ||
+              req.technicianDisplayName ||
                 req.handledBy?.name ||
+                req.approvedBy?.name ||
                 req.technicianId?.name,
             );
             // Filter for pending_cancellation tab

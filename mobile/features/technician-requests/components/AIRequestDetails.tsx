@@ -157,6 +157,7 @@ export function AIRequestDetails({
   );
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("accept");
   const [scheduleVisible, setScheduleVisible] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [earlyStartVisible, setEarlyStartVisible] = useState(false);
@@ -288,28 +289,33 @@ export function AIRequestDetails({
 
   const requireOnline = async (
     message = "Accepting and scheduling AI visits requires an internet connection.",
+    onUnavailable = setActionNotice,
   ) => {
     const connectivity = await NetInfo.fetch();
     if (
       connectivity.isConnected === false ||
       connectivity.isInternetReachable === false
     ) {
-      setActionNotice(message);
+      onUnavailable(message);
       return false;
     }
     return true;
   };
 
   const handleSchedule = async (payload: AISchedulePayload) => {
-    if (submittingRef.current || !(await requireOnline())) return;
+    if (
+      submittingRef.current ||
+      !(await requireOnline(undefined, setScheduleError))
+    )
+      return;
     if (!workflowId) {
-      setActionNotice("This AI request is missing its workflow identifier.");
+      setScheduleError("This AI request is missing its workflow identifier.");
       return;
     }
 
     submittingRef.current = true;
     setUpdating(true);
-    setActionNotice(null);
+    setScheduleError(null);
     try {
       if (scheduleMode === "accept") {
         await claimAndScheduleAIRequest(api, workflowId, payload);
@@ -345,17 +351,12 @@ export function AIRequestDetails({
     } catch (error: any) {
       if (error?.response?.status === 409) {
         const message = getClaimScheduleErrorMessage(error);
-        setActionNotice(message);
-        toast.error(message);
-        setScheduleVisible(false);
+        setScheduleError(message);
         await invalidateWorkflow();
-        router.replace({
-          pathname: "/(technician)/(tabs)/technician.requests",
-          params: { section: "openRequests" },
-        });
+        await onRefresh();
         return;
       }
-      setActionNotice(
+      setScheduleError(
         scheduleMode === "accept"
           ? getClaimScheduleErrorMessage(error)
           : getErrorMessage(error, "The AI visit could not be scheduled."),
@@ -369,6 +370,7 @@ export function AIRequestDetails({
   const openSchedule = (mode: ScheduleMode) => {
     setScheduleMode(mode);
     setActionNotice(null);
+    setScheduleError(null);
     setScheduleVisible(true);
   };
 
@@ -597,7 +599,8 @@ export function AIRequestDetails({
                   textRole="body"
                   style={{ color: colors.warningForeground, marginTop: 4 }}
                 >
-                  Please review the attached heat evidence before accepting this request.
+                  Please review the attached heat evidence before accepting this
+                  request.
                 </Text>
               </View>
             ) : (
@@ -958,13 +961,18 @@ export function AIRequestDetails({
         visible={scheduleVisible}
         mode={scheduleMode}
         isSubmitting={updating}
+        errorMessage={scheduleError}
         initialDate={
           scheduleMode === "reschedule" ? request?.scheduledDate : null
         }
         initialVisitPeriod={scheduleMode === "reschedule" ? visitPeriod : null}
         onClose={() => {
-          if (!updating) setScheduleVisible(false);
+          if (!updating) {
+            setScheduleVisible(false);
+            setScheduleError(null);
+          }
         }}
+        onErrorClear={() => setScheduleError(null)}
         onConfirm={handleSchedule}
       />
 
@@ -1222,17 +1230,21 @@ function AIScheduleModal({
   visible,
   mode,
   isSubmitting,
+  errorMessage,
   initialDate,
   initialVisitPeriod,
   onClose,
+  onErrorClear,
   onConfirm,
 }: {
   visible: boolean;
   mode: ScheduleMode;
   isSubmitting: boolean;
+  errorMessage?: string | null;
   initialDate?: string | null;
   initialVisitPeriod?: VisitPeriod | null;
   onClose: () => void;
+  onErrorClear?: () => void;
   onConfirm: (payload: AISchedulePayload) => Promise<void>;
 }) {
   return (
@@ -1248,12 +1260,14 @@ function AIScheduleModal({
             : "Schedule Visit"
       }
       isSubmitting={isSubmitting}
+      errorMessage={errorMessage}
       initialDate={initialDate}
       initialVisitPeriod={initialVisitPeriod}
       getPeriodAvailability={(date, period, now) =>
         getAISchedulePeriodAvailability(date, period, now)
       }
       onClose={onClose}
+      onErrorClear={onErrorClear}
       onConfirm={onConfirm}
     />
   );

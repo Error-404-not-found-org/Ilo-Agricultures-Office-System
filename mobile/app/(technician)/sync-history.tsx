@@ -4,8 +4,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ArrowLeft, CheckCircle2, Clock, Cloud, History, Info, RefreshCw, Trash2 } from 'lucide-react-native';
 import {
   discardQueueItem,
-  getOfflineQueue,
-  getSyncHistory,
+  getOfflineQueueForOwner,
+  getSyncHistoryForOwner,
   QueuedMutation,
   retryQueueItem,
   processOfflineQueue,
@@ -30,11 +30,11 @@ export default function SyncHistoryScreen() {
   const currentUserId = dbUserResponse?.user?._id;
 
   const loadData = useCallback(async () => {
-    const q = await getOfflineQueue();
-    const h = await getSyncHistory();
+    const q = await getOfflineQueueForOwner(currentUserId);
+    const h = await getSyncHistoryForOwner(currentUserId);
     setPending(q);
     setHistory(h);
-  }, []);
+  }, [currentUserId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -47,8 +47,8 @@ export default function SyncHistoryScreen() {
   };
 
   const confirmDiscard = async () => {
-    if (!discardTarget) return;
-    await discardQueueItem(discardTarget.id);
+    if (!discardTarget || !currentUserId) return;
+    await discardQueueItem(discardTarget.id, currentUserId);
     setDiscardTarget(null);
     loadData();
   };
@@ -103,8 +103,13 @@ export default function SyncHistoryScreen() {
                   item={item}
                   status="pending"
                   onRetry={async () => {
-                    await retryQueueItem(item.id);
-                    await processOfflineQueue(api, () => currentUserId);
+                    if (!currentUserId) return;
+                    await retryQueueItem(item.id, currentUserId);
+                    await processOfflineQueue(
+                      api,
+                      currentUserId,
+                      () => currentUserId,
+                    );
                     await loadData();
                   }}
                   onDiscard={() => discard(item)}

@@ -48,22 +48,48 @@ export interface QueuedMutation {
   entityType?: string;
   dependsOn?: string[];
   resultServerId?: string;
-  ownerUserId?: string;
-  ownerRole?: string;
+  readonly ownerUserId?: string;
+  readonly ownerRole?: string;
 }
 
 export const createStableId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 export const createTemporaryId = (entityType = "entity") => `local:${entityType}:${createStableId()}`;
 
-const readIdMap = async (): Promise<Record<string, string>> => {
+type OwnerIdMap = Record<string, Record<string, string>>;
+
+const readAllIdMaps = async (): Promise<OwnerIdMap> => {
   const value = await AsyncStorage.getItem(ID_MAP_STORAGE_KEY);
-  return value ? JSON.parse(value) : {};
+  if (!value) return {};
+  const parsed = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+  // Legacy maps were flat and had no trustworthy owner. Keep them stored, but
+  // never resolve them into a newly authenticated account's operation.
+  const isLegacyFlatMap = Object.values(parsed).some(
+    (entry) => typeof entry === "string",
+  );
+  return isLegacyFlatMap ? {} : parsed;
 };
 
-const saveIdMapping = async (temporaryId: string, serverId: string) => {
-  const mapping = await readIdMap();
-  mapping[temporaryId] = serverId;
-  await AsyncStorage.setItem(ID_MAP_STORAGE_KEY, JSON.stringify(mapping));
+const readIdMapForOwner = async (
+  ownerUserId: string,
+): Promise<Record<string, string>> => {
+  if (!ownerUserId) return {};
+  const mappings = await readAllIdMaps();
+  return mappings[ownerUserId] || {};
+};
+
+const saveIdMapping = async (
+  ownerUserId: string,
+  temporaryId: string,
+  serverId: string,
+) => {
+  const mappings = await readAllIdMaps();
+  mappings[ownerUserId] = {
+    ...(mappings[ownerUserId] || {}),
+    [temporaryId]: serverId,
+  };
+  await AsyncStorage.setItem(ID_MAP_STORAGE_KEY, JSON.stringify(mappings));
 };
 
 export const resolveTemporaryReferences = <T,>(value: T, mapping: Record<string, string>): T => {
@@ -102,11 +128,25 @@ const extractServerId = (responseData: any): string | undefined => {
 export const classifySyncError = (error: any) => {
   const apiError = getApiErrorDetails(error);
   const isRestorationError = String(error?.message || "").includes("Unreadable or missing attachment");
+  const isReferenceResolutionError = String(error?.message || "").includes(
+    "Unresolved temporary reference",
+  );
   const retryableCodes = new Set(["IDEMPOTENCY_IN_PROGRESS", "RATE_LIMITED", "TRANSACTION_UNAVAILABLE"]);
   const retryableStatus = apiError.status === undefined || apiError.status === 408 || apiError.status === 425 || apiError.status === 429 || apiError.status >= 500;
-  const retryable = !isRestorationError && (retryableCodes.has(apiError.code || "") || retryableStatus || apiError.status === 401);
+  const retryable =
+    !isRestorationError &&
+    !isReferenceResolutionError &&
+    (retryableCodes.has(apiError.code || "") ||
+      retryableStatus ||
+      apiError.status === 401);
   return { retryable, message: apiError.message || error?.message || "Sync failed", apiError };
 };
+
+export const resolveTemporaryReferencesForOwner = async <T,>(
+  ownerUserId: string,
+  value: T,
+): Promise<T> =>
+  resolveTemporaryReferences(value, await readIdMapForOwner(ownerUserId));
 
 const invalidateReplayQueries = async (item: QueuedMutation) => {
   const url = item.url.toLowerCase();
@@ -301,6 +341,7 @@ export const addToOfflineQueue = async (
               item.idempotencyKey === mutation.idempotencyKey &&
               item.method === mutation.method &&
               item.url === mutation.url &&
+              item.ownerUserId === mutation.ownerUserId &&
               item.status !== "failed",
           )
         : undefined;
@@ -309,7 +350,12 @@ export const addToOfflineQueue = async (
       }
       const referencedTempIds = findTemporaryReferences({ url: mutation.url, data: cleanData });
       const inferredDependencies = queue
-        .filter((item) => item.tempId && referencedTempIds.includes(item.tempId))
+        .filter(
+          (item) =>
+            item.ownerUserId === mutation.ownerUserId &&
+            item.tempId &&
+            referencedTempIds.includes(item.tempId),
+        )
         .map((item) => item.id);
       const newMutation: QueuedMutation = {
         ...mutation, data: cleanData,
@@ -345,42 +391,100 @@ export const getOfflineQueue = async (): Promise<QueuedMutation[]> => {
   }
 };
 
-export const clearQueueItem = async (id: string) => {
+export const getOfflineQueueForOwner = async (
+  ownerUserId?: string,
+): Promise<QueuedMutation[]> => {
+  if (!ownerUserId) return [];
+  return (await getOfflineQueue()).filter(
+    (item) => item.ownerUserId === ownerUserId,
+  );
+};
+
+export const getPendingCountForOwner = async (ownerUserId?: string) =>
+  (await getOfflineQueueForOwner(ownerUserId)).filter(
+    (item) => item.status !== "synced",
+  ).length;
+
+export const clearQueueItem = async (id: string, ownerUserId: string) => {
+  if (!ownerUserId) return false;
   try {
     const item = await mutateStoredQueue((queue) => ({
-      queue: queue.filter((entry) => entry.id !== id),
-      result: queue.find((entry) => entry.id === id),
+      queue: queue.filter(
+        (entry) => entry.id !== id || entry.ownerUserId !== ownerUserId,
+      ),
+      result: queue.find(
+        (entry) => entry.id === id && entry.ownerUserId === ownerUserId,
+      ),
     }));
+    if (!item) return false;
     if (item?.filePaths) {
       for (const path of item.filePaths) {
         await deleteLocalFile(path);
       }
     }
+    return true;
   } catch (error) {
     console.error("[OfflineQueue] Failed to clear item", error);
+    return false;
   }
 };
 
-export const discardQueueItem = async (id: string) => {
-  const queue = await getOfflineQueue();
+export const discardQueueItem = async (id: string, ownerUserId: string) => {
+  if (!ownerUserId) return false;
+  const queue = await getOfflineQueueForOwner(ownerUserId);
+  if (!queue.some((item) => item.id === id)) return false;
   const dependents = queue.filter((item) => item.dependsOn?.includes(id));
-  await clearQueueItem(id);
+  await clearQueueItem(id, ownerUserId);
   for (const dependent of dependents) {
-    await updateQueueItem(dependent.id, {
+    await updateQueueItem(dependent.id, ownerUserId, {
       status: "failed",
       lastError: "Dependency was discarded before it could sync.",
     });
   }
+  return true;
 };
 
-export const updateQueueItem = async (id: string, patch: Partial<QueuedMutation>) => {
+type QueueItemPatch = Omit<
+  Partial<QueuedMutation>,
+  "ownerUserId" | "ownerRole"
+>;
+
+export const updateQueueItem = async (
+  id: string,
+  ownerUserId: string,
+  patch: QueueItemPatch,
+) => {
+  if (!ownerUserId) return undefined;
+  // Treat stored ownership as immutable even if an untyped/runtime caller
+  // attempts to smuggle ownership fields into the patch object.
+  const {
+    ownerUserId: _ignoredOwnerUserId,
+    ownerRole: _ignoredOwnerRole,
+    ...safePatch
+  } = patch as QueueItemPatch & {
+    ownerUserId?: string;
+    ownerRole?: string;
+  };
   return mutateStoredQueue((queue) => {
-    const updatedQueue = queue.map((item) => item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item);
-    return { queue: updatedQueue, result: updatedQueue.find((item) => item.id === id) };
+    const updatedQueue = queue.map((item) =>
+      item.id === id && item.ownerUserId === ownerUserId
+        ? { ...item, ...safePatch, updatedAt: Date.now() }
+        : item,
+    );
+    return {
+      queue: updatedQueue,
+      result: updatedQueue.find(
+        (item) => item.id === id && item.ownerUserId === ownerUserId,
+      ),
+    };
   });
 };
 
-export const retryQueueItem = async (id: string) => updateQueueItem(id, { status: "pending", lastError: undefined });
+export const retryQueueItem = async (id: string, ownerUserId: string) =>
+  updateQueueItem(id, ownerUserId, {
+    status: "pending",
+    lastError: undefined,
+  });
 
 export const getSyncHistory = async (): Promise<QueuedMutation[]> => {
   try {
@@ -390,6 +494,15 @@ export const getSyncHistory = async (): Promise<QueuedMutation[]> => {
     console.error("[OfflineQueue] Failed to get history", error);
     return [];
   }
+};
+
+export const getSyncHistoryForOwner = async (
+  ownerUserId?: string,
+): Promise<QueuedMutation[]> => {
+  if (!ownerUserId) return [];
+  return (await getSyncHistory()).filter(
+    (item) => item.ownerUserId === ownerUserId,
+  );
 };
 
 export const addToHistory = async (item: QueuedMutation) => {
@@ -404,131 +517,175 @@ export const addToHistory = async (item: QueuedMutation) => {
   }
 };
 
-let isProcessingQueue = false;
+type QueueRun = {
+  ownerUserId: string;
+  controller: AbortController;
+  promise: Promise<void>;
+};
 
-export const processOfflineQueue = async (api: any, getCurrentUserId?: () => string | undefined) => {
-  if (isProcessingQueue) {
-    console.log("[OfflineQueue] Sync already in progress, skipping concurrent run.");
-    return;
+let activeQueueRun: QueueRun | null = null;
+
+export const cancelOfflineQueueProcessing = () => {
+  activeQueueRun?.controller.abort();
+};
+
+export const processOfflineQueue = async (
+  api: any,
+  ownerUserId: string | undefined,
+  getCurrentUserId: () => string | undefined,
+) => {
+  if (!ownerUserId || getCurrentUserId() !== ownerUserId) return;
+
+  if (activeQueueRun) {
+    if (activeQueueRun.ownerUserId === ownerUserId) {
+      return activeQueueRun.promise;
+    }
+    activeQueueRun.controller.abort();
+    try {
+      await activeQueueRun.promise;
+    } catch {
+      // An account change intentionally aborts the displaced owner's run.
+    }
   }
-  isProcessingQueue = true;
 
-  try {
-    const queue = await getOfflineQueue();
+  if (getCurrentUserId() !== ownerUserId) return;
+  const controller = new AbortController();
+
+  const run = async () => {
+    const queue = await getOfflineQueueForOwner(ownerUserId);
     if (queue.length === 0) return;
 
-    // 1. Recover stale syncing items after an app restart
-    const stuckItems = queue.filter((item) => item.status === "syncing");
-    for (const item of stuckItems) {
-      await updateQueueItem(item.id, { status: "pending", lastError: "Interrupted sync recovered" });
+    // Recover only this authenticated owner's interrupted work.
+    for (const item of queue.filter((entry) => entry.status === "syncing")) {
+      if (controller.signal.aborted || getCurrentUserId() !== ownerUserId) return;
+      await updateQueueItem(item.id, ownerUserId, {
+        status: "pending",
+        lastError: "Interrupted sync recovered",
+      });
     }
 
-    // Refresh queue after recovery
-    const activeQueue = await getOfflineQueue();
+    const activeQueue = await getOfflineQueueForOwner(ownerUserId);
     const now = Date.now();
-
-    console.log(`[OfflineQueue] Processing ${activeQueue.length} items...`);
+    console.log(
+      `[OfflineQueue] Processing ${activeQueue.length} item(s) for the authenticated account...`,
+    );
 
     for (const item of activeQueue) {
       if (item.status === "failed" || item.status === "synced") continue;
+      if (
+        controller.signal.aborted ||
+        getCurrentUserId() !== ownerUserId ||
+        item.ownerUserId !== ownerUserId
+      ) return;
 
-      if (!item.ownerUserId) {
-        await updateQueueItem(item.id, {
-          status: "pending",
-          lastError: "Blocked: Legacy item missing account ownership verification.",
-        });
-        console.warn(`[OfflineQueue] Blocked legacy item ${item.id} without ownerUserId`);
-        continue;
-      }
-
-      const activeUserIdPreRequest = getCurrentUserId ? getCurrentUserId() : undefined;
-      if (activeUserIdPreRequest && item.ownerUserId !== activeUserIdPreRequest) {
-        await updateQueueItem(item.id, {
-          status: "pending",
-          lastError: "Blocked: Account identity mismatch. Sign in as the original user to sync.",
-        });
-        console.warn(`[OfflineQueue] Blocked item ${item.id} due to account mismatch`);
-        continue;
-      }
-
-      const currentQueue = await getOfflineQueue();
-      const dependencies = (item.dependsOn || []).map((id) => currentQueue.find((entry) => entry.id === id));
+      const currentQueue = await getOfflineQueueForOwner(ownerUserId);
+      const dependencies = (item.dependsOn || []).map((id) =>
+        currentQueue.find((entry) => entry.id === id),
+      );
       if (dependencies.some((dependency) => dependency?.status === "failed")) {
-        await updateQueueItem(item.id, { status: "failed", lastError: "A required earlier change failed to sync." });
+        await updateQueueItem(item.id, ownerUserId, {
+          status: "failed",
+          lastError: "A required earlier change failed to sync.",
+        });
         continue;
       }
-      if (dependencies.some((dependency) => dependency && dependency.status !== "synced")) continue;
+      if (
+        dependencies.some(
+          (dependency) => dependency && dependency.status !== "synced",
+        )
+      ) {
+        continue;
+      }
 
-      // 2. Exponential backoff checking
       if (item.status === "pending" && item.retryCount > 0) {
-        const backoffDelay = Math.min(30000, 1000 * Math.pow(2, item.retryCount));
-        if (now - item.updatedAt < backoffDelay) {
-          console.log(`[OfflineQueue] Item ${item.description} is in backoff, skipping.`);
-          continue;
-        }
+        const backoffDelay = Math.min(
+          30000,
+          1000 * Math.pow(2, item.retryCount),
+        );
+        if (now - item.updatedAt < backoffDelay) continue;
       }
 
       try {
-        await updateQueueItem(item.id, { status: "syncing" });
-        
-        // Restore local file URIs back to base64 data for API payload
-        // If file is missing or unreadable, this will throw an error
-        const idMap = await readIdMap();
-        const payloadData = resolveTemporaryReferences(await restoreImagesInPayload(item.data), idMap);
+        await updateQueueItem(item.id, ownerUserId, { status: "syncing" });
+        const idMap = await readIdMapForOwner(ownerUserId);
+        const payloadData = resolveTemporaryReferences(
+          await restoreImagesInPayload(item.data),
+          idMap,
+        );
         const resolvedUrl = resolveTemporaryReferences(item.url, idMap);
-        
+        const resolvedOperation = { url: resolvedUrl, data: payloadData };
+        if (JSON.stringify(resolvedOperation).includes("local:")) {
+          throw new Error(
+            "Unresolved temporary reference cannot be replayed safely for this account.",
+          );
+        }
+
+        // This fresh check is intentionally adjacent to dispatch. The abort
+        // signal also terminates an in-flight request when account identity changes.
+        if (controller.signal.aborted || getCurrentUserId() !== ownerUserId) {
+          await updateQueueItem(item.id, ownerUserId, { status: "pending" });
+          return;
+        }
+
         const response = await api({
           method: item.method,
           url: resolvedUrl,
           data: payloadData,
           headers: { "Idempotency-Key": item.idempotencyKey },
+          signal: controller.signal,
         });
-        const serverId = item.tempId ? extractServerId(response?.data) : undefined;
+        const serverId = item.tempId
+          ? extractServerId(response?.data)
+          : undefined;
         if (item.tempId && !serverId) {
-          throw new Error("The server did not return an ID for this offline-created record.");
+          throw new Error(
+            "The server did not return an ID for this offline-created record.",
+          );
         }
-        if (item.tempId && serverId) await saveIdMapping(item.tempId, serverId);
-        
-        console.log(`[OfflineQueue] Successfully synced: ${item.description}`);
-        await addToHistory({ ...item, status: "synced", resultServerId: serverId, updatedAt: Date.now() });
-        await clearQueueItem(item.id);
-        const activeUserIdPostRequest = getCurrentUserId ? getCurrentUserId() : undefined;
-        if (!activeUserIdPostRequest || activeUserIdPostRequest === item.ownerUserId) {
+        if (item.tempId && serverId) {
+          await saveIdMapping(ownerUserId, item.tempId, serverId);
+        }
+
+        await addToHistory({
+          ...item,
+          status: "synced",
+          resultServerId: serverId,
+          updatedAt: Date.now(),
+        });
+        await clearQueueItem(item.id, ownerUserId);
+        if (getCurrentUserId() === ownerUserId) {
           await invalidateReplayQueries(item);
         }
       } catch (error: any) {
-        const { retryable, message, apiError } = classifySyncError(error);
+        if (controller.signal.aborted || getCurrentUserId() !== ownerUserId) {
+          await updateQueueItem(item.id, ownerUserId, { status: "pending" });
+          return;
+        }
 
-        // Authentication can recover after Clerk refreshes the session. Do not
-        // consume the retry budget or permanently fail user data while signed out.
+        const { retryable, message, apiError } = classifySyncError(error);
         if (apiError.status === 401) {
-          await updateQueueItem(item.id, {
+          await updateQueueItem(item.id, ownerUserId, {
             status: "pending",
             lastError: "Sign in again to continue syncing this change.",
           });
-          break;
+          return;
         }
 
         const newRetryCount = item.retryCount + 1;
-        const maxRetriesReached = newRetryCount >= 5;
-
-        const willFail = !retryable || maxRetriesReached;
-
-        await updateQueueItem(item.id, {
+        const willFail = !retryable || newRetryCount >= 5;
+        await updateQueueItem(item.id, ownerUserId, {
           status: willFail ? "failed" : "pending",
           retryCount: newRetryCount,
           lastError: willFail ? `Failed permanently: ${message}` : message,
         });
-
-        console.error(`[OfflineQueue] Sync failed for ${item.description}: ${message}. Status set to: ${willFail ? "failed" : "pending"}`);
-        
-        // If it's a transient server error, stop processing subsequent queue items to preserve order
-        if (retryable) break;
+        if (retryable) return;
       }
     }
+  };
 
-    // Cache was invalidated safely during processing
-  } finally {
-    isProcessingQueue = false;
-  }
+  const promise = run().finally(() => {
+    if (activeQueueRun?.controller === controller) activeQueueRun = null;
+  });
+  activeQueueRun = { ownerUserId, controller, promise };
+  return promise;
 };

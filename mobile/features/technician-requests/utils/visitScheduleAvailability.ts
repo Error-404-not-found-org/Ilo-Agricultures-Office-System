@@ -3,6 +3,8 @@ import type { VisitPeriod } from "../types/technicianRequests.types";
 export type VisitScheduleTiming = "past" | "current" | "future" | "unknown";
 
 const MANILA_TIME_ZONE = "Asia/Manila";
+const VISIT_MORNING_CONFIRMATION_HOUR = 10;
+const VISIT_AFTERNOON_CONFIRMATION_HOUR = 15;
 const VISIT_AFTERNOON_CUTOFF_HOUR = 18;
 
 export const philippineDateKey = (value: unknown) => {
@@ -64,8 +66,13 @@ export const getVisitSchedulePeriodAvailability = (
 ) => {
   const timing = getVisitScheduleTiming(scheduledDate, visitPeriod, now);
   const disabled = timing === "past";
+  const currentHour = manilaHour(now);
+  const confirmationHour =
+    visitPeriod === "morning"
+      ? VISIT_MORNING_CONFIRMATION_HOUR
+      : VISIT_AFTERNOON_CONFIRMATION_HOUR;
   const requiresConfirmation =
-    timing === "current" && visitPeriod === "afternoon";
+    timing === "current" && currentHour >= confirmationHour;
 
   return {
     disabled,

@@ -26,6 +26,7 @@ import {
   VenusAndMars,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useUser } from "@clerk/clerk-expo";
 
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { StatusBadge } from "@/components/shared";
@@ -37,7 +38,12 @@ import { formatAnimalRecord } from "@/features/animal-records/utils/recordPresen
 import { AnimalProfileSkeleton } from "@/features/animals/components/skeletons/AnimalProfileSkeleton";
 import { FamilyLineage } from "@/features/animals/components/FamilyLineage";
 import { useAnimalDetailsQuery } from "@/features/animals/hooks/useAnimalDetails";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getBootstrapUserQueryKey } from "@/features/auth/hooks/useBootstrapUser";
+import {
+  getStableEntityId,
+  selectNextAnimalVisit,
+} from "@/features/animals/utils/nextVisitVisibility";
 import { useApi } from "@/lib/api";
 import { technicianKeys } from "@/lib/queryKeys";
 import { getTechnicianWorkQueue } from "@/features/technician/services/tasks.service";
@@ -91,6 +97,7 @@ type ServiceSummary = {
   scheduledDate?: string;
   visitPeriod?: string;
   technician?: string;
+  ownerIds?: unknown[];
   location?: string;
 };
 
@@ -127,8 +134,6 @@ const ACTIVE_REQUEST_STATUSES = new Set([
   "in-progress",
   "in_progress",
 ]);
-
-const SCHEDULED_VISIT_STATUSES = new Set(["assigned", "approved", "scheduled"]);
 
 const formatDate = (value?: string, includeTime = false) => {
   if (!value) return "";
@@ -231,6 +236,7 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
         item.createdAt,
       technician:
         getPersonName(item.technicianId) || getPersonName(item.approvedBy),
+      ownerIds: [item.technicianId, item.approvedBy],
       location,
     });
   });
@@ -253,6 +259,7 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
         technician:
           getPersonName(item.assignedTechnicianId) ||
           getPersonName(item.handledBy),
+        ownerIds: [item.assignedTechnicianId, item.handledBy],
         location,
       });
     },
@@ -394,6 +401,8 @@ function QuickFactsCard({ facts }: { facts: QuickFact[] }) {
 
 export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { user: clerkUser } = useUser();
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const { colors, isDark } = useTheme();
@@ -401,6 +410,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   const animalQuery = useAnimalDetailsQuery(id);
   const animal = animalQuery.data as AnimalDetailsData | undefined;
   const api = useApi();
+  const bootstrapUser = queryClient.getQueryData<{
+    user?: { _id?: string };
+  }>(getBootstrapUserQueryKey(clerkUser?.id));
+  const currentTechnicianId = getStableEntityId(bootstrapUser?.user?._id);
   const { data: workQueue } = useQuery({
     queryKey: [...technicianKeys.workQueue(), "animal", id],
     queryFn: () =>
@@ -426,23 +439,11 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   );
   const nextVisit = useMemo(
     () =>
-      activeServices
-        .filter((service) => {
-          if (
-            !service.scheduledDate ||
-            !SCHEDULED_VISIT_STATUSES.has(service.status.toLowerCase())
-          ) {
-            return false;
-          }
-          const scheduledAt = new Date(service.scheduledDate).getTime();
-          return Number.isFinite(scheduledAt) && scheduledAt > Date.now();
-        })
-        .sort(
-          (first, second) =>
-            new Date(first.scheduledDate || 0).getTime() -
-            new Date(second.scheduledDate || 0).getTime(),
-        )[0],
-    [activeServices],
+      selectNextAnimalVisit(activeServices, {
+        role,
+        currentTechnicianId,
+      }),
+    [activeServices, currentTechnicianId, role],
   );
   const activeRequest = useMemo(
     () =>

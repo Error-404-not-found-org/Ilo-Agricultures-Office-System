@@ -6,9 +6,13 @@ import {
   getTechnicianWorkQueue,
   CreateTaskPayload,
 } from "../services/tasks.service";
-import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
+import {
+  executeOfflineMutation,
+  getOfflineMutationOwner,
+} from "@/hooks/useOfflineMutation";
 import { technicianKeys } from "@/lib/queryKeys";
 import type { WorkQueueFilters } from "@/features/technician-requests/types/technicianRequests.types";
+import { useUser } from "@clerk/clerk-expo";
 
 export const tasksQueryKeys = {
   all: ["technician", "tasks"] as const,
@@ -29,6 +33,16 @@ type TechnicianTaskFilters = {
 export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters) => {
   const api = useApi();
   const queryClient = useQueryClient();
+  const { user } = useUser();
+  const getOwner = () => {
+    const owner = getOfflineMutationOwner(user?.id);
+    if (!owner.ownerUserId) {
+      throw new Error(
+        "Cannot execute offline mutation without an authoritative user session",
+      );
+    }
+    return owner;
+  };
 
   const tasksQuery = useQuery({
     queryKey:
@@ -55,6 +69,7 @@ export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters)
 
   const createTaskMutation = useMutation({
     mutationFn: async (payload: CreateTaskPayload) => {
+      const owner = getOwner();
       return executeOfflineMutation(
         api,
         {
@@ -63,7 +78,11 @@ export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters)
           description: "Create technician task",
           entityType: "task",
         },
-        payload
+        payload,
+        undefined,
+        undefined,
+        owner.ownerUserId,
+        owner.ownerRole,
       );
     },
     onSuccess: () => {
@@ -73,6 +92,7 @@ export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters)
 
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
+      const owner = getOwner();
       return executeOfflineMutation(
         api,
         {
@@ -80,7 +100,11 @@ export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters)
           method: "PUT",
           description: "Complete farm visit task",
         },
-        {}
+        {},
+        undefined,
+        undefined,
+        owner.ownerUserId,
+        owner.ownerRole,
       );
     },
     onSuccess: (_, taskId) => {
@@ -92,6 +116,7 @@ export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters)
 
   const claimTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
+      const owner = getOwner();
       return executeOfflineMutation(
         api,
         {
@@ -99,7 +124,11 @@ export const useTechnicianTasks = (id?: string, filters?: TechnicianTaskFilters)
           method: "PUT",
           description: "Claim farm visit task",
         },
-        {}
+        {},
+        undefined,
+        undefined,
+        owner.ownerUserId,
+        owner.ownerRole,
       );
     },
     onSuccess: (_, taskId) => {

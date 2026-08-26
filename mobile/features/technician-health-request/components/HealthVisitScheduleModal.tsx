@@ -13,9 +13,11 @@ interface HealthVisitScheduleModalProps {
   visible: boolean;
   mode: "accept" | "schedule" | "reschedule";
   isSubmitting: boolean;
+  errorMessage?: string | null;
   initialDate?: string | null;
   initialVisitPeriod?: VisitPeriod | null;
   onClose: () => void;
+  onErrorClear?: () => void;
   onConfirm: (payload: HealthVisitSchedulePayload) => Promise<void>;
 }
 
@@ -23,9 +25,11 @@ export function HealthVisitScheduleModal({
   visible,
   mode,
   isSubmitting,
+  errorMessage,
   initialDate,
   initialVisitPeriod,
   onClose,
+  onErrorClear,
   onConfirm,
 }: HealthVisitScheduleModalProps) {
   const confirmLabel =
@@ -42,10 +46,12 @@ export function HealthVisitScheduleModal({
       description="Choose a visit day and service period. The farmer will see the confirmed window, not an exact appointment time."
       confirmLabel={confirmLabel}
       isSubmitting={isSubmitting}
+      errorMessage={errorMessage}
       initialDate={initialDate}
       initialVisitPeriod={initialVisitPeriod}
       getPeriodAvailability={getVisitSchedulePeriodAvailability}
       onClose={onClose}
+      onErrorClear={onErrorClear}
       onConfirm={onConfirm}
     />
   );

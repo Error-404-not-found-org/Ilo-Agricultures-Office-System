@@ -4,7 +4,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Alert,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -31,6 +30,8 @@ import {
 import { toast } from "sonner-native";
 import { useColorScheme } from "nativewind";
 import { useTheme } from "@/lib/theme";
+import { useApi } from "@/lib/api";
+import { signOutWithPushCleanup } from "@/lib/notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CustomDialog } from "@/components/shared";
 
@@ -43,6 +44,7 @@ const AdminProfile = () => {
   const { colorScheme, toggleColorScheme } = useColorScheme();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const api = useApi();
 
   // Edit name state
   const [isEditing, setIsEditing] = useState(false);
@@ -67,7 +69,7 @@ const AdminProfile = () => {
       });
       toast.success("Name updated successfully!");
       setIsEditing(false);
-    } catch (err) {
+    } catch {
       toast.error("Failed to update name.");
     } finally {
       setSavingName(false);
@@ -94,7 +96,7 @@ const AdminProfile = () => {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      await signOutWithPushCleanup(api, signOut);
       toast.success("Signed out successfully");
       router.replace("/(auth)");
     } catch (err) {
@@ -227,7 +229,7 @@ const AdminProfile = () => {
             <Text
               style={{
                 color: "#e2e8f0",
-                fontSize: 10,
+                fontSize: 12,
                 fontFamily: "Outfit_700Bold",
                 textTransform: "uppercase",
                 letterSpacing: 1,
@@ -243,7 +245,7 @@ const AdminProfile = () => {
           <Text
             style={{
               fontFamily: "Outfit_800ExtraBold",
-              fontSize: 10,
+              fontSize: 12,
               color: colors.textMuted,
               textTransform: "uppercase",
               letterSpacing: 1.5,
@@ -301,7 +303,7 @@ const AdminProfile = () => {
           <Text
             style={{
               fontFamily: "Outfit_800ExtraBold",
-              fontSize: 10,
+              fontSize: 12,
               color: colors.textMuted,
               textTransform: "uppercase",
               letterSpacing: 1.5,
@@ -375,7 +377,7 @@ const AdminProfile = () => {
               textAlign: "center",
               color: colors.textMuted,
               fontFamily: "Outfit_600SemiBold",
-              fontSize: 11,
+              fontSize: 12,
               marginTop: 24,
             }}
           >
@@ -426,7 +428,7 @@ const AdminProfile = () => {
 
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontFamily: "Outfit_700Bold",
                   color: colors.textSecondary,
                   textTransform: "uppercase",
@@ -456,7 +458,7 @@ const AdminProfile = () => {
 
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontFamily: "Outfit_700Bold",
                   color: colors.textSecondary,
                   textTransform: "uppercase",
@@ -709,7 +711,7 @@ const MenuItem = ({
           {value && (
             <Text
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontFamily: "Outfit_500Medium",
                 color: colors.textSecondary,
                 marginTop: 2,

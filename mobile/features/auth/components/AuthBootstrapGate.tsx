@@ -1,16 +1,22 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@clerk/clerk-expo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useRootNavigationState, useSegments } from "expo-router";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import type { AxiosInstance } from "axios";
 
-import { queryClient } from "@/lib/queryClient";
+import {
+  clearQueryCacheIdentity,
+  establishQueryCacheOwner,
+} from "@/lib/queryClient";
 import { getApiErrorDetails } from "@/lib/api";
-import { useBootstrapUser } from "@/features/auth/hooks/useBootstrapUser";
+import {
+  getBootstrapUserQueryKey,
+  useBootstrapUser,
+} from "@/features/auth/hooks/useBootstrapUser";
 import { getBootstrapErrorPresentation } from "@/features/auth/utils/bootstrapError";
+import { signOutWithPushCleanup } from "@/lib/notifications";
 
 interface AuthBootstrapGateProps {
   api: AxiosInstance;
@@ -22,6 +28,7 @@ interface AuthBootstrapGateProps {
   isLoaded: boolean;
   isSignedIn: boolean;
   userId?: string;
+  onResolvedUserId?: (userId?: string) => void;
 }
 
 export function AuthBootstrapGate({
@@ -32,6 +39,7 @@ export function AuthBootstrapGate({
   isLoaded,
   isSignedIn,
   userId,
+  onResolvedUserId,
 }: AuthBootstrapGateProps) {
   const { signOut } = useAuth();
   const segments = useSegments();
@@ -42,15 +50,40 @@ export function AuthBootstrapGate({
     isBootstrapLoading,
     retryBootstrap,
   } = useBootstrapUser({ api, isSignedIn, userId });
+  const [establishedOwnerId, setEstablishedOwnerId] = useState<string>();
 
   useEffect(() => {
+    let cancelled = false;
     if (isLoaded && !isSignedIn) {
-      queryClient.clear();
-      AsyncStorage.removeItem("REACT_QUERY_OFFLINE_CACHE").catch((error) =>
-        console.error("Failed to clear AsyncStorage react-query cache", error),
+      setEstablishedOwnerId(undefined);
+      onResolvedUserId?.(undefined);
+      void clearQueryCacheIdentity().catch((error) =>
+        console.error("Failed to clear signed-out query cache", error),
       );
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [isLoaded, isSignedIn]);
+
+    if (!isSignedIn || !userId || !dbUser?._id) return;
+    void establishQueryCacheOwner({
+      ownerUserId: dbUser._id,
+      bootstrapQueryKey: getBootstrapUserQueryKey(userId),
+      bootstrapData: { user: dbUser },
+    })
+      .then(() => {
+        if (cancelled) return;
+        setEstablishedOwnerId(dbUser._id);
+        onResolvedUserId?.(dbUser._id);
+      })
+      .catch((error) => {
+        console.error("Failed to establish query cache account boundary", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dbUser, isLoaded, isSignedIn, onResolvedUserId, userId]);
 
   useEffect(() => {
     if (!navigationState?.key) return;
@@ -103,7 +136,11 @@ export function AuthBootstrapGate({
     userId,
   ]);
 
-  if (isSignedIn && isBootstrapLoading) {
+  if (
+    isSignedIn &&
+    !bootstrapError &&
+    (isBootstrapLoading || !dbUser || establishedOwnerId !== dbUser._id)
+  ) {
     return (
       <View
         style={{
@@ -195,7 +232,7 @@ export function AuthBootstrapGate({
         )}
 
         <TouchableOpacity
-          onPress={() => signOut()}
+          onPress={() => void signOutWithPushCleanup(api, signOut)}
           style={{
             marginTop: shouldRetry ? 16 : 24,
             paddingHorizontal: 24,

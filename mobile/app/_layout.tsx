@@ -17,7 +17,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from "../utils/cache";
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { View, Text, useColorScheme, TouchableOpacity, Animated } from "react-native";
 import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -26,9 +26,15 @@ import { useColorScheme as useNativeWindColorScheme } from "nativewind";
 import { useSafeAreaInsets , SafeAreaProvider } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo from "@react-native-community/netinfo";
-import { processOfflineQueue } from "../lib/offlineQueue";
+import {
+  cancelOfflineQueueProcessing,
+  processOfflineQueue,
+} from "../lib/offlineQueue";
 import { useApi } from "../lib/api";
-import { registerForPushNotificationsAsync } from "../lib/notifications";
+import {
+  registerForPushNotificationsAsync,
+  syncPushTokenForAuthenticatedUser,
+} from "../lib/notifications";
 import Constants from "expo-constants";
 import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
@@ -36,7 +42,6 @@ import { TranslationProvider } from "../contexts/TranslationContext";
 import { getPushNotificationTarget } from "@/features/notifications/utils/notificationPresentation";
 import { invalidateNotificationLinkedQueries } from "@/features/notifications/utils/notificationQueryInvalidation";
 import { AuthBootstrapGate } from "@/features/auth/components/AuthBootstrapGate";
-import { getBootstrapUserQueryKey } from "@/features/auth/hooks/useBootstrapUser";
 import { AppStartupScreen } from "@/features/startup/components/AppStartupScreen";
 
 
@@ -259,11 +264,26 @@ function AppContent({
 function InitialLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const dbUserResponse = queryClient.getQueryData(
-    getBootstrapUserQueryKey(user?.id),
-  ) as any;
-  const currentUserId = dbUserResponse?.user?._id;
+  const [resolvedIdentity, setResolvedIdentity] = useState<{
+    clerkUserId?: string;
+    mongoUserId?: string;
+  }>({});
+  const currentUserId =
+    isSignedIn && resolvedIdentity.clerkUserId === user?.id
+      ? resolvedIdentity.mongoUserId
+      : undefined;
   const currentUserIdRef = useRef<string | undefined>(currentUserId);
+  if (!currentUserId) currentUserIdRef.current = undefined;
+  const handleResolvedUserId = useCallback(
+    (resolvedUserId?: string) => {
+      currentUserIdRef.current = resolvedUserId;
+      setResolvedIdentity({
+        clerkUserId: resolvedUserId ? user?.id : undefined,
+        mongoUserId: resolvedUserId,
+      });
+    },
+    [user?.id],
+  );
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -348,6 +368,16 @@ function InitialLayout() {
 
   // Offline Sync and Connection Monitoring
   useEffect(() => {
+    const syncAuthenticatedOwner = () => {
+      const ownerUserId = currentUserIdRef.current;
+      if (!isSignedIn || !ownerUserId) return;
+      void processOfflineQueue(
+        api,
+        ownerUserId,
+        () => currentUserIdRef.current,
+      );
+    };
+
     const unsubscribe = NetInfo.addEventListener(state => {
       const isConnected =
         state.isConnected !== false && state.isInternetReachable !== false;
@@ -362,7 +392,7 @@ function InitialLayout() {
             offlineBannerTimeoutRef.current = null;
           }
           toast.dismiss("connection-offline");
-          processOfflineQueue(api, () => currentUserIdRef.current);
+          syncAuthenticatedOwner();
           setShowOfflineToast(false);
           if (isSignedIn && !isToastCooldownRef.current && prev === false) {
             setShowOnlineToast(true);
@@ -392,24 +422,41 @@ function InitialLayout() {
         if (isOfflineMode && !isToastCooldownRef.current) {
           setShowOfflineToast(true);
         } else if (isConnected) {
-          processOfflineQueue(api, () => currentUserIdRef.current);
+          syncAuthenticatedOwner();
         }
       }
       connectionRef.current = isConnected;
     });
-    return () => unsubscribe();
-  }, [api, isSignedIn]);
+    if (isSignedIn && currentUserId) {
+      void NetInfo.fetch().then((state) => {
+        if (
+          state.isConnected !== false &&
+          state.isInternetReachable !== false
+        ) {
+          syncAuthenticatedOwner();
+        }
+      });
+    }
+    return () => {
+      unsubscribe();
+      cancelOfflineQueueProcessing();
+    };
+  }, [api, currentUserId, isSignedIn]);
 
   // Push Token Sync (runs only when signed-in user changes)
   useEffect(() => {
+    let cancelled = false;
     if (isSignedIn && user) {
       registerForPushNotificationsAsync().then(token => {
-        if (token) {
-          api.post('/user/push-token', { pushToken: token })
+        if (token && !cancelled) {
+          syncPushTokenForAuthenticatedUser(api, token)
             .catch(err => console.error("Push token sync failed", err));
         }
       });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [isSignedIn, user?.id]);
 
   if (appReady && (isOffline || authTimeout) && !isSignedIn) {
@@ -521,6 +568,7 @@ function InitialLayout() {
       isLoaded={isLoaded}
       isSignedIn={Boolean(isSignedIn)}
       userId={user?.id}
+      onResolvedUserId={handleResolvedUserId}
     >
       <AppContent
         isSignedIn={Boolean(isSignedIn)}

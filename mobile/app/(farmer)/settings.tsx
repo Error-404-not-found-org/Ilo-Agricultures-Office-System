@@ -10,6 +10,7 @@ import { useTranslation } from '../../contexts/TranslationContext';
 import { useTheme } from '@/lib/theme';
 import * as Updates from 'expo-updates';
 import { AppPageHeader } from '@/components/AppPageHeader';
+import { clearDownloadableAppCache } from '@/lib/queryClient';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -84,19 +85,10 @@ export default function SettingsScreen() {
     setClearingCache(true);
     toast.loading("Clearing app cache...");
     try {
-      // Backup rate limiter stamps and theme preference to avoid losing them
-      const cacheLimit = await AsyncStorage.getItem('settings_ratelimit_cache');
-      const updatesLimit = await AsyncStorage.getItem('settings_ratelimit_updates');
-      const themePref = await AsyncStorage.getItem('theme_preference');
-      const notifPref = await AsyncStorage.getItem('settings_notifications');
-
-      await AsyncStorage.clear();
-
-      // Restore backups
-      if (cacheLimit) await AsyncStorage.setItem('settings_ratelimit_cache', cacheLimit);
-      if (updatesLimit) await AsyncStorage.setItem('settings_ratelimit_updates', updatesLimit);
-      if (themePref) await AsyncStorage.setItem('theme_preference', themePref);
-      if (notifPref) await AsyncStorage.setItem('settings_notifications', notifPref);
+      // Clear only downloadable server-state cache. Pending offline work,
+      // account identity, settings, and push registration state are user data
+      // and must survive this action.
+      await clearDownloadableAppCache();
 
       toast.dismiss();
       toast.success(t('cacheCleared'));

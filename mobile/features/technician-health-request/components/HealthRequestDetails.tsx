@@ -199,6 +199,7 @@ export function HealthRequestDetails({
   const { colors } = useTheme();
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("accept");
   const [scheduleVisible, setScheduleVisible] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [submittingResponse, setSubmittingResponse] = useState<
     "advice" | "office_pickup" | null
@@ -352,7 +353,7 @@ export function HealthRequestDetails({
       connectivity.isConnected === false ||
       connectivity.isInternetReachable === false
     ) {
-      setActionNotice(
+      setScheduleError(
         "Accepting and scheduling Health visits requires an internet connection.",
       );
       return false;
@@ -363,9 +364,7 @@ export function HealthRequestDetails({
   const handleClaimConflict = async () => {
     const message =
       "This request was claimed by another technician. Refreshing your work list.";
-    setActionNotice(message);
-    toast.error(message);
-    setScheduleVisible(false);
+    setScheduleError(message);
     await invalidateHealthWorkflow();
     await onRefresh();
   };
@@ -373,7 +372,7 @@ export function HealthRequestDetails({
   const handleSchedule = async (payload: HealthVisitSchedulePayload) => {
     if (!(await requireOnline())) return;
     setUpdating(true);
-    setActionNotice(null);
+    setScheduleError(null);
     let claimSucceeded = false;
 
     try {
@@ -405,9 +404,8 @@ export function HealthRequestDetails({
         if (claimSucceeded) {
           const message =
             "Request accepted, but the visit could not be scheduled. Set the visit to continue.";
-          setActionNotice(message);
-          toast.error(message);
-          setScheduleVisible(false);
+          setScheduleError(message);
+          setScheduleMode("schedule");
           await invalidateHealthWorkflow();
           await onRefresh();
           return;
@@ -424,9 +422,13 @@ export function HealthRequestDetails({
       await invalidateHealthWorkflow();
       await onRefresh();
     } catch (error: any) {
-      setActionNotice(
+      setScheduleError(
         getErrorMessage(error, "The Health visit could not be scheduled."),
       );
+      if (error?.response?.status === 409) {
+        await invalidateHealthWorkflow();
+        await onRefresh();
+      }
     } finally {
       setUpdating(false);
     }
@@ -436,6 +438,7 @@ export function HealthRequestDetails({
     setScheduleMode(mode);
     setScheduleVisible(true);
     setActionNotice(null);
+    setScheduleError(null);
   };
 
   const closeAdviceEditor = () => {
@@ -1261,6 +1264,7 @@ export function HealthRequestDetails({
         visible={scheduleVisible}
         mode={scheduleMode}
         isSubmitting={updating}
+        errorMessage={scheduleError}
         initialDate={
           scheduleMode === "reschedule" ? request?.scheduledDate : null
         }
@@ -1268,9 +1272,11 @@ export function HealthRequestDetails({
         onClose={() => {
           if (!updating) {
             setScheduleVisible(false);
+            setScheduleError(null);
             setSelectedHandlingMethod(null);
           }
         }}
+        onErrorClear={() => setScheduleError(null)}
         onConfirm={handleSchedule}
       />
 

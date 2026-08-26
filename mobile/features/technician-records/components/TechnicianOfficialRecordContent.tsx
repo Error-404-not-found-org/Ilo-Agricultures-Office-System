@@ -13,7 +13,6 @@ import {
   CalendarClock,
   CheckCheckIcon,
   AlarmClockMinus,
- 
   Dna,
   Hash,
   Flame,
@@ -25,6 +24,7 @@ import {
   PawPrint,
   Heart,
   HeartOff,
+  Siren,
   MessageSquare,
   Search,
   Bandage,
@@ -47,7 +47,6 @@ import {
   formatAnimalReference,
   getFullAnimalReference,
 } from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
-import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 // --- EXISTING DATA HELPERS ---
 const hasValue = (value: unknown) => {
@@ -405,10 +404,11 @@ export function TechnicianOfficialRecordContent({
   const { colors, isDark } = useTheme();
   const router = useRouter();
   const [calfGalleryVisible, setCalfGalleryVisible] = useState(false);
-  const [calfGalleryImages, setCalfGalleryImages] = useState<ImageViewerItem[]>([]);
+  const [calfGalleryImages, setCalfGalleryImages] = useState<ImageViewerItem[]>(
+    [],
+  );
   const [calfGalleryInitialIndex, setCalfGalleryInitialIndex] = useState(0);
   const details = record.details || {};
-  const healthPriority = getHealthUrgencyPresentation(details.urgency);
   const eventDate = formatDate(
     details.serviceDate || record.date,
     record.datePrecision === "datetime",
@@ -477,16 +477,32 @@ export function TechnicianOfficialRecordContent({
         }
       : null,
     hasValue(details.sireBreed)
-      ? { label: "Sire breed", value: details.sireBreed || "", icon: <Dna size={18} color={colors.primary} /> }
+      ? {
+          label: "Sire breed",
+          value: details.sireBreed || "",
+          icon: <Dna size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.sireCode)
-      ? { label: "Sire code", value: details.sireCode || "", icon: <Hash size={18} color={colors.primary} /> }
+      ? {
+          label: "Sire code",
+          value: details.sireCode || "",
+          icon: <Hash size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.estrus)
-      ? { label: "Estrus type", value: humanize(details.estrus), icon: <Flame size={18} color={colors.primary} /> }
+      ? {
+          label: "Estrus type",
+          value: humanize(details.estrus),
+          icon: <Flame size={18} color={colors.primary} />,
+        }
       : null,
     details.semenDosesUsed !== undefined
-      ? { label: "Semen doses", value: String(details.semenDosesUsed), icon: <Droplets size={18} color={colors.primary} /> }
+      ? {
+          label: "Semen doses",
+          value: String(details.semenDosesUsed),
+          icon: <Droplets size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.scheduledDate)
       ? {
@@ -496,10 +512,18 @@ export function TechnicianOfficialRecordContent({
         }
       : null,
     hasValue(details.visitPeriod)
-      ? { label: "Visit period", value: humanize(details.visitPeriod), icon: <Sun size={18} color={colors.primary} /> }
+      ? {
+          label: "Visit period",
+          value: humanize(details.visitPeriod),
+          icon: <Sun size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.status)
-      ? { label: "Status", value: humanize(details.status), icon: <Info size={18} color={colors.primary} /> }
+      ? {
+          label: "Status",
+          value: humanize(details.status),
+          icon: <Info size={18} color={colors.primary} />,
+        }
       : null,
     details.previousAttemptNumber !== undefined
       ? {
@@ -509,7 +533,11 @@ export function TechnicianOfficialRecordContent({
         }
       : null,
     hasValue(details.failureReason)
-      ? { label: "Failure reason", value: humanize(details.failureReason), icon: <AlertTriangle size={18} color={colors.primary} /> }
+      ? {
+          label: "Failure reason",
+          value: humanize(details.failureReason),
+          icon: <AlertTriangle size={18} color={colors.primary} />,
+        }
       : null,
   ];
 
@@ -569,13 +597,25 @@ export function TechnicianOfficialRecordContent({
         }
       : null,
     details.numberOfCalves !== undefined
-      ? { label: "Delivered", value: String(details.numberOfCalves), icon: <PawPrint size={18} color={colors.primary} /> }
+      ? {
+          label: "Delivered",
+          value: String(details.numberOfCalves),
+          icon: <PawPrint size={18} color={colors.primary} />,
+        }
       : null,
     details.livingCalfCount !== undefined
-      ? { label: "Living", value: String(details.livingCalfCount), icon: <Heart size={18} color={colors.primary} /> }
+      ? {
+          label: "Living",
+          value: String(details.livingCalfCount),
+          icon: <Heart size={18} color={colors.primary} />,
+        }
       : null,
     details.stillbornCount !== undefined
-      ? { label: "Stillborn", value: String(details.stillbornCount), icon: <HeartOff size={18} color={colors.primary} /> }
+      ? {
+          label: "Stillborn",
+          value: String(details.stillbornCount),
+          icon: <HeartOff size={18} color={colors.primary} />,
+        }
       : null,
   ];
 
@@ -589,34 +629,59 @@ export function TechnicianOfficialRecordContent({
       : null,
     hasValue(details.urgency)
       ? {
-          label: "Farmer request priority",
-          value: healthPriority.label,
-          icon:
-            healthPriority.priority === "urgent" ? (
-              <AlertTriangle size={18} color={colors.errorForeground} />
-            ) : undefined,
+          label: "Urgency",
+          value: humanize(details.urgency),
+          icon: <Siren size={18} color={colors.primary} />,
         }
       : null,
     hasValue(details.symptoms)
-      ? { label: "Concern or symptoms", value: details.symptoms || "", icon: <Stethoscope size={18} color={colors.primary} /> }
+      ? {
+          label: "Concern or symptoms",
+          value: details.symptoms || "",
+          icon: <Stethoscope size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.farmerNotes)
-      ? { label: "Farmer notes", value: details.farmerNotes || "", icon: <MessageSquare size={18} color={colors.primary} /> }
+      ? {
+          label: "Farmer notes",
+          value: details.farmerNotes || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.diagnosis)
-      ? { label: "Diagnosis or findings", value: details.diagnosis || "", icon: <Search size={18} color={colors.primary} /> }
+      ? {
+          label: "Diagnosis or findings",
+          value: details.diagnosis || "",
+          icon: <Search size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.treatment)
-      ? { label: "Treatment", value: details.treatment || "", icon: <Bandage size={18} color={colors.primary} /> }
+      ? {
+          label: "Treatment",
+          value: details.treatment || "",
+          icon: <Bandage size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.medicine)
-      ? { label: "Medicine", value: details.medicine || "", icon: <Pill size={18} color={colors.primary} /> }
+      ? {
+          label: "Medicine",
+          value: details.medicine || "",
+          icon: <Pill size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.dosage)
-      ? { label: "Dosage", value: details.dosage || "", icon: <Syringe size={18} color={colors.primary} /> }
+      ? {
+          label: "Dosage",
+          value: details.dosage || "",
+          icon: <Syringe size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.advice)
-      ? { label: "Advice", value: details.advice || "", icon: <MessageCircle size={18} color={colors.primary} /> }
+      ? {
+          label: "Advice",
+          value: details.advice || "",
+          icon: <MessageCircle size={18} color={colors.primary} />,
+        }
       : null,
     hasValue(details.followUpDate)
       ? {
@@ -626,7 +691,11 @@ export function TechnicianOfficialRecordContent({
         }
       : null,
     hasValue(details.withdrawalPeriod)
-      ? { label: "Withdrawal period", value: details.withdrawalPeriod || "", icon: <ShieldAlert size={18} color={colors.primary} /> }
+      ? {
+          label: "Withdrawal period",
+          value: details.withdrawalPeriod || "",
+          icon: <ShieldAlert size={18} color={colors.primary} />,
+        }
       : details.withdrawalPeriodDays !== undefined
         ? {
             label: "Withdrawal period",
@@ -853,8 +922,6 @@ export function TechnicianOfficialRecordContent({
               </Text>
             </View>
           ) : null}
-
-
         </RecordDetailCard>
       ) : (
         /* COMMON DETAILS for non-calving records */
@@ -908,99 +975,144 @@ export function TechnicianOfficialRecordContent({
           {livingCalves.map((calf: any, index: number) => {
             let photos: any[] = [];
             if (calf.imageUrl) {
-              photos = [{ url: calf.imageUrl, label: calf.earTag ? `Calf ${calf.earTag}` : `Calf ${index + 1}` }];
+              photos = [
+                {
+                  url: calf.imageUrl,
+                  label: calf.earTag
+                    ? `Calf ${calf.earTag}`
+                    : `Calf ${index + 1}`,
+                },
+              ];
             } else if (livingCalves.length === 1) {
               photos = offspringEvidence;
             } else if (calf.earTag) {
-              photos = offspringEvidence.filter(e => e.label && e.label.includes(calf.earTag));
+              photos = offspringEvidence.filter(
+                (e) => e.label && e.label.includes(calf.earTag),
+              );
             }
             if (photos.length === 0 && offspringEvidence[index]) {
               photos = [offspringEvidence[index]];
             }
 
             return (
-            <RecordDetailCard
-              key={`${calf.animalId || calf.earTag || "calf"}-${index}`}
-              title={`CALF ${index + 1}`}
-              description="Living offspring"
-            >
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                {photos.length > 0 && photos[0]?.url ? (
-                  <View style={{ marginRight: 12, width: 80, height: 80, borderRadius: 12, overflow: 'hidden' }}>
-                    <RecordPhotoEvidence
-                      url={photos[0].url}
-                      label={photos[0].label || `Calf photo`}
-                      width={80}
-                      height={80}
-                      compact
-                      resizeMode="cover"
-                      onPress={() => {
-                        setCalfGalleryImages(
-                          photos.map((p, i) => ({
-                            uri: p.url,
-                            fileName: p.label || `calf-photo-${i + 1}`,
-                            accessibilityLabel: p.label || `Calf photo ${i + 1}`,
-                          }))
-                        );
-                        setCalfGalleryInitialIndex(0);
-                        setCalfGalleryVisible(true);
+              <RecordDetailCard
+                key={`${calf.animalId || calf.earTag || "calf"}-${index}`}
+                title={`CALF ${index + 1}`}
+                description="Living offspring"
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  {photos.length > 0 ? (
+                    <View style={{ marginRight: 12 }}>
+                      <RecordPhotoEvidence
+                        url={photos[0].url}
+                        label={photos[0].label}
+                        width={80}
+                        height={80}
+                        compact
+                        resizeMode="cover"
+                        onPress={() => {
+                          setCalfGalleryImages(
+                            photos.map((p, i) => ({
+                              uri: p.url,
+                              fileName: p.label || `calf-photo-${i + 1}`,
+                              accessibilityLabel:
+                                p.label || `Calf photo ${i + 1}`,
+                            })),
+                          );
+                          setCalfGalleryInitialIndex(0);
+                          setCalfGalleryVisible(true);
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <View
+                      style={{
+                        width: 80,
+                        height: 80,
+                        borderRadius: 12,
+                        backgroundColor: isDark
+                          ? colors.background
+                          : colors.successContainer,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
                       }}
-                    />
-                  </View>
-                ) : (
-                  <View
-                    style={{
-                      width: 80,
-                      height: 80,
-                      borderRadius: 12,
-                      backgroundColor: isDark ? colors.background : colors.successContainer,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 12,
-                    }}
-                  >
-                    <MaterialCommunityIcons name="cow" size={28} color={colors.primary} />
-                  </View>
-                )}
-
-                <View style={{ flex: 1, justifyContent: "center" }}>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                    {hasValue(calf.earTag) ? (
-                      <RecordDetailField label="Ear Tag" value={`#${calf.earTag}`} />
-                    ) : null}
-                    {hasValue(calf.sex) ? (
-                      <RecordDetailField label="Sex" value={calfSex(calf.sex)} />
-                    ) : null}
-                    {calf.weight !== undefined ? (
-                      <RecordDetailField label="Weight" value={`${calf.weight} kg`} />
-                    ) : null}
-                  </View>
-
-                  {calf.animalId ? (
-                    <Pressable
-                      onPress={() => {
-                        router.push(`/(technician)/animal-details?id=${calf.animalId}`);
-                      }}
-                      style={({ pressed }) => ({
-                        marginTop: 8,
-                        alignSelf: 'flex-start',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingVertical: 6,
-                        paddingHorizontal: 0,
-                        opacity: pressed ? 0.6 : 1,
-                      })}
                     >
-                      <Text style={{ color: colors.primary, fontFamily: "Outfit_600SemiBold", fontSize: 13, marginRight: 4 }}>
-                        View offspring
-                      </Text>
-                      <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primary} />
-                    </Pressable>
-                  ) : null}
+                      <MaterialCommunityIcons
+                        name="cow"
+                        size={28}
+                        color={colors.primary}
+                      />
+                    </View>
+                  )}
+
+                  <View style={{ flex: 1, justifyContent: "center" }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 12,
+                      }}
+                    >
+                      {hasValue(calf.earTag) ? (
+                        <RecordDetailField
+                          label="Ear Tag"
+                          value={`#${calf.earTag}`}
+                        />
+                      ) : null}
+                      {hasValue(calf.sex) ? (
+                        <RecordDetailField
+                          label="Sex"
+                          value={calfSex(calf.sex)}
+                        />
+                      ) : null}
+                      {calf.weight !== undefined ? (
+                        <RecordDetailField
+                          label="Weight"
+                          value={`${calf.weight} kg`}
+                        />
+                      ) : null}
+                    </View>
+
+                    {calf.animalId ? (
+                      <Pressable
+                        onPress={() => {
+                          router.push(
+                            `/(technician)/animal-details?id=${calf.animalId}`,
+                          );
+                        }}
+                        style={({ pressed }) => ({
+                          marginTop: 8,
+                          alignSelf: "flex-start",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingVertical: 6,
+                          paddingHorizontal: 0,
+                          opacity: pressed ? 0.6 : 1,
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: colors.primary,
+                            fontFamily: "Outfit_600SemiBold",
+                            fontSize: 13,
+                            marginRight: 4,
+                          }}
+                        >
+                          View offspring
+                        </Text>
+                        <MaterialCommunityIcons
+                          name="arrow-right"
+                          size={16}
+                          color={colors.primary}
+                        />
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            </RecordDetailCard>
-          )})}
+              </RecordDetailCard>
+            );
+          })}
           {nonLivingCalves.map((calf: any, index: number) => (
             <RecordDetailCard
               key={`non-living-${index}`}

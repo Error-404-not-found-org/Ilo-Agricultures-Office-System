@@ -6,7 +6,8 @@ import { useRouter, useSegments } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { useApi } from "@/lib/api";
 import { useNetInfo } from "@react-native-community/netinfo";
-import { getOfflineQueue } from "@/lib/offlineQueue";
+import { getPendingCountForOwner } from "@/lib/offlineQueue";
+import { queryClient } from "@/lib/queryClient";
 
 export default function Header() {
   const router = useRouter();
@@ -16,6 +17,11 @@ export default function Header() {
   const netInfo = useNetInfo();
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const dbUserResponse = queryClient.getQueryData([
+    "mongodb-user",
+    user?.id,
+  ]) as any;
+  const currentUserId = dbUserResponse?.user?._id as string | undefined;
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -32,8 +38,7 @@ export default function Header() {
   // Sync Pending Actions Count
   useEffect(() => {
     const updateSyncCount = async () => {
-      const queue = await getOfflineQueue();
-      setPendingSyncCount(queue.length);
+      setPendingSyncCount(await getPendingCountForOwner(currentUserId));
     };
 
     updateSyncCount();
@@ -41,7 +46,7 @@ export default function Header() {
     // Check every 10 seconds or when coming back online
     const interval = setInterval(updateSyncCount, 10000);
     return () => clearInterval(interval);
-  }, [netInfo.isConnected]);
+  }, [currentUserId, netInfo.isConnected]);
 
   const isAdmin = (segments as string[]).includes("(admin)");
   const isFarmer = (segments as string[]).includes("(farmer)");

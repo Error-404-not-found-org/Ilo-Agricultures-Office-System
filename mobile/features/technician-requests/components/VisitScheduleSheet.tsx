@@ -8,7 +8,12 @@ import {
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { AlertTriangle, CalendarDays, Clock3 } from "lucide-react-native";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CalendarDays,
+  Clock3,
+} from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Text } from "@/components/ui/Text";
@@ -39,6 +44,7 @@ interface VisitScheduleSheetProps {
   description: string;
   confirmLabel: string;
   isSubmitting: boolean;
+  errorMessage?: string | null;
   initialDate?: string | null;
   initialVisitPeriod?: VisitPeriod | null;
   getPeriodAvailability?: (
@@ -47,6 +53,7 @@ interface VisitScheduleSheetProps {
     now?: Date,
   ) => VisitPeriodAvailability;
   onClose: () => void;
+  onErrorClear?: () => void;
   onConfirm: (payload: VisitSchedulePayload) => Promise<void>;
 }
 
@@ -79,10 +86,12 @@ export function VisitScheduleSheet({
   description,
   confirmLabel,
   isSubmitting,
+  errorMessage,
   initialDate,
   initialVisitPeriod,
   getPeriodAvailability = getVisitSchedulePeriodAvailability,
   onClose,
+  onErrorClear,
   onConfirm,
 }: VisitScheduleSheetProps) {
   const { colors, isDark } = useTheme();
@@ -160,6 +169,11 @@ export function VisitScheduleSheet({
     submitLock.current = false;
   }, [getPeriodAvailability, initialDate, initialVisitPeriod, visible]);
 
+  const closeSheet = () => {
+    onErrorClear?.();
+    onClose();
+  };
+
   const selectDate = (
     nextDate: Date,
     choice: "today" | "tomorrow" | "custom",
@@ -168,6 +182,7 @@ export function VisitScheduleSheet({
     setSelectedDate(nextDate);
     setDateChoice(choice);
     setShowCurrentPeriodWarning(false);
+    onErrorClear?.();
     if (
       visitPeriod &&
       getPeriodAvailability(nextDate, visitPeriod, new Date()).disabled
@@ -178,6 +193,7 @@ export function VisitScheduleSheet({
 
   const submitSchedule = async (samePeriodConfirmed = false) => {
     if (!visitPeriod || submitLock.current) return;
+    onErrorClear?.();
     const availability = getPeriodAvailability(
       selectedDate,
       visitPeriod,
@@ -208,7 +224,7 @@ export function VisitScheduleSheet({
       presentationStyle="overFullScreen"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={isSubmitting ? undefined : onClose}
+      onRequestClose={isSubmitting ? undefined : closeSheet}
     >
       <View
         style={{
@@ -220,7 +236,7 @@ export function VisitScheduleSheet({
         <Pressable
           accessible={false}
           disabled={isSubmitting}
-          onPress={onClose}
+          onPress={closeSheet}
           style={StyleSheet.absoluteFill}
         />
 
@@ -272,6 +288,7 @@ export function VisitScheduleSheet({
                       if (choice === "custom") {
                         setDateChoice("custom");
                         setShowDatePicker(true);
+                        onErrorClear?.();
                         return;
                       }
                       const today = startOfToday();
@@ -353,6 +370,7 @@ export function VisitScheduleSheet({
                     onPress={() => {
                       setVisitPeriod(period);
                       setShowCurrentPeriodWarning(false);
+                      onErrorClear?.();
                     }}
                     style={{
                       flex: 1,
@@ -503,57 +521,93 @@ export function VisitScheduleSheet({
             </View>
           ) : null}
 
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 12,
-              marginTop: 24,
-              marginBottom: 8,
-            }}
-          >
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              disabled={isSubmitting}
-              onPress={onClose}
+          {errorMessage ? (
+            <View
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
               style={{
-                flex: 1,
-                minHeight: 48,
-                alignItems: "center",
-                justifyContent: "center",
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 10,
+                marginTop: 20,
+                padding: 12,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: colors.errorBorder,
+                backgroundColor: colors.errorContainer,
               }}
             >
-              <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
-                Cancel
+              <AlertCircle size={19} color={colors.errorForeground} />
+              <Text
+                textRole="body"
+                style={{ flex: 1, color: colors.errorForeground }}
+              >
+                {errorMessage}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={confirmLabel}
-              disabled={isSubmitting || !visitPeriod}
-              onPress={() => void submitSchedule(false)}
+            </View>
+          ) : null}
+
+          {!showCurrentPeriodWarning ? (
+            <View
               style={{
-                flex: 1.35,
-                minHeight: 48,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 12,
-                backgroundColor: colors.primary,
-                opacity: isSubmitting || !visitPeriod ? 0.55 : 1,
+                flexDirection: "row",
+                gap: 12,
+                marginTop: 24,
+                marginBottom: 8,
               }}
             >
-              {isSubmitting ? (
-                <ActivityIndicator color={colors.onPrimary} />
-              ) : (
-                <Text textRole="bodyStrong" style={{ color: colors.onPrimary }}>
-                  {confirmLabel}
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                disabled={isSubmitting}
+                onPress={closeSheet}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text
+                  textRole="bodyStrong"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Cancel
                 </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={confirmLabel}
+                disabled={isSubmitting || !visitPeriod}
+                onPress={() => void submitSchedule(false)}
+                style={{
+                  flex: 1.35,
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  backgroundColor: colors.primary,
+                  opacity: isSubmitting || !visitPeriod ? 0.55 : 1,
+                }}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={colors.onPrimary} />
+                ) : (
+                  <Text
+                    textRole="bodyStrong"
+                    style={{ color: colors.onPrimary }}
+                  >
+                    {confirmLabel}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ height: 8 }} />
+          )}
         </SafeAreaView>
 
         {showDatePicker ? (
