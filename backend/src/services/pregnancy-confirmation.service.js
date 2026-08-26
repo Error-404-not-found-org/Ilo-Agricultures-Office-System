@@ -18,6 +18,7 @@ import {
 import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
 import { calculateTargetCalvingDate } from "../utils/cattleCore.js";
 import { AppError } from "../utils/app-error.js";
+import { assertAIRecordSupportsCurrentTracking } from "../domain/previous-ai-entry.js";
 import {
   buildInseminationIdMatch,
   closeBreedingFollowUpTask,
@@ -76,6 +77,7 @@ const loadContext = async ({ animalId, inseminationId, session }) => {
       code: "INSEMINATION_NOT_FOUND",
     });
   }
+  assertAIRecordSupportsCurrentTracking(insemination);
   if (String(insemination.farmerId) !== String(animal.farmerId)) {
     throw new AppError("The insemination owner does not match the animal owner.", {
       status: 409,

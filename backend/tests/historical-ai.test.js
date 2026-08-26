@@ -7,7 +7,7 @@ import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { Task } from "../src/models/task.model.js";
 import { inngest } from "../src/config/inngest.js";
-import { recordTechnicianAIService } from "../src/services/livestock-transaction.service.js";
+import { recordPreviousInsemination } from "../src/services/previous-insemination.service.js";
 
 vi.mock("../src/models/user.model.js");
 vi.mock("../src/models/animal.model.js");
@@ -16,7 +16,7 @@ vi.mock("../src/models/pregnancy.model.js");
 vi.mock("../src/models/calving.model.js");
 vi.mock("../src/models/task.model.js");
 vi.mock("../src/config/inngest.js");
-vi.mock("../src/services/livestock-transaction.service.js");
+vi.mock("../src/services/previous-insemination.service.js");
 
 describe("Historical AI Recording Endpoint", () => {
   const mockReq = (body) => ({
@@ -45,7 +45,7 @@ describe("Historical AI Recording Endpoint", () => {
     Pregnancy.findOne.mockResolvedValue(mockData.activePregnancy || null);
     Calving.findOne.mockResolvedValue(mockData.newerCalving || null);
 
-    recordTechnicianAIService.mockResolvedValue({
+    recordPreviousInsemination.mockResolvedValue({
       insemination: { _id: "ai123" },
       outcome: "created",
       task: null,
@@ -64,17 +64,23 @@ describe("Historical AI Recording Endpoint", () => {
     const res = await runTest({}, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: pastDate },
     });
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(recordTechnicianAIService).toHaveBeenCalled();
+    expect(recordPreviousInsemination).toHaveBeenCalledWith(expect.objectContaining({ entryMode: "history_only" }));
   });
 
   it("9. Future AI date rejected", async () => {
     const futureDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    recordPreviousInsemination.mockRejectedValueOnce(Object.assign(
+      new Error("Previous AI service date cannot be in the future."),
+      { status: 400, code: "PREVIOUS_AI_DATE_IN_FUTURE" },
+    ));
     const res = await runTest({}, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: futureDate },
     });
     expect(res.status).toHaveBeenCalledWith(400);
@@ -86,51 +92,54 @@ describe("Historical AI Recording Endpoint", () => {
     const res = await runTest({ animal: { _id: "animal123", farmerId: "otherFarmer" } }, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: pastDate },
     });
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "ANIMAL_FARMER_MISMATCH" }));
   });
 
-  it("11. Existing active AI attempt rejected", async () => {
+  it("11. History-only AI is allowed beside active work", async () => {
     const pastDate = new Date(Date.now() - 100000);
     const res = await runTest({ activeInsemination: { _id: "active123" } }, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: pastDate },
     });
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "NEWER_REPRODUCTIVE_RECORD_EXISTS" }));
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it("12. Newer AI record rejected", async () => {
+  it("12. History-only AI is allowed beside a newer AI", async () => {
     const pastDate = new Date(Date.now() - 100000);
     const res = await runTest({ newerInsemination: { _id: "newer123" } }, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: pastDate },
     });
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "NEWER_REPRODUCTIVE_RECORD_EXISTS" }));
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it("13. Newer calving/reproductive event rejected", async () => {
+  it("13. History-only AI is allowed beside a newer calving", async () => {
     const pastDate = new Date(Date.now() - 100000);
     const res = await runTest({ newerCalving: { _id: "calving123" } }, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: pastDate },
     });
-    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it("14. Pregnant animal rejected", async () => {
+  it("14. History-only AI does not replace a current pregnancy", async () => {
     const pastDate = new Date(Date.now() - 100000);
     const res = await runTest({ animal: { _id: "animal123", farmerId: "farmer123", reproductiveStatus: "Pregnant" } }, {
       farmerId: "farmer123",
       animalId: "animal123",
+      entryMode: "history_only",
       inseminationDetails: { inseminationDate: pastDate },
     });
-    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 });

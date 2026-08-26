@@ -87,9 +87,18 @@ const InseminationSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Set only by the Previous AI workflow. Missing remains the backwards-
+    // compatible value for ordinary live/request-linked AI records.
+    entryMode: {
+      type: String,
+      enum: ["history_only", "continue_tracking"],
+      default: undefined,
+    },
     attemptNumber: {
       type: Number,
-      default: 1,
+      default: function defaultAttemptNumber() {
+        return this.entryMode === "history_only" ? undefined : 1;
+      },
     },
     previousAttemptId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -98,7 +107,11 @@ const InseminationSchema = new mongoose.Schema(
     },
     attemptSeriesId: {
       type: mongoose.Schema.Types.ObjectId,
-      default: () => new mongoose.Types.ObjectId(),
+      default: function defaultAttemptSeriesId() {
+        return this.entryMode === "history_only"
+          ? undefined
+          : new mongoose.Types.ObjectId();
+      },
     },
     preferredDate: {
       type: Date,
@@ -195,7 +208,7 @@ const InseminationSchema = new mongoose.Schema(
     },
     observationSource: {
       type: String,
-      enum: ["farmer", "technician", "farmer_app", "technician_phone", "technician_field", null],
+      enum: ["farmer", "technician", "farmer_app", "technician_phone", "technician_field", "paper_record", null],
       default: null,
     },
     observationRecordedBy: {

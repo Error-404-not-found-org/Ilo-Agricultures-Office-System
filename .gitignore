@@ -7,6 +7,7 @@ scripts/
 backend/scripts/*
 !backend/scripts/audit-duplicate-ear-tags.js
 !backend/scripts/seed-reproduction-lifecycle.js
+!backend/scripts/seed-postpartum-test-animals.js
 !backend/scripts/cleanup-reproduction-lifecycle.js
 !backend/scripts/cleanup-test-account-records.js
 !backend/scripts/seed-reproduction-test-accounts.js

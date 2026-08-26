@@ -7,6 +7,8 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Notification } from "../models/notification.model.js";
 import { Task } from "../models/task.model.js";
 import { resolveReproductionNextAction } from "../domain/reproduction-next-action.js";
+import { resolveEffectiveReproductiveStatus } from "../domain/reproduction-lifecycle.js";
+import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
 import cloudinary from "../config/cloudinary.js";
 import { inngest } from "../config/inngest.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
@@ -480,6 +482,9 @@ export const getAnimalById = async (req, res) => {
     });
     return res.status(200).json({
       ...animal.toObject(),
+      effectiveReproductiveStatus: resolveEffectiveReproductiveStatus({
+        animal,
+      }),
       ...(calvings.length ? { expectedCalvingDate: undefined } : {}),
       offspring,
       inseminations,
@@ -637,7 +642,8 @@ export const updateReproductiveStatus = async (req, res) => {
         animalId: id,
         status: "done",
         deletedAt: null,
-      }).sort({ createdAt: -1 }),
+        ...CURRENT_AI_ATTEMPT_QUERY,
+      }).sort({ inseminationDate: -1, createdAt: -1 }),
       Pregnancy.findOne({
         animalId: id,
         cycleStatus: "active",

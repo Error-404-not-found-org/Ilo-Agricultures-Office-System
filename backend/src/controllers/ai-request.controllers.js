@@ -63,6 +63,10 @@ import {
   getPregnancyCheckReadiness,
 } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
+import {
+  CURRENT_AI_ATTEMPT_QUERY,
+  assertAIRecordSupportsCurrentTracking,
+} from "../domain/previous-ai-entry.js";
 import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
 import { assertPregnancyMutationAuthority } from "../policies/pregnancy-mutation.policy.js";
 import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
@@ -178,6 +182,7 @@ export const createAIRequest = async (req, res) => {
       status: AI_STATUS.DONE,
       inseminationDate: { $exists: true, $ne: null },
       deletedAt: null,
+      ...CURRENT_AI_ATTEMPT_QUERY,
     }).sort({ attemptNumber: -1, inseminationDate: -1 });
 
     let attemptLink = {};
@@ -187,6 +192,7 @@ export const createAIRequest = async (req, res) => {
         animalId,
         farmerId,
         deletedAt: null,
+        ...CURRENT_AI_ATTEMPT_QUERY,
       });
       if (!previousAttempt) {
         return res.status(404).json({
@@ -352,6 +358,7 @@ export const createLegacyReInseminationRequest = async (req, res) => {
       status: AI_STATUS.DONE,
       inseminationDate: { $exists: true, $ne: null },
       deletedAt: null,
+      ...CURRENT_AI_ATTEMPT_QUERY,
     }).sort({ attemptNumber: -1, inseminationDate: -1 });
 
     if (!latestAttempt) {
@@ -1126,6 +1133,8 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       return res.status(404).json({ message: "AI request record not found." });
     }
 
+    assertAIRecordSupportsCurrentTracking(request);
+
     assertAIRequestAccess(req.user, request);
 
     if (request.farmerId.toString() !== req.user._id.toString()) {
@@ -1340,6 +1349,8 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
     if (!request) {
       return res.status(404).json({ message: 'AI Request not found.' });
     }
+
+    assertAIRecordSupportsCurrentTracking(request);
 
     // 1. Domain-level terminal guard based on AI attempt
     if (request.outcomeVerificationStatus === 'verified' && request.outcome !== 'Pending') {
@@ -2710,6 +2721,8 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     if (!request) {
       return res.status(404).json({ message: "AI request record not found." });
     }
+
+    assertAIRecordSupportsCurrentTracking(request);
 
     if (request.isSuccess === false || request.verificationStatus === "verified" || request.verificationStatus === "rejected") {
       return res.status(409).json({

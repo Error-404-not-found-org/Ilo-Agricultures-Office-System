@@ -54,3 +54,30 @@ test("cattleCore: invalid birth date blocks AI eligibility", () => {
   assert.equal(result.code, "INVALID_BIRTH_DATE");
   assert.match(result.reason, /birth date is invalid/i);
 });
+test("cattleCore: event-date eligibility uses canonical species breeding ages", () => {
+  const cases = [
+    ["Cattle", 12],
+    ["Carabao", 24],
+    ["Goat", 8],
+    ["Swine", 8],
+  ];
+
+  for (const [species, minimumMonths] of cases) {
+    const birthDate = new Date("2024-01-15T00:00:00.000Z");
+    const exactMinimum = new Date(birthDate);
+    exactMinimum.setUTCMonth(exactMinimum.getUTCMonth() + minimumMonths);
+    const oneDayEarly = new Date(exactMinimum);
+    oneDayEarly.setUTCDate(oneDayEarly.getUTCDate() - 1);
+
+    assert.equal(
+      checkInseminationAgeEligibility(birthDate, species, oneDayEarly).isEligible,
+      false,
+      `${species} must be blocked one day early`,
+    );
+    assert.equal(
+      checkInseminationAgeEligibility(birthDate, species, exactMinimum).isEligible,
+      true,
+      `${species} must be accepted at the exact minimum age`,
+    );
+  }
+});

@@ -14,6 +14,7 @@
     "migrate:health-active-case-keys": "node scripts/backfill-health-active-case-keys.js",
     "audit:duplicate-ear-tags": "node scripts/audit-duplicate-ear-tags.js",
     "seed:reproduction-lifecycle": "node scripts/seed-reproduction-lifecycle.js",
+    "seed:postpartum-test": "node scripts/seed-postpartum-test-animals.js",
     "cleanup:reproduction-lifecycle": "node scripts/cleanup-reproduction-lifecycle.js",
     "test": "node --test tests/*.test.js"
   },

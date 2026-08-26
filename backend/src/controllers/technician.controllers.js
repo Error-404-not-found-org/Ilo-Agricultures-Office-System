@@ -44,6 +44,7 @@ import {
   checkInseminationAgeEligibility,
 } from "../utils/cattleCore.js";
 import { recordTechnicianAIService } from "../services/livestock-transaction.service.js";
+import { recordPreviousInsemination } from "../services/previous-insemination.service.js";
 import {
   notifyUser,
   notifyUserBestEffort,
@@ -56,7 +57,6 @@ import {
 } from "../policies/request.policy.js";
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
-import { getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
 import {
   ACTIVE_AI_REQUEST_STATUSES,
   AI_STATUS,
@@ -1401,12 +1401,9 @@ export const previousInsemination = async (req, res) => {
       animalId: bodyAnimalId,
       animalDetails,
       inseminationDetails,
+      entryMode,
     } = req.body;
-    const technicianNote = normalizeTechnicianNoteInput(
-      inseminationDetails || {},
-    );
 
-    // 1. Resolve Farmer
     if (!farmerId) {
       return res.status(400).json({ message: "Farmer ID is required." });
     }
@@ -1415,7 +1412,6 @@ export const previousInsemination = async (req, res) => {
       return res.status(404).json({ message: "Farmer not found." });
     }
 
-    // 2. Resolve Animal
     let animal;
     if (bodyAnimalId) {
       animal = await Animal.findById(bodyAnimalId);
@@ -1428,7 +1424,7 @@ export const previousInsemination = async (req, res) => {
     if (!animal) {
       return res.status(400).json({
         code: "ANIMAL_SELECTION_REQUIRED",
-        message: "Select an existing animal before recording historical AI.",
+        message: "Select an existing animal before recording previous AI.",
       });
     }
     if (String(animal.farmerId) !== String(farmer._id)) {
@@ -1438,117 +1434,33 @@ export const previousInsemination = async (req, res) => {
       });
     }
 
-    const entryDate = new Date(inseminationDetails?.inseminationDate);
-    // Remove time specificity if only date is passed (fallback)
-    if (inseminationDetails?.time) {
-      const [hours, minutes] = inseminationDetails.time.split(":");
-      entryDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-    }
-
-    if (entryDate.getTime() > Date.now()) {
-      return res.status(400).json({ message: "Previous AI service date cannot be in the future." });
-    }
-
-    // 3. Historical State Guard
-    const [newerInsemination, activeInsemination, blockingPregnancy, newerCalving] = await Promise.all([
-      Insemination.findOne({ animalId: animal._id, inseminationDate: { $gt: entryDate }, deletedAt: null }),
-      Insemination.findOne({ animalId: animal._id, status: { $in: ["pending", "approved", "in_progress"] }, deletedAt: null }),
-      Pregnancy.findOne({
-        animalId: animal._id,
-        deletedAt: null,
-        $or: [
-          { cycleStatus: "active" },
-          { cycleStatus: { $in: ["completed", "lost"] }, completedAt: { $gt: entryDate } }
-        ]
-      }),
-      Calving.findOne({ animalId: animal._id, calvingDate: { $gt: entryDate }, deletedAt: null }),
-    ]);
-
-    if (newerInsemination || activeInsemination || blockingPregnancy || newerCalving || animal.reproductiveStatus === "Pregnant") {
-      return res.status(400).json({
-        code: "NEWER_REPRODUCTIVE_RECORD_EXISTS",
-        message: "This animal has a newer or active reproductive record. The previous AI cannot be added here as it would corrupt the current state.",
-      });
-    }
-
-    // 4. Record the AI Service
-    const result = await recordTechnicianAIService({
+    const result = await recordPreviousInsemination({
       farmerId: farmer._id,
       animalId: animal._id,
-      inseminationDate: entryDate,
-      sireBreed: inseminationDetails?.sireBreed,
-      sireCode: inseminationDetails?.sireCode,
-      semenDosesUsed: inseminationDetails?.semenDosesUsed,
-      estrus: inseminationDetails?.estrus,
-      technicianNote,
+      inseminationDetails,
+      entryMode,
       actorId: req.user._id,
-      isAdmin: req.user.role === "admin",
     });
 
-    // Mark as historical/paper record explicitly
-    await Insemination.findByIdAndUpdate(result.insemination._id, {
-      $set: { observationSource: "paper_record" }
-    });
-
-    const dates = getHeatReturnMonitoringDates(entryDate);
-
-    await Task.updateOne(
-      {
-        taskType: "BreedingFollowUp",
-        "metadata.inseminationId": result.insemination._id,
-      },
-      {
-        $setOnInsert: {
-          technicianId: req.user._id,
-          farmerId: farmer._id,
-          animalIds: [animal._id],
-          taskType: "BreedingFollowUp",
-          category: "Follow-up",
-          priority: 2,
-          notes: `Scheduled Breeding Follow-up for Animal Tag #${animal.earTag || "Unknown"}. Contact the farmer to check if the animal returned to heat.`,
-          status: "Pending",
-          dueDate: dates.technicianFollowUpDate,
-          sourceType: "automatic_breeding_followup",
-          metadata: {
-            animalId: animal._id,
-            farmerId: farmer._id,
-            inseminationId: result.insemination._id,
-          },
-        },
-      },
-      { upsert: true }
-    );
-
-    // 5. Trigger Inngest Lifecycle
-    try {
-      await inngest.send({
-        name: "insemination/approved",
-        data: {
-          inseminationId: result.insemination._id,
-          animalId: animal._id,
-          farmerId: farmer._id,
-        },
-      });
-    } catch (inngestErr) {
-      console.error("[previousInsemination INNGEST ERROR]", inngestErr.message);
-    }
-
-    // Trigger Socket Update
     req.app
       .get("io")
       .emit("dashboardUpdate", { type: "PREVIOUS_INSEMINATION_CREATED" });
 
-    res.status(201).json({
-      message: "Previous AI recorded successfully",
+    return res.status(201).json({
+      message:
+        entryMode === "history_only"
+          ? "Previous AI saved to reproductive history."
+          : "Previous AI saved and current tracking continued.",
+      entryMode,
       insemination: result.insemination,
       outcome: result.outcome,
       task: result.task,
       farmer,
-      animal,
+      animal: result.animal || animal,
     });
   } catch (error) {
     console.error("[previousInsemination ERROR]", error);
-    res.status(error.status || 500).json({
+    return res.status(error.status || 500).json({
       message: error.message || "Error recording previous insemination",
       code: error.code,
       ...(error.details || {}),

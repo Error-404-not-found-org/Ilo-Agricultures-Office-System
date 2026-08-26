@@ -26,6 +26,7 @@ import { resolveOrSyncUser } from "../services/auth-user.service.js";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
+import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
 import { evaluateTechnicianDispatchReadiness } from "../domain/geographic/eligibilityEvaluator.js";
 import {
   canonicalizeMunicipality,
@@ -2047,6 +2048,7 @@ export const getBreedingMilestones = async (req, res) => {
           status: "done",
           isSuccess: null,
           deletedAt: null,
+          ...CURRENT_AI_ATTEMPT_QUERY,
         })
           .populate("animalId", "animalId earTag species breed")
           .sort({ createdAt: -1 }),

@@ -37,6 +37,7 @@ import {
   verifyPostpartumWindow,
 } from "../utils/cattleCore.js";
 import { createAuditLog } from "./audit.service.js";
+import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
 import {
   normalizeAICompletionFields,
   normalizeTechnicianNoteInput,
@@ -1314,6 +1315,7 @@ export const recordTechnicianAIService = async ({
         status: "done",
         inseminationDate: { $exists: true, $ne: null },
         deletedAt: null,
+        ...CURRENT_AI_ATTEMPT_QUERY,
       })
         .sort({ attemptNumber: -1, inseminationDate: -1 })
         .session(session);

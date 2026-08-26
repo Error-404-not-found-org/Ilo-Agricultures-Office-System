@@ -4,6 +4,7 @@ import {
 } from "../domain/status-vocabulary.js";
 import { Insemination } from "../models/insemination.model.js";
 import { AppError } from "../utils/app-error.js";
+import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
 
 export const ACTIVE_AI_REQUEST_CONFLICT_MESSAGE =
   "You already submitted an active AI service request for this animal. Complete or cancel the existing request before submitting another one.";
@@ -79,6 +80,7 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
       status: "done",
       inseminationDate: { $exists: true, $ne: null },
       deletedAt: null,
+      ...CURRENT_AI_ATTEMPT_QUERY,
     }).sort({ attemptNumber: -1, inseminationDate: -1 }),
     session
   );
