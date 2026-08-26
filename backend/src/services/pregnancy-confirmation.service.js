@@ -18,10 +18,17 @@ import {
 import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
 import { calculateTargetCalvingDate } from "../utils/cattleCore.js";
 import { AppError } from "../utils/app-error.js";
-import { closeBreedingFollowUpTask } from "./breeding-observation-followup.service.js";
+import {
+  buildInseminationIdMatch,
+  closeBreedingFollowUpTask,
+} from "./breeding-observation-followup.service.js";
+import {
+  assertNoConflictingPregnancyTaskOwners,
+  assertPregnancyClinicalActor,
+  assertPregnancyMutationAuthority,
+} from "../policies/pregnancy-mutation.policy.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const AUTHORIZED_ROLES = new Set(["admin", "technician"]);
 const FINAL_RESULT_MAP = Object.freeze({
   pregnant: "Pregnant",
   Pregnant: "Pregnant",
@@ -41,12 +48,7 @@ const runTransaction = async (work) => {
 };
 
 const assertAuthorizedActor = (actor) => {
-  if (!actor?._id || !AUTHORIZED_ROLES.has(actor.role)) {
-    throw new AppError("Only an authorized technician or administrator may record a pregnancy diagnosis.", {
-      status: 403,
-      code: "UNAUTHORIZED_PREGNANCY_CONFIRMATION",
-    });
-  }
+  assertPregnancyClinicalActor(actor);
 };
 
 const normalizeResult = (result) => {
@@ -83,35 +85,33 @@ const loadContext = async ({ animalId, inseminationId, session }) => {
   return { animal, insemination };
 };
 
-export const completeInitialConfirmationTask = async ({
+const findInitialConfirmationTask = async ({
   taskId,
   animal,
   insemination,
-  pregnancy,
-  actor,
-  methodCode,
-  policyVersion,
+  includeCompleted = false,
   session,
 }) => {
   const baseQuery = {
     farmerId: animal.farmerId,
     animalIds: animal._id,
     taskType: "PD",
-    status: { $nin: ["Completed", "Cancelled"] },
+    status: includeCompleted
+      ? { $ne: "Cancelled" }
+      : { $nin: ["Completed", "Cancelled"] },
   };
   const query = taskId
     ? {
         ...baseQuery,
         _id: taskId,
-        ...(actor.role === "admin"
-          ? {}
-          : { $or: [{ technicianId: actor._id }, { technicianId: null }] }),
       }
     : {
         ...baseQuery,
         $and: [{ $or: [
-          { "metadata.inseminationId": insemination._id },
-          { _id: insemination.verificationTaskId },
+          { "metadata.inseminationId": buildInseminationIdMatch(insemination._id) },
+          ...(insemination.verificationTaskId
+            ? [{ _id: insemination.verificationTaskId }]
+            : []),
         ] }],
       };
   const candidates = taskId
@@ -126,6 +126,48 @@ export const completeInitialConfirmationTask = async ({
       code: "TASK_RECORD_MISMATCH",
     });
   }
+  return task || null;
+};
+
+const assertInitialRelatedTaskOwners = async ({
+  actor,
+  insemination,
+  session,
+}) => {
+  const tasks = await Task.find({
+    taskType: { $in: ["PD", "BreedingFollowUp"] },
+    status: { $nin: ["Completed", "Cancelled", "Rejected"] },
+    $or: [
+      { "metadata.inseminationId": buildInseminationIdMatch(insemination._id) },
+      ...(insemination.verificationTaskId
+        ? [{ _id: insemination.verificationTaskId }]
+        : []),
+    ],
+  }).session(session);
+  assertNoConflictingPregnancyTaskOwners({ actor, tasks });
+};
+
+export const completeInitialConfirmationTask = async ({
+  taskId,
+  task: suppliedTask,
+  animal,
+  insemination,
+  pregnancy,
+  actor,
+  methodCode,
+  policyVersion,
+  session,
+}) => {
+  const task = suppliedTask === undefined
+    ? await findInitialConfirmationTask({ taskId, animal, insemination, session })
+    : suppliedTask;
+  assertPregnancyMutationAuthority({
+    actor,
+    task,
+    pregnancy,
+    insemination,
+    allowUnassignedTaskClaim: Boolean(taskId),
+  });
   if (!task) return null;
 
   task.status = "Completed";
@@ -148,7 +190,7 @@ export const completeInitialConfirmationTask = async ({
 };
 
 const reconcileExistingDiagnosisTask = async ({
-  taskId,
+  task,
   animal,
   insemination,
   pregnancy,
@@ -157,15 +199,6 @@ const reconcileExistingDiagnosisTask = async ({
   policyVersion,
   session,
 }) => {
-  const task = await Task.findOne({
-    _id: taskId,
-    farmerId: animal.farmerId,
-    animalIds: animal._id,
-    taskType: "PD",
-    ...(actor.role === "admin"
-      ? {}
-      : { $or: [{ technicianId: actor._id }, { technicianId: null }] }),
-  }).session(session);
   const linkedToDiagnosis = Boolean(
     task &&
     getPregnancyTaskStage(task) === PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION &&
@@ -184,6 +217,13 @@ const reconcileExistingDiagnosisTask = async ({
       code: "TASK_RECORD_MISMATCH",
     });
   }
+  assertPregnancyMutationAuthority({
+    actor,
+    task,
+    pregnancy,
+    insemination,
+    allowUnassignedTaskClaim: true,
+  });
   if (task.status === "Completed") return task;
 
   task.status = "Completed";
@@ -414,8 +454,16 @@ export const confirmPregnancyDiagnosis = ({
           },
         );
       }
-      const completedTask = await reconcileExistingDiagnosisTask({
+      const initialTask = await findInitialConfirmationTask({
         taskId,
+        animal,
+        insemination,
+        includeCompleted: true,
+        session,
+      });
+      await assertInitialRelatedTaskOwners({ actor, insemination, session });
+      const completedTask = await reconcileExistingDiagnosisTask({
+        task: initialTask,
         animal,
         insemination,
         pregnancy: existing,
@@ -434,6 +482,19 @@ export const confirmPregnancyDiagnosis = ({
         alreadyRecorded: true,
       };
     }
+    const initialTask = await findInitialConfirmationTask({
+      taskId,
+      animal,
+      insemination,
+      session,
+    });
+    await assertInitialRelatedTaskOwners({ actor, insemination, session });
+    assertPregnancyMutationAuthority({
+      actor,
+      task: initialTask,
+      insemination,
+      allowUnassignedTaskClaim: Boolean(taskId),
+    });
     if (confirmedAt < new Date(insemination.inseminationDate)) {
       throw new AppError("Diagnosis date cannot be earlier than the AI service date.", {
         status: 400,
@@ -611,6 +672,7 @@ export const confirmPregnancyDiagnosis = ({
 
     const completedTask = await completeInitialConfirmationTask({
       taskId,
+      task: initialTask,
       animal,
       insemination,
       pregnancy,
@@ -713,11 +775,8 @@ export const recordPregnancyContinuationRecheck = ({
       taskType: "PD",
       farmerId: animal.farmerId,
       animalIds: animal._id,
-      "metadata.pregnancyId": pregnancy._id,
+      "metadata.pregnancyId": buildInseminationIdMatch(pregnancy._id),
       status: { $nin: ["Completed", "Cancelled"] },
-      ...(taskId && actor.role !== "admin"
-        ? { $or: [{ technicianId: actor._id }, { technicianId: null }] }
-        : {}),
     };
     const tasks = taskId
       ? [await Task.findOne(taskQuery).session(session)]
@@ -730,12 +789,20 @@ export const recordPregnancyContinuationRecheck = ({
         PREGNANCY_TASK_STAGE.DIAGNOSTIC_FOLLOW_UP,
       ].includes(stage);
     }) || null;
+    assertNoConflictingPregnancyTaskOwners({ actor, tasks: tasks.filter(Boolean) });
     if (taskId && !continuationTask) {
       throw new AppError("The supplied task is not an active pregnancy follow-up.", {
         status: 409,
         code: "TASK_RECORD_MISMATCH",
       });
     }
+    assertPregnancyMutationAuthority({
+      actor,
+      task: continuationTask,
+      pregnancy,
+      insemination,
+      allowUnassignedTaskClaim: Boolean(taskId),
+    });
     if (!pregnancy.confirmation?.recheckRequired && !continuationTask) {
       throw new AppError("This pregnancy does not require a continuation recheck.", {
         status: 409,

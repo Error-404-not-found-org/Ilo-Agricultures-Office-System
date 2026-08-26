@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { Notification } from "../models/notification.model.js";
-import { User } from "../models/user.model.js";
-import { sendPushNotification } from "../lib/push-notifications.js";
+import { sendNotificationPush } from "./notification-delivery.service.js";
+import { resolveBreedingObservationTechnicians } from "./notification-recipient-authority.service.js";
 
 const reportLabel = (reportType) =>
   ({
@@ -35,26 +35,11 @@ export const notifyTechniciansOfBreedingObservation = async ({
   reportedAt,
   technicianActionRequired = false,
 }) => {
-  const assignedTechnicianId =
-    insemination?.technicianId?._id ||
-    insemination?.technicianId ||
-    insemination?.approvedBy?._id ||
-    insemination?.approvedBy ||
-    null;
-  const technicianQuery = {
-    role: { $in: ["technician"] },
-    status: { $ne: "suspended" },
-    deletedAt: null,
-  };
-  const assignedTechnicians = assignedTechnicianId
-    ? await User.find({
-        ...technicianQuery,
-        _id: assignedTechnicianId,
-      }).select("_id pushToken")
-    : [];
-  const technicians = assignedTechnicians.length
-    ? assignedTechnicians
-    : await User.find(technicianQuery).select("_id pushToken");
+  const technicians = await resolveBreedingObservationTechnicians({
+    task,
+    insemination,
+    technicianActionRequired,
+  });
   const farmerName = farmer?.name || "A farmer";
   const animalTag = animal?.earTag || animal?.animalId || "an animal";
   const aiDate = insemination?.inseminationDate
@@ -71,7 +56,7 @@ export const notifyTechniciansOfBreedingObservation = async ({
     technicianActionRequired,
   });
 
-  return Promise.all(
+  const results = await Promise.allSettled(
     technicians.map(async (technician) => {
       const recipientId = technician._id || technician;
       const dedupeKey = `breeding-observation:${recipientId}:${insemination._id}:${fingerprint}`;
@@ -100,6 +85,7 @@ export const notifyTechniciansOfBreedingObservation = async ({
             title,
             message,
             metadata: {
+              requestId: insemination._id,
               animalId: animal._id,
               animalTag,
               observationId: insemination._id,
@@ -126,18 +112,38 @@ export const notifyTechniciansOfBreedingObservation = async ({
         : Boolean(notification);
 
       if (wasInserted && technician.pushToken) {
-        await sendPushNotification(technician.pushToken, title, message, {
+        await sendNotificationPush({
+          recipient: technician,
+          title,
+          message,
           eventType,
           type: technicianActionRequired ? "ai" : "system",
-          ...(technicianActionRequired
-            ? { requestId: String(insemination._id) }
-            : {}),
-          animalId: String(animal._id),
-          taskId: actionTask?._id ? String(actionTask._id) : null,
+          relatedId: actionTask?._id || animal._id,
+          linkType: actionTask ? "task" : "animal",
+          metadata: {
+            ...(technicianActionRequired
+              ? { requestId: String(insemination._id) }
+              : {}),
+            animalId: String(animal._id),
+            taskId: actionTask?._id ? String(actionTask._id) : null,
+          },
         });
       }
 
       return notification;
     }),
   );
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error("[Breeding Observation Notification] Delivery failed", {
+        message: result.reason?.message || String(result.reason),
+        inseminationId: insemination?._id || null,
+      });
+    }
+  }
+
+  return results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value);
 };

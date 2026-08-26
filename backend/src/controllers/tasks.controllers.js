@@ -60,6 +60,11 @@ const MANUAL_FIELD_TASK_TYPES = new Set([
   "Other",
 ]);
 
+const GENERIC_CLAIM_SOURCE_TYPES = new Set([
+  "manual",
+  "client_profile",
+  "task_scheduler",
+]);
 const TASK_ANIMAL_DETAIL_FIELDS = [
   "animalId",
   "earTag",
@@ -149,8 +154,14 @@ export const getTasks = async (req, res) => {
           },
         ],
       };
-    } else if (scope === "all") {
+    } else if (scope === "all" && req.user.role === "admin") {
       query = {};
+    } else if (scope === "all") {
+      // Compatibility for existing Technician reporting clients: keep the
+      // successful list response, but never let `scope=all` bypass ownership.
+      query = {
+        technicianId: req.user._id,
+      };
     } else {
       // Legacy fallback: mine or unassigned
       query = {
@@ -247,12 +258,21 @@ export const getTasks = async (req, res) => {
 export const claimTask = async (req, res) => {
   try {
     const { id } = req.params;
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Task claiming requires a Technician account.",
+        code: "TECHNICIAN_TASK_ROLE_REQUIRED",
+      });
+    }
+
 
     const task = await Task.findOneAndUpdate(
       {
         _id: id,
         technicianId: { $in: [null, undefined] },
         status: TASK_STATUS.PENDING,
+        taskType: { $in: Array.from(MANUAL_FIELD_TASK_TYPES) },
+        sourceType: { $in: Array.from(GENERIC_CLAIM_SOURCE_TYPES) },
       },
       {
         $set: {
@@ -260,7 +280,7 @@ export const claimTask = async (req, res) => {
           claimedAt: new Date(),
         },
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!task) {
@@ -404,12 +424,43 @@ export const completeTask = async (req, res) => {
   try {
     const { id } = req.params;
     const { relatedRecordType, relatedRecordId } = req.body || {};
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Task completion requires a Technician account.",
+        code: "TECHNICIAN_TASK_ROLE_REQUIRED",
+      });
+    }
+
     const existingTask = await Task.findOne({
       _id: id,
-      $or: [ { technicianId: req.user._id }, { technicianId: { $exists: false } }, { technicianId: null } ],
+      technicianId: req.user._id,
+      status: { $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS] },
     });
 
     if (!existingTask) return res.status(404).json({ message: "Task not found" });
+    if (!MANUAL_FIELD_TASK_TYPES.has(existingTask.taskType)) {
+      return res.status(400).json({
+        message:
+          "Official service tasks must be completed through their dedicated workflow.",
+        code: "OFFICIAL_SERVICE_WORKFLOW_REQUIRED",
+      });
+    }
+
+    if (relatedRecordType || relatedRecordId) {
+      return res.status(400).json({
+        message:
+          "Generic field tasks cannot be linked to client-supplied official records.",
+        code: "TASK_RECORD_LINK_FORBIDDEN",
+      });
+    }
+
+
+    if (existingTask.taskType === "PD") {
+      return res.status(400).json({
+        message: "Pregnancy tasks must be completed through the pregnancy diagnosis or continuation workflow.",
+        code: "INVALID_TASK_COMPLETION",
+      });
+    }
 
     const isOfficialTask = OFFICIAL_SERVICE_TASK_TYPES.has(existingTask.taskType);
     if (isOfficialTask && (!relatedRecordType || !relatedRecordId)) {
@@ -426,14 +477,14 @@ export const completeTask = async (req, res) => {
     }
 
     const task = await Task.findOneAndUpdate(
-      { _id: id, $or: [ { technicianId: req.user._id }, { technicianId: { $exists: false } }, { technicianId: null } ] },
+      {
+        _id: id,
+        technicianId: req.user._id,
+        status: { $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS] },
+      },
       {
         status: TASK_STATUS.COMPLETED,
-        technicianId: req.user._id,
         completedAt: new Date(),
-        ...(relatedRecordType && relatedRecordId
-          ? { relatedRecordType, relatedRecordId }
-          : {}),
       },
       { returnDocument: 'after' }
     );

@@ -5,7 +5,7 @@ import {
 import { resolveDispatchRecipients } from "./dispatch-recipient.service.js";
 import { Notification } from "../models/notification.model.js";
 import { User } from "../models/user.model.js";
-import { sendPushNotification } from "../lib/push-notifications.js";
+import { sendNotificationPush } from "./notification-delivery.service.js";
 
 const cleanLocationPart = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -190,11 +190,18 @@ export async function notifyDispatchRequestSubmitted({
         : Boolean(notification);
 
       if (wasInserted && technician.pushToken) {
-        await sendPushNotification(technician.pushToken, notificationTitle, notificationMessage, {
+        await sendNotificationPush({
+          recipient: technician,
+          title: notificationTitle,
+          message: notificationMessage,
           eventType: notificationPresentation.eventType,
           type: requestType === "AI" ? "ai" : "health",
-          requestId: String(request._id),
-          requestKind: notificationPresentation.requestKind,
+          relatedId: request._id,
+          linkType: "request",
+          metadata: {
+            requestId: String(request._id),
+            requestKind: notificationPresentation.requestKind,
+          },
         });
       }
 

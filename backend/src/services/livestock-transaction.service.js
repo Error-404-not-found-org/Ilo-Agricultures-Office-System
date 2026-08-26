@@ -30,6 +30,7 @@ import {
   ensureBreedingObservationFollowUpTask,
   closeBreedingFollowUpTask,
   cancelPendingReproductiveTasksForInsemination,
+  buildInseminationIdMatch,
 } from "./breeding-observation-followup.service.js";
 import {
   checkInseminationAgeEligibility,
@@ -40,6 +41,10 @@ import {
   normalizeAICompletionFields,
   normalizeTechnicianNoteInput,
 } from "../domain/ai-recording-fields.js";
+import {
+  assertNoConflictingPregnancyTaskOwners,
+  assertPregnancyMutationAuthority,
+} from "../policies/pregnancy-mutation.policy.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -88,6 +93,10 @@ export const completeInsemination = async (
   delete updateData.technicianNote;
   delete updateData.technicianNotes;
   delete updateData.notes;
+  delete updateData.completedAt;
+  if (updateData.status === "done") {
+    updateData.completedAt = new Date();
+  }
   if (normalizedTechnicianNote !== undefined) {
     updateData.technicianNote = normalizedTechnicianNote;
   }
@@ -171,7 +180,7 @@ export const completeInsemination = async (
           },
         },
       },
-      { upsert: true, new: true, session },
+      { upsert: true, returnDocument: "after", session },
     );
 
     if (pdTask) {
@@ -361,10 +370,44 @@ export const persistBreedingObservationVerification = ({
   technicianNotes = "",
   nextCheckDate,
   evidencePhotos = [],
-  actorId,
+  actor,
   taskId,
 }) =>
   runTransaction(async (session) => {
+    const actorId = actor?._id;
+    const targetTaskId = taskId || insemination.verificationTaskId;
+    const pregnancyTask = targetTaskId
+      ? await Task.findOne({
+          _id: targetTaskId,
+          farmerId: insemination.farmerId || animal.farmerId,
+          animalIds: animal._id,
+          taskType: { $in: ["PD", "BreedingFollowUp"] },
+          status: { $nin: ["Completed", "Cancelled", "Rejected"] },
+        }).session(session)
+      : null;
+    if (targetTaskId && !pregnancyTask) {
+      throw new AppError(
+        "The pregnancy-check task is not active or does not belong to this animal.",
+        { status: 409, code: "TASK_RECORD_MISMATCH" },
+      );
+    }
+    const relatedTasks = await Task.find({
+      taskType: { $in: ["PD", "BreedingFollowUp"] },
+      status: { $nin: ["Completed", "Cancelled", "Rejected"] },
+      $or: [
+        { "metadata.inseminationId": buildInseminationIdMatch(insemination._id) },
+        ...(insemination.verificationTaskId
+          ? [{ _id: insemination.verificationTaskId }]
+          : []),
+      ],
+    }).session(session);
+    assertNoConflictingPregnancyTaskOwners({ actor, tasks: relatedTasks });
+    assertPregnancyMutationAuthority({
+      actor,
+      task: pregnancyTask,
+      insemination,
+      allowUnassignedTaskClaim: Boolean(targetTaskId),
+    });
     const diagnosisDate = checkedAt ? new Date(checkedAt) : new Date();
     if (Number.isNaN(diagnosisDate.getTime())) {
       throw new AppError("A valid verification date is required.", {
@@ -594,7 +637,6 @@ export const persistBreedingObservationVerification = ({
     }
 
     let task = null;
-    const targetTaskId = taskId || insemination.verificationTaskId;
     if (verificationResult === "needs_recheck") {
       const notes = `Pregnancy Check Recheck Required. Checked on: ${diagnosisDate.toLocaleDateString()}. Notes: ${technicianNotes || "None"}. Next check after: ${recheckDate.toLocaleDateString()}`;
       if (targetTaskId) {
@@ -913,6 +955,46 @@ export const createResolvedWalkInHealth = ({ requestData, medicalRecord, taskId 
     return { request, medicalRecord: record };
   });
 
+export const assertOwnedAIRequestContext = ({
+  insemination,
+  actorId,
+  farmerId,
+  animalId,
+}) => {
+  if (String(insemination.farmerId) !== String(farmerId)) {
+    throw new AppError("AI request farmer mismatch.", {
+      status: 409,
+      code: "AI_REQUEST_FARMER_MISMATCH",
+    });
+  }
+  if (String(insemination.animalId) !== String(animalId)) {
+    throw new AppError("AI request animal mismatch.", {
+      status: 409,
+      code: "AI_REQUEST_ANIMAL_MISMATCH",
+    });
+  }
+
+  const owners = [insemination.approvedBy, insemination.technicianId].filter(
+    Boolean,
+  );
+  if (
+    owners.length === 0 ||
+    owners.some((ownerId) => String(ownerId) !== String(actorId))
+  ) {
+    throw new AppError("You cannot record this AI service.", {
+      status: 403,
+      code: "AI_REQUEST_NOT_OWNED",
+    });
+  }
+
+  return {
+    farmerId,
+    animalId,
+    ...(insemination.approvedBy ? { approvedBy: actorId } : {}),
+    ...(insemination.technicianId ? { technicianId: actorId } : {}),
+  };
+};
+
 export const recordTechnicianAIService = async ({
   taskId,
   requestId,
@@ -941,6 +1023,13 @@ export const recordTechnicianAIService = async ({
   });
 
   return runTransaction(async (session) => {
+  if (isAdmin) {
+    throw new AppError("AI service recording requires a Technician account.", {
+      status: 403,
+      code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+    });
+  }
+
     let task = null;
 
     // 1. Authoritative Task Acquisition & Reservation
@@ -963,7 +1052,7 @@ export const recordTechnicianAIService = async ({
             technicianId: actorId,
           },
         },
-        { session, new: true },
+        { session, returnDocument: "after" },
       );
 
       if (!task) {
@@ -982,6 +1071,28 @@ export const recordTechnicianAIService = async ({
           });
         }
         if (currentTask.status === "Completed") {
+          if (
+            !currentTask.technicianId ||
+            String(currentTask.technicianId) !== String(actorId)
+          ) {
+            throw new AppError("This task is assigned to another Technician.", {
+              status: 403,
+              code: "TASK_ASSIGNED_TO_OTHER",
+            });
+          }
+          if (
+            String(currentTask.farmerId) !== String(farmerId) ||
+            !currentTask.animalIds?.some(
+              (currentAnimalId) =>
+                String(currentAnimalId) === String(animalId),
+            )
+          ) {
+            throw new AppError("Task context does not match this AI service.", {
+              status: 409,
+              code: "TASK_CONTEXT_MISMATCH",
+            });
+          }
+
           const expectedRecordId = requestId || currentTask.relatedRecordId;
           if (
             currentTask.relatedRecordType === "insemination" &&
@@ -990,6 +1101,19 @@ export const recordTechnicianAIService = async ({
             const existingAI = await Insemination.findById(
               currentTask.relatedRecordId,
             ).session(session);
+            if (!existingAI) {
+              throw new AppError("Insemination request not found.", {
+                status: 404,
+                code: "AI_REQUEST_NOT_FOUND",
+              });
+            }
+            assertOwnedAIRequestContext({
+              insemination: existingAI,
+              actorId,
+              farmerId,
+              animalId,
+            });
+
             return {
               outcome: "existing_and_task_completed",
               insemination: existingAI,
@@ -1090,6 +1214,14 @@ export const recordTechnicianAIService = async ({
       }
 
       // Check if the request is already complete
+
+      const requestFilter = assertOwnedAIRequestContext({
+        insemination,
+        actorId,
+        farmerId,
+        animalId,
+      });
+
       if (insemination.status === "done") {
         if (taskId) {
           await Task.updateOne(
@@ -1159,6 +1291,7 @@ export const recordTechnicianAIService = async ({
           farmerId,
           animalId,
           animalTag: animal.earTag || animal.animalId,
+          requestFilter,
         },
         session,
       );

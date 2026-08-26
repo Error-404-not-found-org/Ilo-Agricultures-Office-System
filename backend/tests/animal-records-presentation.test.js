@@ -160,8 +160,8 @@ test("AI records separate service completion from breeding outcome and expose at
   const animalRecordsBackend = source(
     "backend/src/controllers/animal-workflow.controllers.js",
   );
-  assert.match(animalDetailsBackend, /\.\.\.insemination\.toObject\(\)/);
-  assert.match(animalRecordsBackend, /\.\.\.inseminations\.map\(\(item\) => \(\{[\s\S]*?\.\.\.item/);
+  assert.match(animalDetailsBackend, /buildFarmerAIRequest\(insemination\)/);
+  assert.match(animalRecordsBackend, /buildFarmerAIRequest\(item\)/);
   assert.match(animalRecordsBackend, /summary: item\.outcome \|\| item\.status/);
 
   const completedAwaitingOutcome = formatAnimalRecord(

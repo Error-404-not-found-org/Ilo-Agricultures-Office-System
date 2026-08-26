@@ -271,10 +271,26 @@ const normalizeDatabaseError = (error) => {
   return error;
 };
 
-const taskActorFilter = (actor) =>
-  actor.role === "farmer"
-    ? {}
-    : { $or: [{ technicianId: actor._id }, { technicianId: null }] };
+export const assertCalvingTaskAuthority = (task, actor) => {
+  if (!task) return task;
+  if (actor.role === "admin") {
+    throw new AppError("Calving recording requires a Farmer or Technician account.", {
+      status: 403,
+      code: "CALVING_CLINICAL_ROLE_REQUIRED",
+    });
+  }
+  if (
+    actor.role === "technician" &&
+    task.technicianId &&
+    String(task.technicianId) !== String(actor._id)
+  ) {
+    throw new AppError("This calving work is assigned to another Technician.", {
+      status: 403,
+      code: "CALVING_TASK_ASSIGNED_TO_OTHER",
+    });
+  }
+  return task;
+};
 
 const findMatchingCalvingTask = async ({
   taskId,
@@ -290,7 +306,6 @@ const findMatchingCalvingTask = async ({
     animalIds: mother._id,
     taskType: { $in: ["CD", "Calving"] },
     status: { $in: ["Pending", "In Progress"] },
-    ...taskActorFilter(actor),
   };
 
   if (taskId) {
@@ -324,14 +339,17 @@ const findMatchingCalvingTask = async ({
           relatedRecordType: "calving",
           relatedRecordId: existingCalving._id,
         }).session(session || null);
-        if (completedMatchingTask) return null;
+        if (completedMatchingTask) {
+          assertCalvingTaskAuthority(completedMatchingTask, actor);
+          return null;
+        }
       }
       throw new AppError("The calving task is inactive or does not match this record.", {
         status: 409,
         code: "TASK_RECORD_MISMATCH",
       });
     }
-    return suppliedTask;
+    return assertCalvingTaskAuthority(suppliedTask, actor);
   }
 
   const pregnancyTask = await Task.findOne({
@@ -341,7 +359,7 @@ const findMatchingCalvingTask = async ({
   })
     .sort({ dueDate: 1, createdAt: 1 })
     .session(session || null);
-  if (pregnancyTask) return pregnancyTask;
+  if (pregnancyTask) return assertCalvingTaskAuthority(pregnancyTask, actor);
 
   const inseminationTask = await Task.findOne({
     ...baseFilter,
@@ -349,9 +367,9 @@ const findMatchingCalvingTask = async ({
   })
     .sort({ dueDate: 1, createdAt: 1 })
     .session(session || null);
-  if (inseminationTask) return inseminationTask;
+  if (inseminationTask) return assertCalvingTaskAuthority(inseminationTask, actor);
 
-  return Task.findOne({
+  const fallbackTask = await Task.findOne({
     ...baseFilter,
     sourceType: { $in: ["task_scheduler", "client_profile", "manual"] },
     $and: [
@@ -366,12 +384,19 @@ const findMatchingCalvingTask = async ({
   })
     .sort({ dueDate: 1, createdAt: 1 })
     .session(session || null);
+  return assertCalvingTaskAuthority(fallbackTask, actor);
 };
 
 const completeCalvingTask = async ({ task, calving, actor, session }) => {
   if (!task) return null;
   const completedTask = await Task.findOneAndUpdate(
-    { _id: task._id, status: { $in: ["Pending", "In Progress"] } },
+    {
+      _id: task._id,
+      status: { $in: ["Pending", "In Progress"] },
+      ...(actor.role === "technician"
+        ? { $or: [{ technicianId: actor._id }, { technicianId: null }] }
+        : {}),
+    },
     {
       $set: {
         status: "Completed",
@@ -404,6 +429,13 @@ const loadAndValidateContext = async ({ motherId, pregnancyId, taskId, actor, ca
   if (String(currentPregnancy.animalId) !== String(currentMother._id)) {
     throw new AppError("The pregnancy record does not belong to this mother.", { status: 409, code: "PREGNANCY_MOTHER_MISMATCH" });
   }
+  if (actor.role === "admin") {
+    throw new AppError("Admin accounts cannot record clinical calving events.", {
+      status: 403,
+      code: "CALVING_CLINICAL_ROLE_REQUIRED",
+    });
+  }
+
   if (actor.role === "farmer" && String(currentMother.farmerId) !== String(actor._id)) {
     throw new AppError("You cannot record calving for another farmer's animal.", {
       status: 403,

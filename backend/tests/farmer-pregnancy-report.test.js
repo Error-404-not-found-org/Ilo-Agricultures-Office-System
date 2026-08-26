@@ -4,6 +4,7 @@ import { submitFarmerPregnancyReport, verifyFarmerPregnancyReport } from "../src
 import { Insemination } from "../src/models/insemination.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { AnimalTimelineEvent } from "../src/models/animal-timeline-event.model.js";
+import { Task } from "../src/models/task.model.js";
 
 test("Farmer-Reported Pregnancy Foundation Tests", async (t) => {
   const farmerId = "507f1f77bcf86cd799439001";
@@ -79,6 +80,7 @@ test("Farmer-Reported Pregnancy Foundation Tests", async (t) => {
   });
 
   await t.test("verifyFarmerPregnancyReport Request More Info", async () => {
+    const originalTaskFindOne = Task.findOne;
     const request = {
       _id: inseminationId,
       farmerId,
@@ -86,6 +88,8 @@ test("Farmer-Reported Pregnancy Foundation Tests", async (t) => {
       status: "done",
       farmerPregnancyReport: true,
       pregnancyReportVerificationStatus: "pending",
+      technicianId,
+      approvedBy: technicianId,
       save: async function() { return this; }
     };
 
@@ -96,15 +100,27 @@ test("Farmer-Reported Pregnancy Foundation Tests", async (t) => {
       _id: animalId,
       reproductiveStatus: "Likely Pregnant"
     });
+    Task.findOne = () => ({
+      sort: async () => ({
+        _id: "507f1f77bcf86cd799439005",
+        technicianId,
+        taskType: "PD",
+        status: "Pending",
+      }),
+    });
 
     const req = mockReq({ action: "request_more_info" }, { _id: technicianId, role: "technician" });
     const res = mockRes();
 
-    await verifyFarmerPregnancyReport(req, res);
+    try {
+      await verifyFarmerPregnancyReport(req, res);
 
-    assert.equal(res.statusCode, 200, res.body?.message);
-    assert.equal(request.pregnancyReportVerificationStatus, "more_info_requested");
-    assert.equal(request.pregnancyReportReviewedBy, technicianId);
+      assert.equal(res.statusCode, 200, res.body?.message);
+      assert.equal(request.pregnancyReportVerificationStatus, "more_info_requested");
+      assert.equal(request.pregnancyReportReviewedBy, technicianId);
+    } finally {
+      Task.findOne = originalTaskFindOne;
+    }
   });
 
   await t.test("submitFarmerPregnancyReport rejects in-progress AI", async () => {

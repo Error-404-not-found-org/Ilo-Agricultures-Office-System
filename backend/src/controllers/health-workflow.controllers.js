@@ -1,7 +1,7 @@
 import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { Animal } from "../models/animal.model.js";
-import { assertAnimalAccess, assertClinicalRole } from "../policies/animal.policy.js";
+import { assertAnimalAccess } from "../policies/animal.policy.js";
 import {
   assertHealthRequestAccess,
   assertHealthRequestMutationOwnership,
@@ -583,7 +583,7 @@ export const provideHealthAdvice = async (req, res) => {
         ],
       },
       update,
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!updated) {
@@ -826,7 +826,7 @@ export const provideHealthOfficePickup = async (req, res) => {
         ],
       },
       update,
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!updated) {
@@ -911,7 +911,12 @@ export const provideHealthOfficePickup = async (req, res) => {
 
 export const triageHealthRequest = async (req, res) => {
   try {
-    assertClinicalRole(req.user);
+    if (req.user?.role !== "technician") {
+      throw new AppError("Health triage requires a Technician account.", {
+        status: 403,
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
     const existing = await HealthRequest.findOne({ _id: req.params.id, deletedAt: null });
     if (!existing) throw new AppError("Health request not found", { status: 404, code: "HEALTH_REQUEST_NOT_FOUND" });
     assertHealthRequestMutationOwnership(req.user, existing, {
@@ -969,7 +974,7 @@ export const triageHealthRequest = async (req, res) => {
         ...ownershipGuard,
       },
       update,
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!request) {
       throw new AppError(
@@ -989,7 +994,12 @@ export const triageHealthRequest = async (req, res) => {
 
 export const scheduleHealthFollowUp = async (req, res) => {
   try {
-    assertClinicalRole(req.user);
+    if (req.user?.role !== "technician") {
+      throw new AppError("Health follow-up scheduling requires a Technician account.", {
+        status: 403,
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
     const request = await HealthRequest.findOne({ _id: req.params.id, deletedAt: null });
     if (!request) throw new AppError("Health request not found", { status: 404, code: "HEALTH_REQUEST_NOT_FOUND" });
     assertHealthRequestMutationOwnership(req.user, request);
@@ -1021,7 +1031,7 @@ export const scheduleHealthFollowUp = async (req, res) => {
           },
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!updated) {
       throw new AppError(

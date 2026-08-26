@@ -220,7 +220,7 @@ test("Technician GET /api/user forces Farmer scope and a narrow projection", asy
   assert.doesNotMatch(capturedProjection, /pushToken|deletedAt|dispatchProfile/);
 });
 
-test("Admin GET /api/user retains broad management projection", async (t) => {
+test("Admin GET /api/user retains management fields without push-token secrets", async (t) => {
   const originals = { userFind: User.find };
   t.after(() => {
     User.find = originals.userFind;
@@ -239,7 +239,7 @@ test("Admin GET /api/user retains broad management projection", async (t) => {
   );
 
   assert.equal(recorder.statusCode, 200);
-  assert.equal(capturedProjection, "-password");
+  assert.equal(capturedProjection, "-password -pushToken");
 });
 
 test("Admin Technician onboarding stores canonical initial dispatch safely", () => {

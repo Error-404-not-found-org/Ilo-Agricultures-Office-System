@@ -18,7 +18,6 @@ import {
   scheduleHealthFollowUp,
 } from "../controllers/health-workflow.controllers.js";
 import {
-  ClinicalOnly,
   protectedRoute,
   TechnicianOnly,
   AdminOnly,
@@ -40,9 +39,9 @@ router.get(
 router.get("/:id", protectedRoute, getHealthRequestDetail);
 router.patch("/:id/advice", protectedRoute, TechnicianOnly, provideHealthAdvice);
 router.patch("/:id/office-pickup", protectedRoute, TechnicianOnly, provideHealthOfficePickup);
-router.patch("/:id/triage", protectedRoute, ClinicalOnly, triageHealthRequest);
-router.post("/:id/follow-up", protectedRoute, ClinicalOnly, scheduleHealthFollowUp);
-router.patch("/:id/status", protectedRoute, ClinicalOnly, updateHealthRequestStatus);
+router.patch("/:id/triage", protectedRoute, TechnicianOnly, triageHealthRequest);
+router.post("/:id/follow-up", protectedRoute, TechnicianOnly, scheduleHealthFollowUp);
+router.patch("/:id/status", protectedRoute, TechnicianOnly, updateHealthRequestStatus);
 
 // Farmer/Tech/Admin cancels a request (smart cancel with reason)
 router.patch("/:id/cancel", protectedRoute, cancelHealthRequest);

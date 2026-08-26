@@ -284,7 +284,31 @@ export const presentNotificationCopy = ({
 };
 
 export const normalizePushNotificationData = (data = {}) => {
-  const normalized = { ...data };
+  // Remote push payloads are visible outside the authenticated application.
+  // Keep only routing identifiers; private workflow metadata remains in the
+  // owner-scoped Notification document and authenticated detail endpoints.
+  const allowedKeys = [
+    "notificationId",
+    "type",
+    "eventType",
+    "relatedId",
+    "linkType",
+    "requestId",
+    "requestKind",
+    "taskId",
+    "animalId",
+    "recordId",
+    "pregnancyId",
+    "inseminationId",
+    "sourceId",
+    "sourceKind",
+    "recordType",
+  ];
+  const normalized = Object.fromEntries(
+    allowedKeys
+      .filter((key) => data[key] !== undefined && data[key] !== null)
+      .map((key) => [key, data[key]]),
+  );
   const rawType = String(data.type || "").toLowerCase();
   if (["ai", "ai-request", "insemination"].includes(rawType)) {
     normalized.type = "ai-request";
@@ -299,6 +323,8 @@ export const normalizePushNotificationData = (data = {}) => {
     "animalId",
     "recordId",
     "pregnancyId",
+    "inseminationId",
+    "sourceId",
     "relatedId",
   ]) {
     if (normalized[key] !== undefined && normalized[key] !== null) {

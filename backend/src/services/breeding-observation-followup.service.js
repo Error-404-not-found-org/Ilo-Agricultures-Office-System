@@ -87,7 +87,7 @@ export const ensureBreedingObservationFollowUpTask = async ({
             "metadata.reportType": reportType,
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       );
     } else if (reportType === "possible_pregnancy") {
       task = await Task.findOneAndUpdate(
@@ -98,7 +98,7 @@ export const ensureBreedingObservationFollowUpTask = async ({
             "metadata.reportType": reportType,
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       );
     } else if (reportType === "unsure") {
       task = await Task.findOneAndUpdate(
@@ -109,7 +109,7 @@ export const ensureBreedingObservationFollowUpTask = async ({
             "metadata.reportType": reportType,
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       );
     }
   } else if (initialDecision.technicianActionRequired) {

@@ -11,7 +11,7 @@ router.get("/stats", getDashboardStats);
 router.get("/", getTasks);
 router.get("/:id", getTaskById);
 router.post("/", createTask);
-router.put("/:id/complete", completeTask);
-router.put("/:id/claim", claimTask);
+router.put("/:id/complete", requireRole(["technician"]), completeTask);
+router.put("/:id/claim", requireRole(["technician"]), claimTask);
 
 export default router;

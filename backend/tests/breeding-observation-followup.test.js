@@ -311,6 +311,7 @@ const runWithVerificationStubs = async (operation) => {
     startSession: mongoose.startSession,
     inseminationFindOneAndUpdate: Insemination.findOneAndUpdate,
     animalFindByIdAndUpdate: Animal.findByIdAndUpdate,
+    taskFindOne: Task.findOne,
     taskFindOneAndUpdate: Task.findOneAndUpdate,
     taskFind: Task.find,
     taskUpdateOne: Task.updateOne,
@@ -322,6 +323,7 @@ const runWithVerificationStubs = async (operation) => {
   const state = {
     cancelledTasks: [],
     completedTaskId: null,
+    requestWrites: 0,
   };
 
   mongoose.startSession = async () => ({
@@ -329,11 +331,23 @@ const runWithVerificationStubs = async (operation) => {
     endSession: async () => {},
   });
 
-  Insemination.findOneAndUpdate = async () => ({ _id: "insem-1", farmerId: "farmer-1" });
+  Insemination.findOneAndUpdate = async () => {
+    state.requestWrites += 1;
+    return { _id: "insem-1", farmerId: "farmer-1" };
+  };
   Animal.findByIdAndUpdate = async () => ({ _id: "animal-1" });
   Pregnancy.findOne = () => ({ session: () => null });
   AnimalTimelineEvent.create = async () => {};
   AuditLog.create = async () => {};
+
+  Task.findOne = () => ({
+    session: async () => ({
+      _id: "task-breeding-followup",
+      technicianId: "tech-1",
+      taskType: "BreedingFollowUp",
+      status: "Pending",
+    }),
+  });
 
   Task.find = (query) => {
     return {
@@ -367,6 +381,7 @@ const runWithVerificationStubs = async (operation) => {
     Insemination.findOneAndUpdate = originals.inseminationFindOneAndUpdate;
     Animal.findByIdAndUpdate = originals.animalFindByIdAndUpdate;
     Task.findOneAndUpdate = originals.taskFindOneAndUpdate;
+    Task.findOne = originals.taskFindOne;
     Task.find = originals.taskFind;
     Task.updateOne = originals.taskUpdateOne;
     Pregnancy.findOne = originals.pregnancyFindOne;
@@ -383,7 +398,7 @@ test("TEST 6: Technician confirms Return to Heat -> Insemination fails, tasks cl
       verificationResult: "return_to_heat",
       checkMethod: "visual_observation",
       checkedAt: new Date().toISOString(),
-      actorId: "tech-1",
+      actor: { _id: "tech-1", role: "technician" },
       taskId: "task-breeding-followup",
     });
 
@@ -400,11 +415,33 @@ test("TEST 7: Technician does NOT confirm Return to Heat -> BreedingFollowUp clo
       verificationResult: "cannot_confirm",
       checkMethod: "visual_observation",
       checkedAt: new Date().toISOString(),
-      actorId: "tech-1",
+      actor: { _id: "tech-1", role: "technician" },
       taskId: "task-breeding-followup",
     });
 
     assert.equal(state.completedTaskId, "task-breeding-followup");
+    assert.deepEqual(state.cancelledTasks, []);
+  });
+});
+
+test("Security: another technician cannot confirm Return to Heat and causes no writes", async () => {
+  await runWithVerificationStubs(async (state) => {
+    await assert.rejects(
+      () => persistBreedingObservationVerification({
+        animal: { _id: "animal-1" },
+        insemination: { _id: "insem-1", farmerId: "farmer-1" },
+        verificationResult: "return_to_heat",
+        checkMethod: "visual_observation",
+        checkedAt: new Date().toISOString(),
+        actor: { _id: "tech-2", role: "technician" },
+        taskId: "task-breeding-followup",
+      }),
+      (error) =>
+        error.status === 403 &&
+        error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER",
+    );
+    assert.equal(state.requestWrites, 0);
+    assert.equal(state.completedTaskId, null);
     assert.deepEqual(state.cancelledTasks, []);
   });
 });

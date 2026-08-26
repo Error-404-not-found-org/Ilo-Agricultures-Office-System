@@ -116,8 +116,8 @@ test("daily and event-driven reminder paths use durable notification dedupe", ()
   assert.match(inngestSource, /buildReminderDedupeKey/);
   assert.equal(
     (inngestSource.match(/Notification\.create/g) || []).length,
-    1,
-    "only the immediate calving-recorded compatibility notification remains direct",
+    0,
+    "calving and recurring reminders all use durable dedupe-aware delivery",
   );
   assert.match(inngestSource, /ai-pregnancy-diagnosis-due/);
   assert.match(inngestSource, /expected-calving-7d/);

@@ -1,5 +1,10 @@
 import { Notification } from "../models/notification.model.js";
-import { sendPushNotification } from "../lib/push-notifications.js";
+import { User } from "../models/user.model.js";
+import {
+  isDeviceNotRegisteredResponse,
+  sendPushNotification,
+} from "../lib/push-notifications.js";
+import { clearInvalidPushTokenForOwner } from "./push-token-ownership.service.js";
 import {
   normalizePushNotificationData,
   presentNotificationCopy,
@@ -20,6 +25,20 @@ export const sendNotificationPush = async ({
   metadata = {},
 }) => {
   if (!recipient?.pushToken) return;
+  const ownerId = recipientIdentity(recipient);
+  if (!ownerId) return;
+  const activeTokenFilter = {
+    pushToken: recipient.pushToken,
+    deletedAt: null,
+    status: { $ne: "suspended" },
+  };
+  const [activeOwnerCount, stillOwned] = await Promise.all([
+    User.countDocuments(activeTokenFilter),
+    User.exists({ _id: ownerId, ...activeTokenFilter }),
+  ]);
+  // Historical duplicates or a cross-process registration race are ambiguous.
+  // Fail closed until the token is registered again and has exactly one owner.
+  if (activeOwnerCount !== 1 || !stillOwned) return;
   const normalizedMetadata = {
     ...metadata,
     ...(eventType ? { eventType } : {}),
@@ -30,7 +49,7 @@ export const sendNotificationPush = async ({
     eventType,
     metadata: normalizedMetadata,
   });
-  return sendPushNotification(
+  const response = await sendPushNotification(
     recipient.pushToken,
     copy.title,
     copy.message,
@@ -43,6 +62,13 @@ export const sendNotificationPush = async ({
       linkType,
     }),
   );
+  if (isDeviceNotRegisteredResponse(response)) {
+    await clearInvalidPushTokenForOwner({
+      userId: recipientIdentity(recipient),
+      pushToken: recipient.pushToken,
+    });
+  }
+  return response;
 };
 
 export const notifyUser = async ({

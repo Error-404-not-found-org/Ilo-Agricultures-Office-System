@@ -64,6 +64,12 @@ import {
 } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
+import { assertPregnancyMutationAuthority } from "../policies/pregnancy-mutation.policy.js";
+import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
+import {
+  buildFarmerAIRequest,
+  buildFarmerAIRequests,
+} from "../domain/ai-request-presentation.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -403,7 +409,7 @@ export const getMyRequests = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: requests,
+      data: buildFarmerAIRequests(requests),
       total,
       page: parseInt(page),
       pages: Math.ceil(total / parseInt(limit)),
@@ -470,6 +476,13 @@ export const getAllRequests = async (req, res) => {
   try {
     const { status, page, limit } = req.query;
     const query = status ? { status, deletedAt: null } : { deletedAt: null };
+    if (req.user?.role === "technician") {
+      query.$and = [
+        buildAIRequestMutationOwnershipGuard({
+          technicianId: req.user._id,
+        }),
+      ];
+    }
 
     if (page || limit) {
       const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -524,6 +537,13 @@ export const getAllRequests = async (req, res) => {
 // PATCH /api/ai-request/:id/status
 export const updateRequestStatus = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "AI request status changes require a Technician account.",
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const { id } = req.params;
     const {
       status,
@@ -1301,6 +1321,12 @@ export const submitFarmerBreedingObservation = async (req, res) => {
 
 export const recordTechnicianBreedingObservation = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Only technicians can record breeding observations.",
+        code: "UNAUTHORIZED_VERIFICATION",
+      });
+    }
     const { reportType, signs, notes, evidenceImageUrl, evidencePhotos, source } = req.body;
 
     if (!['possible_pregnancy', 'return_to_heat', 'unsure', 'unable_to_contact'].includes(reportType)) {
@@ -1327,6 +1353,12 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
     const existingTask = await Task.findOne({
       taskType: "BreedingFollowUp",
       "metadata.inseminationId": buildInseminationIdMatch(request._id),
+    });
+    assertPregnancyMutationAuthority({
+      actor: req.user,
+      task: existingTask,
+      insemination: request,
+      allowUnassignedTaskClaim: false,
     });
 
     if (existingTask && ["Completed", "Cancelled", "Rejected"].includes(existingTask.status)) {
@@ -1360,7 +1392,7 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
             "metadata.reportType": "unable_to_contact",
           }
         },
-        { new: true }
+        { returnDocument: "after" }
       );
 
       return res.status(200).json({
@@ -1403,7 +1435,8 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
         technicianNotes: notes,
         nextCheckDate: null,
         evidencePhotos: photos,
-        actorId: req.user._id,
+        actor: req.user,
+        taskId: existingTask?._id,
       });
 
       // Clean up any Pending reproductive tasks (like PD) according to the policy
@@ -1547,7 +1580,10 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
     });
   } catch (error) {
     console.error('Record technician breeding observation error:', error);
-    res.status(500).json({ message: 'Internal server error.' });
+    res.status(error.status || 500).json({
+      message: error.message || 'Internal server error.',
+      code: error.code,
+    });
   }
 };
 
@@ -1674,9 +1710,9 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
     const { id } = req.params;
     const { action } = req.body;
 
-    if (!["admin", "technician"].includes(req.user.role)) {
+    if (req.user.role !== "technician") {
       return res.status(403).json({
-        message: "Only technicians or administrators can verify pregnancy reports.",
+        message: "Only technicians can verify pregnancy reports.",
         code: "UNAUTHORIZED_VERIFICATION",
       });
     }
@@ -1687,6 +1723,23 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
 
     const request = await Insemination.findOne({ _id: id, deletedAt: null }).populate("animalId");
     if (!request) return res.status(404).json({ message: "AI request record not found." });
+
+    const reviewTask = await Task.findOne({
+      taskType: { $in: ["PD", "BreedingFollowUp"] },
+      status: { $nin: ["Completed", "Cancelled", "Rejected"] },
+      $or: [
+        ...(request.verificationTaskId
+          ? [{ _id: request.verificationTaskId }]
+          : []),
+        { "metadata.inseminationId": request._id },
+      ],
+    }).sort({ dueDate: 1, createdAt: 1 });
+    assertPregnancyMutationAuthority({
+      actor: req.user,
+      task: reviewTask,
+      insemination: request,
+      allowUnassignedTaskClaim: false,
+    });
 
     if (!request.farmerPregnancyReport || request.pregnancyReportVerificationStatus !== "pending") {
       return res.status(400).json({
@@ -1740,82 +1793,25 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
 // DELETE /api/ai-request/:id
 export const deleteRequest = async (req, res) => {
   try {
-    const { id } = req.params;
-    const request = await Insemination.findOne({ _id: id, deletedAt: null })
-      .populate("farmerId", "name")
-      .populate("animalId", "earTag animalId");
-
-    if (!request) {
-      return res.status(404).json({ message: "Request not found." });
-    }
-
-    assertAIRequestAccess(req.user, request);
-
-    const isOwner =
-      request.farmerId &&
-      request.farmerId._id.toString() === req.user._id.toString();
-
-    // Status restriction: Only for farmers. Technicians can delete any (for testing/cleanup)
-    if (
-      isOwner &&
-      !["pending", "approved", "in-progress", "rejected"].includes(
-        request.status,
-      )
-    ) {
-      return res.status(400).json({
-        message: "Completed requests cannot be cancelled.",
-      });
-    }
-
-    // Notify technicians in-app and by push when the farmer removes an active request.
-    try {
-      if (
-        isOwner &&
-        ["pending", "approved", "in-progress"].includes(request.status)
-      ) {
-        const technicians = await User.find({ role: "technician" });
-        for (const t of technicians) {
-          await notifyUser({
-            recipient: t,
-            senderId: req.user._id,
-            type: "ai-request",
-            relatedId: request._id,
-            category: "cancellation",
-            eventType: "request_cancelled",
-            linkType: "request",
-            dedupeKey: `ai-request-removed:${request._id}:${t._id}`,
-            title: "AI service request cancelled",
-            message: `${request.farmerId?.name} cancelled the AI service request for ${request.animalId?.earTag || request.animalId?.animalId}.`,
-            metadata: {
-              requestId: request._id,
-              animalId: request.animalId?._id,
-              animalTag: request.animalId?.earTag || request.animalId?.animalId,
-              farmerName: request.farmerId?.name,
-              actorName: request.farmerId?.name,
-              serviceType: "ai",
-            },
-          });
-        }
-      }
-    } catch (notifyErr) {
-      console.error("[Notification Trigger Error]", notifyErr.message);
-    }
-
-    await Insemination.findByIdAndUpdate(id, {
-      $set: { deletedAt: new Date() },
-      $unset: { activeRequestKey: 1 },
+    await archiveInseminationAsAdmin({
+      id: req.params.id,
+      actor: req.user,
     });
 
-    // Socket update to refresh tech dashboard
     req.app.get("io").emit("dashboardUpdate", {
       type: "AI_REQUEST_DELETED",
-      message: "An AI request was cancelled/removed by the farmer",
+      message: "An AI request was archived by an administrator",
     });
 
-    res.status(200).json({ message: "Request removed successfully." });
+    res.status(200).json({
+      message: "Insemination record soft-deleted successfully",
+    });
   } catch (error) {
     console.error("[deleteRequest ERROR]", error.message);
-    res.status(500).json({ message: "Failed to remove request." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to archive AI request.",
+      code: error.code,
+    });
   }
 };
 
@@ -2006,6 +2002,7 @@ export const getAIRequestDetail = async (req, res) => {
           "lastInseminationDate",
           "expectedCalvingDate",
           "lastCalvingDate",
+          "farmerId",
         ].join(" "),
       )
       .populate("approvedBy", "name role phoneNumber")
@@ -2029,6 +2026,17 @@ export const getAIRequestDetail = async (req, res) => {
         message: "AI request record not found.",
       });
     }
+
+    if (
+      req.user.role === "farmer" &&
+      String(request.farmerId?._id || request.farmerId) !== String(req.user._id)
+    ) {
+      return res.status(403).json({
+        message: "You can only view your own AI requests.",
+        code: "AI_REQUEST_ACCESS_DENIED",
+      });
+    }
+
 
     const animal = request.animalId;
 
@@ -2127,6 +2135,12 @@ export const getAIRequestDetail = async (req, res) => {
       req.user.role !== "technician"
     ) {
       return res.status(200).json(buildCandidateAIDetail(requestObj));
+    }
+
+    if (isFarmerRole) {
+      return res.status(200).json({
+        data: buildFarmerAIRequest(requestObj),
+      });
     }
 
     return res.status(200).json({
@@ -2353,7 +2367,7 @@ export const cancelAIRequest = async (req, res) => {
           },
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     )
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
@@ -2520,7 +2534,7 @@ export const respondAICancellation = async (req, res) => {
             },
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "earTag animalId")
@@ -2596,7 +2610,7 @@ export const respondAICancellation = async (req, res) => {
             },
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "earTag animalId")
@@ -2668,9 +2682,9 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       taskId,
     } = req.body;
 
-    if (!["admin", "technician"].includes(req.user.role)) {
+    if (req.user.role !== "technician") {
       return res.status(403).json({
-        message: "Only technicians or admins can verify breeding observations.",
+        message: "Only technicians can verify breeding observations.",
         code: "UNAUTHORIZED_VERIFICATION",
       });
     }
@@ -2818,7 +2832,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         technicianNotes,
         nextCheckDate,
         evidencePhotos,
-        actorId: req.user._id,
+        actor: req.user,
         taskId: taskId || request.verificationTaskId,
       });
       verifiedRequest = verification.request;

@@ -41,7 +41,7 @@ const createResponseRecorder = () => {
 const runRoleGuard = (role) => {
   const recorder = createResponseRecorder();
   let nextCalled = false;
-  requireRole(["technician", "admin"])(
+  requireRole(["technician"])(
     { user: role ? { role } : null },
     recorder.response,
     () => {
@@ -63,7 +63,7 @@ const populatedQuery = (value) => {
   return query;
 };
 
-test("AI authorization: list and status routes require technician or admin", () => {
+test("AI authorization: list preserves Admin oversight while status mutation requires Technician", () => {
   const aiRoutes = routeSource("ai-request.routes.js");
   const technicianRoutes = routeSource("technician.routes.js");
 
@@ -73,7 +73,7 @@ test("AI authorization: list and status routes require technician or admin", () 
   );
   assert.match(
     aiRoutes,
-    /router\.patch\(\s*"\/:id\/status",\s*protectedRoute,\s*requireRole\(\["technician", "admin"\]\),\s*updateRequestStatus,\s*\)/,
+    /router\.patch\(\s*"\/:id\/status",\s*protectedRoute,\s*requireRole\(\["technician"\]\),\s*updateRequestStatus,\s*\)/,
   );
   assert.match(
     aiRoutes,
@@ -81,11 +81,11 @@ test("AI authorization: list and status routes require technician or admin", () 
   );
   assert.match(
     technicianRoutes,
-    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician", "admin"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
+    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
   );
 
   assert.equal(runRoleGuard("technician").nextCalled, true);
-  assert.equal(runRoleGuard("admin").nextCalled, true);
+  assert.equal(runRoleGuard("admin").statusCode, 403);
   assert.equal(runRoleGuard("farmer").statusCode, 403);
   assert.equal(runRoleGuard().statusCode, 403);
 
@@ -272,7 +272,7 @@ test("AI concurrency: an already scheduled request cannot be claimed again", asy
   assert.equal(updateCalled, false);
 });
 
-test("AI completion: generic insemination editing cannot mark an active request done", async (t) => {
+test("AI completion: generic insemination editing is disabled before any lifecycle write", async (t) => {
   const originals = {
     findById: Insemination.findById,
     findByIdAndUpdate: Insemination.findByIdAndUpdate,
@@ -315,8 +315,8 @@ test("AI completion: generic insemination editing cannot mark an active request 
     recorder.response,
   );
 
-  assert.equal(recorder.statusCode, 409);
-  assert.equal(recorder.body.code, "CANONICAL_AI_COMPLETION_REQUIRED");
+  assert.equal(recorder.statusCode, 405);
+  assert.equal(recorder.body.code, "GENERIC_INSEMINATION_MUTATION_DISABLED");
   assert.equal(inseminationWriteCalled, false);
   assert.equal(animalWriteCalled, false);
 });

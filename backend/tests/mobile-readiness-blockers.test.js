@@ -112,17 +112,17 @@ test("farmer-requested pregnancy checks remain visible in the technician queue",
 
   assert.match(tasks, /sourceType: "farmer_requested_verification"/);
   assert.match(tasks, /taskType: "PD"/);
-  assert.match(notification, /sendPushNotification/);
+  assert.match(notification, /sendNotificationPush/);
   assert.match(notification, /technician_review_required/);
   assert.match(notification, /Open the linked task to verify the outcome/);
   assert.match(notification, /farmer_observation_reported/);
 });
 
 test("one technician receives one contextual notification for the same observation", async () => {
-  const originalUserFind = User.find;
+  const originalUserFindOne = User.findOne;
   const originalNotificationUpdate = Notification.findOneAndUpdate;
   const notifications = new Map();
-  User.find = () => ({ select: async () => [{ _id: "tech-1" }] });
+  User.findOne = () => ({ select: async () => ({ _id: "tech-1" }) });
   Notification.findOneAndUpdate = async (query, update) => {
     if (!notifications.has(query.dedupeKey)) {
       notifications.set(query.dedupeKey, update.$setOnInsert);
@@ -136,8 +136,10 @@ test("one technician receives one contextual notification for the same observati
     insemination: {
       _id: "attempt-1",
       inseminationDate: new Date("2026-07-07T00:00:00.000Z"),
+      approvedBy: "tech-1",
+      technicianId: "tech-1",
     },
-    task: { _id: "task-1" },
+    task: { _id: "task-1", technicianId: "tech-1" },
     reportType: "possible_pregnancy",
     signs: ["no_return_to_heat"],
     notes: "Eating normally",
@@ -160,7 +162,7 @@ test("one technician receives one contextual notification for the same observati
     assert.match(details, /notification\.metadata\?\.taskId/);
     assert.match(details, /\(technician\)\/task-details/);
   } finally {
-    User.find = originalUserFind;
+    User.findOne = originalUserFindOne;
     Notification.findOneAndUpdate = originalNotificationUpdate;
   }
 });

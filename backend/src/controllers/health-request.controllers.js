@@ -45,6 +45,7 @@ import {
   getFarmerInvitationRedirectUrl,
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
+import { resolveRequestNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -274,6 +275,13 @@ export const getAllHealthRequests = async (req, res) => {
 
     const { status, urgency, page, limit, search, fromDate, toDate } = req.query;
     const query = { deletedAt: null };
+    if (req.user.role === "technician") {
+      query.$and = [
+        buildHealthRequestMutationOwnershipGuard({
+          technicianId: req.user._id,
+        }),
+      ];
+    }
     if (status) query.status = status;
     if (urgency) query.urgency = urgency;
     if (fromDate || toDate) {
@@ -388,6 +396,13 @@ import { createAuditLog } from "../services/audit.service.js";
 // PATCH /api/health-request/:id/status  — technician/admin updates
 export const updateHealthRequestStatus = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Health request status changes require a Technician account.",
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const { id } = req.params;
     const { status: requestedStatus, technicianNote } = req.body;
     const status = normalizeHealthStatus(requestedStatus);
@@ -1005,7 +1020,11 @@ export const deleteHealthRequest = async (req, res) => {
     // Notify technicians in-app and by push when the farmer removes an active request.
     try {
       if (isOwner && ["pending", "approved", "in-progress"].includes(request.status)) {
-        const technicians = await User.find({ role: "technician" });
+        const technicians = await resolveRequestNotificationTechnicians({
+          requestType: "HEALTH",
+          request,
+          allowUnassignedDispatch: true,
+        });
         for (const t of technicians) {
           await notifyUser({
             recipient: t,
@@ -1232,7 +1251,7 @@ export const cancelHealthRequest = async (req, res) => {
           },
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     )
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
@@ -1387,7 +1406,7 @@ export const respondHealthCancellation = async (req, res) => {
             },
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "earTag animalId")
@@ -1460,7 +1479,7 @@ export const respondHealthCancellation = async (req, res) => {
             },
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "earTag animalId")

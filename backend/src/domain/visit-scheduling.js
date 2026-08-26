@@ -3,6 +3,8 @@ import { AppError } from "../utils/app-error.js";
 export const VISIT_PERIODS = Object.freeze(["morning", "afternoon"]);
 export const VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES = 8 * 60;
 const VISIT_AFTERNOON_CUTOFF_HOUR = 18;
+const VISIT_MORNING_CONFIRMATION_HOUR = 10;
+const VISIT_AFTERNOON_CONFIRMATION_HOUR = 15;
 
 const invalidField = (message, code) =>
   new AppError(message, { status: 400, code });
@@ -157,7 +159,12 @@ export const assertVisitDaypartAvailable = ({
   }
 
   const currentPeriodNeedsConfirmation =
-    visitPeriod === "afternoon" && currentPeriod === "afternoon";
+    (visitPeriod === "morning" &&
+      currentPeriod === "morning" &&
+      current.hour >= VISIT_MORNING_CONFIRMATION_HOUR) ||
+    (visitPeriod === "afternoon" &&
+      currentPeriod === "afternoon" &&
+      current.hour >= VISIT_AFTERNOON_CONFIRMATION_HOUR);
   if (currentPeriodNeedsConfirmation && samePeriodConfirmed !== true) {
     const label = visitPeriod === "morning" ? "Morning" : "Afternoon";
     throw confirmationRequired(

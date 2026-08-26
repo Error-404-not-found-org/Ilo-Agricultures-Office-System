@@ -27,6 +27,10 @@ import {
   archiveAnimalLifecycle,
   restoreAnimalLifecycle,
 } from "../services/animal-archive.service.js";
+import { filterAnimalWorkForViewer } from "../domain/animal-work-visibility.js";
+import { assertPregnancyMutationAuthority } from "../policies/pregnancy-mutation.policy.js";
+import { buildInseminationIdMatch } from "../services/breeding-observation-followup.service.js";
+import { buildFarmerAIRequest } from "../domain/ai-request-presentation.js";
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -392,10 +396,21 @@ export const getAnimalById = async (req, res) => {
       });
     }
     assertAnimalAccess(req.user, animal);
+    const visibleWork = filterAnimalWorkForViewer(
+      {
+        inseminations: inseminationsList,
+        healthRequests: healthRecords,
+        tasks: reproductiveTasks,
+      },
+      req.user,
+    );
+    const visibleInseminationsList = visibleWork.inseminations;
+    const visibleHealthRecords = visibleWork.healthRequests;
+    const visibleReproductiveTasks = visibleWork.tasks;
     const policyResolution = await loadPregnancyConfirmationPolicy();
     const idOf = (value) => String(value?._id || value || "");
     const followUpTaskFor = (insemination) =>
-      reproductiveTasks.find(
+      visibleReproductiveTasks.find(
         (task) =>
           task.taskType === "PD" &&
           (idOf(task._id) === idOf(insemination.verificationTaskId) ||
@@ -403,14 +418,18 @@ export const getAnimalById = async (req, res) => {
             (task.relatedRecordType === "insemination" &&
               idOf(task.relatedRecordId) === idOf(insemination._id))),
       ) || null;
-    const inseminations = inseminationsList.map((insemination) => {
+    const inseminations = visibleInseminationsList.map((insemination) => {
       const pregnancy = pregnancies.find(
         (item) =>
           item.inseminationId &&
           item.inseminationId.toString() === insemination._id.toString(),
       );
+      const presentedInsemination =
+        req.user.role === "farmer"
+          ? buildFarmerAIRequest(insemination)
+          : insemination.toObject();
       return {
-        ...insemination.toObject(),
+        ...presentedInsemination,
         pregnancy: pregnancy
           ? {
               ...pregnancy.toObject(),
@@ -426,11 +445,15 @@ export const getAnimalById = async (req, res) => {
           policy: policyResolution.policy,
           species: animal.species,
         }),
-        pregnancyFollowUpTask: followUpTaskFor(insemination),
+        ...(req.user.role === "farmer"
+          ? {}
+          : {
+              pregnancyFollowUpTask: followUpTaskFor(insemination),
+            }),
       };
     });
     const activeRequest =
-      inseminationsList.find((insemination) =>
+      visibleInseminationsList.find((insemination) =>
         isActiveAIRequestStatus(insemination.status),
       ) || null;
     const calvedPregnancyIds = new Set(
@@ -453,7 +476,7 @@ export const getAnimalById = async (req, res) => {
       animal,
       activeRequest,
       activePregnancy,
-      tasks: reproductiveTasks,
+      tasks: visibleReproductiveTasks,
     });
     return res.status(200).json({
       ...animal.toObject(),
@@ -461,7 +484,7 @@ export const getAnimalById = async (req, res) => {
       offspring,
       inseminations,
       calvings,
-      healthRecords,
+      healthRecords: visibleHealthRecords,
       nextAction,
       nextActionAt: nextAction?.at || null,
     });
@@ -609,14 +632,41 @@ export const updateReproductiveStatus = async (req, res) => {
     const animal = await Animal.findById(id);
     if (!animal) return res.status(404).json({ message: "Animal not found" });
 
-    // --- HARDENED REHEAT LOGIC ---
-    if (status === "In Heat") {
-      // If they observed a reheat, the last insemination attempt is officially a failure
-      const lastInsem = await Insemination.findOne({
+    const [lastInsem, activePregnancy] = await Promise.all([
+      Insemination.findOne({
         animalId: id,
         status: "done",
         deletedAt: null,
-      }).sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 }),
+      Pregnancy.findOne({
+        animalId: id,
+        cycleStatus: "active",
+        deletedAt: null,
+      }).sort({ createdAt: -1 }),
+    ]);
+    const assignedTask = lastInsem
+      ? await Task.findOne({
+          taskType: { $in: ["PD", "BreedingFollowUp"] },
+          status: { $nin: ["Completed", "Cancelled", "Rejected"] },
+          $or: [
+            { "metadata.inseminationId": buildInseminationIdMatch(lastInsem._id) },
+            ...(activePregnancy
+              ? [{ "metadata.pregnancyId": buildInseminationIdMatch(activePregnancy._id) }]
+              : []),
+          ],
+        }).sort({ dueDate: 1, createdAt: 1 })
+      : null;
+    assertPregnancyMutationAuthority({
+      actor: req.user,
+      task: assignedTask,
+      pregnancy: activePregnancy,
+      insemination: lastInsem,
+      allowUnassignedTaskClaim: false,
+    });
+
+    // --- HARDENED REHEAT LOGIC ---
+    if (status === "In Heat") {
+      // If they observed a reheat, the last insemination attempt is officially a failure
       if (lastInsem) {
         lastInsem.isSuccess = false;
         lastInsem.outcome = "Failed (Re-heat)";
@@ -649,7 +699,10 @@ export const updateReproductiveStatus = async (req, res) => {
       .json({ message: "Animal status updated successfully", animal });
   } catch (error) {
     console.error("Update Reproductive Status Error:", error);
-    res.status(500).json({ message: "Failed to update animal status" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to update animal status",
+      code: error.code,
+    });
   }
 };
 
@@ -668,6 +721,13 @@ export const getAnimalsByFarmer = async (req, res) => {
 
 export const recordCalving = async (req, res) => {
   try {
+    if (!["farmer", "technician"].includes(req.user?.role)) {
+      return res.status(403).json({
+        message: "Calving recording requires a Farmer or Technician account.",
+        code: "CALVING_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const {
       pregnancyId,
       animalId,

@@ -50,6 +50,8 @@ function installVerificationStubs({ result, hasTask = true }) {
     animalId: "animal-1",
     inseminationDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000),
     status: "done",
+    technicianId: "tech-1",
+    approvedBy: "tech-1",
     verificationStatus: "pending",
     verificationTaskId: hasTask ? "task-1" : null,
     statusHistory: [],
@@ -64,7 +66,14 @@ function installVerificationStubs({ result, hasTask = true }) {
     reproductiveStatus: "Likely Pregnant",
     activityLogs: [],
   };
-  const task = { _id: "task-1", status: "Pending", notes: "", metadata: {} };
+  const task = {
+    _id: "task-1",
+    technicianId: "tech-1",
+    taskType: "PD",
+    status: "Pending",
+    notes: "",
+    metadata: {},
+  };
   const followupTask = { _id: "task-2", taskType: "BreedingFollowUp", status: "Pending", notes: "" };
   let pregnancy = null;
   let tasksCreated = 0;
@@ -120,6 +129,7 @@ function installVerificationStubs({ result, hasTask = true }) {
     }
     return task;
   });
+  replace(Task, "findOne", () => ({ session: async () => task }));
   replace(Task, "create", async ([data]) => {
     tasksCreated++;
     Object.assign(task, data);

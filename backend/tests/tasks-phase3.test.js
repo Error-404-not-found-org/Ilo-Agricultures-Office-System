@@ -123,7 +123,7 @@ test("Tasks Phase 3: claimTask atomically updates and claims unassigned task", a
 
   const req = {
     params: { id: "task-1" },
-    user: { _id: "tech-1" }
+    user: { _id: "tech-1", role: "technician" }
   };
   const res = createMockRes();
 
@@ -133,6 +133,8 @@ test("Tasks Phase 3: claimTask atomically updates and claims unassigned task", a
   assert.equal(capturedQuery._id, "task-1");
   assert.deepEqual(capturedQuery.technicianId, { $in: [null, undefined] });
   assert.equal(capturedQuery.status, "Pending");
+  assert.deepEqual(capturedQuery.taskType, { $in: ["GeneralVisit", "FarmInspection", "Registration", "Other"] });
+  assert.deepEqual(capturedQuery.sourceType, { $in: ["manual", "client_profile", "task_scheduler"] });
   assert.equal(capturedUpdate.$set.technicianId, "tech-1");
 
   // Restore
@@ -146,7 +148,7 @@ test("Tasks Phase 3: claimTask returns 409 conflict if already claimed", async (
 
   const req = {
     params: { id: "task-1" },
-    user: { _id: "tech-1" }
+    user: { _id: "tech-1", role: "technician" }
   };
   const res = createMockRes();
 
@@ -170,7 +172,7 @@ test("Tasks Phase 3: completeTask rejects official service task completion witho
 
   const req = {
     params: { id: "task-1" },
-    user: { _id: "tech-1" },
+    user: { _id: "tech-1", role: "technician" },
     body: {}
   };
   const res = createMockRes();
@@ -178,8 +180,47 @@ test("Tasks Phase 3: completeTask rejects official service task completion witho
   await completeTask(req, res);
 
   assert.equal(res.statusVal, 400);
-  assert.match(res.jsonVal.message, /must be completed through its official service form/);
+  assert.equal(res.jsonVal.code, "OFFICIAL_SERVICE_WORKFLOW_REQUIRED");
+  assert.match(res.jsonVal.message, /dedicated workflow/);
 
   // Restore
   Task.findOne = originalFindOne;
+});
+
+test("Tasks Phase 3: PD task cannot bypass the pregnancy workflow with supplied record IDs", async () => {
+  const originalFindOne = Task.findOne;
+  const originalFindOneAndUpdate = Task.findOneAndUpdate;
+  let updateCalled = false;
+
+  Task.findOne = () => Promise.resolve({
+    _id: "task-pd-1",
+    taskType: "PD",
+    status: "Pending",
+    technicianId: "tech-1",
+  });
+  Task.findOneAndUpdate = async () => {
+    updateCalled = true;
+    return null;
+  };
+
+  try {
+    const req = {
+      params: { id: "task-pd-1" },
+      user: { _id: "tech-1", role: "technician" },
+      body: {
+        relatedRecordType: "pregnancy",
+        relatedRecordId: "507f1f77bcf86cd799439001",
+      },
+    };
+    const res = createMockRes();
+
+    await completeTask(req, res);
+
+    assert.equal(res.statusVal, 400);
+    assert.equal(res.jsonVal.code, "OFFICIAL_SERVICE_WORKFLOW_REQUIRED");
+    assert.equal(updateCalled, false);
+  } finally {
+    Task.findOne = originalFindOne;
+    Task.findOneAndUpdate = originalFindOneAndUpdate;
+  }
 });

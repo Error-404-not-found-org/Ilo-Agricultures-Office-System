@@ -83,6 +83,8 @@ function installDiagnosisStubs({
     status: "done",
     outcome: "Pending",
     isSuccess: null,
+    technicianId: ids.actor,
+    approvedBy: ids.actor,
     completedAt,
     inseminationDate: new Date(now.getTime() - daysPostAI * 24 * 60 * 60 * 1000),
   };
@@ -196,7 +198,7 @@ function installDiagnosisStubs({
 
 const actor = { _id: ids.actor, role: "technician", name: "Policy Tech" };
 
-test("a diagnosis from another supported path reconciles the exact assigned initial task without taking ownership", async () => {
+test("a diagnosis cannot reconcile an initial task assigned to another technician", async () => {
   const originalFind = Task.find;
   const assignedTechnicianId = "507f1f77bcf86cd799439099";
   const task = {
@@ -218,20 +220,20 @@ test("a diagnosis from another supported path reconciles the exact assigned init
     return query([task]);
   };
   try {
-    const completed = await completeInitialConfirmationTask({
-      animal: { _id: ids.animal, farmerId: ids.farmer },
-      insemination: { _id: ids.insemination },
-      pregnancy: { _id: ids.pregnancy },
-      actor,
-      methodCode: "ultrasound",
-      policyVersion: activePolicy.version,
-      session: {},
-    });
-
+    await assert.rejects(
+      () => completeInitialConfirmationTask({
+        animal: { _id: ids.animal, farmerId: ids.farmer },
+        insemination: { _id: ids.insemination, technicianId: ids.actor },
+        pregnancy: { _id: ids.pregnancy },
+        actor,
+        methodCode: "ultrasound",
+        policyVersion: activePolicy.version,
+        session: {},
+      }),
+      (error) => error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER" && error.status === 403,
+    );
     assert.equal("$or" in queryFilter, false);
-    assert.equal(completed.status, "Completed");
-    assert.equal(completed.technicianId, assignedTechnicianId);
-    assert.equal(completed.relatedRecordId, ids.pregnancy);
+    assert.equal(task.status, "Pending");
   } finally {
     Task.find = originalFind;
   }
@@ -252,7 +254,7 @@ test("automatic diagnosis reconciliation does not complete an unrelated Pregnanc
   try {
     const completed = await completeInitialConfirmationTask({
       animal: { _id: ids.animal, farmerId: ids.farmer },
-      insemination: { _id: ids.insemination },
+      insemination: { _id: ids.insemination, technicianId: ids.actor },
       pregnancy: { _id: ids.pregnancy },
       actor,
       session: {},
@@ -369,6 +371,7 @@ test("method policy rejects missing, disabled, early, stale, and unauthorized su
           diagnosisDate: stubs.now,
           methodCode: input.methodCode,
           policyVersion: input.policyVersion,
+          taskId: ids.task,
           actor,
         }),
         (error) => error.code === input.code,
@@ -390,6 +393,7 @@ test("standard diagnosis creates no continuation task and negative diagnosis ret
       diagnosisDate: standard.now,
       methodCode: "ultrasound",
       policyVersion: activePolicy.version,
+      taskId: ids.task,
       actor,
     });
     assert.equal(result.pregnancy.pregnancyDiagnosis.result, "Empty");
@@ -522,7 +526,7 @@ test("completed matching task replay returns the existing diagnosis without new 
   }
 });
 
-test("concurrent diagnosis submissions produce one Pregnancy result", async () => {
+test("two technicians racing an unassigned diagnosis Task produce one owner and one Pregnancy", async () => {
   const stubs = installDiagnosisStubs({ daysPostAI: 35 });
   const input = {
     animalId: ids.animal,
@@ -537,12 +541,25 @@ test("concurrent diagnosis submissions produce one Pregnancy result", async () =
   try {
     const outcomes = await Promise.allSettled([
       confirmPregnancyDiagnosis(input),
-      confirmPregnancyDiagnosis(input),
+      confirmPregnancyDiagnosis({
+        ...input,
+        actor: {
+          _id: "507f1f77bcf86cd799439088",
+          role: "technician",
+        },
+      }),
     ]);
     assert.equal(outcomes.filter((item) => item.status === "fulfilled").length, 1);
     const rejected = outcomes.find((item) => item.status === "rejected");
-    assert.equal(rejected.reason.code, "PREGNANCY_DIAGNOSIS_EXISTS");
+    assert.ok([
+      "PREGNANCY_DIAGNOSIS_EXISTS",
+      "PREGNANCY_WORK_ASSIGNED_TO_OTHER",
+    ].includes(rejected.reason.code));
     assert.equal(stubs.state.pregnancy._id, ids.pregnancy);
+    assert.ok([
+      ids.actor,
+      "507f1f77bcf86cd799439088",
+    ].includes(String(stubs.state.initialTask.technicianId)));
   } finally {
     stubs.restore();
   }
@@ -679,7 +696,14 @@ test("continuation rejects an explicitly supplied task owned by another technici
   let taskQuery = null;
   Task.findOne = (filter) => {
     taskQuery = filter;
-    return query(null);
+    return query({
+      ...stubs.state.initialTask,
+      technicianId: "507f1f77bcf86cd799439099",
+      metadata: {
+        workflowStage: "continuation_recheck",
+        pregnancyId: ids.pregnancy,
+      },
+    });
   };
   try {
     await assert.rejects(
@@ -690,19 +714,16 @@ test("continuation rejects an explicitly supplied task owned by another technici
         taskId: ids.task,
         actor,
       }),
-      (error) => error.code === "TASK_RECORD_MISMATCH",
+      (error) => error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER" && error.status === 403,
     );
-    assert.deepEqual(taskQuery.$or, [
-      { technicianId: ids.actor },
-      { technicianId: null },
-    ]);
+    assert.equal("$or" in taskQuery, false);
     assert.equal(pregnancy.recheckStatus, "pending");
   } finally {
     stubs.restore();
   }
 });
 
-test("continuation through another supported path closes the exact task without taking its assignee", async () => {
+test("continuation without a taskId cannot mutate another technician's assigned task", async () => {
   const pregnancy = {
     _id: ids.pregnancy,
     animalId: ids.animal,
@@ -729,17 +750,22 @@ test("continuation through another supported path closes the exact task without 
     return query([continuationTask]);
   };
   try {
-    const result = await recordPregnancyContinuationRecheck({
-      pregnancyId: ids.pregnancy,
-      result: "continuing",
-      checkedAt: stubs.now,
-      actor,
-    });
-
+    await assert.rejects(
+      () => recordPregnancyContinuationRecheck({
+        pregnancyId: ids.pregnancy,
+        result: "continuing",
+        checkedAt: stubs.now,
+        actor,
+      }),
+      (error) => error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER" && error.status === 403,
+    );
     assert.equal("$or" in taskQuery, false);
-    assert.equal(String(taskQuery["metadata.pregnancyId"]), ids.pregnancy);
-    assert.equal(result.completedTask.status, "Completed");
-    assert.equal(result.completedTask.technicianId, assignedTechnicianId);
+    assert.ok(
+      taskQuery["metadata.pregnancyId"].$in.some(
+        (value) => String(value) === ids.pregnancy,
+      ),
+    );
+    assert.equal(continuationTask.status, "Pending");
   } finally {
     stubs.restore();
   }

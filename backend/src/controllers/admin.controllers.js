@@ -16,6 +16,7 @@ import {
   isActiveHealthRequestStatus,
 } from "../domain/status-vocabulary.js";
 import { canonicalizeMunicipality } from "../domain/geographic/psgcRegistry.js";
+import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
 
 // Clerk Retry Helper - Retries once if Clerk temporarily fails
 const runWithClerkRetry = async (fn, context = "") => {
@@ -517,6 +518,7 @@ export const deleteUser = async (req, res) => {
 
     user.deletedAt = new Date();
     user.deactivatedBy = req.user._id;
+    user.pushToken = undefined;
     await user.save();
 
     logAdminAction("user deleted", req.user, user, {
@@ -544,42 +546,31 @@ export const deleteUser = async (req, res) => {
 
 export const deleteInsemination = async (req, res) => {
   try {
-    const { id } = req.params;
-    const insemination = await Insemination.findById(id);
-    if (!insemination) {
-      return res.status(404).send({ message: "Insemination record not found" });
-    }
-
-    const beforeState = { deletedAt: insemination.deletedAt };
-    insemination.deletedAt = new Date();
-    await insemination.save();
+    const archivedInsemination = await archiveInseminationAsAdmin({
+      id: req.params.id,
+      actor: req.user,
+    });
 
     logAdminAction(
       "delete_insemination",
       req.user,
       {
-        id: insemination._id,
-        name: `Insemination for animal ${insemination.animalId}`,
+        id: archivedInsemination._id,
+        name: `Insemination for animal ${archivedInsemination.animalId}`,
       },
-      { deletedAt: insemination.deletedAt },
+      { deletedAt: archivedInsemination.deletedAt },
     );
-    await createAuditLog({
-      entityType: "Insemination",
-      entityId: insemination._id,
-      action: "delete_insemination",
-      actorId: req.user._id,
-      before: beforeState,
-      after: { deletedAt: insemination.deletedAt },
-      metadata: {
-        actingAdmin: req.user.email || req.user.name,
-        timestamp: new Date().toISOString(),
-      },
-    });
 
     res
       .status(200)
       .send({ message: "Insemination record soft-deleted successfully" });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).send({
+        message: error.message,
+        code: error.code,
+      });
+    }
     return handleControllerError(res, error, "Error deleting insemination");
   }
 };

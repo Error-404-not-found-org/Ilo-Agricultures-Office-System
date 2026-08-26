@@ -60,7 +60,7 @@ router.delete("/:id", protectedRoute, deleteAnimal);
 router.patch(
   "/:id/reproductive-status",
   protectedRoute,
-  requireRole(["technician", "admin"]),
+  requireRole(["technician"]),
   updateReproductiveStatus,
 );
 router.post(
@@ -69,7 +69,7 @@ router.post(
   requestLimiter,
   createLegacyReInseminationRequest,
 );
-router.post("/record-calving", protectedRoute, recordCalving);
+router.post("/record-calving", protectedRoute, requireRole(["farmer", "technician"]), recordCalving);
 router.patch("/:id/restore", protectedRoute, restoreAnimal);
 
 export default router;

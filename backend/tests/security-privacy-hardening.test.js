@@ -22,6 +22,8 @@ import { Animal } from "../src/models/animal.model.js";
 import { HealthRequest } from "../src/models/health-request.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Notification } from "../src/models/notification.model.js";
+import { Pregnancy } from "../src/models/pregnancy.model.js";
+import { Task } from "../src/models/task.model.js";
 import {
   assertHealthRequestMutationOwnership,
   buildAIRequestMutationOwnershipGuard,
@@ -497,7 +499,7 @@ test("Security: legacy reproductive-status mutation rejects Farmers before any w
 
   assert.match(
     routeSource("animals.routes.js"),
-    /router\.patch\(\s*"\/:id\/reproductive-status",\s*protectedRoute,\s*requireRole\(\["technician", "admin"\]\),\s*updateReproductiveStatus/,
+    /router\.patch\(\s*"\/:id\/reproductive-status",\s*protectedRoute,\s*requireRole\(\["technician"\]\),\s*updateReproductiveStatus/,
   );
 
   const recorder = responseRecorder();
@@ -514,10 +516,16 @@ test("Security: legacy reproductive-status mutation rejects Farmers before any w
   assert.equal(lookupCalled, false);
 });
 
-test("Security: verified staff can still use the protected legacy reproductive-status path", async (t) => {
+test("Security: only the owning technician can use the protected legacy reproductive-status path", async (t) => {
   const originalFindById = Animal.findById;
+  const originalInseminationFindOne = Insemination.findOne;
+  const originalPregnancyFindOne = Pregnancy.findOne;
+  const originalTaskFindOne = Task.findOne;
   t.after(() => {
     Animal.findById = originalFindById;
+    Insemination.findOne = originalInseminationFindOne;
+    Pregnancy.findOne = originalPregnancyFindOne;
+    Task.findOne = originalTaskFindOne;
   });
   let saveCount = 0;
   Animal.findById = async () => ({
@@ -529,18 +537,35 @@ test("Security: verified staff can still use the protected legacy reproductive-s
       saveCount += 1;
     },
   });
+  const sorted = (value) => ({ sort: async () => value });
+  Insemination.findOne = () => sorted({
+    _id: "507f1f77bcf86cd799439003",
+    technicianId: "technician-1",
+    approvedBy: "technician-1",
+  });
+  Pregnancy.findOne = () => sorted(null);
+  Task.findOne = () => sorted(null);
 
-  for (const role of ["technician", "admin"]) {
-    const recorder = responseRecorder();
-    await updateReproductiveStatus(
-      {
-        params: { id: "animal-1" },
-        body: { status: "Normal", note: "Verified field observation" },
-        user: { _id: `${role}-1`, role },
-      },
-      recorder.response,
-    );
-    assert.equal(recorder.statusCode, 200);
-  }
-  assert.equal(saveCount, 2);
+  const technicianRecorder = responseRecorder();
+  await updateReproductiveStatus(
+    {
+      params: { id: "animal-1" },
+      body: { status: "Normal", note: "Verified field observation" },
+      user: { _id: "technician-1", role: "technician" },
+    },
+    technicianRecorder.response,
+  );
+  assert.equal(technicianRecorder.statusCode, 200);
+
+  const adminRecorder = responseRecorder();
+  await updateReproductiveStatus(
+    {
+      params: { id: "animal-1" },
+      body: { status: "Normal", note: "Administrative override" },
+      user: { _id: "admin-1", role: "admin" },
+    },
+    adminRecorder.response,
+  );
+  assert.equal(adminRecorder.statusCode, 403);
+  assert.equal(saveCount, 1);
 });

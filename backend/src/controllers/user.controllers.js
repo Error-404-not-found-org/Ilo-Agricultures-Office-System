@@ -37,6 +37,10 @@ import {
   getFarmerInvitationRedirectUrl,
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
+import {
+  clearPushTokenForUser,
+  registerPushTokenForUser,
+} from "../services/push-token-ownership.service.js";
 
 // Structured Console Log Helper for Audit Trail
 const logAdminAction = (action, admin, target, details = {}) => {
@@ -1196,7 +1200,7 @@ export const getUsers = async (req, res) => {
     if (status === "active") query.isVerified = true;
     if (status === "inactive") query.isVerified = { $ne: true };
 
-    let selectFields = "-password";
+    let selectFields = "-password -pushToken";
     if (req.user.role === "farmer") {
       selectFields = FARMER_DIRECTORY_PROJECTION;
     } else if (req.user.role === "technician") {
@@ -1283,6 +1287,7 @@ export const deleteUser = async (req, res) => {
     // Soft delete the user, keeping associated data intact
     user.deletedAt = new Date();
     user.deactivatedBy = req.user._id;
+    user.pushToken = undefined;
     await user.save();
 
     return res.status(200).json({ message: "User successfully deactivated" });
@@ -1303,7 +1308,7 @@ export const listAllUsersForAdmin = async (req, res) => {
   try {
     const { role } = req.query;
     const query = role ? { role } : {};
-    const users = await User.find(query).select("-__v").lean();
+    const users = await User.find(query).select("-__v -pushToken").lean();
     res.status(200).json(users);
   } catch (error) {
     console.error("Error listing users for admin:", error);
@@ -1319,7 +1324,7 @@ export const getArchivedUsers = async (req, res) => {
     if (role && role !== "all") query.role = role;
 
     const users = await User.find(query)
-      .select("-__v")
+      .select("-__v -pushToken")
       .sort({ deletedAt: -1 })
       .lean();
 
@@ -2004,19 +2009,29 @@ export const resendVerificationCode = async (req, res) => {
 };
 export const updatePushToken = async (req, res) => {
   try {
-    const { pushToken } = req.body;
+    const { pushToken, currentPushToken } = req.body;
     const userId = req.user._id;
 
     if (pushToken === undefined) {
       return res.status(400).json({ message: "Push token is required." });
     }
 
-    await User.findByIdAndUpdate(userId, { pushToken });
+    if (pushToken === null || pushToken === "") {
+      await clearPushTokenForUser({ userId, pushToken: currentPushToken });
+      return res
+        .status(200)
+        .json({ message: "Push token removed successfully." });
+    }
+
+    await registerPushTokenForUser({ userId, pushToken });
 
     res.status(200).json({ message: "Push token updated successfully." });
   } catch (error) {
     console.error("[updatePushToken ERROR]", error);
-    res.status(500).json({ message: "Failed to update push token." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to update push token.",
+      code: error.code,
+    });
   }
 };
 

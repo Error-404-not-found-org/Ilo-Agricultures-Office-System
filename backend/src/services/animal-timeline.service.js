@@ -5,6 +5,11 @@ import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { inferCalvingOutcome } from "../domain/calving-outcome.js";
+import {
+  animalWorkId,
+  filterAnimalWorkForViewer,
+  isStoredAnimalTimelineEventVisibleToViewer,
+} from "../domain/animal-work-visibility.js";
 
 export const createTimelineEvent = (entry) => AnimalTimelineEvent.create(entry);
 
@@ -36,7 +41,7 @@ const eventMatchesSearch = (item, search) => {
     .some((value) => String(value).toLowerCase().includes(needle));
 };
 
-export const getAnimalTimeline = async (animalId, filters = {}) => {
+export const getAnimalTimeline = async (animalId, filters = {}, viewer) => {
   const [stored, inseminations, pregnancies, calvings, healthRequests, medicalRecords] = await Promise.all([
     AnimalTimelineEvent.find({ animalId }).sort({ occurredAt: -1 }).lean(),
     Insemination.find({ animalId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
@@ -46,8 +51,24 @@ export const getAnimalTimeline = async (animalId, filters = {}) => {
     MedicalRecord.find({ animalId }).sort({ date: -1 }).lean(),
   ]);
 
+  const visibleWork = filterAnimalWorkForViewer(
+    { inseminations, healthRequests },
+    viewer,
+  );
+  const sourceRecords = {
+    inseminationsById: new Map(
+      inseminations.map((item) => [animalWorkId(item._id), item]),
+    ),
+    healthRequestsById: new Map(
+      healthRequests.map((item) => [animalWorkId(item._id), item]),
+    ),
+  };
+  const visibleStored = stored.filter((item) =>
+    isStoredAnimalTimelineEventVisibleToViewer(item, sourceRecords, viewer),
+  );
+
   const projected = [
-    ...inseminations.map((item) => event("inseminated", item.inseminationDate || item.createdAt, "Insemination record", (item.status === "cancelled" || item.status === "canceled" ? "Cancelled" : item.status === "declined" || item.status === "rejected" ? "Declined" : item.outcome || item.status), "Insemination", item._id, { status: item.status })),
+    ...visibleWork.inseminations.map((item) => event("inseminated", item.inseminationDate || item.createdAt, "Insemination record", (item.status === "cancelled" || item.status === "canceled" ? "Cancelled" : item.status === "declined" || item.status === "rejected" ? "Declined" : item.outcome || item.status), "Insemination", item._id, { status: item.status })),
     ...pregnancies.map((item) => event(item.pregnancyDiagnosis?.result === "Pregnant" ? "pregnancy_confirmed" : "pregnancy_checked", item.pregnancyDiagnosis?.date || item.createdAt, "Pregnancy check", item.pregnancyDiagnosis?.result || "Pending", "Pregnancy", item._id, { targetCalvingDate: item.targetCalvingDate })),
     ...calvings.map((item) => {
       const outcome = inferCalvingOutcome(item) || "live_birth";
@@ -68,11 +89,11 @@ export const getAnimalTimeline = async (animalId, filters = {}) => {
       item._id,
       { outcome, livingCalfCount: living, stillbornCount: stillborn, numberOfCalves: item.numberOfCalves ?? living + stillborn },
     ); }),
-    ...healthRequests.map((item) => event("health_request_created", item.createdAt, "Health request", item.symptoms, "HealthRequest", item._id, { status: item.status, urgency: item.urgency, attachments: item.photos?.length ? item.photos : item.imageUrl ? [item.imageUrl] : [] })),
+    ...visibleWork.healthRequests.map((item) => event("health_request_created", item.createdAt, "Health request", item.symptoms, "HealthRequest", item._id, { status: item.status, urgency: item.urgency, attachments: item.photos?.length ? item.photos : item.imageUrl ? [item.imageUrl] : [] })),
     ...medicalRecords.map((item) => event("treatment_recorded", item.date || item.createdAt, item.type, item.details?.diagnosis || item.note || "Medical record", "MedicalRecord", item._id)),
   ];
 
-  return [...stored, ...projected]
+  return [...visibleStored, ...projected]
     .filter((item) => eventMatchesType(item, filters.type))
     .filter((item) => eventMatchesSearch(item, filters.search))
     .sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));

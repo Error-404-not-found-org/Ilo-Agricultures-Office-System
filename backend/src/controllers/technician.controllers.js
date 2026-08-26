@@ -50,7 +50,10 @@ import {
   sendNotificationPush,
 } from "../services/notification-delivery.service.js";
 import { presentNotificationDocument } from "../domain/notification-presentation.js";
-import { buildAIRequestAssignmentGuard } from "../policies/request.policy.js";
+import {
+  buildAIRequestAssignmentGuard,
+  buildAIRequestMutationOwnershipGuard,
+} from "../policies/request.policy.js";
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
@@ -67,6 +70,7 @@ import {
   getFarmerInvitationRedirectUrl,
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
+import { PREGNANCY_TASK_STAGE } from "../domain/pregnancy-task-workflow.js";
 
 const combineMongoFilters = (baseFilter, ...conditions) => {
   const { $and: baseAnd = [], ...base } = baseFilter;
@@ -908,7 +912,16 @@ export const getMyInseminations = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const query = { deletedAt: null };
+    const ownershipFilter =
+      req.user.role === "admin"
+        ? {}
+        : buildAIRequestMutationOwnershipGuard({
+            technicianId: req.user._id,
+          });
+    const query = combineMongoFilters(
+      { deletedAt: null },
+      ownershipFilter,
+    );
     const search = String(req.query.search || "").trim();
     const estrus = String(req.query.estrus || "").trim();
     const outcome = String(req.query.outcome || "").trim();
@@ -938,7 +951,10 @@ export const getMyInseminations = async (req, res) => {
       ];
     }
 
-    const summaryQuery = { deletedAt: null };
+    const summaryQuery = combineMongoFilters(
+      { deletedAt: null },
+      ownershipFilter,
+    );
     const [records, total, totalCycles, confirmedPregnant, pendingChecks] =
       await Promise.all([
         Insemination.find(query)
@@ -974,33 +990,15 @@ export const getMyInseminations = async (req, res) => {
 };
 
 export const getMyReInseminations = async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const query = { attemptNumber: { $gt: 1 }, deletedAt: null };
-
-    const [records, total] = await Promise.all([
-      Insemination.find(query)
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Insemination.countDocuments(query),
-    ]);
-
-    res.status(200).json({
-      data: records,
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Error fetching re-inseminations",
-      error: error.message,
-    });
-  }
+  res.status(410).json({
+    message:
+      "This legacy re-insemination list is no longer available. Use Technician Requests for open work and My Work for assigned services.",
+    code: "LEGACY_REINSEMINATION_LIST_DEPRECATED",
+    replacements: {
+      openRequests: "/api/technician/requests",
+      myWork: "/api/technician/work-queue",
+    },
+  });
 };
 
 export const getMyPregnancyChecks = async (req, res) => {
@@ -1217,6 +1215,13 @@ export const getAIServiceContext = async (req, res) => {
 
 export const walkInInsemination = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "AI service recording requires a Technician account.",
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const {
       farmerId,
       animalId: bodyAnimalId,
@@ -1384,6 +1389,13 @@ export const walkInInsemination = async (req, res) => {
 
 export const previousInsemination = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Previous AI recording requires a Technician account.",
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const {
       farmerId,
       animalId: bodyAnimalId,
@@ -1899,6 +1911,13 @@ export const recordPregnancyCheck = async (req, res) => {
 
 export const recordCalving = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Calving recording requires a Technician account.",
+        code: "CALVING_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const {
       pregnancyId,
       animalId,
@@ -2971,7 +2990,7 @@ export const deleteFieldNote = async (req, res) => {
         deletedAt: null,
       },
       { $set: { deletedAt: new Date() } },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!fieldNote) {
       return res
@@ -3002,7 +3021,7 @@ export const deleteFieldNoteRecord = async (req, res) => {
       fieldNote = await FieldNote.findOneAndUpdate(
         ownerFilter,
         { $set: { deletedAt: null } },
-        { new: true },
+        { returnDocument: "after" },
       );
     } else if (isPermanent) {
       fieldNote = await FieldNote.findOneAndDelete(ownerFilter);
@@ -3010,7 +3029,7 @@ export const deleteFieldNoteRecord = async (req, res) => {
       fieldNote = await FieldNote.findOneAndUpdate(
         ownerFilter,
         { $set: { deletedAt: new Date() } },
-        { new: true },
+        { returnDocument: "after" },
       );
     }
 
@@ -3041,7 +3060,7 @@ export const markCalvingAsSeen = async (req, res) => {
     const calving = await Calving.findByIdAndUpdate(
       id,
       { $set: { isSeen: true } },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!calving) {
       return res.status(404).json({ message: "Calving record not found" });
@@ -3123,7 +3142,7 @@ export const declineTechnicianRequest = async (req, res) => {
     }
 
     const updated = await Model.findByIdAndUpdate(id, update, {
-      new: true,
+      returnDocument: "after",
     });
 
     req.app.get("io").to("role:technician").emit("dashboardUpdate", {
@@ -3217,7 +3236,7 @@ export const claimRequest = async (req, res) => {
             activeRequestKey: activeRequestKeyForAnimal(existing.animalId),
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name address imageUrl phoneNumber")
         .populate("animalId", "animalId earTag species breed imageUrl");
@@ -3285,15 +3304,42 @@ export const claimRequest = async (req, res) => {
             ),
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name address imageUrl phoneNumber")
         .populate("animalId", "animalId earTag species breed imageUrl");
     } else if (type === "breeding_verification") {
+      if (req.user.role !== "technician") {
+        return res.status(403).json({
+          message: "Only Technicians can claim pregnancy diagnosis work.",
+          code: "PREGNANCY_TASK_CLAIM_FORBIDDEN",
+        });
+      }
+
       const existing = await Task.findById(id);
       if (!existing) {
         return res.status(404).json({ message: "Task not found." });
       }
+      const supportedSources = new Set([
+        "farmer_requested_verification",
+        "automatic_pd_followup",
+      ]);
+      const supportedStages = new Set(Object.values(PREGNANCY_TASK_STAGE));
+      const workflowStage =
+        existing.metadata?.workflowStage ||
+        PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION;
+      if (
+        existing.taskType !== "PD" ||
+        existing.status !== "Pending" ||
+        !supportedSources.has(existing.sourceType) ||
+        !supportedStages.has(workflowStage)
+      ) {
+        return res.status(409).json({
+          message: "This pregnancy task is not claimable through this workflow.",
+          code: "PREGNANCY_TASK_NOT_CLAIMABLE",
+        });
+      }
+
       if (existing.technicianId) {
         return res.status(409).json({
           message:
@@ -3307,6 +3353,17 @@ export const claimRequest = async (req, res) => {
           _id: id,
           taskType: "PD",
           technicianId: { $in: [null, undefined] },
+          status: "Pending",
+          sourceType: {
+            $in: [
+              "farmer_requested_verification",
+              "automatic_pd_followup",
+            ],
+          },
+          $or: [
+            { "metadata.workflowStage": { $in: Object.values(PREGNANCY_TASK_STAGE) } },
+            { "metadata.workflowStage": { $exists: false } },
+          ],
         },
         {
           $set: {
@@ -3314,7 +3371,7 @@ export const claimRequest = async (req, res) => {
             claimedAt: new Date(),
           },
         },
-        { new: true },
+        { returnDocument: "after" },
       )
         .populate("farmerId", "name address imageUrl phoneNumber")
         .populate("animalIds", "animalId earTag species breed imageUrl");

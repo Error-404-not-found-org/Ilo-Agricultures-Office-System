@@ -7,6 +7,57 @@ import {
   presentNotificationDocument,
 } from "../domain/notification-presentation.js";
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
+import { evaluateTechnicianDispatchEligibility } from "../domain/geographic/eligibilityEvaluator.js";
+import {
+  notificationAuthorityId,
+  resolveReproductiveNotificationTechnicians,
+} from "../services/notification-recipient-authority.service.js";
+
+const uniqueOwnerIds = (values) =>
+  [...new Set(values.map(notificationAuthorityId).filter(Boolean))];
+
+export const isRequestDetailAuthorized = ({ user, request, requestType }) => {
+  if (!user || !request) return false;
+  if (user.role === "admin") return true;
+  if (user.role === "farmer") {
+    return notificationAuthorityId(request.farmerId) === notificationAuthorityId(user._id);
+  }
+  if (user.role !== "technician") return false;
+
+  const ownerValues =
+    requestType === "HEALTH"
+      ? [request.handledBy, request.assignedTechnicianId]
+      : [request.approvedBy, request.technicianId];
+  const ownerIds = uniqueOwnerIds(ownerValues);
+  if (ownerIds.length > 0) {
+    return (
+      ownerIds.length === 1 &&
+      ownerIds[0] === notificationAuthorityId(user._id)
+    );
+  }
+
+  if (request.status !== "pending") return false;
+  return evaluateTechnicianDispatchEligibility({
+    technician: user,
+    requestType,
+    dispatchLocation: request.dispatch?.location || {},
+    dispatchStage: request.dispatch?.stage || "local",
+  }).eligible;
+};
+
+const farmerSafeAIRequest = (request) => {
+  const source = request?.toObject ? request.toObject() : { ...(request || {}) };
+  for (const key of [
+    "technicianNote",
+    "statusHistory",
+    "dispatch",
+    "activeRequestKey",
+    "declinedByTechnicianIds",
+  ]) {
+    delete source[key];
+  }
+  return source;
+};
 
 const syncOverdueNotifications = async (userId) => {
   const today = new Date();
@@ -26,17 +77,15 @@ const syncOverdueNotifications = async (userId) => {
   ]);
 
   for (const request of pendingAI) {
-    const existingNotif = await Notification.findOne({
-      recipientId: userId,
-      relatedId: request._id,
-      title: /Overdue/i
+    const { title, message } = presentNotificationCopy({
+      title: "AI service record overdue",
+      message: `The AI visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for ${request.farmerId?.name || "the farmer"}'s animal (${request.animalId?.earTag || request.animalId?.animalId}) is not yet completed. Open the visit to record the result.`,
     });
-    if (!existingNotif) {
-      const { title, message } = presentNotificationCopy({
-        title: "AI service record overdue",
-        message: `The AI visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for ${request.farmerId?.name || "the farmer"}'s animal (${request.animalId?.earTag || request.animalId?.animalId}) is not yet completed. Open the visit to record the result.`,
-      });
-      await Notification.create({
+    const dedupeKey = `overdue:ai:${request._id}:${userId}`;
+    await Notification.findOneAndUpdate(
+      { dedupeKey },
+      {
+        $setOnInsert: {
         recipientId: userId,
         senderId: "000000000000000000000000",
         type: "ai-request",
@@ -46,27 +95,28 @@ const syncOverdueNotifications = async (userId) => {
         category: "reminder",
         eventType: "service_overdue",
         linkType: "request",
+        dedupeKey,
         metadata: {
           requestId: request._id,
           serviceType: "ai",
           animalTag: request.animalId?.earTag || request.animalId?.animalId,
         },
-      });
-    }
+        },
+      },
+      { upsert: true, returnDocument: "after" },
+    );
   }
 
   for (const request of pendingHealth) {
-    const existingNotif = await Notification.findOne({
-      recipientId: userId,
-      relatedId: request._id,
-      title: /Overdue/i
+    const { title, message } = presentNotificationCopy({
+      title: "Health assistance record overdue",
+      message: `The health visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for ${request.farmerId?.name || "the farmer"}'s animal (${request.animalId?.earTag || request.animalId?.animalId}) is not yet completed. Open the visit to record the result.`,
     });
-    if (!existingNotif) {
-      const { title, message } = presentNotificationCopy({
-        title: "Health assistance record overdue",
-        message: `The health visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for ${request.farmerId?.name || "the farmer"}'s animal (${request.animalId?.earTag || request.animalId?.animalId}) is not yet completed. Open the visit to record the result.`,
-      });
-      await Notification.create({
+    const dedupeKey = `overdue:health:${request._id}:${userId}`;
+    await Notification.findOneAndUpdate(
+      { dedupeKey },
+      {
+        $setOnInsert: {
         recipientId: userId,
         senderId: "000000000000000000000000",
         type: "health-request",
@@ -76,13 +126,16 @@ const syncOverdueNotifications = async (userId) => {
         category: "reminder",
         eventType: "service_overdue",
         linkType: "request",
+        dedupeKey,
         metadata: {
           requestId: request._id,
           serviceType: "health",
           animalTag: request.animalId?.earTag || request.animalId?.animalId,
         },
-      });
-    }
+        },
+      },
+      { upsert: true, returnDocument: "after" },
+    );
   }
 };
 
@@ -114,7 +167,7 @@ export const markAsRead = async (req, res) => {
       const notification = await Notification.findOneAndUpdate(
         { _id: notificationId, recipientId: req.user._id },
         { $set: { isRead: true } },
-        { new: true },
+        { returnDocument: "after" },
       );
       if (!notification) {
         return res.status(404).json({
@@ -166,30 +219,90 @@ export const getNotificationDetails = async (req, res) => {
     if (!notification) return res.status(404).json({ message: "Notification not found." });
 
     let relatedData = null;
+    let relatedDataUnavailable = false;
     if (notification.type === "ai-request") {
-      relatedData = await Insemination.findById(notification.relatedId)
-        .populate("animalId", "animalId earTag species breed imageUrl")
-        .populate("approvedBy", "name imageUrl role address");
-    } else if (notification.type === "health-request") {
-      relatedData = await HealthRequest.findById(notification.relatedId)
+      const requestId =
+        notification.metadata?.requestId ||
+        notification.metadata?.observationId ||
+        notification.relatedId;
+      const request = await Insemination.findById(requestId)
+        .populate("farmerId", "name imageUrl role")
         .populate("animalId", "animalId earTag species breed imageUrl")
         .populate(
-          "handledBy",
+          "approvedBy technicianId",
           req.user.role === "farmer"
             ? "name imageUrl role"
             : "name imageUrl role address",
         );
-      if (req.user.role === "farmer") {
-        relatedData = buildFarmerHealthRequest(relatedData);
+      if (isRequestDetailAuthorized({
+        user: req.user,
+        request,
+        requestType: "AI",
+      })) {
+        relatedData = req.user.role === "farmer"
+          ? farmerSafeAIRequest(request)
+          : request;
+      } else if (request) {
+        relatedDataUnavailable = true;
+      }
+    } else if (notification.type === "health-request") {
+      const requestId = notification.metadata?.requestId || notification.relatedId;
+      const request = await HealthRequest.findById(requestId)
+        .populate("farmerId", "name imageUrl role")
+        .populate("animalId", "animalId earTag species breed imageUrl")
+        .populate(
+          "handledBy assignedTechnicianId",
+          req.user.role === "farmer"
+            ? "name imageUrl role"
+            : "name imageUrl role address",
+        );
+      if (isRequestDetailAuthorized({
+        user: req.user,
+        request,
+        requestType: "HEALTH",
+      })) {
+        relatedData = req.user.role === "farmer"
+          ? buildFarmerHealthRequest(request)
+          : request;
+      } else if (request) {
+        relatedDataUnavailable = true;
       }
     } else if (notification.type === "system" && notification.linkType === "animal") {
-      relatedData = await Animal.findById(notification.relatedId)
+      const animal = await Animal.findById(notification.relatedId)
         .select("animalId earTag species breed imageUrl farmerId");
+      if (
+        req.user.role === "admin" ||
+        (req.user.role === "farmer" &&
+          notificationAuthorityId(animal?.farmerId) ===
+            notificationAuthorityId(req.user._id))
+      ) {
+        relatedData = animal;
+      } else if (req.user.role === "technician" && animal) {
+        const technicians = await resolveReproductiveNotificationTechnicians({
+          pregnancyId: notification.metadata?.pregnancyId,
+          inseminationId: notification.metadata?.inseminationId,
+          calvingId: notification.metadata?.calvingId,
+        });
+        if (
+          technicians.some(
+            (technician) =>
+              notificationAuthorityId(technician) ===
+              notificationAuthorityId(req.user._id),
+          )
+        ) {
+          relatedData = animal;
+        } else {
+          relatedDataUnavailable = true;
+        }
+      } else if (animal) {
+        relatedDataUnavailable = true;
+      }
     }
 
     res.status(200).json({
       notification: presentNotificationDocument(notification),
       relatedData,
+      relatedDataUnavailable,
     });
   } catch (error) {
     console.error("[getNotificationDetails ERROR]", error.message);

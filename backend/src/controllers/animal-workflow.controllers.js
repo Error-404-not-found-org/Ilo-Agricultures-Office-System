@@ -24,6 +24,8 @@ import { sendDetail, sendList, sendMutation } from "../utils/api-response.js";
 import { getPagination, paginateArray } from "../utils/pagination.js";
 import { excludeRequestsWithOfficialMedicalRecords } from "../utils/health-records.js";
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
+import { isAnimalHealthWorkVisibleToViewer } from "../domain/animal-work-visibility.js";
+import { buildFarmerAIRequest } from "../domain/ai-request-presentation.js";
 
 const getAccessibleAnimal = async (id, user) => {
   const animal = await Animal.findOne({ _id: id, deletedAt: null });
@@ -148,7 +150,10 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
   };
 
   if (recordKind === "insemination") {
-    const technician = record.technicianId || record.approvedBy || null;
+    const technician =
+      record.technicianId ||
+      record.approvedBy ||
+      (record.technicianDisplayName ? { name: record.technicianDisplayName } : null);
     const eventDate =
       record.inseminationDate || record.scheduledDate || record.createdAt;
     const dateLabel = record.inseminationDate
@@ -207,7 +212,9 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         failureReason: record.failureReason,
         outcomeVerificationStatus: record.outcomeVerificationStatus,
         outcomeConfirmationSource: record.outcomeConfirmationSource,
-        outcomeConfirmedBy: record.outcomeConfirmedBy?.name || "",
+        outcomeConfirmedBy:
+          record.outcomeConfirmedBy?.name ||
+          record.outcomeConfirmedByDisplayName || "",
         outcomeConfirmedAt: record.outcomeConfirmedAt,
         farmerOutcomeReport: record.farmerOutcomeReport,
         farmerOutcomeReportedAt: record.farmerOutcomeReportedAt,
@@ -459,9 +466,13 @@ export const getOfficialRecordDetail = async (req, res) => {
       });
     }
 
+    const presentedRecord =
+      recordKind === "insemination" && req.user.role === "farmer"
+        ? buildFarmerAIRequest(record)
+        : record;
     return sendDetail(
       res,
-      officialRecordDetail({ recordKind, record, animal }),
+      officialRecordDetail({ recordKind, record: presentedRecord, animal }),
     );
   } catch (error) {
     return res.status(error.status || 500).json({
@@ -642,8 +653,13 @@ export const getOfficialRecords = async (req, res) => {
         status: "completed",
         farmerId: item.farmerId,
         animalId: item.animalId,
-        technicianId: item.technicianId || item.approvedBy,
-        source: item,
+        ...(req.user.role === "farmer"
+          ? { technicianDisplayName: buildFarmerAIRequest(item).technicianDisplayName }
+          : { technicianId: item.technicianId || item.approvedBy }),
+        source:
+          req.user.role === "farmer"
+            ? buildFarmerAIRequest(item)
+            : item,
       })),
       ...pregnancies.map((item) => ({
         id: item._id,
@@ -725,10 +741,14 @@ export const getOfficialRecords = async (req, res) => {
 export const getAnimalTimeline = async (req, res) => {
   try {
     await getAccessibleAnimal(req.params.id, req.user);
-    const timeline = await buildAnimalTimeline(req.params.id, {
-      type: req.query.type,
-      search: req.query.search,
-    });
+    const timeline = await buildAnimalTimeline(
+      req.params.id,
+      {
+        type: req.query.type,
+        search: req.query.search,
+      },
+      req.user,
+    );
 
     if (req.query.page || req.query.limit) {
       const pageInfo = getPagination(req.query);
@@ -788,11 +808,15 @@ export const getAnimalHealthHistory = async (req, res) => {
     const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(
       healthRequests,
       medicalRecords,
-    ).map((request) =>
-      req.user.role === "farmer"
-        ? buildFarmerHealthRequest(request)
-        : request,
-    );
+    )
+      .filter((request) =>
+        isAnimalHealthWorkVisibleToViewer(request, req.user),
+      )
+      .map((request) =>
+        req.user.role === "farmer"
+          ? buildFarmerHealthRequest(request)
+          : request,
+      );
 
     if (req.query.page || req.query.limit) {
       const combined = [
@@ -896,8 +920,11 @@ export const getAnimalRecords = async (req, res) => {
     );
 
     const records = [
-      ...inseminations.map((item) => ({
-        ...item,
+      ...inseminations.map((item) => {
+        const presented =
+          req.user.role === "farmer" ? buildFarmerAIRequest(item) : item;
+        return {
+        ...presented,
         recordKind: "insemination",
         recordDate:
           item.inseminationDate || item.scheduledDate || item.createdAt,
@@ -906,7 +933,8 @@ export const getAnimalRecords = async (req, res) => {
         previousAttemptReference: item.previousAttemptId?.attemptNumber || null,
         nextAttemptReference:
           nextAttemptByPreviousId.get(String(item._id)) || null,
-      })),
+        };
+      }),
       ...pregnancies.map((item) => ({
         ...item,
         recordKind: "pregnancy",

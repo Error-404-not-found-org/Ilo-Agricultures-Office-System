@@ -421,6 +421,16 @@ test("Technician Work Queue backend contract", async (t) => {
           technicianId: null,
           scheduledDate: undefined,
           visitPeriod: undefined,
+          attemptNumber: 2,
+          attemptSeriesId: ids.pendingAssigned,
+          previousAttemptId: {
+            _id: "completed-attempt-1",
+            attemptNumber: 1,
+            status: "done",
+            isSuccess: false,
+            outcome: "Failed (Re-heat)",
+            outcomeVerificationStatus: "verified",
+          },
         }),
       ];
       state.healthRequests = [];
@@ -441,6 +451,9 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(String(request.workflowId), ids.pending);
       assert.equal(request.allowedAction, "CLAIM_AND_SCHEDULE");
       assert.equal(request.actionLabel, "Accept & Set Visit");
+      assert.equal(request.requestKind, "re_insemination");
+      assert.equal(request.attemptNumber, 2);
+      assert.equal(request.previousAttemptId._id, "completed-attempt-1");
       const expectedKeys = [
         "id", "workflowId", "workflowType", "type", "serviceType",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",

@@ -16,7 +16,7 @@ import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
-router.post("/create-insemination", protectedRoute, requestLimiter, createInsemination);
+router.post("/create-insemination", protectedRoute, requireRole(["technician"]), requestLimiter, createInsemination);
 router.get("/my", protectedRoute, getMyInseminations);
 router.get(
   "/all",

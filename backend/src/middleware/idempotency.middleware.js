@@ -88,7 +88,7 @@ export const idempotencyMiddleware = async (req, res, next) => {
               requestHash,
             },
             { $set: { createdAt: new Date() } },
-            { new: true },
+            { returnDocument: "after" },
           );
 
           if (updated) {
