@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   StatusBar,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useState } from "react";
 import SafeScreen from "@/components/safeScreen";
 import { useClerk, useUser } from "@clerk/clerk-expo";
@@ -23,12 +22,9 @@ import {
   User,
   Shield,
   UserPlus,
-  Sun,
-  Moon,
   ShieldCheck,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
-import { useColorScheme } from "nativewind";
 import { useTheme } from "@/lib/theme";
 import { useApi } from "@/lib/api";
 import { signOutWithPushCleanup } from "@/lib/notifications";
@@ -41,7 +37,6 @@ const AdminProfile = () => {
   const { signOut } = useClerk();
   const { user } = useUser();
   const router = useRouter();
-  const { colorScheme, toggleColorScheme } = useColorScheme();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const api = useApi();
@@ -53,7 +48,6 @@ const AdminProfile = () => {
   const [savingName, setSavingName] = useState(false);
 
   const [personalVisible, setPersonalVisible] = useState(false);
-  const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
 
   const saveProfileName = async () => {
@@ -86,10 +80,6 @@ const AdminProfile = () => {
     setPersonalVisible(true);
   };
 
-  const showPreferences = () => {
-    setPreferencesVisible(true);
-  };
-
   const showAboutApp = () => {
     setAboutVisible(true);
   };
@@ -101,16 +91,6 @@ const AdminProfile = () => {
       router.replace("/(auth)");
     } catch (err) {
       console.error("Error signing out:", err);
-    }
-  };
-
-  const handleToggleTheme = async () => {
-    const newScheme = colorScheme === "dark" ? "light" : "dark";
-    toggleColorScheme();
-    try {
-      await AsyncStorage.setItem("theme_preference", newScheme);
-    } catch (e) {
-      console.warn("Failed to save theme preference:", e);
     }
   };
 
@@ -278,22 +258,10 @@ const AdminProfile = () => {
             />
             <Divider />
             <MenuItem
-              icon={
-                colorScheme === "dark" ? (
-                  <Sun size={18} color="#f59e0b" />
-                ) : (
-                  <Moon size={18} color="#94a3b8" />
-                )
-              }
-              label="Theme Mode"
-              value={colorScheme === "dark" ? "Dark Mode" : "Light Mode"}
-              onPress={handleToggleTheme}
-            />
-            <Divider />
-            <MenuItem
               icon={<Settings size={18} color={colors.textSecondary} />}
-              label="Preferences"
-              onPress={showPreferences}
+              label="System Settings"
+              value="Manage configurations"
+              onPress={() => router.push("/(admin)/system-settings" as any)}
             />
           </View>
         </View>
@@ -323,6 +291,18 @@ const AdminProfile = () => {
               overflow: "hidden",
             }}
           >
+            <MenuItem
+              icon={
+                <MaterialCommunityIcons
+                  name="face-agent"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              }
+              label="Support Tickets"
+              onPress={() => router.push("/(admin)/support-tickets" as any)}
+            />
+            <Divider />
             <MenuItem
               icon={<HelpCircle size={18} color={colors.textSecondary} />}
               label="Help & FAQ"
@@ -574,43 +554,6 @@ const AdminProfile = () => {
             text: "Close",
             variant: "cancel",
             onPress: () => setPersonalVisible(false),
-          },
-        ]}
-      />
-
-      {/* Preferences Dialog */}
-      <CustomDialog
-        visible={preferencesVisible}
-        title="App Preferences"
-        description={`Current Theme: ${colorScheme === "dark" ? "Dark Mode 🌙" : "Light Mode ☀️"}\n\nDo you want to toggle the visual theme?`}
-        onClose={() => setPreferencesVisible(false)}
-        icon={
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: "rgba(245,158,11,0.1)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Settings size={26} color="#f59e0b" />
-          </View>
-        }
-        actions={[
-          {
-            text: "Toggle Theme",
-            variant: "primary",
-            onPress: () => {
-              setPreferencesVisible(false);
-              handleToggleTheme();
-            },
-          },
-          {
-            text: "Close",
-            variant: "cancel",
-            onPress: () => setPreferencesVisible(false),
           },
         ]}
       />

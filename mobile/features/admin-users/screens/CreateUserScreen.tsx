@@ -307,6 +307,7 @@ export default function CreateUserScreen() {
               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-4 text-slate-800 dark:text-white font-medium"
               placeholder="09XXXXXXXXX"
               placeholderTextColor="#94a3b8"
+              maxLength={11}
               keyboardType="phone-pad"
               value={phoneNumber}
               onChangeText={setPhoneNumber}

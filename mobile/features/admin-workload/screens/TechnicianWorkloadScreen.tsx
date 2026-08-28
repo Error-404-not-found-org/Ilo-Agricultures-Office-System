@@ -12,16 +12,24 @@ import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
-import Header from "@/components/Header";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { StatusBadge } from "@/components/shared";
+import { AsyncState, StatusBadge } from "@/components/shared";
 import { useRouter } from "expo-router";
+import { BriefcaseBusiness, CircleAlert, CircleCheck, Inbox, MapPin } from "lucide-react-native";
+import {
+  getAvailabilityLabel,
+  getCapabilityLabels,
+  getDispatchReadinessPresentation,
+  getFieldAreaLabel,
+  getReceiveRequestsPresentation,
+} from "@/features/admin-users/utils/dispatchPresentation";
+import { getAdminRequestLocation } from "@/features/admin-requests/utils/adminRequestPresentation";
 
 const PRIMARY = "#1e3a5f";
 const TABS = ["Workload Overview", "Unassigned Requests", "Performance Board"];
 
 export default function TechnicianWorkloadScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const api = useApi();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(0);
@@ -32,8 +40,9 @@ export default function TechnicianWorkloadScreen() {
     isLoading: isTechsLoading,
     refetch: refetchTechs,
     isRefetching: isRefetchingTechs,
+    isError: isTechsError,
   } = useQuery<any[]>({
-    queryKey: ["admin-workload-techs"],
+    queryKey: ["admin-technicians-list"],
     queryFn: async () => {
       const res = await api.get("/admin/list-users?role=technician");
       return Array.isArray(res.data) ? res.data : [];
@@ -47,8 +56,9 @@ export default function TechnicianWorkloadScreen() {
     isLoading: isAiLoading,
     refetch: refetchAi,
     isRefetching: isRefetchingAi,
+    isError: isAiError,
   } = useQuery<any[]>({
-    queryKey: ["admin-workload-ai"],
+    queryKey: ["admin-ai-requests"],
     queryFn: async () => {
       const res = await api.get("/ai-request?limit=100");
       return Array.isArray(res.data?.data)
@@ -66,8 +76,9 @@ export default function TechnicianWorkloadScreen() {
     isLoading: isHealthLoading,
     refetch: refetchHealth,
     isRefetching: isRefetchingHealth,
+    isError: isHealthError,
   } = useQuery<any[]>({
-    queryKey: ["admin-workload-health"],
+    queryKey: ["admin-health-requests"],
     queryFn: async () => {
       const res = await api.get("/health-request?limit=100");
       return Array.isArray(res.data?.data)
@@ -80,6 +91,7 @@ export default function TechnicianWorkloadScreen() {
   });
 
   const isLoading = isTechsLoading || isAiLoading || isHealthLoading;
+  const isError = isTechsError || isAiError || isHealthError;
   const isRefreshing = isRefetchingTechs || isRefetchingAi || isRefetchingHealth;
 
   const handleRefresh = async () => {
@@ -161,6 +173,18 @@ export default function TechnicianWorkloadScreen() {
       );
     }
 
+    if (isError) {
+      return (
+        <AsyncState
+          state="error"
+          title="Workload unavailable"
+          message="Technician and request data could not be loaded."
+          actionLabel="Retry"
+          onAction={handleRefresh}
+        />
+      );
+    }
+
     if (activeTab === 0) {
       return (
         <FlatList
@@ -176,81 +200,10 @@ export default function TechnicianWorkloadScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 24,
-                padding: 16,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
-                  {item.name || "Technician"}
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: item.activeRequests > 3 ? "rgba(239, 68, 68, 0.1)" : "rgba(16, 185, 129, 0.1)",
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 12,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontFamily: "Outfit_700Bold",
-                      color: item.activeRequests > 3 ? "#ef4444" : "#10b981",
-                    }}
-                  >
-                    {item.activeRequests > 3 ? "HIGH LOAD" : "NORMAL LOAD"}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }}>
-                {/* Metric Items */}
-                <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 10, borderRadius: 16 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Active Tasks</Text>
-                  <Text style={{ fontSize: 18, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginTop: 2 }}>{item.activeRequests}</Text>
-                </View>
-                <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 10, borderRadius: 16 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Scheduled Visits</Text>
-                  <Text style={{ fontSize: 18, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginTop: 2 }}>{item.scheduledVisits}</Text>
-                </View>
-                <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 10, borderRadius: 16 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Completed Tasks</Text>
-                  <Text style={{ fontSize: 18, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginTop: 2 }}>{item.completedRequests}</Text>
-                </View>
-                <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 10, borderRadius: 16 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>AI Success Rate</Text>
-                  <Text style={{ fontSize: 18, fontFamily: "Outfit_800ExtraBold", color: "#2563eb", marginTop: 2 }}>
-                    {item.aiSuccessRate !== null ? `${item.aiSuccessRate}%` : "—"}
-                  </Text>
-                </View>
-              </View>
-
-              {item.overdueCount > 0 && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    backgroundColor: "rgba(239, 68, 68, 0.08)",
-                    padding: 10,
-                    borderRadius: 12,
-                    marginTop: 12,
-                  }}
-                >
-                  <MaterialCommunityIcons name="clock-alert-outline" size={14} color="#ef4444" />
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>
-                    {item.overdueCount} delayed or overdue service logs pending follow-up.
-                  </Text>
-                </View>
-              )}
-            </View>
+            <TechnicianWorkloadCard
+              item={item}
+              onPress={() => router.push({ pathname: "/(admin)/user-details" as any, params: { id: item._id } })}
+            />
           )}
         />
       );
@@ -304,7 +257,7 @@ export default function TechnicianWorkloadScreen() {
                 Farmer: {item.farmerId?.name || "No Farmer Name"}
               </Text>
               <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>
-                Area: {item.farmerId?.address?.barangay || "Unknown Area"}
+                Field location: {getAdminRequestLocation(item)}
               </Text>
             </TouchableOpacity>
           )}
@@ -362,7 +315,7 @@ export default function TechnicianWorkloadScreen() {
               </View>
               {item.aiSuccessRate !== null && (
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Success Rate</Text>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Success rate</Text>
                   <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: "#16a34a" }}>
                     {item.aiSuccessRate}%
                   </Text>
@@ -390,7 +343,7 @@ export default function TechnicianWorkloadScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
@@ -400,7 +353,7 @@ export default function TechnicianWorkloadScreen() {
 
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 12 }}>
         {/* Tab view */}
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ marginBottom: 14, flexGrow: 0 }}>
           {TABS.map((tab, idx) => (
             <TouchableOpacity
               key={tab}
@@ -408,6 +361,8 @@ export default function TechnicianWorkloadScreen() {
               style={{
                 paddingVertical: 8,
                 paddingHorizontal: 12,
+                minHeight: 44,
+                justifyContent: "center",
                 borderRadius: 12,
                 backgroundColor: activeTab === idx ? PRIMARY : colors.card,
                 borderWidth: 1,
@@ -416,7 +371,7 @@ export default function TechnicianWorkloadScreen() {
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontFamily: "Outfit_700Bold",
                   color: activeTab === idx ? "#fff" : colors.textSecondary,
                 }}
@@ -425,11 +380,75 @@ export default function TechnicianWorkloadScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {/* Tab list */}
         <View style={{ flex: 1 }}>{renderTabContent()}</View>
       </View>
     </ScreenLayout>
   );
+}
+
+function TechnicianWorkloadCard({ item, onPress }: { item: any; onPress: () => void }) {
+  const { colors, isDark } = useTheme();
+  const readiness = getDispatchReadinessPresentation(item);
+  const receiveRequests = getReceiveRequestsPresentation(item.dispatchProfile);
+  const capabilities = getCapabilityLabels(item.dispatchProfile);
+  const metricBackground = isDark ? "rgba(255,255,255,0.03)" : "#f8fafc";
+
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={`View ${item.name || "Technician"} account details`}
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={{ backgroundColor: colors.card, borderRadius: 24, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border }}
+    >
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <Text style={{ flex: 1, fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{item.name || "Technician"}</Text>
+        <View style={{ backgroundColor: item.activeRequests > 3 ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
+          <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: item.activeRequests > 3 ? "#ef4444" : "#10b981" }}>{item.activeRequests > 3 ? "High workload" : "Workload manageable"}</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }}>
+        <Metric label="Active work" value={item.activeRequests} background={metricBackground} />
+        <Metric label="Scheduled visits" value={item.scheduledVisits} background={metricBackground} />
+        <Metric label="Completed work" value={item.completedRequests} background={metricBackground} />
+        <Metric label="AI success rate" value={item.aiSuccessRate !== null ? `${item.aiSuccessRate}%` : "—"} background={metricBackground} accent />
+      </View>
+
+      <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12, gap: 7 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+          {readiness.eligible ? <CircleCheck size={16} color="#16a34a" /> : <CircleAlert size={16} color="#d97706" />}
+          <Text style={{ flex: 1, fontSize: 13, fontFamily: "Outfit_700Bold", color: readiness.eligible ? "#16a34a" : "#d97706" }}>{readiness.title}</Text>
+        </View>
+        <InfoLine icon={<MapPin size={15} color={colors.textMuted} />} text={`Field Area: ${getFieldAreaLabel(item.dispatchProfile)}`} />
+        <InfoLine icon={<Inbox size={15} color={colors.textMuted} />} text={`${receiveRequests.label} · ${getAvailabilityLabel(item.dispatchProfile)}`} />
+        <InfoLine icon={<BriefcaseBusiness size={15} color={colors.textMuted} />} text={capabilities.length ? capabilities.join(", ") : "No capabilities assigned"} />
+      </View>
+
+      {item.overdueCount > 0 ? (
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: "rgba(239,68,68,0.08)", padding: 10, borderRadius: 12, marginTop: 12 }}>
+          <MaterialCommunityIcons name="clock-alert-outline" size={15} color="#ef4444" />
+          <Text style={{ flex: 1, fontSize: 12, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>{item.overdueCount} delayed or overdue service logs need follow-up.</Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+function Metric({ label, value, background, accent = false }: { label: string; value: string | number; background: string; accent?: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ width: "47%", backgroundColor: background, padding: 10, borderRadius: 16 }}>
+      <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>{label}</Text>
+      <Text style={{ fontSize: 18, fontFamily: "Outfit_800ExtraBold", color: accent ? "#2563eb" : colors.textPrimary, marginTop: 2 }}>{value}</Text>
+    </View>
+  );
+}
+
+function InfoLine({ icon, text }: { icon: React.ReactNode; text: string }) {
+  const { colors } = useTheme();
+  return <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>{icon}<Text style={{ flex: 1, fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{text}</Text></View>;
 }

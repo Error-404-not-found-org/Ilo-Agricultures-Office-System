@@ -352,7 +352,7 @@ const AnimalCard = React.memo(function AnimalCard({ item, isIncomplete, onPress,
             <Text style={{ fontSize: 16, fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }}>
               {item.earTag ? `Tag: #${item.earTag}` : `ID: ${item._id?.slice(-6).toUpperCase()}`}
             </Text>
-            <Text style={{ fontSize: 11, fontFamily: 'Outfit_500Medium', color: colors.textMuted }}>
+            <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: colors.textMuted }}>
               {item.breed || 'Unknown Breed'} · {item.species || 'Unknown Species'}
             </Text>
           </View>
@@ -404,7 +404,7 @@ const AnimalCard = React.memo(function AnimalCard({ item, isIncomplete, onPress,
       {/* Quick Action Hint */}
       <Text
         style={{
-          fontSize: 10,
+          fontSize: 12,
           fontFamily: 'Outfit_500Medium',
           color: colors.textMuted,
           textAlign: 'center',

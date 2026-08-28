@@ -1,45 +1,21 @@
-import { useState } from "react";
-import { useRouter } from "expo-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@clerk/clerk-expo";
-import { getAdminStats, getAdminMonitoringData, triggerDatabaseBackup, getAdminRecentActivities } from "../services/adminDashboard.service";
+import {
+  getAdminStats,
+  getAdminRecentActivities,
+} from "../services/adminDashboard.service";
+import { buildAdminAttentionSummary } from "../utils/adminDashboardPresentation";
 
 export const useAdminDashboard = () => {
-  const router = useRouter();
   const api = useApi();
-  const queryClient = useQueryClient();
   const { isSignedIn, isLoaded } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const handleSearchSubmit = () => {
-    if (!searchQuery.trim()) return;
-    const isAnimal = /\d/.test(searchQuery);
-    if (isAnimal) {
-      router.push({
-        pathname: "/(admin)/(tabs)/admin.animals" as any,
-        params: { search: searchQuery },
-      });
-    } else {
-      router.push({
-        pathname: "/(admin)/(tabs)/admin.users" as any,
-        params: { search: searchQuery },
-      });
-    }
-  };
-
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
     enabled: isLoaded && isSignedIn,
     queryFn: () => getAdminStats(api),
     staleTime: 1000 * 60 * 2,
-  });
-
-  const monitoringQuery = useQuery({
-    queryKey: ["admin-monitoring"],
-    enabled: isLoaded && isSignedIn,
-    queryFn: () => getAdminMonitoringData(api),
-    refetchInterval: 1000 * 30, // telemetry updates every 30s
   });
 
   const activitiesQuery = useQuery({
@@ -50,45 +26,79 @@ export const useAdminDashboard = () => {
     refetchInterval: 1000 * 60,
   });
 
-  const barangaysQuery = useQuery({
-    queryKey: ["admin-barangays-insights"],
+  const techniciansQuery = useQuery({
+    queryKey: ["admin-technicians-list"],
     enabled: isLoaded && isSignedIn,
     queryFn: async () => {
-      const res = await api.get("/admin/barangays/insights");
+      const res = await api.get("/admin/list-users?role=technician");
       return Array.isArray(res.data) ? res.data : [];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
   });
 
-  const backupMutation = useMutation({
-    mutationFn: () => triggerDatabaseBackup(api),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-monitoring"] });
+  const aiRequestsQuery = useQuery({
+    queryKey: ["admin-ai-requests"],
+    enabled: isLoaded && isSignedIn,
+    queryFn: async () => {
+      const res = await api.get("/ai-request?limit=100");
+      return Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data)
+          ? res.data
+          : [];
     },
+    staleTime: 1000 * 60 * 2,
   });
+
+  const healthRequestsQuery = useQuery({
+    queryKey: ["admin-health-requests"],
+    enabled: isLoaded && isSignedIn,
+    queryFn: async () => {
+      const res = await api.get("/health-request?limit=100");
+      return Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data)
+          ? res.data
+          : [];
+    },
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const attention = useMemo(
+    () =>
+      buildAdminAttentionSummary({
+        technicians: techniciansQuery.data || [],
+        aiRequests: aiRequestsQuery.data || [],
+        healthRequests: healthRequestsQuery.data || [],
+      }),
+    [techniciansQuery.data, aiRequestsQuery.data, healthRequestsQuery.data],
+  );
 
   return {
-    searchQuery,
-    setSearchQuery,
-    handleSearchSubmit,
     stats: statsQuery.data,
     isLoading: statsQuery.isLoading,
     refetch: statsQuery.refetch,
-
-    monitoring: monitoringQuery.data,
-    isMonitoringLoading: monitoringQuery.isLoading,
-    refetchMonitoring: monitoringQuery.refetch,
 
     activities: activitiesQuery.data || [],
     isActivitiesLoading: activitiesQuery.isLoading,
     isActivitiesError: activitiesQuery.isError,
     refetchActivities: activitiesQuery.refetch,
 
-    barangays: barangaysQuery.data || [],
-    isBarangaysLoading: barangaysQuery.isLoading,
-    refetchBarangays: barangaysQuery.refetch,
-
-    triggerBackup: backupMutation.mutateAsync,
-    isBackingUp: backupMutation.isPending,
+    attention,
+    isAttentionLoading:
+      techniciansQuery.isLoading ||
+      aiRequestsQuery.isLoading ||
+      healthRequestsQuery.isLoading,
+    isAttentionError:
+      techniciansQuery.isError ||
+      aiRequestsQuery.isError ||
+      healthRequestsQuery.isError,
+    refetchAttention: async () => {
+      await Promise.all([
+        techniciansQuery.refetch(),
+        aiRequestsQuery.refetch(),
+        healthRequestsQuery.refetch(),
+      ]);
+    },
   };
 };

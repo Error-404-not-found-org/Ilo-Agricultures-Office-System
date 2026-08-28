@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  View,
-  ScrollView,
-  TouchableOpacity,
-  Text,
-  LayoutAnimation,
-} from "react-native";
+import { View, ScrollView, TouchableOpacity, Text } from "react-native";
 import { Users, Syringe, UserPlus } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -13,37 +7,25 @@ import { useTheme } from "@/lib/theme";
 import { useAdminDashboard } from "../hooks/useAdminDashboard";
 import { DashboardHero } from "../components/DashboardHero";
 import { AnalyticsGrid } from "../components/AnalyticsGrid";
+import { AdminAttentionOverview } from "../components/AdminAttentionOverview";
 import { ActivityTimeline } from "../components/ActivityTimeline";
-import { RegistryHealthCard } from "../components/RegistryHealthCard";
-import { SystemHealthCard } from "../components/SystemHealthCard";
-import { AlertsPanel } from "../components/AlertsPanel";
-import { BackupMonitorPanel } from "../components/BackupMonitorPanel";
-import {
-  SkeletonGrid,
-  SkeletonCard,
-  SkeletonMoowieCard,
-} from "../components/SkeletonLoader";
+import { SkeletonGrid } from "../components/SkeletonLoader";
 
 export default function AdminDashboardScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-  const [diagnosticsExpanded, setDiagnosticsExpanded] = React.useState(false);
   const {
     stats,
     isLoading,
-    monitoring,
-    isMonitoringLoading,
     activities,
     isActivitiesLoading,
     isActivitiesError,
     refetchActivities,
-    barangays,
-    isBarangaysLoading,
-    triggerBackup,
-    isBackingUp,
+    attention,
+    isAttentionLoading,
+    isAttentionError,
+    refetchAttention,
   } = useAdminDashboard();
-
-  const showMonitoring = !isMonitoringLoading && !!monitoring;
 
   return (
     <View className="flex-1 bg-[#F0F4FF] dark:bg-slate-950">
@@ -194,164 +176,15 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
 
-        {/* System Administration Operations Row */}
-        <View style={{ paddingHorizontal: 24, marginBottom: 20 }}>
-          <Text
-            style={{
-              fontSize: 15,
-              fontFamily: "Outfit_800ExtraBold",
-              color: colors.textPrimary,
-              marginBottom: 12,
-            }}
-          >
-            System Administration
-          </Text>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            {/* Support Tickets Button */}
-            <TouchableOpacity
-              onPress={() => router.push("/(admin)/support-tickets" as any)}
-              style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                alignItems: "center",
-                flexDirection: "row",
-                gap: 8,
-              }}
-            >
-              <MaterialCommunityIcons
-                name="face-agent"
-                size={18}
-                color="#3b82f6"
-              />
-              <View>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: "Outfit_700Bold",
-                    color: colors.textPrimary,
-                  }}
-                >
-                  Support
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 9,
-                    fontFamily: "Outfit_500Medium",
-                    color: colors.textSecondary,
-                  }}
-                >
-                  Tickets
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Audit Logs Button */}
-            <TouchableOpacity
-              onPress={() => router.push("/(admin)/audit-logs" as any)}
-              style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                alignItems: "center",
-                flexDirection: "row",
-                gap: 8,
-              }}
-            >
-              <MaterialCommunityIcons
-                name="history"
-                size={18}
-                color="#16a34a"
-              />
-              <View>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: "Outfit_700Bold",
-                    color: colors.textPrimary,
-                  }}
-                >
-                  Audit Logs
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 9,
-                    fontFamily: "Outfit_500Medium",
-                    color: colors.textSecondary,
-                  }}
-                >
-                  History Feed
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* System Settings Button */}
-            <TouchableOpacity
-              onPress={() => router.push("/(admin)/system-settings" as any)}
-              style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                alignItems: "center",
-                flexDirection: "row",
-                gap: 8,
-              }}
-            >
-              <MaterialCommunityIcons
-                name="cog-outline"
-                size={18}
-                color="#7c3aed"
-              />
-              <View>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: "Outfit_700Bold",
-                    color: colors.textPrimary,
-                  }}
-                >
-                  Settings
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 9,
-                    fontFamily: "Outfit_500Medium",
-                    color: colors.textSecondary,
-                  }}
-                >
-                  App Config
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <AdminAttentionOverview
+          data={attention}
+          isLoading={isAttentionLoading}
+          isError={isAttentionError}
+          onRetry={refetchAttention}
+        />
 
         {/* 4. Today's Activity / Analytics */}
         {isLoading ? <SkeletonGrid /> : <AnalyticsGrid stats={stats} />}
-
-        {/* Alerts and Monitoring Loading Check */}
-        {/* {isMonitoringLoading && !monitoring ? (
-          <>
-            <SkeletonCard
-              rows={2}
-              style={{ marginHorizontal: 24, marginBottom: 24 }}
-            />
-          </>
-        ) : (
-          <>
-
-            <AlertsPanel alerts={monitoring?.alerts} />
-          </>
-        )} */}
 
         {/* 9. Recent Activity / Activity Timeline */}
         <ActivityTimeline
@@ -360,74 +193,6 @@ export default function AdminDashboardScreen() {
           isError={isActivitiesError}
           onRetry={refetchActivities}
         />
-
-        {/* 10. System Diagnostics (collapsed) */}
-        {showMonitoring && (
-          <View style={{ paddingHorizontal: 24, marginBottom: 24 }}>
-            <TouchableOpacity
-              onPress={() => {
-                LayoutAnimation.configureNext(
-                  LayoutAnimation.Presets.easeInEaseOut,
-                );
-                setDiagnosticsExpanded(!diagnosticsExpanded);
-              }}
-              activeOpacity={0.8}
-              style={{
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 24,
-                padding: 16,
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-              >
-                <MaterialCommunityIcons
-                  name="shield-bug-outline"
-                  size={22}
-                  color="#64748b"
-                />
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontFamily: "Outfit_800ExtraBold",
-                    color: colors.textPrimary,
-                  }}
-                >
-                  System Diagnostics
-                </Text>
-              </View>
-              <MaterialCommunityIcons
-                name={diagnosticsExpanded ? "chevron-up" : "chevron-down"}
-                size={20}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-
-            {diagnosticsExpanded && (
-              <View style={{ marginTop: 12, gap: 12 }}>
-              
-                <SystemHealthCard data={monitoring?.systemHealth} />
-
-              
-                <RegistryHealthCard
-                  data={monitoring?.registryMonitor}
-                  pendingSync={monitoring?.systemHealth?.pendingSync}
-                />
-
-                <BackupMonitorPanel
-                  data={monitoring?.backupMonitor}
-                  onTriggerBackup={triggerBackup}
-                  isBackingUp={isBackingUp}
-                />
-              </View>
-            )}
-          </View>
-        )}
       </ScrollView>
     </View>
   );
@@ -448,6 +213,8 @@ const ActionCategory = ({
 
   return (
     <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={title}
       activeOpacity={0.7}
       style={{
         alignItems: "center",
@@ -474,7 +241,7 @@ const ActionCategory = ({
         ellipsizeMode="tail"
         style={{
           color: colors.textPrimary,
-          fontSize: 11,
+          fontSize: 12,
           fontFamily: "Outfit_700Bold",
           textAlign: "center",
         }}

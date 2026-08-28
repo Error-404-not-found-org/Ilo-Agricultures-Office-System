@@ -12,7 +12,7 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { SelectDropdown } from "@/components/shared";
+import { AsyncState, SelectDropdown } from "@/components/shared";
 import { handleExportCSV, handleExportExcel, handleExportPDF } from "@/features/admin-records/utils/recordsExport";
 import { toast } from "sonner-native";
 import { useRouter } from "expo-router";
@@ -58,6 +58,7 @@ export default function AdminReportsScreen() {
   const {
     data: monthlyReport = [],
     isLoading: isMonthlyLoading,
+    isError: isMonthlyError,
     refetch: refetchMonthly,
   } = useQuery<any[]>({
     queryKey: ["admin-monthly-report", selectedMonth, selectedYear],
@@ -74,6 +75,7 @@ export default function AdminReportsScreen() {
   const {
     data: barangayReport = [],
     isLoading: isBarangayLoading,
+    isError: isBarangayError,
     refetch: refetchBarangay,
   } = useQuery<any[]>({
     queryKey: ["admin-barangay-report"],
@@ -85,6 +87,7 @@ export default function AdminReportsScreen() {
   });
 
   const isLoading = isMonthlyLoading || isBarangayLoading;
+  const isError = reportType === "monthly" ? isMonthlyError : isBarangayError;
 
   // Flatten accomplishment report entries for record-level view and export
   const accomplishmentRecords = useMemo(() => {
@@ -179,6 +182,18 @@ export default function AdminReportsScreen() {
       );
     }
 
+    if (isError) {
+      return (
+        <AsyncState
+          state="error"
+          title="Report unavailable"
+          message="This report could not be loaded."
+          actionLabel="Retry"
+          onAction={reportType === "monthly" ? refetchMonthly : refetchBarangay}
+        />
+      );
+    }
+
     if (reportType === "monthly") {
       return (
         <View style={{ flex: 1 }}>
@@ -208,19 +223,19 @@ export default function AdminReportsScreen() {
                 onPress={() => handleExportAccomplishment("csv")}
                 style={{ backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#16a34a" }}>CSV</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#16a34a" }}>CSV</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleExportAccomplishment("excel")}
                 style={{ backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#10b981" }}>Excel</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#10b981" }}>Excel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleExportAccomplishment("pdf")}
                 style={{ backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>PDF</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>PDF</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -253,7 +268,7 @@ export default function AdminReportsScreen() {
                   <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
                     {item.type} Accomplishment
                   </Text>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
                     {new Date(item.createdAt).toLocaleDateString()}
                   </Text>
                 </View>
@@ -283,19 +298,19 @@ export default function AdminReportsScreen() {
                 onPress={() => handleExportBarangay("csv")}
                 style={{ backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#16a34a" }}>CSV</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#16a34a" }}>CSV</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleExportBarangay("excel")}
                 style={{ backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#10b981" }}>Excel</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#10b981" }}>Excel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleExportBarangay("pdf")}
                 style={{ backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>PDF</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>PDF</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -329,19 +344,19 @@ export default function AdminReportsScreen() {
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}>
                   <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 8, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Farmers</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Farmers</Text>
                     <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{item.totalFarmers}</Text>
                   </View>
                   <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 8, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Livestock</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Livestock</Text>
                     <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{item.totalAnimals}</Text>
                   </View>
                   <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 8, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Breeding Cases</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Breeding Cases</Text>
                     <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{item.totalInseminations || 0}</Text>
                   </View>
                   <View style={{ width: "47%", backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 8, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Health Requests</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Health Requests</Text>
                     <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{item.totalHealthRequests || 0}</Text>
                   </View>
                 </View>
@@ -368,7 +383,7 @@ export default function AdminReportsScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>

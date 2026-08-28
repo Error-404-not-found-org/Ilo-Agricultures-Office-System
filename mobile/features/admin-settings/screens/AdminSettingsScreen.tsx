@@ -16,6 +16,9 @@ import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { toast } from "sonner-native";
+import { useColorScheme } from "nativewind";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Sun, Moon } from "lucide-react-native";
 
 const PRIMARY = "#1e3a5f";
 
@@ -24,6 +27,7 @@ export default function AdminSettingsScreen() {
   const api = useApi();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { colorScheme, toggleColorScheme } = useColorScheme();
 
   const [pregnancyWindow, setPregnancyWindow] = useState("60");
   const [maxAttempts, setMaxAttempts] = useState("3");
@@ -49,7 +53,11 @@ export default function AdminSettingsScreen() {
       setMaxAttempts(String(configData.maxAttemptLimit || "3"));
       setEmailEnabled(Boolean(configData.emailNotificationEnabled));
       setSmsEnabled(Boolean(configData.smsNotificationEnabled));
-      setBreeds(Array.isArray(configData.registered_breeds) ? configData.registered_breeds : []);
+      setBreeds(
+        Array.isArray(configData.registered_breeds)
+          ? configData.registered_breeds
+          : [],
+      );
     }
   }, [configData]);
 
@@ -65,7 +73,9 @@ export default function AdminSettingsScreen() {
       queryClient.invalidateQueries({ queryKey: ["config"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Failed to update configurations.");
+      toast.error(
+        err.response?.data?.message || "Failed to update configurations.",
+      );
     },
   });
 
@@ -115,8 +125,18 @@ export default function AdminSettingsScreen() {
             setBreeds(breeds.filter((b) => b !== breedToRemove));
           },
         },
-      ]
+      ],
     );
+  };
+
+  const handleToggleTheme = async () => {
+    const newScheme = colorScheme === "dark" ? "light" : "dark";
+    toggleColorScheme();
+    try {
+      await AsyncStorage.setItem("theme_preference", newScheme);
+    } catch (e) {
+      console.warn("Failed to save theme preference:", e);
+    }
   };
 
   if (isLoading) {
@@ -134,14 +154,30 @@ export default function AdminSettingsScreen() {
             borderBottomColor: colors.border,
           }}
         >
-          <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ padding: 8, marginLeft: -8 }}
+          >
+            <MaterialCommunityIcons
+              name="arrow-left"
+              size={24}
+              color={colors.textPrimary}
+            />
           </TouchableOpacity>
-          <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 18,
+              color: colors.textPrimary,
+              marginLeft: 8,
+            }}
+          >
             System Settings
           </Text>
         </View>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
           <ActivityIndicator size="large" color={PRIMARY} />
         </View>
       </ScreenLayout>
@@ -163,31 +199,167 @@ export default function AdminSettingsScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ padding: 8, marginLeft: -8 }}
+        >
+          <MaterialCommunityIcons
+            name="arrow-left"
+            size={24}
+            color={colors.textPrimary}
+          />
         </TouchableOpacity>
-        <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8, flex: 1 }}>
+        <Text
+          style={{
+            fontFamily: "Outfit_800ExtraBold",
+            fontSize: 18,
+            color: colors.textPrimary,
+            marginLeft: 8,
+            flex: 1,
+          }}
+        >
           System Settings
         </Text>
         {saveMutation.isPending ? (
           <ActivityIndicator size="small" color={PRIMARY} />
         ) : (
-          <TouchableOpacity onPress={handleSave} style={{ padding: 8, marginRight: -8 }}>
-            <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: PRIMARY }}>Save</Text>
+          <TouchableOpacity
+            onPress={handleSave}
+            style={{ padding: 8, marginRight: -8 }}
+          >
+            <Text
+              style={{
+                fontSize: 14,
+                fontFamily: "Outfit_700Bold",
+                color: PRIMARY,
+              }}
+            >
+              Save
+            </Text>
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 14,
+          paddingBottom: 100,
+        }}
+      >
+        {/* Appearance Settings */}
+        <View
+          style={{
+            backgroundColor: colors.card,
+            padding: 16,
+            borderRadius: 20,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Outfit_800ExtraBold",
+              color: colors.textSecondary,
+              marginBottom: 14,
+            }}
+          >
+            APPEARANCE
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? "rgba(245,158,11,0.1)"
+                      : "rgba(100,116,139,0.1)",
+                }}
+              >
+                {colorScheme === "dark" ? (
+                  <Moon size={20} color="#f59e0b" />
+                ) : (
+                  <Sun size={20} color="#94a3b8" />
+                )}
+              </View>
+              <View>
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    fontFamily: "Outfit_700Bold",
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Dark Mode
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Outfit_500Medium",
+                    color: colors.textSecondary,
+                  }}
+                >
+                  Switch between light and dark theme
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={colorScheme === "dark"}
+              onValueChange={handleToggleTheme}
+              trackColor={{ true: PRIMARY }}
+              thumbColor={colorScheme === "dark" ? "#f59e0b" : "#f4f3f4"}
+            />
+          </View>
+        </View>
+
         {/* Core parameters */}
-        <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 14 }}>
+        <View
+          style={{
+            backgroundColor: colors.card,
+            padding: 16,
+            borderRadius: 20,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Outfit_800ExtraBold",
+              color: colors.textSecondary,
+              marginBottom: 14,
+            }}
+          >
             BREEDING METRICS & WINDOWS
           </Text>
-          
+
           <View style={{ gap: 12 }}>
             <View>
-              <Text style={{ fontSize: 12.5, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 6 }}>
+              <Text
+                style={{
+                  fontSize: 12.5,
+                  fontFamily: "Outfit_600SemiBold",
+                  color: colors.textSecondary,
+                  marginBottom: 6,
+                }}
+              >
                 Pregnancy Window Check Days
               </Text>
               <TextInput
@@ -195,7 +367,9 @@ export default function AdminSettingsScreen() {
                 value={pregnancyWindow}
                 onChangeText={setPregnancyWindow}
                 style={{
-                  backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                  backgroundColor: isDark
+                    ? "rgba(255,255,255,0.03)"
+                    : "#f8fafc",
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -208,7 +382,14 @@ export default function AdminSettingsScreen() {
             </View>
 
             <View>
-              <Text style={{ fontSize: 12.5, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 6 }}>
+              <Text
+                style={{
+                  fontSize: 12.5,
+                  fontFamily: "Outfit_600SemiBold",
+                  color: colors.textSecondary,
+                  marginBottom: 6,
+                }}
+              >
                 Max AI Attempts per Cycle
               </Text>
               <TextInput
@@ -216,7 +397,9 @@ export default function AdminSettingsScreen() {
                 value={maxAttempts}
                 onChangeText={setMaxAttempts}
                 style={{
-                  backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                  backgroundColor: isDark
+                    ? "rgba(255,255,255,0.03)"
+                    : "#f8fafc",
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -231,33 +414,116 @@ export default function AdminSettingsScreen() {
         </View>
 
         {/* Alerts & Notifications config */}
-        <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 14 }}>
+        <View
+          style={{
+            backgroundColor: colors.card,
+            padding: 16,
+            borderRadius: 20,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Outfit_800ExtraBold",
+              color: colors.textSecondary,
+              marginBottom: 14,
+            }}
+          >
             ALERTS & DISPATCH NOTIFICATIONS
           </Text>
 
           <View style={{ gap: 14 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <View>
-                <Text style={{ fontSize: 13.5, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>Email Notifications</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>Send verification and claim receipts</Text>
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    fontFamily: "Outfit_700Bold",
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Email Notifications
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Outfit_500Medium",
+                    color: colors.textSecondary,
+                  }}
+                >
+                  Send verification and claim receipts
+                </Text>
               </View>
-              <Switch value={emailEnabled} onValueChange={setEmailEnabled} trackColor={{ true: PRIMARY }} />
+              <Switch
+                value={emailEnabled}
+                onValueChange={setEmailEnabled}
+                trackColor={{ true: PRIMARY }}
+              />
             </View>
 
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <View>
-                <Text style={{ fontSize: 13.5, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>SMS Alerts (OTP)</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>Required for walk-in claims confirmation</Text>
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    fontFamily: "Outfit_700Bold",
+                    color: colors.textPrimary,
+                  }}
+                >
+                  SMS Alerts (OTP)
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Outfit_500Medium",
+                    color: colors.textSecondary,
+                  }}
+                >
+                  Required for walk-in claims confirmation
+                </Text>
               </View>
-              <Switch value={smsEnabled} onValueChange={setSmsEnabled} trackColor={{ true: PRIMARY }} />
+              <Switch
+                value={smsEnabled}
+                onValueChange={setSmsEnabled}
+                trackColor={{ true: PRIMARY }}
+              />
             </View>
           </View>
         </View>
 
         {/* Registered Breeds config */}
-        <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, marginBottom: 12 }}>
+        <View
+          style={{
+            backgroundColor: colors.card,
+            padding: 16,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Outfit_800ExtraBold",
+              color: colors.textSecondary,
+              marginBottom: 12,
+            }}
+          >
             REGISTERED BREED REGISTRY ({breeds.length})
           </Text>
 
@@ -288,7 +554,15 @@ export default function AdminSettingsScreen() {
                 justifyContent: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 13, fontFamily: "Outfit_700Bold" }}>Add</Text>
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  fontFamily: "Outfit_700Bold",
+                }}
+              >
+                Add
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -300,7 +574,9 @@ export default function AdminSettingsScreen() {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9",
+                  backgroundColor: isDark
+                    ? "rgba(255,255,255,0.05)"
+                    : "#f1f5f9",
                   paddingVertical: 6,
                   paddingLeft: 10,
                   paddingRight: 6,
@@ -309,11 +585,22 @@ export default function AdminSettingsScreen() {
                   borderColor: colors.border,
                 }}
               >
-                <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary, marginRight: 6 }}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Outfit_600SemiBold",
+                    color: colors.textPrimary,
+                    marginRight: 6,
+                  }}
+                >
                   {breed}
                 </Text>
                 <TouchableOpacity onPress={() => handleRemoveBreed(breed)}>
-                  <MaterialCommunityIcons name="close-circle" size={14} color={colors.textSecondary} />
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={14}
+                    color={colors.textSecondary}
+                  />
                 </TouchableOpacity>
               </View>
             ))}

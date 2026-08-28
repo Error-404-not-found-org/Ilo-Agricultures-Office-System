@@ -76,7 +76,7 @@ export function RegistryHealthSummary({
       </Text>
       <Text
         style={{
-          fontSize: 10,
+          fontSize: 12,
           fontFamily: "Outfit_600SemiBold",
           color: colors.textSecondary,
           marginTop: 2,
