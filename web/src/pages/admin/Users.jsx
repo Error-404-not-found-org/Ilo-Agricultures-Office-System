@@ -4,19 +4,19 @@ import { useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
-  MapPin,
+  LayoutGrid,
   Plus,
   SlidersHorizontal,
+  Table2,
   UserCheck,
   Users as UsersIcon,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
-import { TableRowSkeleton } from "../../components/ui/Skeleton";
-import UserAvatar from "../../components/ui/UserAvatar";
-import { Badge, ui } from "../../components/ui/uiClasses";
-import TableNameLink from "../../components/ui/TableNameLink";
 import TechnicianInviteDialog from "../../components/dialogs/TechnicianInviteDialog";
+import UserDirectoryCards from "../../components/admin/users/UserDirectoryCards";
+import UserDirectoryTable from "../../components/admin/users/UserDirectoryTable";
+import { ui } from "../../components/ui/uiClasses";
 import {
   ILOILO_MUNICIPALITIES,
   MUNICIPALITY_BARANGAYS,
@@ -26,178 +26,51 @@ const ROLE_OPTIONS = [
   { value: "farmer", label: "Farmers", icon: UsersIcon },
   { value: "technician", label: "Technicians", icon: UserCheck },
 ];
+const VIEW_OPTIONS = [
+  { value: "table", label: "Table", icon: Table2 },
+  { value: "cards", label: "Cards", icon: LayoutGrid },
+];
 const SUPPORTED_ROLES = new Set(ROLE_OPTIONS.map(({ value }) => value));
+const SUPPORTED_VIEWS = new Set(VIEW_OPTIONS.map(({ value }) => value));
 const ITEMS_PER_PAGE = 10;
+const NARROW_DIRECTORY_QUERY = "(max-width: 767px)";
 
 const titleCaseRole = (role) =>
   role === "technician" ? "Technician" : "Farmer";
 
-const formatLocation = (user) => {
-  const address = user?.address || {};
-  const values = [
-    address.barangay,
-    address.city || address.municipality,
-    address.province,
-  ]
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter(Boolean);
+const getIsNarrowDirectoryViewport = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(NARROW_DIRECTORY_QUERY).matches
+    : false;
 
-  return values.length > 0 ? values.join(", ") : "Not recorded";
-};
+function useNarrowDirectoryViewport() {
+  const [isNarrow, setIsNarrow] = useState(getIsNarrowDirectoryViewport);
 
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return undefined;
 
-const formatOperationalLabel = (value) => {
-  if (typeof value !== "string" || !value.trim()) return "Not recorded";
+    const mediaQuery = window.matchMedia(NARROW_DIRECTORY_QUERY);
+    const handleChange = (event) => setIsNarrow(event.matches);
+    mediaQuery.addEventListener?.("change", handleChange);
 
-  return value
-    .trim()
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-};
+    return () => mediaQuery.removeEventListener?.("change", handleChange);
+  }, []);
 
-const compactList = (values, getLabel = (value) => value) => {
-  const recorded = Array.isArray(values)
-    ? values
-        .map(getLabel)
-        .filter((value) => typeof value === "string" && value.trim())
-    : [];
-
-  if (recorded.length === 0) return "Not recorded";
-  if (recorded.length <= 2) return recorded.join(", ");
-  return recorded.slice(0, 2).join(", ") + " +" + (recorded.length - 2);
-};
-
-const municipalityLabel = (municipality) =>
-  typeof municipality === "string"
-    ? municipality
-    : municipality?.municipalityName || municipality?.municipalityCode;
-
-function FarmerRow({ user }) {
-  return (
-    <tr className={ui.tableRow}>
-      <td className="p-3.5 pl-5">
-        <div className="flex items-center gap-2.5">
-          <UserAvatar
-            name={user.name}
-            imageUrl={user.imageUrl || user.profileImage}
-            size={32}
-            sizeClass="h-8 w-8"
-          />
-          <span className="font-bold text-base-content">
-            {user.name || "Not recorded"}
-          </span>
-        </div>
-      </td>
-      <td className="p-3.5 font-mono font-medium text-base-content">
-        {user.phoneNumber || "Not recorded"}
-      </td>
-      <td className="p-3.5 font-medium text-base-content/90">
-        {user.email || "Not recorded"}
-      </td>
-      <td className="p-3.5">
-        <span className="badge badge-outline badge-sm font-semibold capitalize">
-          {user.role}
-        </span>
-      </td>
-      <td className="p-3.5 pr-5 text-right font-semibold text-base-content/90">
-        <span className="inline-flex items-start justify-end gap-1.5">
-          <MapPin
-            size={12}
-            className="mt-0.5 shrink-0 text-base-content/70"
-            aria-hidden="true"
-          />
-          {formatLocation(user)}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-function TechnicianRow({ technician }) {
-  const dispatchProfile = technician.dispatchProfile || {};
-  const acceptsNewRequests = dispatchProfile.acceptsNewRequests;
-  const availability = dispatchProfile.availabilityStatus;
-
-  return (
-    <tr className={ui.tableRow}>
-      <td className="p-3.5 pl-5">
-        <div className="flex items-center gap-2.5">
-          <UserAvatar
-            name={technician.name}
-            imageUrl={technician.imageUrl || technician.profileImage}
-            size={36}
-            sizeClass="h-9 w-9"
-          />
-          <TableNameLink
-            to={"/admin/technicians/" + technician._id}
-            ariaLabel={
-              "Open Technician profile for " +
-              (technician.name || "unnamed Technician")
-            }
-          >
-            {technician.name || "Not recorded"}
-          </TableNameLink>
-        </div>
-      </td>
-      <td className="p-3.5">
-        <div className="space-y-0.5">
-          <div className="font-mono font-medium text-base-content">
-            {technician.phoneNumber || "Not recorded"}
-          </div>
-          <div className="text-xs text-base-content/70">
-            {technician.email || "Not recorded"}
-          </div>
-        </div>
-      </td>
-      <td className="p-3.5 font-medium text-base-content/90">
-        <span className="inline-flex items-start gap-1.5">
-          <MapPin
-            size={12}
-            className="mt-0.5 shrink-0 text-base-content/70"
-            aria-hidden="true"
-          />
-          {formatLocation(technician)}
-        </span>
-      </td>
-      <td className="p-3.5">
-        <Badge status={technician.status || "unknown"}>
-          {formatOperationalLabel(technician.status)}
-        </Badge>
-      </td>
-      <td className="p-3.5 pr-5">
-        <div className="space-y-1 text-xs">
-          <div className="font-semibold text-base-content">
-            {acceptsNewRequests === true
-              ? "Accepting requests"
-              : acceptsNewRequests === false
-                ? "Not accepting requests"
-                : "Request acceptance not recorded"}
-          </div>
-          <div className="text-base-content/70">
-            Availability: {formatOperationalLabel(availability)}
-          </div>
-          <div className="text-base-content/70">
-            Capabilities: {compactList(dispatchProfile.serviceCapabilities)}
-          </div>
-          <div className="text-base-content/70">
-            Service area:{" "}
-            {compactList(
-              dispatchProfile.serviceMunicipalities,
-              municipalityLabel,
-            )}
-          </div>
-        </div>
-      </td>
-    </tr>
-  );
+  return isNarrow;
 }
 
 export default function Users() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedRole = String(searchParams.get("role") || "").toLowerCase();
+  const requestedView = String(searchParams.get("view") || "").toLowerCase();
   const activeRole = SUPPORTED_ROLES.has(requestedRole)
     ? requestedRole
     : "farmer";
+  const activeView = SUPPORTED_VIEWS.has(requestedView)
+    ? requestedView
+    : "table";
+  const isNarrowViewport = useNarrowDirectoryViewport();
+  const effectiveView = isNarrowViewport ? "cards" : activeView;
   const [searchQuery, setSearchQuery] = useState("");
   const [municipalityFilter, setMunicipalityFilter] = useState("");
   const [barangayFilter, setBarangayFilter] = useState("");
@@ -205,17 +78,21 @@ export default function Users() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (requestedRole === activeRole) return;
+    const roleRequiresNormalization = requestedRole !== activeRole;
+    const viewRequiresNormalization =
+      Boolean(requestedView) && requestedView !== activeView;
+    if (!roleRequiresNormalization && !viewRequiresNormalization) return;
 
     setSearchParams(
       (currentParams) => {
         const nextParams = new URLSearchParams(currentParams);
-        nextParams.set("role", activeRole);
+        if (roleRequiresNormalization) nextParams.set("role", activeRole);
+        if (viewRequiresNormalization) nextParams.set("view", activeView);
         return nextParams;
       },
       { replace: true },
     );
-  }, [activeRole, requestedRole, setSearchParams]);
+  }, [activeRole, activeView, requestedRole, requestedView, setSearchParams]);
 
   const {
     data: directoryPage = {},
@@ -312,6 +189,14 @@ export default function Users() {
     });
   };
 
+  const switchView = (view) => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.set("view", view);
+      return nextParams;
+    });
+  };
+
   const hasFilters = Boolean(
     searchQuery || municipalityFilter || barangayFilter,
   );
@@ -365,23 +250,54 @@ export default function Users() {
             })}
           </div>
 
-          {activeRole === "technician" && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => setIsInviteDialogOpen(true)}
+          <div className="flex items-center gap-2">
+            <div
+              role="group"
+              aria-label="Directory presentation"
+              className="join hidden md:flex"
             >
-              <Plus size={15} aria-hidden="true" />
-              Invite Technician
-            </button>
-          )}
+              {VIEW_OPTIONS.map(({ value, label, icon: Icon }) => {
+                const isActive = activeView === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={
+                      "btn btn-sm join-item gap-1.5 " +
+                      (isActive ? "btn-active" : "btn-ghost")
+                    }
+                    aria-pressed={isActive}
+                    onClick={() => switchView(value)}
+                  >
+                    <Icon size={14} aria-hidden="true" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeRole === "technician" && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setIsInviteDialogOpen(true)}
+              >
+                <Plus size={15} aria-hidden="true" />
+                Invite Technician
+              </button>
+            )}
+          </div>
         </div>
 
         <section
-          className={`${ui.panel} p-5 flex-1 flex flex-col min-h-0`}
-          aria-labelledby="users-table-heading"
+          className={
+            effectiveView === "table"
+              ? `${ui.panel} p-5 flex-1 flex flex-col min-h-0`
+              : "flex-1 flex flex-col min-h-0"
+          }
+          aria-labelledby="user-directory-heading"
         >
-          <h2 id="users-table-heading" className="sr-only">
+          <h2 id="user-directory-heading" className="sr-only">
             {roleLabel} directory
           </h2>
 
@@ -436,72 +352,27 @@ export default function Users() {
             </span>
           </div>
 
-          <div className="flex-1 overflow-x-auto overflow-y-auto">
-            <table className={ui.table} aria-label={`${roleLabel} directory`}>
-              <thead>
-                {activeRole === "technician" ? (
-                  <tr className={ui.tableHead}>
-                    <th className="p-3.5 pl-5">Technician</th>
-                    <th className="p-3.5">Contact</th>
-                    <th className="p-3.5">Location</th>
-                    <th className="p-3.5">Status</th>
-                    <th className="p-3.5 pr-5">Dispatch coverage</th>
-                  </tr>
-                ) : (
-                  <tr className={ui.tableHead}>
-                    <th className="p-3.5 pl-5">Full name</th>
-                    <th className="p-3.5">Contact number</th>
-                    <th className="p-3.5">Email address</th>
-                    <th className="p-3.5">Role</th>
-                    <th className="p-3.5 pr-5 text-right">Location</th>
-                  </tr>
-                )}
-              </thead>
-              <tbody className={ui.tableBody}>
-                {isLoading ? (
-                  [...Array(6)].map((_, index) => (
-                    <TableRowSkeleton key={index} />
-                  ))
-                ) : isError ? (
-                  <tr>
-                    <td colSpan={5} className="p-6">
-                      <div
-                        role="alert"
-                        className="alert alert-error alert-soft sm:alert-horizontal"
-                      >
-                        <span>{roleLabel} records could not be loaded.</span>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => refetch()}
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : users.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-6">
-                      <div className={ui.empty}>
-                        {hasFilters
-                          ? `No ${activeRole}s match the current search or filters.`
-                          : `No ${activeRole}s found.`}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((user) =>
-                    activeRole === "technician" ? (
-                      <TechnicianRow key={user._id} technician={user} />
-                    ) : (
-                      <FarmerRow key={user._id} user={user} />
-                    ),
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
+          {effectiveView === "cards" ? (
+            <UserDirectoryCards
+              activeRole={activeRole}
+              roleLabel={roleLabel}
+              users={users}
+              isLoading={isLoading}
+              isError={isError}
+              hasFilters={hasFilters}
+              onRetry={() => refetch()}
+            />
+          ) : (
+            <UserDirectoryTable
+              activeRole={activeRole}
+              roleLabel={roleLabel}
+              users={users}
+              isLoading={isLoading}
+              isError={isError}
+              hasFilters={hasFilters}
+              onRetry={() => refetch()}
+            />
+          )}
 
           {!isError && totalPages > 1 && (
             <div className="mt-3 flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">

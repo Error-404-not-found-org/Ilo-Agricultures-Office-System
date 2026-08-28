@@ -23,6 +23,8 @@ const normalizedAdminFiles = [
   "src/components/dialogs/ActivityDetailsModal.jsx",
   "src/components/dialogs/RequestActionModal.jsx",
   "src/components/dialogs/TechnicianInviteDialog.jsx",
+  "src/components/admin/users/UserDirectoryCards.jsx",
+  "src/components/admin/users/UserDirectoryTable.jsx",
 ];
 
 const deprecatedPalettePattern =
