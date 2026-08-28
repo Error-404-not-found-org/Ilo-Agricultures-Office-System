@@ -1,316 +1,402 @@
-import React, { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import axiosInstance from "../../lib/axios";
-import { TableRowSkeleton } from "../../components/ui/Skeleton";
+import { useSearchParams } from "react-router-dom";
 import {
-  Users as UsersIcon,
-  Shield,
+  ChevronLeft,
+  ChevronRight,
   MapPin,
-  UserCheck,
   SlidersHorizontal,
-  MoreVertical,
+  UserCheck,
+  Users as UsersIcon,
 } from "lucide-react";
+import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
+import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import UserAvatar from "../../components/ui/UserAvatar";
+import { ui } from "../../components/ui/uiClasses";
 import {
   ILOILO_MUNICIPALITIES,
   MUNICIPALITY_BARANGAYS,
 } from "../../constants/barangays";
 
+const ROLE_OPTIONS = [
+  { value: "farmer", label: "Farmers", icon: UsersIcon },
+  { value: "technician", label: "Technicians", icon: UserCheck },
+];
+const SUPPORTED_ROLES = new Set(ROLE_OPTIONS.map(({ value }) => value));
+const ITEMS_PER_PAGE = 10;
+
+const titleCaseRole = (role) =>
+  role === "technician" ? "Technician" : "Farmer";
+
+const formatLocation = (user) => {
+  const address = user?.address || {};
+  const values = [
+    address.barangay,
+    address.city || address.municipality,
+    address.province,
+  ]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+
+  return values.length > 0 ? values.join(", ") : "Not recorded";
+};
+
 export default function Users() {
-  const [activeTab, setActiveTab] = useState("farmer"); // "farmer", "technician", "admin"
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedRole = String(searchParams.get("role") || "").toLowerCase();
+  const activeRole = SUPPORTED_ROLES.has(requestedRole)
+    ? requestedRole
+    : "farmer";
   const [searchQuery, setSearchQuery] = useState("");
   const [municipalityFilter, setMunicipalityFilter] = useState("");
   const [barangayFilter, setBarangayFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // ---- DYNAMIC DATA PIPELINE ----
+  useEffect(() => {
+    if (requestedRole === activeRole) return;
+
+    setSearchParams(
+      (currentParams) => {
+        const nextParams = new URLSearchParams(currentParams);
+        nextParams.set("role", activeRole);
+        return nextParams;
+      },
+      { replace: true },
+    );
+  }, [activeRole, requestedRole, setSearchParams]);
+
   const {
-    data: users = [],
+    data: directoryPage = {},
     isLoading,
+    isError,
+    isFetching,
     refetch,
   } = useQuery({
-    queryKey: ["admin", "users-list-all"],
+    queryKey: [
+      "admin",
+      "users",
+      activeRole,
+      currentPage,
+      searchQuery,
+      municipalityFilter,
+      barangayFilter,
+    ],
     queryFn: async () => {
-      const res = await axiosInstance.get("/user?role=" + activeTab);
-      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+      const response = await axiosInstance.get("/user", {
+        params: {
+          role: activeRole,
+          page: currentPage,
+          limit: ITEMS_PER_PAGE,
+          search: searchQuery || undefined,
+          city: municipalityFilter || undefined,
+          barangay: barangayFilter || undefined,
+        },
+      });
+
+      if (Array.isArray(response.data)) {
+        return {
+          data: response.data,
+          total: response.data.length,
+          page: 1,
+          limit: ITEMS_PER_PAGE,
+          totalPages: 1,
+        };
+      }
+
+      return response.data || {};
     },
   });
 
-  // Re-fetch when switching tabs
-  React.useEffect(() => {
-    refetch();
-  }, [activeTab, refetch]);
+  const returnedUsers = useMemo(() => {
+    if (Array.isArray(directoryPage.data)) return directoryPage.data;
+    if (Array.isArray(directoryPage.users)) return directoryPage.users;
+    return [];
+  }, [directoryPage]);
 
-  // Extract dynamic cities and barangays from actual loaded users
-  const { dynamicMunicipalities, dynamicBarangays } = useMemo(() => {
-    const citiesSet = new Set();
-    const cityToBarangays = {};
+  // Keep the operational directory role-safe even if an unexpected record is
+  // ever returned by the broader backend user endpoint.
+  const users = useMemo(
+    () => returnedUsers.filter((user) => user.role === activeRole),
+    [activeRole, returnedUsers],
+  );
 
-    users.forEach((u) => {
-      const city = u.address?.city;
-      const barangay = u.address?.barangay;
-      if (city) {
-        const normalizedCity = city.trim();
-        citiesSet.add(normalizedCity);
+  const total = Number(directoryPage.total) || 0;
+  const totalPages = Math.max(
+    1,
+    Number(directoryPage.totalPages) || Math.ceil(total / ITEMS_PER_PAGE) || 1,
+  );
 
-        if (barangay) {
-          const normalizedBrgy = barangay.trim();
-          if (!cityToBarangays[normalizedCity]) {
-            cityToBarangays[normalizedCity] = new Set();
-          }
-          cityToBarangays[normalizedCity].add(normalizedBrgy);
-        }
-      }
-    });
+  const { municipalityOptions, barangayOptions } = useMemo(() => {
+    const municipalities = new Set(ILOILO_MUNICIPALITIES);
+    const barangays = new Set(
+      municipalityFilter
+        ? MUNICIPALITY_BARANGAYS[municipalityFilter] || []
+        : [],
+    );
 
-    // Merge predefined ones to ensure complete default values
-    ILOILO_MUNICIPALITIES.forEach((mun) => {
-      citiesSet.add(mun);
-      if (!cityToBarangays[mun]) {
-        cityToBarangays[mun] = new Set(MUNICIPALITY_BARANGAYS[mun] || []);
-      } else {
-        (MUNICIPALITY_BARANGAYS[mun] || []).forEach((brgy) => {
-          cityToBarangays[mun].add(brgy);
-        });
+    users.forEach((user) => {
+      const municipality =
+        user.address?.city?.trim() || user.address?.municipality?.trim();
+      const barangay = user.address?.barangay?.trim();
+      if (municipality) municipalities.add(municipality);
+      if (municipality === municipalityFilter && barangay) {
+        barangays.add(barangay);
       }
     });
 
     return {
-      dynamicMunicipalities: Array.from(citiesSet).sort(),
-      dynamicBarangays: Object.keys(cityToBarangays).reduce((acc, city) => {
-        acc[city] = Array.from(cityToBarangays[city]).sort();
-        return acc;
-      }, {}),
+      municipalityOptions: Array.from(municipalities).sort(),
+      barangayOptions: Array.from(barangays).sort(),
     };
-  }, [users]);
+  }, [municipalityFilter, users]);
 
-  const activeBarangays = useMemo(() => {
-    if (!municipalityFilter) return [];
-    return dynamicBarangays[municipalityFilter] || [];
-  }, [municipalityFilter, dynamicBarangays]);
-
-  // ---- MEMOIZED DATA FILTERING ----
-  const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        (u.name || "").toLowerCase().includes(q) ||
-        (u.phoneNumber || "").toLowerCase().includes(q) ||
-        (u.email || "").toLowerCase().includes(q);
-      const matchesMunicipality =
-        !municipalityFilter ||
-        (u.address?.city || "Oton").toLowerCase() ===
-          municipalityFilter.toLowerCase();
-      const matchesBarangay =
-        !barangayFilter ||
-        (u.address?.barangay || "").toLowerCase() ===
-          barangayFilter.toLowerCase();
-      return matchesSearch && matchesMunicipality && matchesBarangay;
+  const switchRole = (role) => {
+    setCurrentPage(1);
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.set("role", role);
+      return nextParams;
     });
-  }, [users, searchQuery, municipalityFilter, barangayFilter]);
+  };
+
+  const hasFilters = Boolean(
+    searchQuery || municipalityFilter || barangayFilter,
+  );
+  const roleLabel = titleCaseRole(activeRole);
+  const startItem = total === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endItem = Math.min(
+    (currentPage - 1) * ITEMS_PER_PAGE + users.length,
+    total,
+  );
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
+    <div className={ui.page}>
       <Topbar
         title="Users Directory"
-        subtitle="Manage user accounts"
-        searchPlaceholder={`Search ${activeTab}s name, contact...`}
+        subtitle="Manage Farmer and Technician accounts"
+        searchPlaceholder={`Search ${activeRole}s by name, phone, or email...`}
         searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
+        onSearchChange={(event) => {
+          setSearchQuery(event.target.value);
+          setCurrentPage(1);
         }}
       />
 
-      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
-        {/* Dynamic Metric Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div
-            onClick={() => setActiveTab("farmer")}
-            className={`cursor-pointer p-4 rounded-xl border-0 border-l-4 transition-all flex items-center gap-3 ${activeTab === "farmer" ? "bg-primary/10 border-primary text-primary" : "bg-base-100 border-base-300"}`}
-          >
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-              <UsersIcon size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black">
-                {activeTab === "farmer" ? users.length : "Farmers"}
-              </div>
-              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
-                Farmers
-              </div>
-            </div>
-          </div>
-
-          <div
-            onClick={() => setActiveTab("technician")}
-            className={`cursor-pointer p-4 rounded-xl border-0 border-l-4 transition-all flex items-center gap-3 ${activeTab === "technician" ? "bg-primary/10 border-primary text-primary" : "bg-base-100 border-base-300"}`}
-          >
-            <div className="p-2.5 rounded-xl bg-base-200 text-base-content/70">
-              <UserCheck size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black">
-                {activeTab === "technician" ? users.length : "Technicians"}
-              </div>
-              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
-                Field Officers
-              </div>
-            </div>
-          </div>
-          <div
-            onClick={() => setActiveTab("admin")}
-            className={`cursor-pointer p-4 rounded-xl border-0 border-l-4 transition-all flex items-center gap-3 ${activeTab === "admin" ? "bg-primary/10 border-primary text-primary" : "bg-base-100 border-base-300"}`}
-          >
-            <div className="p-2.5 rounded-xl bg-base-200 text-base-content/70">
-              <Shield size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black">
-                {activeTab === "admin" ? users.length : "Admins"}
-              </div>
-              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
-                System Administrators
-              </div>
-            </div>
-          </div>
+      <main className={ui.main}>
+        <div
+          role="tablist"
+          aria-label="User directory role"
+          className="tabs tabs-box tabs-sm w-fit bg-base-100"
+        >
+          {ROLE_OPTIONS.map(({ value, label, icon: Icon }) => {
+            const isActive = activeRole === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`tab gap-2 font-semibold ${
+                  isActive ? "tab-active text-primary" : "text-base-content/70"
+                }`}
+                onClick={() => switchRole(value)}
+              >
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Datatable Card Wrapper */}
-        <div className="card bg-base-100 border border-base-300 rounded-2xl p-5  flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* Top Filter Ribbon */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-base-300/80 p-2.5 rounded-xl border dark:border-0 ">
-            <div className="flex items-center gap-1.5 text-xs text-base-content/90 font-bold uppercase tracking-wide px-1">
-              <SlidersHorizontal size={13} />
-              <span>Filters:</span>
+        <section
+          className={`${ui.panel} p-5 flex-1 flex flex-col min-h-0`}
+          aria-labelledby="users-table-heading"
+        >
+          <h2 id="users-table-heading" className="sr-only">
+            {roleLabel} directory
+          </h2>
+
+          <div className={ui.filterBar}>
+            <div className="flex items-center gap-1.5 px-1 text-xs font-bold text-base-content/80">
+              <SlidersHorizontal size={13} aria-hidden="true" />
+              <span>Filters</span>
             </div>
             <select
-              className="select select-bordered select-sm text-sm  border-0 rounded-xl bg-base-100 border-base-300 text-base-content focus:border-primary transition-all duration-200 font-medium"
+              className={ui.select}
+              aria-label={`Filter ${activeRole}s by municipality`}
               value={municipalityFilter}
-              onChange={(e) => {
-                setMunicipalityFilter(e.target.value);
+              onChange={(event) => {
+                setMunicipalityFilter(event.target.value);
                 setBarangayFilter("");
+                setCurrentPage(1);
               }}
             >
-              <option value="">All Municipalities</option>
-              {dynamicMunicipalities.map((mun) => (
-                <option key={mun} value={mun}>
-                  {mun}
+              <option value="">All municipalities</option>
+              {municipalityOptions.map((municipality) => (
+                <option key={municipality} value={municipality}>
+                  {municipality}
                 </option>
               ))}
             </select>
 
             {municipalityFilter && (
               <select
-                className="select select-bordered select-sm text-sm rounded-xl bg-base-100 border-base-300 text-base-content focus:border-primary transition-all duration-200 animate-fade-in font-medium"
+                className={ui.select}
+                aria-label={`Filter ${activeRole}s by barangay`}
                 value={barangayFilter}
-                onChange={(e) => setBarangayFilter(e.target.value)}
+                onChange={(event) => {
+                  setBarangayFilter(event.target.value);
+                  setCurrentPage(1);
+                }}
               >
-                <option value="">All Barangays</option>
-                {activeBarangays.map((brgy) => (
-                  <option key={brgy} value={brgy}>
-                    {brgy}
+                <option value="">All barangays</option>
+                {barangayOptions.map((barangay) => (
+                  <option key={barangay} value={barangay}>
+                    {barangay}
                   </option>
                 ))}
               </select>
             )}
-            <span className="text-xs text-base-content/75 font-semibold ml-auto whitespace-nowrap px-1">
+
+            <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/70">
               {isLoading
-                ? "Fetching ledger..."
-                : `${filteredUsers.length} entries registered`}
+                ? `Loading ${activeRole}s...`
+                : isFetching
+                  ? "Updating directory..."
+                  : `${total} ${activeRole}${total === 1 ? "" : "s"}`}
             </span>
           </div>
 
-          {/* Database Grid Table */}
-          <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
+          <div className="flex-1 overflow-x-auto overflow-y-auto">
+            <table className={ui.table} aria-label={`${roleLabel} directory`}>
               <thead>
-                <tr className="bg-base-300 text-base-content text-[11px] rounded-lg font-bold uppercase tracking-wider select-none">
-                  <th className="p-3.5 pl-5">Full Name</th>
-                  <th className="p-3.5">Contact Number</th>
-                  <th className="p-3.5">Email Address</th>
-                  <th className="p-3.5">System Role</th>
-                  <th className="p-3.5 pr-5 text-right">Barangay Sector</th>
-                  <th className="p-3.5 pr-5 text-right">Actions</th>
+                <tr className={ui.tableHead}>
+                  <th className="p-3.5 pl-5">Full name</th>
+                  <th className="p-3.5">Contact number</th>
+                  <th className="p-3.5">Email address</th>
+                  <th className="p-3.5">Role</th>
+                  <th className="p-3.5 pr-5 text-right">Location</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+              <tbody className={ui.tableBody}>
                 {isLoading ? (
-                  [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
-                ) : filteredUsers.length === 0 ? (
+                  [...Array(6)].map((_, index) => (
+                    <TableRowSkeleton key={index} />
+                  ))
+                ) : isError ? (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className="text-center p-12 text-base-content/75 font-medium"
-                    >
-                      No registered stakeholders matching filter criteria found.
+                    <td colSpan={5} className="p-6">
+                      <div
+                        role="alert"
+                        className="alert alert-error alert-soft sm:alert-horizontal"
+                      >
+                        <span>{roleLabel} records could not be loaded.</span>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => refetch()}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : users.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-6">
+                      <div className={ui.empty}>
+                        {hasFilters
+                          ? `No ${activeRole}s match the current search or filters.`
+                          : `No ${activeRole}s found.`}
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((u) => {
-                    return (
-                      <tr
-                        key={u._id}
-                        className="hover:bg-base-300/60 transition-colors cursor-pointer"
-                      >
-                        <td className="p-3.5 pl-5">
-                          <div className="flex items-center gap-2.5">
-                            <UserAvatar
-                              name={u.name}
-                              imageUrl={u.imageUrl || u.profileImage}
-                              size={32}
-                              sizeClass="h-8 w-8"
-                            />
-                            <span className="font-bold text-base-content">
-                              {u.name}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3.5 font-mono text-base-content font-medium">
-                          {u.phoneNumber || "No contact"}
-                        </td>
-                        <td className="p-3.5 text-base-content/90 font-medium">
-                          {u.email || "—"}
-                        </td>
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="badge badge-outline border-base-300 text-base-content/90 font-bold uppercase tracking-wider text-[9px] px-2.5 py-1">
-                              {u.role || activeTab}
-                            </span>
-                            {!u.clerkId && (
-                              <span className="badge badge-warning badge-soft badge-sm">
-                                Invited
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3.5 pr-5 text-right font-semibold text-base-content/90">
-                          <div className="flex items-center justify-end gap-1">
-                            <MapPin
-                              size={11}
-                              className="text-base-content/80 shrink-0"
-                            />
-                            <span>
-                              {u.address?.barangay || "Oton"},{" "}
-                              {u.address?.city || "Oton"}, Iloilo
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3.5 pr-5 text-right">
-                          <button
-                            className="btn btn-ghost btn-sm btn-square text-base-content/90 hover:text-base-content hover:bg-base-300"
-                            aria-label="Actions"
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
+                  users.map((user) => (
+                    <tr key={user._id} className={ui.tableRow}>
+                      <td className="p-3.5 pl-5">
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar
+                            name={user.name}
+                            imageUrl={user.imageUrl || user.profileImage}
+                            size={32}
+                            sizeClass="h-8 w-8"
+                          />
+                          <span className="font-bold text-base-content">
+                            {user.name || "Not recorded"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-3.5 font-mono font-medium text-base-content">
+                        {user.phoneNumber || "Not recorded"}
+                      </td>
+                      <td className="p-3.5 font-medium text-base-content/90">
+                        {user.email || "Not recorded"}
+                      </td>
+                      <td className="p-3.5">
+                        <span className="badge badge-outline badge-sm font-semibold capitalize">
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="p-3.5 pr-5 text-right font-semibold text-base-content/90">
+                        <span className="inline-flex items-start justify-end gap-1.5">
+                          <MapPin
+                            size={12}
+                            className="mt-0.5 shrink-0 text-base-content/70"
+                            aria-hidden="true"
+                          />
+                          {formatLocation(user)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
           </div>
-        </div>
+
+          {!isError && totalPages > 1 && (
+            <div className="mt-3 flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs font-medium text-base-content/70">
+                Showing {startItem}–{endItem} of {total} {activeRole}s
+              </span>
+              <div
+                className="join self-end sm:self-auto"
+                aria-label={`${roleLabel} pagination`}
+              >
+                <button
+                  type="button"
+                  className="btn btn-sm join-item"
+                  aria-label={`Previous ${activeRole} page`}
+                  disabled={currentPage === 1 || isFetching}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                >
+                  <ChevronLeft size={14} aria-hidden="true" />
+                </button>
+                <span
+                  className="btn btn-sm join-item pointer-events-none"
+                  aria-current="page"
+                >
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm join-item"
+                  aria-label={`Next ${activeRole} page`}
+                  disabled={currentPage === totalPages || isFetching}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                >
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );
