@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { useApi } from "@/lib/api";
+import { signOutWithPushCleanup } from "@/lib/notifications";
 import { useTranslation } from "../../../contexts/TranslationContext";
 import {
   getFarmerProfile,
@@ -474,7 +475,7 @@ export const useFarmerProfile = () => {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      await signOutWithPushCleanup(api, signOut);
       router.replace("/(auth)");
     } catch (e) {}
   };

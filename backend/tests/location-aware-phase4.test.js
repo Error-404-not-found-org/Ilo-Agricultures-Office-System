@@ -29,6 +29,9 @@ test("Location-Aware Phase 4: getTechnicianRequests calculates Haversine distanc
   const originalFindHealth = HealthRequest.find;
   const originalFindTask = Task.find;
   const originalFindUser = User.find;
+  const originalCountAI = Insemination.countDocuments;
+  const originalCountHealth = HealthRequest.countDocuments;
+  const originalCountTask = Task.countDocuments;
 
   // Stubs
   User.find = () => ({
@@ -93,10 +96,13 @@ test("Location-Aware Phase 4: getTechnicianRequests calculates Haversine distanc
     populate() { return this; },
     lean() { return Promise.resolve([]); }
   });
+  Insemination.countDocuments = () => Promise.resolve(1);
+  HealthRequest.countDocuments = () => Promise.resolve(1);
+  Task.countDocuments = () => Promise.resolve(0);
 
   // Technician coordinates are at Oton Municipal Hall: 10.693, 122.474
   const req = {
-    user: { _id: "tech-1", role: "technician" },
+    user: { _id: "507f1f77bcf86cd799439001", role: "technician" },
     query: {
       nearLat: "10.693",
       nearLng: "122.474",
@@ -121,4 +127,7 @@ test("Location-Aware Phase 4: getTechnicianRequests calculates Haversine distanc
   HealthRequest.find = originalFindHealth;
   Task.find = originalFindTask;
   User.find = originalFindUser;
+  Insemination.countDocuments = originalCountAI;
+  HealthRequest.countDocuments = originalCountHealth;
+  Task.countDocuments = originalCountTask;
 });

@@ -74,11 +74,56 @@ export function findMunicipalityByText(localityName, provinceName) {
   return null;
 }
 
+const isMunicipalityOrCity = (item) =>
+  item?.geographicLevel === "Mun" || item?.geographicLevel === "City";
+
 /**
- * Get municipality by exactly matching its 9-digit code
+ * Resolve either the canonical PSGC code or a historical correspondence code.
+ * The returned registry entry always exposes its canonical value in `psgcCode`.
  */
 export function getMunicipalityByCode(code) {
   loadPSGCData();
   if (!code) return null;
-  return psgcData.find((item) => item.code === String(code)) || null;
+  const normalizedCode = String(code).trim();
+  return (
+    psgcData.find(
+      (item) =>
+        isMunicipalityOrCity(item) &&
+        (item.psgcCode === normalizedCode ||
+          item.correspondenceCode === normalizedCode),
+    ) || null
+  );
+}
+
+export function normalizeMunicipalityCode(code) {
+  if (!code) return null;
+  return getMunicipalityByCode(code)?.psgcCode || String(code).trim() || null;
+}
+
+/**
+ * Canonicalize a municipality payload for dispatch writes and comparisons.
+ * Code lookup is authoritative. Text lookup is used only when no code exists.
+ */
+export function canonicalizeMunicipality(input = {}) {
+  loadPSGCData();
+
+  const suppliedCode = String(input.municipalityCode || "").trim();
+  const match = suppliedCode
+    ? getMunicipalityByCode(suppliedCode)
+    : findMunicipalityByText(input.municipalityName, input.provinceName);
+
+  if (!match) return null;
+
+  const province = psgcData.find(
+    (item) =>
+      item.geographicLevel === "Prov" && item.psgcCode === match.provinceCode,
+  );
+
+  return {
+    municipalityCode: match.psgcCode,
+    municipalityName: match.name,
+    localityType: match.geographicLevel === "City" ? "city" : "municipality",
+    provinceCode: match.provinceCode,
+    provinceName: province?.name || input.provinceName || null,
+  };
 }

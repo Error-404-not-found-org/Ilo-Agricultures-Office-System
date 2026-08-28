@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   ACTIVE_AI_REQUEST_CONFLICT_MESSAGE,
   activeAIRequestQuery,
+  assertVerifiedReturnToHeatAIAttempt,
   createAIRequestWithGuard,
   isVerifiedFailedAIAttempt,
+  isVerifiedReturnToHeatAIAttempt,
 } from "../src/services/ai-request-creation.service.js";
 import {
   ACTIVE_AI_REQUEST_STATUSES,
@@ -14,7 +16,10 @@ import {
 } from "../src/domain/status-vocabulary.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Animal } from "../src/models/animal.model.js";
+import { Pregnancy } from "../src/models/pregnancy.model.js";
+import { Task } from "../src/models/task.model.js";
 import { createAIRequest } from "../src/controllers/ai-request.controllers.js";
+import { createInsemination } from "../src/controllers/insemination.controllers.js";
 import { claimRequest } from "../src/controllers/technician.controllers.js";
 import {
   AI_REQUEST_INVALIDATION_KEYS,
@@ -28,6 +33,9 @@ const originalCreate = Insemination.create;
 const originalFindById = Insemination.findById;
 const originalFindOneAndUpdate = Insemination.findOneAndUpdate;
 const originalAnimalFindOne = Animal.findOne;
+const originalAnimalFindById = Animal.findById;
+const originalPregnancyFindOne = Pregnancy.findOne;
+const originalTaskFind = Task.find;
 
 const installMemoryStore = (seed = []) => {
   const records = seed.map((record, index) => ({
@@ -85,6 +93,36 @@ test.afterEach(() => {
   Insemination.findById = originalFindById;
   Insemination.findOneAndUpdate = originalFindOneAndUpdate;
   Animal.findOne = originalAnimalFindOne;
+  Animal.findById = originalAnimalFindById;
+  Pregnancy.findOne = originalPregnancyFindOne;
+  Task.find = originalTaskFind;
+});
+
+const installDirectInseminationEligibility = () => {
+  Animal.findById = async () => ({
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    gender: "Female",
+    birthDate: new Date("2020-01-01T00:00:00.000Z"),
+    species: "Cattle",
+    breed: "Native",
+    reproductiveStatus: "Normal",
+  });
+  Pregnancy.findOne = () => ({ lean: async () => null });
+  Task.find = () => ({ lean: async () => [] });
+};
+
+const responseRecorder = () => ({
+  statusCode: 200,
+  body: null,
+  status(code) {
+    this.statusCode = code;
+    return this;
+  },
+  json(payload) {
+    this.body = payload;
+    return this;
+  },
 });
 
 test("first request for an eligible animal succeeds", async () => {
@@ -97,6 +135,31 @@ test("first request for an eligible animal succeeds", async () => {
   assert.equal(result.status, AI_STATUS.PENDING);
   assert.equal(records.length, 1);
   assert.equal(result.activeRequestKey, "animal-1");
+});
+
+test("direct done creation stamps server completion time and rejects a client timestamp", async () => {
+  const records = installMemoryStore();
+  const serviceOccurredAt = new Date("2026-08-13T01:00:00.000Z");
+  const clientSuppliedCompletedAt = new Date("2000-01-01T00:00:00.000Z");
+  const beforeCommit = new Date();
+
+  const result = await createAIRequestWithGuard({
+    animalId: "animal-1",
+    farmerId: "farmer-1",
+    status: AI_STATUS.DONE,
+    inseminationDate: serviceOccurredAt,
+    completedAt: clientSuppliedCompletedAt,
+  });
+
+  assert.equal(records.length, 1);
+  assert.equal(result.inseminationDate, serviceOccurredAt);
+  assert.ok(result.completedAt instanceof Date);
+  assert.notEqual(
+    result.completedAt.getTime(),
+    clientSuppliedCompletedAt.getTime(),
+  );
+  assert.ok(result.completedAt >= beforeCommit);
+  assert.ok(result.completedAt > serviceOccurredAt);
 });
 
 for (const status of [
@@ -179,14 +242,236 @@ test("Attempt 2 links to Attempt 1 and preserves the breeding series", async () 
       isSuccess: false,
       outcome: "Failed (Re-heat)",
       outcomeVerificationStatus: "verified",
+      farmerOutcomeReport: "return_to_heat",
+      failureReason: "return_to_heat",
+      outcomeConfirmationSource: "technician_return_to_heat",
     },
   ]);
+  const attempt2 = await createAIRequestWithGuard(
+    {
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.PENDING,
+      previousAttemptId: "attempt-1",
+      attemptSeriesId: "series-1",
+    },
+    { requireVerifiedReturnToHeat: true },
+  );
+
+  assert.equal(attempt2.attemptNumber, 2);
+  assert.equal(attempt2.previousAttemptId, "attempt-1");
+  assert.equal(attempt2.attemptSeriesId, "series-1");
+});
+
+test("alternate technician create endpoint preserves an initial direct AI service", async () => {
+  const records = installMemoryStore();
+  installDirectInseminationEligibility();
+  const res = responseRecorder();
+
+  await createInsemination(
+    {
+      user: { _id: "technician-1", role: "technician" },
+      body: {
+        farmerId: "farmer-1",
+        animalId: "animal-1",
+        inseminationDate: "2026-08-13T01:00:00.000Z",
+        sireBreed: "Brahman",
+        sireCode: "BR-101",
+        estrus: "Natural",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.insemination.attemptNumber, 1);
+  assert.equal(res.body.insemination.previousAttemptId, null);
+  assert.equal(records.length, 1);
+});
+
+test("alternate technician create endpoint rejects an unverified subsequent attempt", async () => {
+  const records = installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      isSuccess: true,
+      outcome: "Pregnant",
+    },
+  ]);
+  installDirectInseminationEligibility();
+  const res = responseRecorder();
+
+  await createInsemination(
+    {
+      user: { _id: "technician-1", role: "technician" },
+      body: {
+        farmerId: "farmer-1",
+        animalId: "animal-1",
+        previousAttemptId: "attempt-1",
+        inseminationDate: "2026-08-13T01:00:00.000Z",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.code, "PREVIOUS_AI_FAILURE_NOT_VERIFIED");
+  assert.equal(records.length, 1);
+});
+
+test("alternate technician create endpoint links a verified next attempt", async () => {
+  installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      attemptSeriesId: "series-1",
+      isSuccess: false,
+      outcome: "Failed (Re-heat)",
+      outcomeVerificationStatus: "verified",
+    },
+  ]);
+  installDirectInseminationEligibility();
+  const res = responseRecorder();
+
+  await createInsemination(
+    {
+      user: { _id: "technician-1", role: "technician" },
+      body: {
+        farmerId: "farmer-1",
+        animalId: "animal-1",
+        previousAttemptId: "attempt-1",
+        inseminationDate: "2026-08-13T01:00:00.000Z",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.insemination.attemptNumber, 2);
+  assert.equal(res.body.insemination.previousAttemptId, "attempt-1");
+  assert.equal(res.body.insemination.attemptSeriesId, "series-1");
+});
+
+test("a subsequent attempt cannot bypass verified-failure eligibility", async () => {
+  installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      isSuccess: true,
+      outcome: "Pregnant",
+    },
+  ]);
+
+  await assert.rejects(
+    createAIRequestWithGuard({
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.APPROVED,
+    }),
+    (error) =>
+      error.status === 409 &&
+      error.code === "PREVIOUS_AI_FAILURE_NOT_VERIFIED",
+  );
+});
+
+test("a previous attempt from another animal is rejected", async () => {
+  installMemoryStore([
+    {
+      _id: "other-animal-attempt",
+      animalId: "animal-2",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      isSuccess: false,
+      outcome: "Failed (Re-heat)",
+      outcomeVerificationStatus: "verified",
+    },
+  ]);
+
+  await assert.rejects(
+    createAIRequestWithGuard({
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.APPROVED,
+      previousAttemptId: "other-animal-attempt",
+    }),
+    (error) =>
+      error.status === 404 && error.code === "PREVIOUS_AI_ATTEMPT_NOT_FOUND",
+  );
+});
+
+test("a stale previous attempt cannot replace the latest performed attempt", async () => {
+  installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-05-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      isSuccess: false,
+      outcome: "Failed (Re-heat)",
+      outcomeVerificationStatus: "verified",
+    },
+    {
+      _id: "attempt-2",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 2,
+      isSuccess: false,
+      outcome: "Failed (Negative PD)",
+      outcomeVerificationStatus: "verified",
+    },
+  ]);
+
+  await assert.rejects(
+    createAIRequestWithGuard({
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.APPROVED,
+      previousAttemptId: "attempt-1",
+    }),
+    (error) =>
+      error.status === 409 && error.code === "PREVIOUS_AI_ATTEMPT_NOT_LATEST",
+  );
+});
+
+test("a verified latest failure is linked implicitly and preserves its series", async () => {
+  installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      attemptSeriesId: "series-1",
+      isSuccess: false,
+      outcome: "Failed (Re-heat)",
+      outcomeVerificationStatus: "verified",
+    },
+  ]);
+
   const attempt2 = await createAIRequestWithGuard({
     animalId: "animal-1",
     farmerId: "farmer-1",
-    status: AI_STATUS.PENDING,
-    previousAttemptId: "attempt-1",
-    attemptSeriesId: "series-1",
+    status: AI_STATUS.APPROVED,
+    attemptSeriesId: "untrusted-series",
   });
 
   assert.equal(attempt2.attemptNumber, 2);
@@ -222,6 +507,148 @@ test("only a completed and verified failed AI attempt can start re-insemination"
     }),
     true,
   );
+});
+
+test("only the canonical technician-confirmed return-to-heat outcome resolves monitoring", () => {
+  const canonical = {
+    status: AI_STATUS.DONE,
+    farmerOutcomeReport: "return_to_heat",
+    isSuccess: false,
+    outcome: "Failed (Re-heat)",
+    outcomeVerificationStatus: "verified",
+    outcomeConfirmationSource: "technician_return_to_heat",
+    failureReason: "return_to_heat",
+  };
+
+  assert.equal(isVerifiedReturnToHeatAIAttempt(canonical), true);
+  assert.equal(
+    isVerifiedReturnToHeatAIAttempt({
+      ...canonical,
+      outcomeVerificationStatus: "reported",
+      outcomeConfirmationSource: "farmer_return_to_heat",
+    }),
+    false,
+  );
+  assert.equal(
+    isVerifiedReturnToHeatAIAttempt({
+      ...canonical,
+      verificationStatus: "rejected",
+      isSuccess: null,
+      outcome: "Pending",
+    }),
+    false,
+  );
+});
+
+test("farmer re-insemination authority rejects every non-authoritative outcome", () => {
+  const canonical = {
+    status: AI_STATUS.DONE,
+    farmerOutcomeReport: "return_to_heat",
+    isSuccess: false,
+    outcome: "Failed (Re-heat)",
+    outcomeVerificationStatus: "verified",
+    outcomeConfirmationSource: "technician_return_to_heat",
+    failureReason: "return_to_heat",
+  };
+  const rejectedCases = [
+    {
+      name: "farmer report only",
+      value: {
+        ...canonical,
+        isSuccess: null,
+        outcome: "Pending",
+        outcomeVerificationStatus: "reported",
+        outcomeConfirmationSource: "farmer_return_to_heat",
+        failureReason: null,
+      },
+    },
+    {
+      name: "cannot confirm",
+      value: {
+        ...canonical,
+        isSuccess: null,
+        outcome: "Pending",
+        verificationStatus: "rejected",
+        outcomeVerificationStatus: "pending",
+        outcomeConfirmationSource: null,
+        failureReason: null,
+      },
+    },
+    {
+      name: "possible pregnancy",
+      value: {
+        ...canonical,
+        farmerOutcomeReport: "possible_pregnancy",
+        isSuccess: null,
+        outcome: "Pending",
+        outcomeVerificationStatus: "reported",
+        outcomeConfirmationSource: "farmer_possible_pregnancy",
+        failureReason: null,
+      },
+    },
+    {
+      name: "unsure",
+      value: {
+        ...canonical,
+        farmerOutcomeReport: "unsure",
+        isSuccess: null,
+        outcome: "Pending",
+        outcomeVerificationStatus: "pending",
+        outcomeConfirmationSource: null,
+        failureReason: null,
+      },
+    },
+  ];
+
+  for (const scenario of rejectedCases) {
+    assert.throws(
+      () => assertVerifiedReturnToHeatAIAttempt(scenario.value),
+      (error) => {
+        assert.equal(error.status, 409, scenario.name);
+        assert.equal(
+          error.code,
+          "PREVIOUS_AI_FAILURE_NOT_VERIFIED",
+          scenario.name,
+        );
+        return true;
+      },
+    );
+  }
+  assert.equal(assertVerifiedReturnToHeatAIAttempt(canonical), canonical);
+});
+
+test("write-boundary recheck rejects an unconfirmed return-to-heat with no Attempt 2 side effect", async () => {
+  const records = installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      farmerOutcomeReport: "return_to_heat",
+      isSuccess: null,
+      outcome: "Pending",
+      outcomeVerificationStatus: "reported",
+      outcomeConfirmationSource: "farmer_return_to_heat",
+    },
+  ]);
+
+  await assert.rejects(
+    createAIRequestWithGuard(
+      {
+        animalId: "animal-1",
+        farmerId: "farmer-1",
+        status: AI_STATUS.PENDING,
+        previousAttemptId: "attempt-1",
+      },
+      { requireVerifiedReturnToHeat: true },
+    ),
+    (error) =>
+      error.status === 409 &&
+      error.code === "PREVIOUS_AI_FAILURE_NOT_VERIFIED",
+  );
+  assert.equal(records.length, 1);
 });
 
 test("duplicate conflict is specific and includes the existing request", async () => {
@@ -307,6 +734,10 @@ test("two technicians cannot claim the same request concurrently", async () => {
     animalId: "animal-1",
     status: "pending",
     approvedBy: null,
+    dispatch: {
+      stage: "local",
+      location: { municipalityCode: "063034000" },
+    },
   });
   let claimed = false;
   Insemination.findOneAndUpdate = () => {
@@ -337,9 +768,23 @@ test("two technicians cannot claim the same request concurrently", async () => {
   const app = { get: () => ({ to: () => ({ emit: () => {} }) }) };
   const firstRes = makeRes();
   const secondRes = makeRes();
+  const readyTechnician = (id) => ({
+    _id: id,
+    role: "technician",
+    status: "active",
+    deletedAt: null,
+    isVerified: true,
+    profileClaimStatus: "claimed",
+    dispatchProfile: {
+      acceptsNewRequests: true,
+      availabilityStatus: "available",
+      serviceCapabilities: ["AI"],
+      serviceMunicipalities: [{ municipalityCode: "063034000" }],
+    },
+  });
   await Promise.all([
-    claimRequest({ params: { type: "ai", id: "request-1" }, user: { _id: "technician-1", role: "technician" }, app }, firstRes),
-    claimRequest({ params: { type: "ai", id: "request-1" }, user: { _id: "technician-2", role: "technician" }, app }, secondRes),
+    claimRequest({ params: { type: "ai", id: "request-1" }, user: readyTechnician("technician-1"), app }, firstRes),
+    claimRequest({ params: { type: "ai", id: "request-1" }, user: readyTechnician("technician-2"), app }, secondRes),
   ]);
   assert.deepEqual([firstRes.statusCode, secondRes.statusCode].sort(), [200, 409]);
   assert.equal(secondRes.body.code, "REQUEST_ALREADY_CLAIMED");

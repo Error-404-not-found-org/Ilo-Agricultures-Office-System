@@ -155,9 +155,11 @@ test("AI recording fields: technician notes reject invalid types and excessive l
 test("AI schema: new fields are optional for historical records and validate new values", () => {
   const visitPeriodPath = Insemination.schema.path("visitPeriod");
   const semenDosesPath = Insemination.schema.path("semenDosesUsed");
+  const completedAtPath = Insemination.schema.path("completedAt");
   assert.deepEqual(visitPeriodPath.enumValues, ["morning", "afternoon"]);
   assert.equal(Boolean(visitPeriodPath.isRequired), false);
   assert.equal(Boolean(semenDosesPath.isRequired), false);
+  assert.equal(Boolean(completedAtPath.isRequired), false);
   assert.equal(typeof semenDosesPath.defaultValue, "function");
 
   const historical = Insemination.hydrate({
@@ -171,6 +173,7 @@ test("AI schema: new fields are optional for historical records and validate new
   assert.equal(historical.semenDosesUsed, undefined);
   assert.equal(historical.sireCode, undefined);
   assert.equal(historical.technicianNote, "");
+  assert.equal(historical.completedAt, null);
 
   const newPending = new Insemination({
     farmerId: ids.farmer,
@@ -192,6 +195,7 @@ test("AI schema: new fields are optional for historical records and validate new
     status: "done",
     visitPeriod: "AFTERNOON",
     semenDosesUsed: 2,
+    completedAt: new Date("2026-08-01T08:30:00.000Z"),
   });
   assert.equal(valid.validateSync(), undefined);
   assert.equal(valid.visitPeriod, "afternoon");

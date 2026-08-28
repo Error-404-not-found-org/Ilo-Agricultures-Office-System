@@ -5,8 +5,8 @@ import { useFocusEffect } from "expo-router";
 import { useTheme } from "@/lib/theme";
 import {
   discardQueueItem,
-  getOfflineQueue,
-  getSyncHistory,
+  getOfflineQueueForOwner,
+  getSyncHistoryForOwner,
   retryQueueItem,
   processOfflineQueue,
   type QueuedMutation,
@@ -39,8 +39,8 @@ export default function FarmerSyncCenter() {
     setLoading(true);
     try {
       const [pending, synced] = await Promise.all([
-        getOfflineQueue(),
-        getSyncHistory(),
+        getOfflineQueueForOwner(currentUserId),
+        getSyncHistoryForOwner(currentUserId),
       ]);
       setQueue(pending);
       setHistory(synced);
@@ -49,7 +49,7 @@ export default function FarmerSyncCenter() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUserId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -60,8 +60,8 @@ export default function FarmerSyncCenter() {
   const discard = (item: QueuedMutation) => setDiscardTarget(item);
 
   const confirmDiscard = async () => {
-    if (!discardTarget) return;
-    await discardQueueItem(discardTarget.id);
+    if (!discardTarget || !currentUserId) return;
+    await discardQueueItem(discardTarget.id, currentUserId);
     setDiscardTarget(null);
     load();
   };
@@ -128,8 +128,13 @@ export default function FarmerSyncCenter() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={async () => {
-                      await retryQueueItem(item.id);
-                      await processOfflineQueue(api, () => currentUserId);
+                      if (!currentUserId) return;
+                      await retryQueueItem(item.id, currentUserId);
+                      await processOfflineQueue(
+                        api,
+                        currentUserId,
+                        () => currentUserId,
+                      );
                       await load();
                     }}
                     className="h-9 px-3 flex-row items-center justify-center"

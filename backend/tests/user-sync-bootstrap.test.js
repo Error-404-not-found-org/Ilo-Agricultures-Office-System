@@ -72,13 +72,26 @@ describe("User Sync Bootstrap Hotfix Tests", () => {
     });
 
     it("5. Pending Technician is claimed through verified normalized email", async () => {
-      await User.create({ name: "Tech Pending", email: "tech@example.com", role: "technician", profileClaimStatus: "unclaimed", isVerified: false });
+      await User.create({
+        name: "Tech Pending",
+        email: "tech@example.com",
+        role: "technician",
+        profileClaimStatus: "unclaimed",
+        isVerified: false,
+        dispatchProfile: {
+          serviceMunicipalities: [],
+          availabilityStatus: "off_duty",
+          acceptsNewRequests: false,
+        },
+      });
       mockClerkUser({ id: "clerk_tech", emailAddresses: [{ id: "email_1", emailAddress: "TECH@example.com", verification: { status: "verified" } }] });
 
       const user = await resolveOrSyncUser("clerk_tech");
       assert.strictEqual(user.role, "technician");
       assert.strictEqual(user.clerkId, "clerk_tech");
       assert.strictEqual(user.profileClaimStatus, "claimed");
+      assert.strictEqual(user.dispatchProfile.acceptsNewRequests, false);
+      assert.deepStrictEqual(user.dispatchProfile.serviceMunicipalities, []);
     });
 
     it("6. Technician role remains Technician", async () => {
@@ -94,6 +107,61 @@ describe("User Sync Bootstrap Hotfix Tests", () => {
       await resolveOrSyncUser("clerk_tech3");
       const count = await User.countDocuments({ email: "tech3@example.com" });
       assert.strictEqual(count, 1);
+    });
+
+    it("7a. Invited Farmer bootstrap claims the existing profile without replacing domain data", async () => {
+      const existing = await User.create({
+        name: "Invited Farmer",
+        email: "invited.farmer@example.com",
+        phoneNumber: "09171234567",
+        normalizedPhoneNumber: "+639171234567",
+        address: { barangay: "Poblacion", city: "Oton", province: "Iloilo" },
+        role: "farmer",
+        registeredByTechnician: true,
+        profileClaimStatus: "unclaimed",
+        isVerified: false,
+      });
+      mockClerkUser({
+        id: "clerk_farmer_claim",
+        emailAddresses: [{
+          id: "email_1",
+          emailAddress: "INVITED.FARMER@example.com",
+          verification: { status: "verified" },
+        }],
+      });
+
+      const resolved = await resolveOrSyncUser("clerk_farmer_claim");
+      assert.strictEqual(resolved._id.toString(), existing._id.toString());
+      assert.strictEqual(resolved.role, "farmer");
+      assert.strictEqual(resolved.profileClaimStatus, "claimed");
+      assert.ok(resolved.profileClaimedAt instanceof Date);
+      assert.strictEqual(resolved.profileClaimedByClerkId, "clerk_farmer_claim");
+      assert.strictEqual(resolved.phoneNumber, "09171234567");
+      assert.strictEqual(resolved.address.barangay, "Poblacion");
+      assert.strictEqual(
+        await User.countDocuments({ normalizedEmail: "invited.farmer@example.com" }),
+        1,
+      );
+    });
+
+    it("7b. Existing Clerk-linked Farmer with stale claim metadata is reconciled", async () => {
+      const existing = await User.create({
+        name: "Linked Farmer",
+        email: "linked.farmer@example.com",
+        clerkId: "clerk_linked_farmer",
+        role: "farmer",
+        profileClaimStatus: "unclaimed",
+        registeredByTechnician: true,
+      });
+
+      const resolved = await resolveOrSyncUser("clerk_linked_farmer");
+      assert.strictEqual(resolved._id.toString(), existing._id.toString());
+      assert.strictEqual(resolved.profileClaimStatus, "claimed");
+      assert.ok(resolved.profileClaimedAt instanceof Date);
+      assert.strictEqual(
+        resolved.profileClaimedByClerkId,
+        "clerk_linked_farmer",
+      );
     });
 
     it("8. Existing Admin remains Admin", async () => {

@@ -18,7 +18,6 @@ import Modal from "../../components/ui/Modal";
 import UserAvatar from "../../components/ui/UserAvatar";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
-import { getCalendarTarget } from "../../utils/taskNavigation";
 import {
   getRequestWorkflowSummary,
   getTaskWorkflowSummary,
@@ -645,7 +644,7 @@ export default function DeploymentSchedule() {
                           requests: [],
                         });
                         navigate(
-                          `/technician/schedule/details?requestId=${encodeURIComponent(reqId)}`
+                          `/technician/requests?requestId=${encodeURIComponent(reqId)}&status=all`
                         );
                       }}
                       className="btn btn-sm btn-primary px-4 gap-2 font-black uppercase tracking-wider shadow-xs cursor-pointer w-full md:w-auto"

@@ -13,6 +13,7 @@ import { useUser, useAuth, useSignUp } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import { toast } from "sonner-native";
 import { useApi } from "@/lib/api";
+import { signOutWithPushCleanup } from "@/lib/notifications";
 import { Mail, ArrowRight, LogOut, RefreshCcw } from "lucide-react-native";
 
 const PRIMARY = "#074033";
@@ -136,7 +137,7 @@ export default function VerifyScreen() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    await signOutWithPushCleanup(api, signOut);
     router.replace("/(auth)");
   };
 

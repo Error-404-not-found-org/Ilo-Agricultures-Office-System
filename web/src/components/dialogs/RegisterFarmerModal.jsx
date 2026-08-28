@@ -84,14 +84,12 @@ const RegisterFarmerModal = ({
         return res.data;
       }
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       toast.success(farmer ? "Farmer profile updated successfully!" : "Farmer profile created successfully!");
-      queryClient.invalidateQueries({
-        queryKey: ["technician", "dashboard"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["technician", "farmers"],
-      });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["technician"] }),
+        queryClient.invalidateQueries({ queryKey: ["farmers", "list"] }),
+      ]);
       onSuccess?.(result?.user || result?.data || result);
       onClose();
     },
@@ -189,6 +187,7 @@ const RegisterFarmerModal = ({
     <Modal
       isOpen={isOpen}
       onClose={() => !mutation.isPending && onClose()}
+      closeOnEscape
       title={farmer ? "Edit Farmer" : "Add New Farmer"}
       subtitle={farmer ? "Update the farmer's contact and location details." : "Register a new farmer to the system."}
       icon={<UserPlus size={22} className="text-primary" />}

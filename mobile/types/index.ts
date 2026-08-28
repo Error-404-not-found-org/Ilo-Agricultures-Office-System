@@ -1,4 +1,5 @@
 import type { QueuedMutation } from "../lib/offlineQueue";
+import type { FarmerHealthRequestDetails } from "../features/farmer-requests/utils/healthRequestInput";
 
 export type UserRole = "admin" | "technician" | "farmer";
 
@@ -20,6 +21,7 @@ export type ReproductiveStatus =
 
 export type RequestStatus =
   | "pending"
+  | "active"
   | "triaged"
   | "assigned"
   | "approved"
@@ -27,8 +29,30 @@ export type RequestStatus =
   | "in-progress"
   | "in_progress"
   | "done"
+  | "completed"
+  | "resolved"
   | "cancelled"
-  | "rejected";
+  | "rejected"
+  | "claimed"
+  | "unassigned"
+  | "declined";
+
+export type CanonicalHealthRequestStatus =
+  | "pending"
+  | "active"
+  | "in-progress"
+  | "resolved"
+  | "cancelled";
+
+export type CanonicalHealthRequestType =
+  | "health_concern"
+  | "medicine_request"
+  | "preventive_care"
+  | "other";
+
+export type HealthHandlingMethod = "advice" | "office_pickup" | "farm_visit";
+
+export type HealthPriority = "normal" | "urgent";
 
 export type ServiceType = "ai" | "health";
 
@@ -108,7 +132,6 @@ export interface Technician extends AppUser {
   assignedBarangays?: string[];
 }
 
-
 export interface FarmerStats {
   totalAnimals: number;
   activePregnancies: number;
@@ -163,6 +186,7 @@ export interface Animal {
   birthDate?: string;
   owner?: string | Farmer;
   reproductiveStatus?: ReproductiveStatus;
+  effectiveReproductiveStatus?: ReproductiveStatus;
   pregnancyStatus?: ReproductiveStatus;
   lastInseminationDate?: string;
   expectedCalvingDate?: string;
@@ -206,10 +230,17 @@ export interface AIRequest extends ServiceRequest {
   heatSigns?: string[];
   imageUrl?: string | null;
   technicianNote?: string | null;
-  cancellationStatus?: "requested" | "approved" | "rejected" | "cancelled" | "canceled" | null;
+  cancellationStatus?:
+    | "requested"
+    | "approved"
+    | "rejected"
+    | "cancelled"
+    | "canceled"
+    | null;
   cancellationReason?: string | null;
   cancellationResponseReason?: string | null;
   inseminationDate?: string;
+  entryMode?: "history_only" | "continue_tracking";
   isSuccess?: boolean | null;
   attemptNumber?: number;
   previousAttemptId?: string | AIRequest;
@@ -227,6 +258,16 @@ export interface AIRequest extends ServiceRequest {
   farmerObservationSigns?: string[];
   farmerObservationNotes?: string | null;
   evidencePhotos?: string[];
+  farmerPregnancyReport?: boolean;
+  pregnancyReportVerificationStatus?:
+    | "pending"
+    | "more_info_requested"
+    | "accepted"
+    | "rejected"
+    | null;
+  pregnancyReportReviewedBy?: string | Technician | null;
+  farmerPregnancyNotes?: string | null;
+  farmerPregnancyPhotos?: string[];
   verificationRequested?: boolean;
   verificationStatus?: "not_requested" | "pending" | "verified" | "rejected";
   verificationTaskId?: string;
@@ -234,24 +275,39 @@ export interface AIRequest extends ServiceRequest {
   technicianId?: string | Technician;
   nextAction?: ReproductionNextAction | null;
   nextActionAt?: string | null;
+  pregnancyFollowUpTask?: Record<string, any> | null;
 }
 
 export interface HealthRequest extends ServiceRequest {
   serviceType?: "health";
   symptoms?: string;
+  imageUrl?: string | null;
   handledBy?: string | Technician;
   requestType?: string;
-  urgency?: "low" | "medium" | "high" | "emergency";
+  urgency?: "low" | "medium" | "high" | "emergency" | "critical";
+  handlingMethod?: HealthHandlingMethod;
   photos?: string[];
   farmerNotes?: string;
+  requestDetails?: FarmerHealthRequestDetails;
   findings?: string;
   diagnosis?: string;
   treatment?: string;
   medicineGiven?: string;
   dosage?: string;
   followUpDate?: string;
-  assignedTechnicianId?: string | Technician;
-}
+  advice?: string;
+  technicianResponse?: {
+    pickup?: {
+      item?: string;
+      availabilityConfirmed?: boolean;
+      instructions?: string;
+      dosageOrUseInstructions?: string;
+      withdrawalGuidance?: string;
+    };
+  };
+    assignedTechnicianId?: string | Technician;
+    medicalRecordId?: string | null;
+  }
 
 export interface PregnancyRecord {
   _id: string;

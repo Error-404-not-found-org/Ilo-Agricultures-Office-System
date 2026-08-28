@@ -1,7 +1,6 @@
 import { HealthRequest } from "../models/health-request.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
-import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Insemination } from "../models/insemination.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
@@ -20,19 +19,48 @@ import {
   createHealthRequestWithGuard,
   findActiveHealthCase,
 } from "../services/health-request-creation.service.js";
-import { notifyUser } from "../services/notification-delivery.service.js";
+import {
+  notifyUser,
+  notifyUserBestEffort,
+} from "../services/notification-delivery.service.js";
 import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
 import {
+  assertVisitDaypartAvailable,
   hasVisitScheduleChanged,
   normalizeVisitPeriod,
   normalizeVisitScheduleDate,
 } from "../domain/visit-scheduling.js";
+import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
+import {
+  assertHealthRequestMutationOwnership,
+  buildHealthRequestMutationOwnershipGuard,
+} from "../policies/request.policy.js";
+import {
+  buildLegacyHealthSymptoms,
+  legacyRequestTypeForAssistance,
+  normalizeHealthRequestDetails,
+} from "../domain/health-request-input.js";
+import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
+import {
+  getFarmerInvitationRedirectUrl,
+  resolveOrCreateAssistedFarmer,
+} from "../services/farmer-profile-resolution.service.js";
+import { resolveRequestNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const { animalId, requestType, symptoms, urgency, imageUrl, farmerNotes, photos } = req.body;
+    const {
+      animalId,
+      requestType,
+      symptoms,
+      urgency,
+      imageUrl,
+      farmerNotes,
+      photos,
+      requestDetails,
+    } = req.body;
     const normalizedUrgency = urgency === "critical" ? "emergency" : (urgency || "medium");
     if (!["low", "medium", "high", "emergency"].includes(normalizedUrgency)) {
       return res.status(400).json({ message: "Invalid health urgency value." });
@@ -41,8 +69,22 @@ export const createHealthRequest = async (req, res) => {
     if (!animalId) {
       return res.status(400).json({ message: "Please select an animal." });
     }
-    if (!symptoms || symptoms.trim() === "") {
-      return res.status(400).json({ message: "Please describe the symptoms or issue." });
+    const normalizedFarmerNotes =
+      typeof farmerNotes === "string" ? farmerNotes.trim() : "";
+    const normalizedRequestDetails = normalizeHealthRequestDetails(
+      requestDetails,
+      { legacyFarmerNotes: normalizedFarmerNotes },
+    );
+    const normalizedSymptoms =
+      typeof symptoms === "string" && symptoms.trim()
+        ? symptoms.trim()
+        : normalizedRequestDetails
+          ? buildLegacyHealthSymptoms(normalizedRequestDetails)
+          : "";
+    if (!normalizedSymptoms) {
+      return res.status(400).json({
+        message: "Please describe the symptoms or issue.",
+      });
     }
 
     // Verify the animal belongs to this farmer
@@ -51,7 +93,11 @@ export const createHealthRequest = async (req, res) => {
       return res.status(404).json({ message: "Animal not found or does not belong to you." });
     }
 
-    const normalizedRequestType = requestType || "disease";
+    const normalizedRequestType = normalizedRequestDetails
+      ? legacyRequestTypeForAssistance(
+          normalizedRequestDetails.assistanceRequested,
+        )
+      : requestType || "disease";
     const existingActiveRequest = await findActiveHealthCase(
       animalId,
       normalizedRequestType,
@@ -76,8 +122,6 @@ export const createHealthRequest = async (req, res) => {
       resolvedAt: new Date()
     };
 
-    const normalizedFarmerNotes = typeof farmerNotes === "string" ? farmerNotes.trim() : "";
-
     if (photos !== undefined) {
       if (!Array.isArray(photos) || !photos.every(p => typeof p === "string")) {
         return res.status(400).json({ code: "INVALID_PHOTOS", message: "Photos must be an array of strings." });
@@ -92,10 +136,15 @@ export const createHealthRequest = async (req, res) => {
       farmerId,
       animalId,
       requestType: normalizedRequestType,
-      symptoms: symptoms.trim(),
+      symptoms: normalizedSymptoms,
       urgency: normalizedUrgency,
       imageUrl: imageUrl || "",
-      farmerNotes: normalizedFarmerNotes,
+      farmerNotes: normalizedRequestDetails
+        ? normalizedRequestDetails.farmerDescription
+        : normalizedFarmerNotes,
+      ...(normalizedRequestDetails
+        ? { requestDetails: normalizedRequestDetails }
+        : {}),
       photos: normalizedPhotos,
       dispatch: dispatchSnapshot,
     });
@@ -154,7 +203,7 @@ export const getMyHealthRequests = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: requests,
+      data: requests.map(buildFarmerHealthRequest),
       total,
       page: parseInt(page),
       pages: Math.ceil(total / parseInt(limit))
@@ -217,8 +266,22 @@ export const dismissHealthRequestForFarmer = async (req, res) => {
 // GET /api/health-request  — all requests (technician/admin)
 export const getAllHealthRequests = async (req, res) => {
   try {
+    if (!["technician", "admin"].includes(req.user?.role)) {
+      return res.status(403).json({
+        message: "Only technicians or administrators can view all health requests.",
+        code: "HEALTH_REQUEST_BULK_ACCESS_FORBIDDEN",
+      });
+    }
+
     const { status, urgency, page, limit, search, fromDate, toDate } = req.query;
     const query = { deletedAt: null };
+    if (req.user.role === "technician") {
+      query.$and = [
+        buildHealthRequestMutationOwnershipGuard({
+          technicianId: req.user._id,
+        }),
+      ];
+    }
     if (status) query.status = status;
     if (urgency) query.urgency = urgency;
     if (fromDate || toDate) {
@@ -333,6 +396,13 @@ import { createAuditLog } from "../services/audit.service.js";
 // PATCH /api/health-request/:id/status  — technician/admin updates
 export const updateHealthRequestStatus = async (req, res) => {
   try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Health request status changes require a Technician account.",
+        code: "TECHNICIAN_CLINICAL_ROLE_REQUIRED",
+      });
+    }
+
     const { id } = req.params;
     const { status: requestedStatus, technicianNote } = req.body;
     const status = normalizeHealthStatus(requestedStatus);
@@ -368,8 +438,13 @@ export const updateHealthRequestStatus = async (req, res) => {
         }
         normalizedScheduledDate = normalizeVisitScheduleDate(req.body.scheduledDate);
         normalizedVisitPeriod = normalizeVisitPeriod(req.body.visitPeriod);
+        assertVisitDaypartAvailable({
+          scheduledDate: normalizedScheduledDate,
+          visitPeriod: normalizedVisitPeriod,
+          samePeriodConfirmed: req.body.samePeriodConfirmed === true,
+        });
       } catch (err) {
-        return res.status(400).json({
+        return res.status(err.status || 400).json({
           message: err.message,
           code: err.code || "INVALID_SCHEDULE",
         });
@@ -395,17 +470,18 @@ export const updateHealthRequestStatus = async (req, res) => {
 
     assertStatusTransition("health", existing.status, status, { isAdmin: req.user.role === "admin" });
 
-    // Concurrency guard: check if already assigned to another technician
-    if (
-      existing.handledBy &&
-      existing.handledBy.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      const assignedTech = await User.findById(existing.handledBy);
-      return res.status(403).json({
-        message: `This health request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
+    const mayAtomicallyClaimPending =
+      existing.status === "pending" && status === "scheduled";
+    if (mayAtomicallyClaimPending && req.user.role === "technician") {
+      assertTechnicianEligibleForNewRequest({
+        technician: req.user,
+        requestType: "HEALTH",
+        dispatch: existing.dispatch,
       });
     }
+    assertHealthRequestMutationOwnership(req.user, existing, {
+      allowUnassigned: mayAtomicallyClaimPending,
+    });
 
     const targetTechId = (req.user.role === "admin" && req.body.handledBy) ? req.body.handledBy : req.user._id;
 
@@ -452,6 +528,7 @@ export const updateHealthRequestStatus = async (req, res) => {
         id,
         updateFields,
         technicianId: req.user._id,
+        allowAdminOverride: req.user.role === "admin",
         taskId: req.body.taskId,
         medicalRecord: {
           animalId: existing.animalId,
@@ -476,12 +553,34 @@ export const updateHealthRequestStatus = async (req, res) => {
       const statusUpdate = isActiveHealthRequestStatus(status)
         ? { $set: updateFields }
         : { $set: updateFields, $unset: { activeCaseKey: 1 } };
-      request = await HealthRequest.findByIdAndUpdate(id, statusUpdate, { returnDocument: 'after' })
+      const ownershipGuard =
+        req.user.role === "admin"
+          ? {}
+          : buildHealthRequestMutationOwnershipGuard({
+              technicianId: req.user._id,
+              allowUnassigned: mayAtomicallyClaimPending,
+            });
+      request = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: existing.status,
+          ...ownershipGuard,
+        },
+        statusUpdate,
+        { returnDocument: "after" },
+      )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "animalId earTag species");
     }
 
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(409).json({
+        message:
+          "The request changed or is no longer assigned to you. Refresh and try again.",
+        code: "HEALTH_REQUEST_CONCURRENT_UPDATE",
+      });
+    }
 
     // The transaction service is the sole medical-record writer. This block
     // only performs the post-commit withdrawal notification side effect.
@@ -592,7 +691,16 @@ export const updateHealthRequestStatus = async (req, res) => {
 };
 
 // POST /api/health-request/walk-in — technician recording a done service
+const presentWalkInRequest = (request) => {
+  const presented = request?.toObject ? request.toObject() : { ...request };
+  delete presented.sourceOperationKey;
+  return presented;
+};
+
 export const walkInHealthRequest = async (req, res) => {
+  const sourceOperationKey = String(
+    req.headers?.["idempotency-key"] || "",
+  ).trim() || undefined;
   try {
     const {
       farmerId,
@@ -614,6 +722,20 @@ export const walkInHealthRequest = async (req, res) => {
       technicianNote,
     } = req.body;
 
+    if (sourceOperationKey) {
+      const existingRequest = await HealthRequest.findOne({
+        handledBy: req.user._id,
+        sourceOperationKey,
+      });
+      if (existingRequest) {
+        return res.status(200).json({
+          message: "Walk-in health service was already recorded.",
+          code: "WALKIN_HEALTH_REPLAYED",
+          request: presentWalkInRequest(existingRequest),
+        });
+      }
+    }
+
     if (!farmerId && (!phoneNumber || !animalDetails?.earTag)) {
       return res.status(400).json({ message: "Phone number and Animal Ear Tag are required for manual entry." });
     }
@@ -624,53 +746,46 @@ export const walkInHealthRequest = async (req, res) => {
 
     // 1. Resolve or Create Farmer
     let farmer;
+    let farmerResolution = null;
     if (farmerId) {
       farmer = await User.findById(farmerId);
-    } else if (phoneNumber) {
-      farmer = await User.findOne({ phoneNumber });
-      if (!farmer) {
-      if (email) {
-        try {
-          const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
-          const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
-          const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
-
-          await clerkClient.invitations.createInvitation({
-            emailAddress: email,
-            publicMetadata: { role: "farmer" },
-            redirectUrl: finalRedirectUrl,
-          });
-        } catch (clerkError) {
-          console.error("[walkInHealth CLERK ERROR]", clerkError.message);
-        }
-      }
-
-      farmer = await User.create({
-        name: `${firstName || ""} ${lastName || ""}`.trim() || "Manual Entry Farmer",
+    } else {
+      farmerResolution = await resolveOrCreateAssistedFarmer({
+        email,
         phoneNumber,
-        email: email || undefined,
+        name:
+          `${firstName || ""} ${lastName || ""}`.trim() ||
+          "Manual Entry Farmer",
         address: {
           street: typeof address === 'object' && address?.street ? address.street : "",
           barangay: typeof address === 'string' ? address : (address?.barangay || "Not Provided"),
           city: typeof address === 'object' && address?.city ? address.city : "Oton",
           province: typeof address === 'object' && address?.province ? address.province : "Iloilo"
         },
-        role: "farmer",
-        isVerified: true, // Technician-verified
+        source: "walk-in-health",
+        invitationMode: email ? "best-effort" : "none",
+        inviteExistingUnclaimed: false,
+        allowClaimedExisting: true,
+        redirectUrl: getFarmerInvitationRedirectUrl(),
+        isVerified: true,
       });
+      farmer = farmerResolution.farmer;
     }
-  }
 
-  if (!farmer) {
-    return res.status(400).json({ message: "Farmer details are required." });
-  }
+    if (!farmer) {
+      return res.status(400).json({ message: "Farmer details are required." });
+    }
 
     // 2. Resolve or Create Animal
     let animal;
     if (bodyAnimalId) {
       animal = await Animal.findById(bodyAnimalId);
     } else {
-      animal = await Animal.findOne({ earTag: animalDetails.earTag });
+      animal = await Animal.findOne({
+        farmerId: farmer._id,
+        earTag: animalDetails.earTag,
+        deletedAt: null,
+      });
       if (!animal) {
         let animalImageUrl = "";
         if (animalDetails.imageUrl && animalDetails.imageUrl.startsWith("data:image")) {
@@ -723,6 +838,7 @@ export const walkInHealthRequest = async (req, res) => {
       advice: advice || "",
       preferredDate: pDate,
       scheduledDate: pDate,
+      sourceOperationKey,
     };
 
     let recordType = "Check-up";
@@ -778,13 +894,14 @@ export const walkInHealthRequest = async (req, res) => {
           const warningTitle = "Active withdrawal warning";
           const warningBody = `Meat and milk from animal Tag #${animal.earTag} are unsafe for consumption or sale until ${formattedDate} due to treatment with ${treatment || 'medicine'}.`;
 
-          await notifyUser({
+          await notifyUserBestEffort({
             recipient: farmer,
             senderId: req.user._id,
             type: "system",
             relatedId: animal._id,
             category: "health",
             eventType: "withdrawal_safety_active",
+            dedupeKey: `walkin-health-withdrawal:${request._id}:${farmer._id}`,
             linkType: "animal",
             title: warningTitle,
             message: warningBody,
@@ -794,7 +911,7 @@ export const walkInHealthRequest = async (req, res) => {
               withdrawalEndDate,
               medicineName: treatment || "medicine",
             },
-          });
+          }, "walkInHealthWithdrawal");
         }
       } catch (medErr) {
         console.error("[Medical Record Cascade Walk-in Error]", medErr.message);
@@ -806,7 +923,7 @@ export const walkInHealthRequest = async (req, res) => {
       ? `A walk-in health service for your animal (${animal.earTag}) has been recorded by technician ${req.user.name}.`
       : `A health visit for your animal (${animal.earTag}) has been scheduled for ${pDate.toLocaleDateString()} at ${pDate.toLocaleTimeString()}.`;
 
-    await notifyUser({
+    await notifyUserBestEffort({
       recipient: farmer,
       senderId: req.user._id,
       type: "health-request",
@@ -816,6 +933,7 @@ export const walkInHealthRequest = async (req, res) => {
         requestedStatus === "resolved"
           ? "service_completed"
           : "service_visit_scheduled",
+      dedupeKey: `walkin-health-result:${request._id}:${farmer._id}`,
       linkType: "request",
       title,
       message,
@@ -827,7 +945,7 @@ export const walkInHealthRequest = async (req, res) => {
         technicianName: req.user.name,
         scheduledDate: request.scheduledDate || pDate,
       },
-    });
+    }, "walkInHealthResult");
 
     // Trigger Socket
     req.app.get("io").emit("dashboardUpdate", { 
@@ -836,10 +954,36 @@ export const walkInHealthRequest = async (req, res) => {
 
     res.status(201).json({ 
       message: requestedStatus === "resolved" ? "Walk-in health service recorded." : "Health visit scheduled.", 
-      request 
+      request: presentWalkInRequest(request),
+      invitationAttempted: Boolean(farmerResolution?.invitationAttempted),
+      invitationSent: Boolean(farmerResolution?.invitationSent),
+      invitationStatus: farmerResolution?.invitationSent
+        ? "sent"
+        : farmerResolution?.invitationAttempted
+          ? "failed"
+          : "not_applicable",
+      farmerProfileReused: farmerId ? true : Boolean(farmerResolution?.reused),
     });
   } catch (error) {
     console.error("[walkInHealthRequest ERROR]", error.message);
+    if (
+      sourceOperationKey &&
+      error?.code === 11000 &&
+      (error?.keyPattern?.sourceOperationKey ||
+        error?.keyValue?.sourceOperationKey)
+    ) {
+      const existingRequest = await HealthRequest.findOne({
+        handledBy: req.user._id,
+        sourceOperationKey,
+      });
+      if (existingRequest) {
+        return res.status(200).json({
+          message: "Walk-in health service was already recorded.",
+          code: "WALKIN_HEALTH_REPLAYED",
+          request: presentWalkInRequest(existingRequest),
+        });
+      }
+    }
     res.status(error.status || 500).json({
       message: error.message || "Failed to process health service.",
       code: error.code,
@@ -876,7 +1020,11 @@ export const deleteHealthRequest = async (req, res) => {
     // Notify technicians in-app and by push when the farmer removes an active request.
     try {
       if (isOwner && ["pending", "approved", "in-progress"].includes(request.status)) {
-        const technicians = await User.find({ role: "technician" });
+        const technicians = await resolveRequestNotificationTechnicians({
+          requestType: "HEALTH",
+          request,
+          allowUnassignedDispatch: true,
+        });
         for (const t of technicians) {
           await notifyUser({
             recipient: t,
@@ -933,7 +1081,7 @@ export const cancelHealthRequest = async (req, res) => {
     const actor = req.user;
     const role = actor.role;
 
-    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
+    let request = await HealthRequest.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
       .populate("handledBy", "name pushToken");
@@ -950,6 +1098,9 @@ export const cancelHealthRequest = async (req, res) => {
 
     if (isFarmer && !isOwner) {
       return res.status(403).json({ message: "You do not own this request." });
+    }
+    if (isTechnician) {
+      assertHealthRequestMutationOwnership(actor, request);
     }
 
     // Block terminal states
@@ -983,15 +1134,44 @@ export const cancelHealthRequest = async (req, res) => {
         if (!reason || reason.trim() === "") {
           return res.status(400).json({ message: "A reason is required to request cancellation of a scheduled visit." });
         }
-        request.cancellationStatus = "requested";
-        request.cancellationReason = reason.trim();
-        request.cancellationResponseReason = "";
-        request.cancellationRespondedAt = undefined;
-        request.cancelledBy = actor._id;
-        request.cancellationRequestedAt = now;
-        request.statusHistory = request.statusHistory || [];
-        request.statusHistory.push({ status: "cancellation_requested", note: reason.trim(), actorId: actor._id });
-        await request.save();
+        request = await HealthRequest.findOneAndUpdate(
+          {
+            _id: id,
+            deletedAt: null,
+            farmerId: actor._id,
+            status: "scheduled",
+            cancellationStatus: { $nin: ["requested", "approved"] },
+          },
+          {
+            $set: {
+              cancellationStatus: "requested",
+              cancellationReason: reason.trim(),
+              cancellationResponseReason: "",
+              cancelledBy: actor._id,
+              cancellationRequestedAt: now,
+            },
+            $unset: { cancellationRespondedAt: 1 },
+            $push: {
+              statusHistory: {
+                status: "cancellation_requested",
+                note: reason.trim(),
+                actorId: actor._id,
+              },
+            },
+          },
+          { returnDocument: "after" },
+        )
+          .populate("farmerId", "name pushToken")
+          .populate("animalId", "earTag animalId")
+          .populate("handledBy", "name pushToken");
+
+        if (!request) {
+          return res.status(409).json({
+            message:
+              "Cancellation is already requested or this visit has changed. Refresh and try again.",
+            code: "HEALTH_CANCELLATION_REQUEST_CONCURRENT_UPDATE",
+          });
+        }
 
         await createAuditLog({
           entityType: "HealthRequest",
@@ -1069,18 +1249,49 @@ export const cancelHealthRequest = async (req, res) => {
       return res.status(400).json({ message: "A cancellation reason is required." });
     }
 
-    request.status = "cancelled";
-    request.cancellationReason = reason?.trim() || "";
-    request.cancelledBy = actor._id;
-    request.cancellationRequestedAt = now;
-    request.cancellationStatus = "approved";
-    request.statusHistory = request.statusHistory || [];
-    request.statusHistory.push({
-      status: "cancelled",
-      note: reason?.trim() || `Cancelled by ${role}`,
-      actorId: actor._id,
-    });
-    await request.save();
+    const actorGuard = isFarmer
+      ? { farmerId: actor._id }
+      : isTechnician
+        ? buildHealthRequestMutationOwnershipGuard({
+            technicianId: actor._id,
+          })
+        : {};
+    request = await HealthRequest.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        status: previousStatus,
+        ...actorGuard,
+      },
+      {
+        $set: {
+          status: "cancelled",
+          cancellationReason: reason?.trim() || "",
+          cancelledBy: actor._id,
+          cancellationRequestedAt: now,
+          cancellationStatus: "approved",
+        },
+        $unset: { activeCaseKey: 1 },
+        $push: {
+          statusHistory: {
+            status: "cancelled",
+            note: reason?.trim() || `Cancelled by ${role}`,
+            actorId: actor._id,
+          },
+        },
+      },
+      { returnDocument: "after" },
+    )
+      .populate("farmerId", "name pushToken")
+      .populate("animalId", "earTag animalId")
+      .populate("handledBy", "name pushToken");
+    if (!request) {
+      return res.status(409).json({
+        message:
+          "The request changed or is no longer assigned to you. Refresh and try again.",
+        code: "HEALTH_CANCELLATION_CONCURRENT_UPDATE",
+      });
+    }
 
     await createAuditLog({
       entityType: "HealthRequest",
@@ -1151,7 +1362,10 @@ export const cancelHealthRequest = async (req, res) => {
     return res.status(200).json({ message: "Health request cancelled successfully." });
   } catch (error) {
     console.error("[cancelHealthRequest ERROR]", error.message);
-    return res.status(500).json({ message: "Failed to cancel health request." });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to cancel health request.",
+      code: error.code,
+    });
   }
 };
 
@@ -1170,7 +1384,7 @@ export const respondHealthCancellation = async (req, res) => {
       return res.status(403).json({ message: "Only technicians or admins can respond to cancellation requests." });
     }
 
-    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
+    let request = await HealthRequest.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name pushToken")
       .populate("animalId", "earTag animalId")
       .populate("handledBy", "name pushToken");
@@ -1182,24 +1396,56 @@ export const respondHealthCancellation = async (req, res) => {
     if (request.cancellationStatus !== "requested") {
       return res.status(400).json({ message: "This request does not have a pending cancellation request." });
     }
+    if (role === "technician") {
+      assertHealthRequestMutationOwnership(actor, request);
+    }
 
     const farmer = request.farmerId;
     const animal = request.animalId;
     const animalTag = animal?.earTag || animal?.animalId || "the animal";
     const previousStatus = request.status;
+    const responseGuard =
+      role === "technician"
+        ? buildHealthRequestMutationOwnershipGuard({ technicianId: actor._id })
+        : {};
 
     if (approved) {
-      request.status = "cancelled";
-      request.cancellationStatus = "approved";
-      request.cancellationResponseReason = reason?.trim() || "";
-      request.cancellationRespondedAt = new Date();
-      request.statusHistory = request.statusHistory || [];
-      request.statusHistory.push({
-        status: "cancelled",
-        note: reason?.trim() || `Cancellation approved by ${role}`,
-        actorId: actor._id,
-      });
-      await request.save();
+      const respondedAt = new Date();
+      request = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: previousStatus,
+          cancellationStatus: "requested",
+          ...responseGuard,
+        },
+        {
+          $set: {
+            status: "cancelled",
+            cancellationStatus: "approved",
+            cancellationResponseReason: reason?.trim() || "",
+            cancellationRespondedAt: respondedAt,
+          },
+          $unset: { activeCaseKey: 1 },
+          $push: {
+            statusHistory: {
+              status: "cancelled",
+              note: reason?.trim() || `Cancellation approved by ${role}`,
+              actorId: actor._id,
+            },
+          },
+        },
+        { returnDocument: "after" },
+      )
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "earTag animalId")
+        .populate("handledBy", "name pushToken");
+      if (!request) {
+        return res.status(409).json({
+          message: "The cancellation request changed. Refresh and try again.",
+          code: "HEALTH_CANCELLATION_RESPONSE_CONCURRENT_UPDATE",
+        });
+      }
 
       await createAuditLog({
         entityType: "HealthRequest",
@@ -1239,16 +1485,40 @@ export const respondHealthCancellation = async (req, res) => {
 
       return res.status(200).json({ message: "Cancellation approved." });
     } else {
-      request.cancellationStatus = "rejected";
-      request.cancellationResponseReason = reason?.trim() || "";
-      request.cancellationRespondedAt = new Date();
-      request.statusHistory = request.statusHistory || [];
-      request.statusHistory.push({
-        status: "cancellation_rejected",
-        note: reason?.trim() || `Cancellation rejected by ${role}`,
-        actorId: actor._id,
-      });
-      await request.save();
+      const respondedAt = new Date();
+      request = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: previousStatus,
+          cancellationStatus: "requested",
+          ...responseGuard,
+        },
+        {
+          $set: {
+            cancellationStatus: "rejected",
+            cancellationResponseReason: reason?.trim() || "",
+            cancellationRespondedAt: respondedAt,
+          },
+          $push: {
+            statusHistory: {
+              status: "cancellation_rejected",
+              note: reason?.trim() || `Cancellation rejected by ${role}`,
+              actorId: actor._id,
+            },
+          },
+        },
+        { returnDocument: "after" },
+      )
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "earTag animalId")
+        .populate("handledBy", "name pushToken");
+      if (!request) {
+        return res.status(409).json({
+          message: "The cancellation request changed. Refresh and try again.",
+          code: "HEALTH_CANCELLATION_RESPONSE_CONCURRENT_UPDATE",
+        });
+      }
 
       await createAuditLog({
         entityType: "HealthRequest",
@@ -1288,6 +1558,9 @@ export const respondHealthCancellation = async (req, res) => {
     }
   } catch (error) {
     console.error("[respondHealthCancellation ERROR]", error.message);
-    return res.status(500).json({ message: "Failed to respond to cancellation request." });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to respond to cancellation request.",
+      code: error.code,
+    });
   }
 };

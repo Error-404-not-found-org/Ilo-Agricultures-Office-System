@@ -6,3 +6,4 @@ export * from "./FilterChips";
 export * from "./Pagination";
 export * from "./SelectDropdown";
 export * from "./CustomDialog";
+export * from "./ImageViewerModal";

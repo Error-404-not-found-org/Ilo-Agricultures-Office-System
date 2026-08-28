@@ -13,6 +13,7 @@ import {
   Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { statusBadgeClass } from "../ui/uiClasses";
 
 export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpenSource }) {
   const closeButtonRef = useRef(null);
@@ -20,6 +21,7 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
 
   useEffect(() => {
     if (!isOpen) return undefined;
+    const previouslyFocused = document.activeElement;
     closeButtonRef.current?.focus();
     const handleKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -40,19 +42,13 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
       }
     };
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen || !activity) return null;
-
-  const getStatusStyle = (status) => {
-    const s = status?.toLowerCase() || "";
-    if (s === "done" || s === "resolved" || s === "approved")
-      return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
-    if (s === "pending" || s === "in-progress")
-      return "bg-amber-500/10 text-amber-600 border-amber-500/20";
-    return "bg-base-300 text-base-content/60 border-base-300";
-  };
 
   const details = activity.details || {};
 
@@ -67,14 +63,12 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-base-100 border border-base-300 rounded-3xl w-full max-w-lg shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] flex flex-col max-h-[85vh] overflow-hidden relative"
+          className="bg-base-100 border border-base-300 rounded-box w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden relative"
         >
           {/* HEADER */}
           <div className="px-6 py-5 border-b border-base-300 bg-base-200/40 flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-md ${
-                activity.iconType === "Syringe" ? "bg-blue-600" : "bg-emerald-600"
-              }`}>
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-neutral text-neutral-content shadow-md">
                 {activity.iconType === "Syringe" && <Syringe size={20} />}
                 {activity.iconType === "HeartPulse" && <HeartPulse size={20} />}
                 {activity.iconType === "CheckCircle2" && <CheckCircle2 size={20} />}
@@ -82,7 +76,7 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
               </div>
               <div>
                 <h2 id="activity-details-title" className="text-xl font-black text-base-content uppercase tracking-tighter leading-none">
-                  Activity <span className="text-emerald-500">Audit</span>
+                  Activity <span className="text-primary">Audit</span>
                 </h2>
                 <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest mt-1.5 leading-none">
                   Technical Service Record
@@ -108,7 +102,7 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
                     {activity.title}
                   </h3>
                   <div className="flex items-center gap-3 mt-2">
-                    <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-md border uppercase tracking-widest ${getStatusStyle(activity.status)}`}>
+                    <span className={`badge badge-sm font-black uppercase tracking-widest ${statusBadgeClass(activity.status)}`}>
                       {activity.status}
                     </span>
                     <p className="text-[9px] font-black text-base-content/40 uppercase tracking-widest flex items-center gap-1.5">
@@ -129,14 +123,14 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
             {/* TECHNICAL SPECS */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-1">
-                <Activity size={15} className="text-emerald-500" />
+                <Activity size={15} className="text-primary" />
                 <h4 className="text-[10px] font-black text-base-content/40 uppercase tracking-[0.2em]">Technical Metadata</h4>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 {activity.type === "Insemination" && (
                   <>
-                    <DetailItem label="Sire Breed" value={details.sireBreed} icon={<ShieldCheck size={13} />} color="text-blue-500" />
+                    <DetailItem label="Sire Breed" value={details.sireBreed} icon={<ShieldCheck size={13} />} />
                     <DetailItem label="Sire Code" value={details.sireCode} icon={<FileText size={13} />} />
                     <DetailItem label="Attempt" value={`#${details.attemptNumber}`} icon={<Activity size={13} />} />
                     <DetailItem label="Estrus" value={details.estrus} icon={<Info size={13} />} />
@@ -145,25 +139,25 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
 
                 {activity.type === "Pregnancy Check" && (
                   <>
-                    <DetailItem label="PD Result" value={details.result} color={details.result === 'Pregnant' ? 'text-emerald-500' : 'text-rose-500'} />
+                    <DetailItem label="PD Result" value={details.result} color={details.result === 'Pregnant' ? 'text-success' : 'text-neutral'} />
                     <DetailItem label="Expected Calving" value={details.targetCalvingDate ? new Date(details.targetCalvingDate).toLocaleDateString() : 'N/A'} />
                   </>
                 )}
 
                 {activity.type === "Health" && (
                   <div className="col-span-2 space-y-4">
-                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-                      <p className="text-[9px] font-black text-amber-500/50 uppercase tracking-widest mb-1">Diagnosis</p>
+                    <div className="bg-warning/5 border border-warning/20 rounded-xl p-4">
+                      <p className="text-[9px] font-black text-warning uppercase tracking-widest mb-1">Diagnosis</p>
                       <p className="text-sm font-black text-base-content uppercase leading-tight">{details.diagnosis || "General Checkup"}</p>
                     </div>
-                    <DetailItem label="Treatment" value={details.treatment || "None Specified"} color="text-emerald-500" fullWidth />
+                    <DetailItem label="Treatment" value={details.treatment || "None Specified"} color="text-primary" fullWidth />
                   </div>
                 )}
 
                 {activity.type === "Calving" && (
                   <>
                     <DetailItem label="Offspring Count" value={details.numberOfCalves} />
-                    <DetailItem label="Calving Ease" value={details.calvingEase} color="text-blue-500" />
+                    <DetailItem label="Calving Ease" value={details.calvingEase} color="text-info" />
                   </>
                 )}
               </div>
@@ -195,14 +189,14 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpen
               <button
                 type="button"
                 onClick={() => onOpenSource(activity)}
-                className="w-full h-11 mb-3 border border-emerald-700 text-emerald-700 dark:text-emerald-400 font-bold text-xs rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
+                className="btn btn-outline btn-primary w-full mb-3"
               >
                 Open {activity.originLabel || "source request"}
               </button>
             )}
             <button
               onClick={onClose}
-              className="w-full h-12 bg-[#074033] hover:bg-[#0d5948] text-white font-black text-[10px] uppercase tracking-[0.3em] rounded-xl transition-all active:scale-95 shadow-md cursor-pointer"
+              className="btn btn-ghost w-full uppercase tracking-widest"
             >
               Dismiss Audit
             </button>

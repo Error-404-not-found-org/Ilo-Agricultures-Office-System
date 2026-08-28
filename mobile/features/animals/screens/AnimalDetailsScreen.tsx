@@ -36,7 +36,6 @@ import { toast } from "sonner-native";
 import {
   SPECIES_PROFILES,
   normalizeSpecies,
-  verifyPostpartumWindow,
   calculateTargetCalvingDate,
 } from "@/lib/cattleCore";
 import { differenceInCalendarDays } from "date-fns";
@@ -171,6 +170,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
           "",
         recordedBy:
           selectedRecord.technicianId?.name ||
+          selectedRecord.technicianDisplayName ||
           selectedRecord.handledBy?.name ||
           "",
         withdrawalPeriodDays:
@@ -512,15 +512,22 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   });
 
   const nextAction = isFemaleAnimal ? (animal.nextAction ?? null) : null;
+  const effectiveReproductiveStatus =
+    animal.effectiveReproductiveStatus || animal.reproductiveStatus;
+  const isPostpartumRecovery =
+    nextAction?.phase === "RECOVERY_PERIOD" ||
+    nextAction?.type === "WAIT_FOR_POSTPARTUM_RECOVERY";
   const aiUnavailableReason = isMaleAnimal
     ? "Artificial insemination is available only for female animals."
-    : animal.reproductiveStatus === "Pregnant"
+    : effectiveReproductiveStatus === "Pregnant"
       ? "This animal already has an active pregnancy."
       : ["Inseminated", "Likely Pregnant"].includes(
-            animal.reproductiveStatus || "",
+            effectiveReproductiveStatus || "",
           )
         ? "This animal is currently under reproductive monitoring."
-        : "";
+        : isPostpartumRecovery
+          ? "AI is unavailable while this animal recovers after calving."
+          : "";
 
   return (
     <View
@@ -1023,25 +1030,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         setValidationModalVisible(true);
                         return;
                       }
-                      if (animal.lastCalvingDate) {
-                        const recovery = verifyPostpartumWindow(
-                          animal.lastCalvingDate,
-                          new Date(),
-                          animal.species || "Cattle",
-                          animal.breed,
-                        );
-                        if (!recovery.isSafe) {
-                          setValidationTitle("Request Blocked");
-                          setValidationMessage(
-                            "The animal is in the postpartum recovery lockout window (45 days post-calving).",
-                          );
-                          setValidationModalVisible(true);
-                          return;
-                        }
-                      }
                       if (
                         ["Inseminated", "Likely Pregnant"].includes(
-                          animal.reproductiveStatus || "",
+                          effectiveReproductiveStatus || "",
                         )
                       ) {
                         setValidationTitle("Request Blocked");
@@ -1662,7 +1653,6 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                     animalId: id,
                                     requestId: latestInsemination?._id,
                                     defaultReport: "unsure",
-                                    requestVerification: "true",
                                   },
                                 } as any)
                               }
@@ -2489,6 +2479,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       "";
                     const recordedByVal =
                       record.technicianId?.name ||
+                      record.technicianDisplayName ||
                       record.handledBy?.name ||
                       record.approvedBy?.name ||
                       "";
@@ -2520,9 +2511,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                             pathname: "/(farmer)/animal-record-detail",
                             params: {
                               animalId: id,
-                              recordId: record._id || record.id,
-                              recordType:
-                                record.recordKind || record.type || "",
+                              sourceId: record.sourceId || record._id || record.id,
+                              sourceKind: record.recordKind || "",
+                              recordId: record.sourceId || record._id || record.id,
+                              recordType: record.recordKind || record.type || "",
                             },
                           });
                         }}

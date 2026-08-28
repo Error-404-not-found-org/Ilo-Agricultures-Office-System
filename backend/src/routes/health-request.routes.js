@@ -12,10 +12,17 @@ import {
 } from "../controllers/health-request.controllers.js";
 import {
   getHealthRequestDetail,
+  provideHealthAdvice,
+  provideHealthOfficePickup,
   triageHealthRequest,
   scheduleHealthFollowUp,
 } from "../controllers/health-workflow.controllers.js";
-import { ClinicalOnly, protectedRoute, TechnicianOnly, AdminOnly } from "../middleware/auth.middleware.js";
+import {
+  protectedRoute,
+  TechnicianOnly,
+  AdminOnly,
+  requireRole,
+} from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
@@ -23,11 +30,18 @@ const router = Router();
 router.post("/", protectedRoute, requestLimiter, createHealthRequest);
 router.post("/walk-in", protectedRoute, TechnicianOnly, walkInHealthRequest);
 router.get("/my", protectedRoute, getMyHealthRequests);
-router.get("/", protectedRoute, getAllHealthRequests);
+router.get(
+  "/",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  getAllHealthRequests,
+);
 router.get("/:id", protectedRoute, getHealthRequestDetail);
-router.patch("/:id/triage", protectedRoute, ClinicalOnly, triageHealthRequest);
-router.post("/:id/follow-up", protectedRoute, ClinicalOnly, scheduleHealthFollowUp);
-router.patch("/:id/status", protectedRoute, ClinicalOnly, updateHealthRequestStatus);
+router.patch("/:id/advice", protectedRoute, TechnicianOnly, provideHealthAdvice);
+router.patch("/:id/office-pickup", protectedRoute, TechnicianOnly, provideHealthOfficePickup);
+router.patch("/:id/triage", protectedRoute, TechnicianOnly, triageHealthRequest);
+router.post("/:id/follow-up", protectedRoute, TechnicianOnly, scheduleHealthFollowUp);
+router.patch("/:id/status", protectedRoute, TechnicianOnly, updateHealthRequestStatus);
 
 // Farmer/Tech/Admin cancels a request (smart cancel with reason)
 router.patch("/:id/cancel", protectedRoute, cancelHealthRequest);

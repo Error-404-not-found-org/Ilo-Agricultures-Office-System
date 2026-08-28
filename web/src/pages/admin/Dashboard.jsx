@@ -1,34 +1,37 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
+  AlertTriangle,
   ArrowRight,
+  Archive,
+  CalendarClock,
+  CheckCircle2,
+  CircleX,
   ClipboardList,
-  HeartPulse,
+  Database,
+  FilePenLine,
+  History,
+  Inbox,
   MapPin,
   RefreshCcw,
   ShieldAlert,
-  Stethoscope,
-  Syringe,
   UserCheck,
+  UserRoundCheck,
+  UserPlus,
   Users,
+  Syringe,
+  Stethoscope,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/layout/Topbar";
-import DashboardChart from "../../features/analytics/DashboardChart";
-import AssignTaskModal from "../../components/dialogs/AssignTaskModal";
-import { ui } from "../../components/ui/uiClasses";
-import { getStoredTheme, isDarkTheme } from "../../lib/theme";
+import UserAvatar from "../../components/ui/UserAvatar";
+import { Badge, ui } from "../../components/ui/uiClasses";
 
-const GREEN = "#00643b";
-const GREEN_SOFT = "rgba(0, 100, 59, 0.72)";
-const AMBER = "#d97706";
-const ROSE = "#e11d48";
-const BLUE = "#1d4ed8";
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
+const URGENT_VALUES = new Set(["high", "emergency", "urgent", "critical"]);
 
 const sourceResult = (label, result, fallback) => {
   if (result.status !== "fulfilled") {
@@ -36,36 +39,71 @@ const sourceResult = (label, result, fallback) => {
       ok: false,
       label,
       data: fallback,
-      error:
-        result.reason?.response?.data?.message ||
-        result.reason?.message ||
-        "Unable to load this section.",
     };
   }
-  return { ok: true, label, data: result.value?.data ?? fallback, error: null };
+
+  return {
+    ok: true,
+    label,
+    data: result.value?.data ?? fallback,
+  };
 };
 
 const asArray = (value) => {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.data)) return value.data;
   if (Array.isArray(value?.users)) return value.users;
-  if (Array.isArray(value?.tickets)) return value.tickets;
   if (Array.isArray(value?.logs)) return value.logs;
   if (Array.isArray(value?.barangays)) return value.barangays;
   return [];
 };
 
-const numberValue = (value) => {
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) return numeric.toLocaleString();
-  return value ?? "Unavailable";
+const getQueueRequests = (value) => {
+  if (Array.isArray(value?.requests)) return value.requests;
+  return asArray(value);
 };
 
-const getBarangayName = (item) => item?.barangay || item?.name || item?._id || "Unspecified";
+const numberValue = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toLocaleString() : "Unavailable";
+};
 
-const formatDate = (date) => {
-  if (!date) return "No date";
-  return new Date(date).toLocaleDateString("en-US", {
+const formatLabel = (value, fallback = "Not recorded") => {
+  if (!value) return fallback;
+  return String(value)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
+const formatDashboardDate = () =>
+  new Intl.DateTimeFormat("en-PH", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
+
+const formatRelativeTime = (value) => {
+  if (!value) return "Time not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time not recorded";
+
+  const difference = date.getTime() - Date.now();
+  const absoluteDifference = Math.abs(difference);
+  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+  if (absoluteDifference < 60_000) return "Just now";
+  if (absoluteDifference < 3_600_000) {
+    return formatter.format(Math.round(difference / 60_000), "minute");
+  }
+  if (absoluteDifference < 86_400_000) {
+    return formatter.format(Math.round(difference / 3_600_000), "hour");
+  }
+  if (absoluteDifference < 604_800_000) {
+    return formatter.format(Math.round(difference / 86_400_000), "day");
+  }
+
+  return date.toLocaleDateString("en-PH", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -75,692 +113,977 @@ const formatDate = (date) => {
 const getRequestType = (request) => {
   if (request?.type === "ai" || request?.type === "insemination") return "AI";
   if (request?.type === "health") return "Health";
-  if (request?.requestType) return request.requestType;
-  if (request?.raw?.requestType) return request.raw.requestType;
-  if (request?.issueDescription || request?.symptoms || request?.raw?.symptoms) return "Health";
-  return "Service";
-};
-
-const getQueueRequests = (value) => {
-  if (Array.isArray(value?.requests)) return value.requests;
-  return asArray(value);
+  return request?.requestType || request?.raw?.requestType || "Service";
 };
 
 const toDashboardRequest = (request) => {
   const raw = request?.raw || request || {};
+  const assignedTechnician =
+    request?.assignedTechnician ||
+    raw?.approvedBy?.name ||
+    raw?.handledBy?.name ||
+    "";
+
   return {
     id: request?.id || raw?._id,
     rawId: raw?._id || request?.id,
-    type: request?.type || raw?.type || (raw?.issueDescription || raw?.symptoms ? "health" : "service"),
-    status: request?.status || raw?.status || "pending",
+    type:
+      request?.type ||
+      raw?.type ||
+      (raw?.issueDescription || raw?.symptoms ? "health" : "service"),
+    requestType: request?.requestType || raw?.requestType,
+    status:
+      request?.displayStatus || request?.status || raw?.status || "pending",
     urgency: request?.urgency || raw?.urgency || "standard",
-    farmer: request?.farmer || raw?.farmerId?.name || raw?.farmer?.name || "Unknown farmer",
-    barangay: request?.location || raw?.farmerId?.address?.barangay || raw?.barangay || "No barangay",
-    animalTag: request?.earTag || request?.animal || raw?.animalId?.earTag || raw?.animalId?.animalId || "No tag",
-    animalLabel: request?.breed || raw?.animalId?.species || raw?.animalId?.breed || "Livestock",
-    detail: raw?.symptoms || raw?.requestType || raw?.issueDescription || request?.task || "No details provided",
+    farmer:
+      request?.farmer ||
+      raw?.farmerId?.name ||
+      raw?.farmer?.name ||
+      "Farmer not recorded",
+    barangay:
+      request?.barangay ||
+      request?.locationLabel ||
+      request?.location ||
+      raw?.farmerId?.address?.barangay ||
+      raw?.barangay ||
+      "Location not recorded",
+    assignedTechnician,
+    cancellationStatus:
+      request?.cancellationStatus || raw?.cancellationStatus || "none",
     createdAt: request?.createdAt || raw?.createdAt,
     raw,
   };
 };
 
+const isUrgentRequest = (request) =>
+  URGENT_VALUES.has(String(request?.urgency || "").toLowerCase());
+
+const isRequestUnassigned = (request) =>
+  !request.assignedTechnician &&
+  !request.raw?.approvedBy &&
+  !request.raw?.technicianId &&
+  !request.raw?.handledBy &&
+  !request.raw?.assignedTechnicianId;
+
+const getAuditSubject = (log) =>
+  log?.details?.targetName ||
+  log?.details?.subject ||
+  log?.entityName ||
+  log?.entityType ||
+  "System";
+
+const formatActivityTitle = (value, fallback = "Administrative activity") => {
+  if (!value) return fallback;
+
+  const normalized = String(value)
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\bai\b/g, "AI")
+    .replace(/\bapi\b/g, "API");
+
+  return normalized
+    ? `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`
+    : fallback;
+};
+
+const getActivityPresentation = (action) => {
+  const normalizedAction = String(action || "").toLowerCase();
+
+  if (/cancel|delete|remove|failed|reject/.test(normalizedAction)) {
+    return {
+      icon: CircleX,
+      tone: "border-error/20 bg-error/10 text-error",
+    };
+  }
+  if (/archive/.test(normalizedAction)) {
+    return {
+      icon: Archive,
+      tone: "border-warning/20 bg-warning/10 text-warning",
+    };
+  }
+  if (/\bai\b|artificial insemination|vaccination/.test(normalizedAction)) {
+    return {
+      icon: Syringe,
+      tone: "border-info/20 bg-info/10 text-info",
+    };
+  }
+  if (/consultation|treatment|checkup/.test(normalizedAction)) {
+    return {
+      icon: Stethoscope,
+      tone: "border-info/20 bg-info/10 text-info",
+    };
+  }
+  if (/schedule|appointment|follow_up|reschedule/.test(normalizedAction)) {
+    return {
+      icon: CalendarClock,
+      tone: "border-warning/20 bg-warning/10 text-warning",
+    };
+  }
+  if (/create technician|add technician|new technician/.test(normalizedAction)) {
+    return {
+      icon: UserPlus,
+      tone: "border-success/20 bg-success/10 text-success",
+    };
+  }
+  if (
+    /assign|reassign|role|user|technician|invite|suspend|reactivate/.test(normalizedAction)
+  ) {
+    return {
+      icon: UserRoundCheck,
+      tone: "border-info/20 bg-info/10 text-info",
+    };
+  }
+  if (/update|edit|correct|sync|reset|change/.test(normalizedAction)) {
+    return {
+      icon: FilePenLine,
+      tone: "border-info/20 bg-info/10 text-info",
+    };
+  }
+  if (/backup|system|database/.test(normalizedAction)) {
+    return {
+      icon: Database,
+      tone: "border-base-300 bg-base-200 text-base-content/75",
+    };
+  }
+  if (
+    /create|record|complete|approve|verify|resolve|provide|accept/.test(
+      normalizedAction,
+    )
+  ) {
+    return {
+      icon: CheckCircle2,
+      tone: "border-success/20 bg-success/10 text-success",
+    };
+  }
+
+  return {
+    icon: History,
+    tone: "border-base-300 bg-base-200 text-base-content/75",
+  };
+};
+
 export default function Dashboard() {
   const toast = useToast();
-  const queryClient = useQueryClient();
-  const [theme, setTheme] = useState(getStoredTheme);
-  const [activeUrgency, setActiveUrgency] = useState("all");
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-
-  useEffect(() => {
-    const syncTheme = () => setTheme(getStoredTheme());
-    window.addEventListener("theme-change", syncTheme);
-    window.addEventListener("storage", syncTheme);
-    return () => {
-      window.removeEventListener("theme-change", syncTheme);
-      window.removeEventListener("storage", syncTheme);
-    };
-  }, []);
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["admin", "dashboard-overview"],
     queryFn: async () => {
-      const [
-        stats,
-        monitoring,
-        analytics,
-        chartData,
-        barangays,
-        technicians,
-        technicianRequests,
-        supportPending,
-        supportProgress,
-        supportResolved,
-        auditLogs,
-        registry,
-      ] = await Promise.allSettled([
-        axiosInstance.get("/admin/stats"),
-        axiosInstance.get("/admin/monitoring"),
-        axiosInstance.get("/admin/analytics"),
-        axiosInstance.get("/admin/chart-data"),
-        axiosInstance.get("/admin/barangays/insights"),
-        axiosInstance.get("/user?role=technician"),
-        axiosInstance.get("/technician/requests", { params: { status: "pending", limit: 50 } }),
-        axiosInstance.get("/support-tickets", { params: { status: "pending", limit: 25 } }),
-        axiosInstance.get("/support-tickets", { params: { status: "in-progress", limit: 25 } }),
-        axiosInstance.get("/support-tickets", { params: { status: "resolved", limit: 25 } }),
-        axiosInstance.get("/audit-logs", { params: { limit: 5 } }),
-        axiosInstance.get("/technician/dashboard-registry"),
-      ]);
+      const [monitoring, technicians, technicianRequests, auditLogs] =
+        await Promise.allSettled([
+          axiosInstance.get("/admin/monitoring"),
+          axiosInstance.get("/user?role=technician"),
+          axiosInstance.get("/technician/requests", {
+            params: { status: "pending", limit: 50 },
+          }),
+          axiosInstance.get("/audit-logs", { params: { limit: 5 } }),
+        ]);
 
       const sources = {
-        stats: sourceResult("Core statistics", stats, {}),
-        monitoring: sourceResult("System monitoring", monitoring, {}),
-        analytics: sourceResult("Analytics", analytics, {}),
-        chartData: sourceResult("Chart data", chartData, {}),
-        barangays: sourceResult("Barangay insights", barangays, []),
+        monitoring: sourceResult("Technician workload", monitoring, {}),
         technicians: sourceResult("Technician directory", technicians, []),
-        technicianRequests: sourceResult("Service queue", technicianRequests, {}),
-        supportPending: sourceResult("Pending support tickets", supportPending, {}),
-        supportProgress: sourceResult("In-progress support tickets", supportProgress, {}),
-        supportResolved: sourceResult("Resolved support tickets", supportResolved, {}),
-        auditLogs: sourceResult("Audit logs", auditLogs, {}),
-        registry: sourceResult("Dashboard registry", registry, []),
+        technicianRequests: sourceResult(
+          "Pending requests",
+          technicianRequests,
+          {},
+        ),
+        auditLogs: sourceResult("Recent activity", auditLogs, {}),
       };
 
       return {
         sources,
-        stats: sources.stats.data,
         monitoring: sources.monitoring.data,
-        analytics: sources.analytics.data,
-        chartData: sources.chartData.data,
-        barangays: asArray(sources.barangays.data),
         technicians: asArray(sources.technicians.data),
-        requests: getQueueRequests(sources.technicianRequests.data).map(toDashboardRequest),
-        supportPending: sources.supportPending.data,
-        supportProgress: sources.supportProgress.data,
-        supportResolved: sources.supportResolved.data,
+        requests: getQueueRequests(sources.technicianRequests.data).map(
+          toDashboardRequest,
+        ),
         auditLogs: asArray(sources.auditLogs.data),
-        registry: asArray(sources.registry.data),
       };
     },
     refetchInterval: 1000 * 45,
   });
 
-  const darkTheme = isDarkTheme(theme);
   const sources = data?.sources || EMPTY_OBJECT;
-  const stats = data?.stats || EMPTY_OBJECT;
   const monitoring = data?.monitoring || EMPTY_OBJECT;
-  const registryMonitor = monitoring.registryMonitor || {};
-  const moowieInsights = monitoring.moowieInsights || {};
   const serviceRequests = data?.requests || EMPTY_ARRAY;
-  const barangays = data?.barangays || EMPTY_ARRAY;
   const technicians = data?.technicians || EMPTY_ARRAY;
   const auditLogs = data?.auditLogs || EMPTY_ARRAY;
-  const failedSources = Object.values(sources).filter((source) => source && !source.ok);
-  const isSourceOk = (key) => sources?.[key]?.ok !== false;
-  const unavailableIfFailed = (key, value) => (isSourceOk(key) ? value : "Unavailable");
+  const isSourceOk = useCallback(
+    (key) => sources?.[key]?.ok !== false,
+    [sources],
+  );
+  const failedSources = Object.values(sources).filter(
+    (source) => source && !source.ok,
+  );
 
-  const urgentHealth = useMemo(
+  const urgentRequests = useMemo(
+    () => serviceRequests.filter(isUrgentRequest),
+    [serviceRequests],
+  );
+
+  const unassignedRequests = useMemo(
+    () => serviceRequests.filter(isRequestUnassigned),
+    [serviceRequests],
+  );
+
+  const cancellationReviews = useMemo(
     () =>
-      serviceRequests.filter((request) =>
-        ["high", "emergency", "urgent", "critical"].includes(String(request?.urgency || "").toLowerCase()),
+      serviceRequests.filter(
+        (request) =>
+          String(request.cancellationStatus).toLowerCase() === "requested",
       ),
     [serviceRequests],
   );
 
-  const filteredRequests = useMemo(() => {
-    if (activeUrgency === "urgent") return urgentHealth;
-    return serviceRequests;
-  }, [activeUrgency, serviceRequests, urgentHealth]);
+  const activeTechnicians = useMemo(
+    () =>
+      technicians.filter(
+        (technician) =>
+          String(technician?.status || "active").toLowerCase() !== "inactive",
+      ),
+    [technicians],
+  );
 
+  const unavailableTechnicians = useMemo(
+    () =>
+      technicians.filter(
+        (technician) =>
+          String(technician?.status || "active").toLowerCase() === "inactive",
+      ),
+    [technicians],
+  );
 
+  const pendingRequests = useMemo(
+    () =>
+      [...serviceRequests].sort((first, second) => {
+        const urgencyDifference =
+          Number(isUrgentRequest(second)) - Number(isUrgentRequest(first));
+        if (urgencyDifference) return urgencyDifference;
+        return (
+          new Date(first.createdAt || 0).getTime() -
+          new Date(second.createdAt || 0).getTime()
+        );
+      }),
+    [serviceRequests],
+  );
 
+  const workloadRows = useMemo(() => {
+    const workloads = Array.isArray(
+      monitoring?.moowieInsights?.technicianWorkloads,
+    )
+      ? monitoring.moowieInsights.technicianWorkloads
+      : [];
+    const workloadByName = new Map(
+      workloads.map((item) => [String(item?.name || "").toLowerCase(), item]),
+    );
 
+    const rows = technicians.length
+      ? technicians.map((technician) => {
+          const workload = workloadByName.get(
+            String(technician?.name || "").toLowerCase(),
+          );
+          const status = String(technician?.status || "active").toLowerCase();
+          const dispatchProfile = technician?.dispatchProfile || {};
 
-  const barangayAttention = useMemo(() => {
-    return [...barangays]
-      .sort((a, b) => {
-        const aRisk = (a.pendingHealthRequests || 0) * 3 + (a.pendingAIRequests || 0) * 2 + (a.incompleteRecordsCount || 0);
-        const bRisk = (b.pendingHealthRequests || 0) * 3 + (b.pendingAIRequests || 0) * 2 + (b.incompleteRecordsCount || 0);
-        return bRisk - aRisk;
-      })
+          let operationalState = "Active";
+          if (status === "inactive") {
+            operationalState = "Inactive";
+          } else if (dispatchProfile.availabilityStatus) {
+            operationalState = formatLabel(
+              dispatchProfile.availabilityStatus,
+              "Status not recorded",
+            );
+          } else if (dispatchProfile.acceptsNewRequests === true) {
+            operationalState = "Accepting requests";
+          } else if (dispatchProfile.acceptsNewRequests === false) {
+            operationalState = "Not receiving requests";
+          }
+
+          return {
+            id: technician?._id || technician?.name,
+            name: technician?.name || "Technician not recorded",
+            imageUrl: technician?.imageUrl || technician?.profileImage || null,
+            operationalState,
+            activeRequests: isSourceOk("monitoring")
+              ? Number(workload?.activeRequests || 0)
+              : null,
+          };
+        })
+      : workloads.map((item) => ({
+          id: item?.name,
+          name: item?.name || "Technician not recorded",
+          imageUrl: null,
+          operationalState: "Status not available",
+          activeRequests: Number(item?.activeRequests || 0),
+        }));
+
+    return rows
+      .sort(
+        (first, second) =>
+          Number(second.activeRequests || 0) -
+          Number(first.activeRequests || 0),
+      )
       .slice(0, 5);
-  }, [barangays]);
+  }, [isSourceOk, monitoring, technicians]);
 
-  const requestStatusData = useMemo(() => {
-    const pendingAI = serviceRequests.filter((request) => request.type === "ai" || request.type === "insemination").length;
-    const pendingHealth = serviceRequests.filter((request) => request.type === "health").length;
-    const urgent = urgentHealth.length;
-    const assigned = moowieInsights.technicianWorkloads?.reduce((sum, item) => sum + Number(item.activeRequests || 0), 0) || 0;
-    return {
-      labels: ["Health pending", "Urgent", "AI pending", "Assigned work"],
-      datasets: [
-        {
-          label: "Requests",
-          data: [pendingHealth, urgent, pendingAI, assigned],
-          backgroundColor: [ROSE, AMBER, GREEN, BLUE],
-          borderColor: darkTheme ? "#020617" : "#ffffff",
-          borderWidth: 3,
+  const needsAttention = useMemo(
+    () =>
+      [
+        isSourceOk("technicianRequests") && {
+          title: "request needs assignment",
+          pluralTitle: "requests need assignment",
+          count: unassignedRequests.length,
+          description: "Assign a Technician from the Requests page.",
+          to: "/admin/requests?status=pending",
+          tone: "warning",
         },
-      ],
-    };
-  }, [darkTheme, moowieInsights.technicianWorkloads, serviceRequests, urgentHealth.length]);
-
-  const trendChart = useMemo(() => {
-    const chartData = data?.chartData || {};
-    const ai = chartData.inseminations || [];
-    const health = chartData.healthRequests || [];
-    const dates = Array.from(new Set([...ai.map((item) => item._id), ...health.map((item) => item._id)])).sort();
-    const labels = dates.length
-      ? dates.map((date) => new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }))
-      : ["Week 1", "Week 2", "Week 3", "Week 4"];
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: "AI records",
-          data: dates.length ? dates.map((date) => ai.find((item) => item._id === date)?.count || 0) : [0, 0, 0, 0],
-          borderColor: GREEN,
-          backgroundColor: "rgba(0, 100, 59, 0.08)",
-          fill: true,
+        isSourceOk("technicianRequests") && {
+          title: "cancellation needs review",
+          pluralTitle: "cancellations need review",
+          count: cancellationReviews.length,
+          description: "Review Farmer cancellation requests.",
+          to: "/admin/requests?status=all",
+          tone: "warning",
         },
-        {
-          label: "Health reports",
-          data: dates.length ? dates.map((date) => health.find((item) => item._id === date)?.count || 0) : [0, 0, 0, 0],
-          borderColor: ROSE,
-          backgroundColor: "rgba(225, 29, 72, 0.06)",
-          fill: true,
+        isSourceOk("technicianRequests") && {
+          title: "urgent case is waiting",
+          pluralTitle: "urgent cases are waiting",
+          count: urgentRequests.length,
+          description: "Review urgent service requests first.",
+          to: "/admin/requests?status=pending",
+          tone: "error",
         },
-      ],
-    };
-  }, [data?.chartData]);
-
-
-
-  const workloadChart = useMemo(() => {
-    const workloads = Array.isArray(moowieInsights.technicianWorkloads) ? moowieInsights.technicianWorkloads : [];
-    const rows = workloads.length
-      ? workloads.slice(0, 6)
-      : technicians.slice(0, 6).map((tech) => ({ name: tech.name || "Technician", activeRequests: 0 }));
-    return {
-      rows,
-      labels: rows.map((item) => item.name || "Technician"),
-      datasets: [
-        {
-          label: "Active requests",
-          data: rows.map((item) => item.activeRequests || 0),
-          backgroundColor: GREEN_SOFT,
-          borderColor: GREEN,
-          borderWidth: 0,
+        isSourceOk("technicians") && {
+          title: "Technician is inactive",
+          pluralTitle: "Technicians are inactive",
+          count: unavailableTechnicians.length,
+          description: "Check staffing and dispatch availability.",
+          to: "/admin/technicians",
+          tone: "neutral",
         },
-      ],
-    };
-  }, [moowieInsights.technicianWorkloads, technicians]);
+      ].filter((item) => item && item.count > 0),
+    [
+      cancellationReviews.length,
+      isSourceOk,
+      unavailableTechnicians.length,
+      unassignedRequests.length,
+      urgentRequests.length,
+    ],
+  );
 
-
-
-  const summaryCards = [
+  const metrics = [
     {
-      label: "Farmers",
-      value: unavailableIfFailed("stats", stats.farmers),
-      note: "Registered farmer accounts",
-      icon: Users,
-      color: "text-[#00643b] dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
-    },
-    {
-      label: "Animals",
-      value: unavailableIfFailed("stats", stats.animals),
-      note: isSourceOk("monitoring")
-        ? `${registryMonitor.missingAnimalData || 0} incomplete records`
-        : "Registry monitor unavailable",
-      icon: Activity,
-      color: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
-    },
-    {
-      label: "Technicians",
-      value: isSourceOk("stats") ? stats.technicians ?? technicians.length : "Unavailable",
-      note: "Active field workforce",
-      icon: UserCheck,
-      color: "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-900",
-    },
-    {
-      label: "Open requests",
-      value: unavailableIfFailed("technicianRequests", serviceRequests.length),
-      note: isSourceOk("technicianRequests") ? `${urgentHealth.length} urgent requests` : "Service queue unavailable",
+      label: "Requests Waiting",
+      value: isSourceOk("technicianRequests")
+        ? serviceRequests.length
+        : "Unavailable",
+      description: "Awaiting Admin coordination",
       icon: ClipboardList,
-      color: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30",
-    },
-  ];
-
-  const needsAttention = [
-    {
-      title: "Urgent service requests",
-      count: urgentHealth.length,
-      detail: "High-priority service requests waiting for action",
-      to: "/admin/requests",
-      tone: "rose",
+      tone: "warning",
     },
     {
-      title: "Unclaimed service requests",
-      count: serviceRequests.length,
-      detail: "Pending requests from the unified service queue",
-      to: "/admin/requests",
-      tone: "amber",
+      label: "Active Technicians",
+      value: isSourceOk("technicians")
+        ? activeTechnicians.length
+        : "Unavailable",
+      description: "Active Technician accounts",
+      icon: UserCheck,
+      tone: "success",
     },
     {
-      title: "Barangays needing review",
-      count: barangayAttention.filter((item) => item.status !== "healthy").length,
-      detail: "Health, AI, or registry quality risk",
-      to: "/admin/barangays",
-      tone: "blue",
-    },
-    {
-      title: "Incomplete animal records",
-      count: registryMonitor.missingAnimalData || 0,
-      detail: "Missing breed, birth date, or registry details",
-      to: "/admin/monitoring",
-      tone: "slate",
+      label: "Urgent Cases",
+      value: isSourceOk("technicianRequests")
+        ? urgentRequests.length
+        : "Unavailable",
+      description: "Require prompt review",
+      icon: ShieldAlert,
+      tone: "error",
     },
   ];
 
   const handleRefresh = async () => {
     try {
       await refetch();
-      toast.success("Admin dashboard data refreshed.");
+      toast.success("Dashboard data is up to date.");
     } catch {
-      toast.error("Unable to refresh admin dashboard data.");
+      toast.error(
+        "Dashboard data could not be refreshed. Check your connection and try again.",
+      );
     }
   };
 
   return (
     <div className={ui.page}>
-      <Topbar
-        title="Admin Dashboard"
-        subtitle="Municipal agriculture operations, service demand, and registry health"
-      >
+      <Topbar title="Admin Portal" subtitle={formatDashboardDate()}>
         <button
+          type="button"
           onClick={handleRefresh}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#00643b] px-3 py-2 text-xs font-bold text-white hover:bg-[#004d2e] active:scale-95 transition"
+          className="btn btn-sm hover:border-primary/30 hover:text-primary focus-visible:outline-primary"
+          disabled={isFetching}
+          aria-label={
+            isFetching ? "Refreshing dashboard data" : "Refresh dashboard data"
+          }
         >
-          <RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} />
-          Refresh
+          <RefreshCcw
+            size={14}
+            className={isFetching ? "animate-spin" : ""}
+            aria-hidden="true"
+          />
+          <span className="hidden sm:inline">
+            {isFetching ? "Refreshing" : "Refresh"}
+          </span>
         </button>
       </Topbar>
 
-      <main className={ui.main}>
+      <main className="flex-1 space-y-5 p-4 md:p-6">
         {isError && (
-          <ErrorPanel title="Dashboard data unavailable" message="Some operational data could not be loaded. Check the backend connection and try again." onRetry={handleRefresh} />
+          <ErrorPanel
+            title="Dashboard unavailable"
+            message="We could not load operational data. Check your connection and try again."
+            onRetry={handleRefresh}
+          />
         )}
+
         {!isError && failedSources.length > 0 && (
           <PartialDataPanel sources={failedSources} onRetry={handleRefresh} />
         )}
 
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {summaryCards.map((card) => (
-            <SummaryCard key={card.label} {...card} loading={isLoading} />
+        <section
+          aria-label="Operational metrics"
+          className="grid grid-cols-1 gap-3 lg:grid-cols-3"
+        >
+          {metrics.map((metric) => (
+            <OperationalMetric
+              key={metric.label}
+              {...metric}
+              loading={isLoading}
+            />
           ))}
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <Panel className="xl:col-span-5" title="Needs Attention" description="Items admins should review first">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {needsAttention.map((item) => (
-                <AttentionCard key={item.title} item={item} loading={isLoading} />
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="xl:col-span-7" title="Service Request Overview" description="Pending work across health and AI services">
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-center">
-              <div className="lg:col-span-2">
-                <DashboardChart
-                  type="doughnut"
-                  labels={requestStatusData.labels}
-                  datasets={requestStatusData.datasets}
-                  height={220}
-                  darkTheme={darkTheme}
+        <section
+          aria-label="Immediate Admin work"
+          className="grid grid-cols-1 gap-5 lg:grid-cols-2"
+        >
+          <Panel
+            id="needs-attention"
+            title="Needs Attention"
+            description="Requests and staffing that need Admin review"
+          >
+            {!isSourceOk("technicianRequests") &&
+              !isSourceOk("technicians") && (
+                <SectionError
+                  message="We could not load the items that need attention."
+                  onRetry={handleRefresh}
                 />
-              </div>
-              <div className="lg:col-span-3 grid grid-cols-2 gap-3">
-                <MiniMetric icon={HeartPulse} label="Health pending" value={requestStatusData.datasets[0].data[0]} />
-                <MiniMetric icon={ShieldAlert} label="Urgent requests" value={urgentHealth.length} />
-                <MiniMetric icon={Syringe} label="AI pending" value={requestStatusData.datasets[0].data[2]} />
-                <MiniMetric icon={ClipboardList} label="Assigned work" value={requestStatusData.datasets[0].data[3]} />
-              </div>
-            </div>
+              )}
+            {isLoading ? (
+              <SkeletonRows count={3} label="Loading attention items" />
+            ) : needsAttention.length ? (
+              <AttentionList items={needsAttention} />
+            ) : (
+              <EmptyState
+                title="All caught up"
+                description="No requests need assignment, no urgent cases are waiting, and Technician staffing is clear."
+                icon={CheckCircle2}
+                tone="success"
+              />
+            )}
+          </Panel>
+
+          <Panel
+            id="pending-requests"
+            title="Pending Requests"
+            description="Highest-priority requests awaiting coordination"
+            actionLabel="View all Requests"
+            to="/admin/requests"
+          >
+            {!isSourceOk("technicianRequests") ? (
+              <SectionError
+                message="We could not load pending requests."
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <PendingRequestList
+                requests={pendingRequests}
+                loading={isLoading}
+              />
+            )}
           </Panel>
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <Panel className="xl:col-span-7" title="Pending Service Queue" description="Unassigned or urgent cases from farmers" actionLabel="Open board" to="/admin/requests">
-            <RequestTable
-              requests={filteredRequests}
-              loading={isLoading}
-              activeUrgency={activeUrgency}
-              onUrgencyChange={setActiveUrgency}
-              onAssign={(request) => {
-                setSelectedRequest(request);
-                setIsAssignModalOpen(true);
-              }}
-            />
+        <section
+          aria-label="Operational overview"
+          className="grid grid-cols-1 gap-5 lg:grid-cols-2"
+        >
+          <Panel
+            id="recent-admin-activity"
+            title="Recent Admin Activity"
+            description="Latest administrative and workflow changes"
+            actionLabel="View Audit Logs"
+            to="/admin/audit-logs"
+          >
+            {!isSourceOk("auditLogs") ? (
+              <SectionError
+                message="We could not load recent Admin activity."
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <AuditPreview logs={auditLogs} loading={isLoading} />
+            )}
           </Panel>
 
-          <Panel className="xl:col-span-5" title="Technician Workload" description="Active assigned service load">
-            <DashboardChart
-              type="bar"
-              labels={workloadChart.labels}
-              datasets={workloadChart.datasets}
-              height={260}
-              darkTheme={darkTheme}
-            />
-          </Panel>
-        </section>
-
-        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <Panel className="xl:col-span-6" title="Barangay Overview" description="Barangays with service or data quality pressure" actionLabel="View all" to="/admin/barangays">
-            <RankedBarangays barangays={barangayAttention} loading={isLoading} />
-          </Panel>
-
-          <Panel className="xl:col-span-6" title="Service Trends" description="AI records and health reports over the last 30 days">
-            <DashboardChart
-              type="line"
-              labels={trendChart.labels}
-              datasets={trendChart.datasets}
-              height={270}
-              darkTheme={darkTheme}
-            />
-          </Panel>
-        </section>
-
-        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <Panel className="xl:col-span-12" title="Recent Audit Activity" description="Latest admin and workflow changes" actionLabel="View logs" to="/admin/audit-logs">
-            <AuditPreview logs={auditLogs} loading={isLoading} />
+          <Panel
+            id="technician-workload"
+            title="Technician Workload"
+            description="Technician status and active assignments"
+            actionLabel="View Workload"
+            to="/admin/work-queue"
+          >
+            {!isSourceOk("monitoring") && !isSourceOk("technicians") ? (
+              <SectionError
+                message="We could not load Technician workload."
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <TechnicianWorkloadList rows={workloadRows} loading={isLoading} />
+            )}
           </Panel>
         </section>
       </main>
-
-      <AssignTaskModal
-        isOpen={isAssignModalOpen}
-        onClose={() => setIsAssignModalOpen(false)}
-        taskData={selectedRequest}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["admin", "dashboard-overview"] })}
-      />
     </div>
   );
 }
 
-const Panel = ({ title, description, actionLabel, to, className = "", children }) => (
-  <section className={`bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden ${className}`}>
-    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-4">
-      <div>
-        <h2 className="text-sm font-black text-slate-900 dark:text-white">{title}</h2>
-        {description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{description}</p>}
-      </div>
-      {to && actionLabel && (
-        <Link to={to} className="inline-flex items-center gap-1 text-xs font-bold text-[#00643b] dark:text-emerald-300 hover:underline shrink-0">
-          {actionLabel}
-          <ArrowRight size={13} />
-        </Link>
-      )}
-    </div>
-    <div className="p-5">{children}</div>
-  </section>
-);
+const Panel = ({ id, title, description, actionLabel, to, children }) => {
+  const headingId = `${id}-heading`;
 
-const SummaryCard = ({ label, value, note, icon: Icon, color, loading }) => (
-  <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm min-h-32">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{label}</p>
-        <p className="text-2xl font-black text-slate-900 dark:text-white mt-2 capitalize">{loading ? "..." : formatSummaryValue(value)}</p>
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="card overflow-hidden border border-base-300 bg-base-100 shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 bg-base-200/35 px-4 py-3.5 sm:px-5">
+        <div className="min-w-0">
+          <h2 id={headingId} className="text-lg font-bold text-base-content">
+            {title}
+          </h2>
+          {description && (
+            <p className="mt-0.5 text-sm text-base-content/80">{description}</p>
+          )}
+        </div>
+        {to && actionLabel && (
+          <DashboardActionLink to={to}>{actionLabel}</DashboardActionLink>
+        )}
       </div>
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-        <Icon size={18} />
-      </div>
-    </div>
-    <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">{note}</p>
-  </div>
-);
-
-const formatSummaryValue = (value) => {
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) return numeric.toLocaleString();
-  return value || "0";
+      <div className="p-4 sm:p-5">{children}</div>
+    </section>
+  );
 };
 
-const AttentionCard = ({ item, loading }) => {
+const AttentionList = ({ items }) => (
+  <ul className="list divide-y divide-base-300">
+    {items.map((item) => (
+      <li key={item.title} className="list-row items-center px-0 py-3">
+        <span
+          className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+            item.tone === "error"
+              ? "bg-error/10 text-error"
+              : item.tone === "warning"
+                ? "bg-warning/10 text-warning"
+                : "bg-base-200 text-base-content/65"
+          }`}
+        >
+          <AlertTriangle size={17} aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="font-semibold text-base-content">
+            {numberValue(item.count)}{" "}
+            {item.count === 1 ? item.title : item.pluralTitle}
+          </p>
+          <p className="mt-0.5 text-sm text-base-content/75">
+            {item.description}
+          </p>
+        </div>
+        <DashboardActionLink to={item.to} ariaLabel={`Review: ${item.title}`}>
+          Review
+        </DashboardActionLink>
+      </li>
+    ))}
+  </ul>
+);
+
+const OperationalMetric = ({
+  label,
+  value,
+  description,
+  icon: Icon,
+  tone,
+  loading,
+}) => {
   const toneClass = {
-    rose: "border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/15 text-rose-700 dark:text-rose-300",
-    amber: "border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/15 text-amber-700 dark:text-amber-300",
-    blue: "border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/15 text-blue-700 dark:text-blue-300",
-    slate: "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300",
-  }[item.tone];
+    warning: "border-warning/20 bg-warning/10 text-warning",
+    success: "border-success/20 bg-success/10 text-success",
+    error: "border-error/20 bg-error/10 text-error",
+  }[tone];
+
+  const toneBorderClass = {
+    warning: "border-warning/35",
+    success: "border-success/35",
+    error: "border-error/35",
+  }[tone];
 
   return (
-    <Link to={item.to} className={`block rounded-2xl border p-4 hover:-translate-y-0.5 transition ${toneClass}`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-black text-slate-900 dark:text-white">{item.title}</p>
-        <span className="text-xl font-black">{loading ? "..." : numberValue(item.count)}</span>
+    <article
+      data-testid="operational-metric"
+      data-tone={tone}
+      className={`stat min-h-28 rounded-box border-0 border-l-4 bg-base-100 p-4 shadow-sm ${toneBorderClass}`}
+    >
+      <div className="stat-figure ml-3 self-center">
+        <span
+          className={`flex h-10 w-10 items-center justify-center rounded-lg border ${toneClass}`}
+        >
+          <Icon size={18} aria-hidden="true" />
+        </span>
       </div>
-      <p className="text-xs mt-2 text-slate-600 dark:text-slate-400">{item.detail}</p>
-    </Link>
+      {loading ? (
+        <div
+          className="skeleton stat-value mt-1 h-8 w-20"
+          aria-label={`Loading ${label}`}
+        />
+      ) : (
+        <p className="stat-value text-3xl font-extrabold leading-none text-base-content">
+          {numberValue(value)}
+        </p>
+      )}
+      <p className="stat-title mt-1 text-sm font-semibold text-base-content/90">
+        {label}
+      </p>
+      <p className="stat-desc mt-1 text-xs text-base-content/75">
+        {description}
+      </p>
+    </article>
   );
 };
 
-const MiniMetric = ({ icon: Icon, label, value }) => (
-  <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
-    <Icon size={16} className="text-[#00643b] dark:text-emerald-300" />
-    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-3">{label}</p>
-    <p className="text-xl font-black text-slate-900 dark:text-white mt-1">{numberValue(value)}</p>
-  </div>
-);
+const getRequestPath = (request) => {
+  const requestId = request.id || request.rawId || request.raw?._id;
+  return requestId
+    ? `/admin/requests?requestId=${encodeURIComponent(requestId)}&status=all`
+    : "/admin/requests?status=all";
+};
 
-const RankedBarangays = ({ barangays, loading }) => {
-  if (loading) return <SkeletonRows count={5} />;
-  if (!barangays.length) return <EmptyState message="No barangay risk records available." />;
+const PendingRequestList = ({ requests, loading }) => {
+  if (loading) {
+    return <SkeletonRows count={5} label="Loading pending requests" />;
+  }
+  if (!requests.length) {
+    return (
+      <EmptyState
+        title="No pending requests"
+        description="No service requests currently need Admin coordination."
+        icon={Inbox}
+        tone="primary"
+      />
+    );
+  }
+
+  const visibleRequests = requests.slice(0, 5);
 
   return (
-    <div className="space-y-3">
-      {barangays.map((item) => {
-        const name = getBarangayName(item);
-        const risk = Number(item.pendingHealthRequests || 0) + Number(item.pendingAIRequests || 0) + Number(item.incompleteRecordsCount || 0);
-        return (
-          <div key={name} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-black text-slate-900 dark:text-white truncate">{name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {numberValue(item.animalsCount || 0)} animals, {numberValue(item.farmersCount || 0)} farmers
-                </p>
-              </div>
-              <StatusBadge status={item.status || (risk > 0 ? "attention" : "healthy")} />
-            </div>
-            <div className="grid grid-cols-3 gap-2 mt-4">
-              <SmallCount label="Health" value={item.pendingHealthRequests || 0} />
-              <SmallCount label="AI" value={item.pendingAIRequests || 0} />
-              <SmallCount label="Data" value={item.incompleteRecordsCount || 0} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-const RequestTable = ({ requests, loading, activeUrgency, onUrgencyChange, onAssign }) => (
-  <div>
-    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-      <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-900 p-1">
-        {[
-          ["all", "All pending"],
-          ["urgent", "Urgent only"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            onClick={() => onUrgencyChange(value)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              activeUrgency === value ? "bg-[#00643b] text-white" : "text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800"
-            }`}
+    <>
+      <ul className="list divide-y divide-base-300 md:hidden">
+        {visibleRequests.map((request, index) => (
+          <li
+            key={request.id || request.rawId || index}
+            className="list-row grid-cols-[1fr_auto] px-0 py-4"
           >
-            {label}
-          </button>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-base-content">
+                  {request.farmer}
+                </p>
+                <RequestStatus request={request} />
+              </div>
+              <p className="mt-1 text-sm text-base-content/80">
+                {getRequestType(request)}
+              </p>
+              <p className="mt-1 flex items-start gap-1.5 text-sm text-base-content/75">
+                <MapPin
+                  size={14}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                {request.barangay}
+              </p>
+            </div>
+            <DashboardActionLink to={getRequestPath(request)}>
+              Open Request
+            </DashboardActionLink>
+          </li>
         ))}
-      </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{requests.length} visible requests</p>
-    </div>
+      </ul>
 
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-800">
-            <th className="py-3 pr-3">Farmer</th>
-            <th className="py-3 pr-3">Animal</th>
-            <th className="py-3 pr-3">Type</th>
-            <th className="py-3 pr-3">Urgency</th>
-            <th className="py-3 text-right">Action</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {loading ? (
+      <div className="hidden overflow-x-auto md:block">
+        <table className="table table-sm">
+          <thead>
             <tr>
-              <td colSpan={5} className="py-6"><SkeletonRows count={3} /></td>
+              <th>Farmer</th>
+              <th>Service</th>
+              <th>Barangay / Location</th>
+              <th>Status</th>
+              <th className="text-right">Action</th>
             </tr>
-          ) : requests.length === 0 ? (
-            <tr>
-              <td colSpan={5} className="py-10"><EmptyState message="No pending health requests in this view." /></td>
-            </tr>
-          ) : (
-            requests.slice(0, 7).map((request) => (
-              <tr key={request.id || request.rawId} className="align-middle">
-                <td className="py-3 pr-3">
-                  <p className="font-bold text-slate-900 dark:text-white">{request.farmer}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
-                    <MapPin size={12} /> {request.barangay}
-                  </p>
+          </thead>
+          <tbody>
+            {visibleRequests.map((request, index) => (
+              <tr key={request.id || request.rawId || index}>
+                <td className="font-semibold text-base-content">
+                  {request.farmer}
                 </td>
-                <td className="py-3 pr-3">
-                  <span className="font-bold text-slate-700 dark:text-slate-200">{request.animalTag}</span>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{request.animalLabel}</p>
-                </td>
-                <td className="py-3 pr-3">
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-900 px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-300">
-                    <Stethoscope size={12} /> {getRequestType(request)}
+                <td>{getRequestType(request)}</td>
+                <td>
+                  <span className="flex items-start gap-1.5">
+                    <MapPin
+                      size={14}
+                      className="mt-0.5 shrink-0 text-base-content/75"
+                      aria-hidden="true"
+                    />
+                    {request.barangay}
                   </span>
                 </td>
-                <td className="py-3 pr-3">
-                  <StatusBadge status={request.urgency || "standard"} />
+                <td>
+                  <RequestStatus request={request} />
                 </td>
-                <td className="py-3 text-right">
-                  {request.type === "health" && request.raw?._id ? (
-                    <button onClick={() => onAssign(request.raw)} className="rounded-lg bg-[#00643b] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#004d2e] active:scale-95 transition">
-                      Assign
-                    </button>
-                  ) : (
-                    <Link to="/admin/requests" className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900 transition">
-                      Review
-                    </Link>
-                  )}
+                <td className="text-right">
+                  <DashboardActionLink to={getRequestPath(request)}>
+                    Open Request
+                  </DashboardActionLink>
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-);
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+};
 
-const AuditPreview = ({ logs, loading }) => {
-  if (loading) return <SkeletonRows count={4} />;
-  if (!logs.length) return <EmptyState message="No recent audit logs available." />;
-
+const RequestStatus = ({ request }) => {
+  const urgent = isUrgentRequest(request);
   return (
-    <div className="space-y-3">
-      {logs.slice(0, 5).map((log) => (
-        <div key={log._id} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-black text-slate-900 dark:text-white truncate">{log.action || "Audit action"}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{log.entityType || "System"} by {log.actorId?.name || "System"}</p>
-            </div>
-            <span className="text-[11px] text-slate-400 shrink-0">{formatDate(log.createdAt)}</span>
-          </div>
-        </div>
-      ))}
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Badge status={request.status}>
+        {formatLabel(request.status, "Pending")}
+      </Badge>
+      {urgent && <Badge status="urgent">Urgent</Badge>}
     </div>
   );
 };
 
-const SmallCount = ({ label, value }) => (
-  <div className="rounded-xl bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 p-2">
-    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-    <p className="text-sm font-black text-slate-900 dark:text-white mt-1">{numberValue(value)}</p>
-  </div>
-);
+const TechnicianWorkloadList = ({ rows, loading }) => {
+  if (loading) {
+    return <SkeletonRows count={4} label="Loading Technician workload" />;
+  }
+  if (!rows.length) {
+    return (
+      <EmptyState
+        title="No workload information"
+        description="Technician workload will appear after active assignments are recorded."
+        icon={Users}
+      />
+    );
+  }
 
-const StatusBadge = ({ status }) => {
-  const normalized = String(status || "standard").toLowerCase();
-  const urgent = ["high", "emergency", "urgent", "critical"].includes(normalized);
-  const attention = ["attention", "pending", "standard"].includes(normalized);
-  const cls = urgent
-    ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-300 dark:border-rose-900/60"
-    : attention
-      ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900/60"
-      : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-300 dark:border-emerald-900/60";
-  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${cls}`}>{status || "standard"}</span>;
+  return (
+    <ul className="list divide-y divide-base-300">
+      {rows.map((row) => (
+        <li key={row.id || row.name} className="list-row items-center py-3">
+          <div className="relative shrink-0">
+            <UserAvatar
+              name={row.name}
+              imageUrl={row.imageUrl}
+              size={40}
+              sizeClass="h-10 w-10"
+              className="rounded-full"
+            />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-base-content">
+              {row.name}
+            </p>
+            <p className="mt-0.5 text-[10px] font-bold text-base-content/75">
+              {row.operationalState}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="font-bold text-base-content">
+              {row.activeRequests === null
+                ? "Unavailable"
+                : numberValue(row.activeRequests)}
+            </p>
+            <p className="text-[10px] font-bold text-base-content/75">
+              active assignments
+            </p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
 };
 
-const EmptyState = ({ message }) => (
-  <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-sm text-slate-400 dark:text-slate-500">
-    {message}
-  </div>
+const AuditPreview = ({ logs, loading }) => {
+  if (loading) {
+    return <SkeletonRows count={4} label="Loading Recent Activity" />;
+  }
+  if (!logs.length) {
+    return (
+      <EmptyState
+        title="No recent activity"
+        description="Activity will appear after an Admin or workflow change is recorded."
+        icon={History}
+      />
+    );
+  }
+
+  return (
+    <ul className="list divide-y divide-base-300">
+      {logs.slice(0, 5).map((log, index) => {
+        const activity = getActivityPresentation(log?.action);
+        const ActivityIcon = activity.icon;
+
+        return (
+          <li
+            key={log?._id || index}
+            className="list-row grid-cols-[auto_1fr_auto] items-center px-0 py-3"
+          >
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${activity.tone}`}
+              aria-hidden="true"
+            >
+              <ActivityIcon size={17} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-base-content">
+                {formatActivityTitle(log?.action)}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-base-content/75">
+                {getAuditSubject(log)}
+                {log?.actorId?.name ? ` · ${log.actorId.name}` : ""}
+              </p>
+            </div>
+            <time
+              dateTime={log?.createdAt || undefined}
+              className="text-xs text-base-content/75"
+            >
+              {formatRelativeTime(log?.createdAt)}
+            </time>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
+const EmptyState = ({ title, description, icon: Icon, tone = "neutral" }) => {
+  const iconToneClass = {
+    primary: "bg-primary/10 text-primary",
+    success: "bg-success/10 text-success",
+    neutral: "bg-base-300/65 text-base-content/75",
+  }[tone];
+
+  return (
+    <div
+      data-empty-state
+      className="rounded-box border border-dashed border-base-300 bg-base-200/45 px-4 py-5 text-center sm:py-6"
+    >
+      {Icon && (
+        <span
+          className={`mx-auto flex h-9 w-9 items-center justify-center rounded-lg ${iconToneClass}`}
+        >
+          <Icon size={17} aria-hidden="true" />
+        </span>
+      )}
+      <p className="mt-2.5 font-semibold text-base-content">{title}</p>
+      <p className="mx-auto mt-1 max-w-xl text-sm text-base-content/80">
+        {description}
+      </p>
+    </div>
+  );
+};
+
+const DashboardActionLink = ({ to, children, ariaLabel }) => (
+  <Link
+    to={to}
+    aria-label={ariaLabel}
+    className="group btn btn-ghost btn-sm min-h-10 text-primary hover:bg-primary/10 focus-visible:outline-primary"
+  >
+    {children}
+    <ArrowRight
+      size={14}
+      aria-hidden="true"
+      className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
+    />
+  </Link>
 );
 
-const SkeletonRows = ({ count }) => (
-  <div className="space-y-3">
+const SkeletonRows = ({ count, label }) => (
+  <div className="space-y-3" aria-label={label}>
     {Array.from({ length: count }).map((_, index) => (
-      <div key={index} className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-900 animate-pulse" />
+      <div key={index} className="skeleton h-14 w-full" />
     ))}
   </div>
 );
 
+const SectionError = ({ message, onRetry }) => (
+  <div role="alert" className="alert alert-error alert-soft">
+    <AlertTriangle size={18} className="shrink-0" aria-hidden="true" />
+    <span>{message}</span>
+    <button type="button" onClick={onRetry} className="btn btn-sm">
+      Try again
+    </button>
+  </div>
+);
+
 const ErrorPanel = ({ title, message, onRetry }) => (
-  <div className="rounded-2xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/20 p-4 flex flex-wrap items-center justify-between gap-3">
+  <div
+    role="alert"
+    className="alert alert-error alert-soft sm:alert-horizontal"
+  >
+    <ShieldAlert size={20} className="shrink-0" aria-hidden="true" />
     <div>
-      <p className="text-sm font-black text-rose-800 dark:text-rose-200">{title}</p>
-      <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">{message}</p>
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1 text-sm">{message}</p>
     </div>
-    <button onClick={onRetry} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">
-      Retry
+    <button type="button" onClick={onRetry} className="btn btn-sm">
+      Try again
     </button>
   </div>
 );
 
 const PartialDataPanel = ({ sources, onRetry }) => (
-  <div className="rounded-2xl border border-amber-200 dark:border-amber-900/70 bg-amber-50 dark:bg-amber-950/20 p-4 flex flex-wrap items-start justify-between gap-3">
+  <div
+    role="status"
+    className="alert alert-warning alert-soft sm:alert-horizontal"
+  >
+    <AlertTriangle size={20} className="shrink-0" aria-hidden="true" />
     <div>
-      <p className="text-sm font-black text-amber-800 dark:text-amber-200">
-        Some dashboard sections did not load
+      <p className="font-semibold">Some dashboard sections are unavailable</p>
+      <p className="mt-1 text-sm">
+        Available sections are still current and usable.
       </p>
-      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-        Loaded sections remain visible. Failed widgets are marked as unavailable instead of showing fake zeroes.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap gap-2">
         {sources.map((source) => (
-          <span
-            key={source.label}
-            className="rounded-full border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-slate-950/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-200"
-            title={source.error}
-          >
+          <span key={source.label} className="badge badge-warning badge-soft">
             {source.label}
           </span>
         ))}
       </div>
     </div>
-    <button onClick={onRetry} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">
-      Retry
+    <button type="button" onClick={onRetry} className="btn btn-sm">
+      Try again
     </button>
   </div>
 );

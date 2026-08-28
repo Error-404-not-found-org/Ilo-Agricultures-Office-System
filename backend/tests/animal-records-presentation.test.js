@@ -91,7 +91,11 @@ test("Technician Recent Records loads canonical record details by identifiers", 
   assert.match(technicianBranch, /animalId: id/);
   assert.match(
     technicianBranch,
-    /recordId: String\(record\.sourceId \|\| record\._id \|\| record\.id \|\| ""\)/,
+    /sourceId: String\(record\.sourceId \|\| record\._id \|\| record\.id \|\| ""\)/,
+  );
+  assert.match(
+    technicianBranch,
+    /sourceKind: String\(record\.recordKind \|\| ""\)/,
   );
   assert.match(
     technicianBranch,
@@ -100,22 +104,18 @@ test("Technician Recent Records loads canonical record details by identifiers", 
   assert.doesNotMatch(technicianBranch, /recordData|JSON\.stringify/);
 
   assert.match(technicianDetails, /animalId\?: string/);
+  assert.match(technicianDetails, /sourceId\?: string/);
+  assert.match(technicianDetails, /sourceKind\?: string/);
   assert.match(technicianDetails, /recordId\?: string/);
   assert.match(technicianDetails, /recordType\?: string/);
-  assert.match(technicianDetails, /params\.recordId \|\|/);
-  assert.match(technicianDetails, /if \(params\.animalId\) return params\.animalId/);
-  assert.match(technicianDetails, /getAnimalRecords\(api, animalId \|\| ""/);
-  assert.match(technicianDetails, /useAnimalDetailsQuery\(animalId \|\| ""\)/);
-  assert.match(technicianDetails, /String\(r\.sourceId \|\| ""\) === String\(recordId\)/);
-  assert.match(
-    technicianDetails,
-    /item\.recordKind \|\| item\.type \|\| params\.recordType/,
-  );
-  assert.match(technicianDetails, /recordKind === "medical_record"/);
+  assert.match(technicianDetails, /params\.sourceId \|\|/);
+  assert.match(technicianDetails, /params\.animalId \|\| legacyRecord\?\.animalId/);
+  assert.match(technicianDetails, /useOfficialRecordDetail\(\{/);
+  assert.match(technicianDetails, /sourceKind,/);
+  assert.doesNotMatch(technicianDetails, /getAnimalRecords|useAnimalDetailsQuery/);
 
   for (const kind of [
     'recordKind: "insemination"',
-    'recordKind: "health_request"',
     'recordKind: "medical_record"',
     'recordKind: "pregnancy"',
     'recordKind: "calving"',
@@ -125,7 +125,17 @@ test("Technician Recent Records loads canonical record details by identifiers", 
   assert.match(recordsBackend, /previousAttemptReference/);
 });
 
-test("animal records show one official outcome per linked health request", () => {
+test("animal records keep raw HealthRequests outside official record collections", () => {
+  const recordsBackend = source(
+    "backend/src/controllers/animal-workflow.controllers.js",
+  );
+  const recordsHandler = recordsBackend.slice(
+    recordsBackend.indexOf("export const getAnimalRecords"),
+    recordsBackend.indexOf("export const getAnimalReproductionEligibility"),
+  );
+  assert.doesNotMatch(recordsHandler, /HealthRequest\.find|recordKind: "health_request"/);
+  assert.match(recordsHandler, /MedicalRecord\.find|recordKind: "medical_record"/);
+
   const healthRequest = {
     _id: "health-request-1",
     recordKind: "health_request",
@@ -144,15 +154,41 @@ test("animal records show one official outcome per linked health request", () =>
 });
 
 test("AI records separate service completion from breeding outcome and expose attempt linkage", () => {
-  const pending = formatAnimalRecord(
+  const animalDetailsBackend = source(
+    "backend/src/controllers/animals.controllers.js",
+  );
+  const animalRecordsBackend = source(
+    "backend/src/controllers/animal-workflow.controllers.js",
+  );
+  assert.match(animalDetailsBackend, /buildFarmerAIRequest\(insemination\)/);
+  assert.match(animalRecordsBackend, /buildFarmerAIRequest\(item\)/);
+  assert.match(animalRecordsBackend, /summary: item\.outcome \|\| item\.status/);
+
+  const completedAwaitingOutcome = formatAnimalRecord(
     { recordKind: "insemination", attemptNumber: 1, status: "done" },
     animal,
   );
-  assert.equal(pending.title, "AI attempt 1 · RC26-05");
+  assert.equal(completedAwaitingOutcome.title, "AI attempt 1 · RC26-05");
   assert.deepEqual(
-    pending.badges.map((badge) => badge.label),
+    completedAwaitingOutcome.badges.map((badge) => badge.label),
     ["AI service completed", "Outcome awaiting confirmation"],
   );
+
+  const pendingAttempt2 = formatAnimalRecord(
+    {
+      recordKind: "insemination",
+      attemptNumber: 2,
+      status: "pending",
+      previousAttemptReference: 1,
+    },
+    animal,
+  );
+  assert.deepEqual(
+    pendingAttempt2.badges.map((badge) => badge.label),
+    ["Pending"],
+  );
+  assert.ok(pendingAttempt2.details.includes("Status: Pending"));
+  assert.doesNotMatch(JSON.stringify(pendingAttempt2), /AI service completed/i);
 
   const failed = formatAnimalRecord(
     {
@@ -183,6 +219,9 @@ test("AI records separate service completion from breeding outcome and expose at
     animal,
   );
   assert.ok(second.details.includes("Previous attempt: 1"));
+  assert.ok(
+    second.badges.some((badge) => badge.label === "AI service completed"),
+  );
 });
 
 test("pregnancy records format method, stage, continuation state, technician, and related attempt", () => {

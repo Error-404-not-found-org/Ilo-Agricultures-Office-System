@@ -72,8 +72,23 @@ export const LEGACY_ACTIVE_AI_STATUS = Object.freeze({
   UNDER_MONITORING_SPACED: "under monitoring",
 });
 
+const LEGACY_AI_STATUS_CANONICAL_MAP = Object.freeze({
+  [LEGACY_ACTIVE_AI_STATUS.SUBMITTED]: AI_STATUS.PENDING,
+  [LEGACY_ACTIVE_AI_STATUS.ACCEPTED]: AI_STATUS.APPROVED,
+  [LEGACY_ACTIVE_AI_STATUS.ASSIGNED]: AI_STATUS.APPROVED,
+  [LEGACY_ACTIVE_AI_STATUS.IN_PROGRESS]: AI_STATUS.IN_PROGRESS,
+  [LEGACY_ACTIVE_AI_STATUS.AWAITING_SERVICE]: AI_STATUS.SCHEDULED,
+  [LEGACY_ACTIVE_AI_STATUS.AWAITING_SERVICE_SPACED]: AI_STATUS.SCHEDULED,
+  [LEGACY_ACTIVE_AI_STATUS.AWAITING_RESULT]: AI_STATUS.IN_PROGRESS,
+  [LEGACY_ACTIVE_AI_STATUS.AWAITING_RESULT_SPACED]: AI_STATUS.IN_PROGRESS,
+  [LEGACY_ACTIVE_AI_STATUS.UNDER_MONITORING]: AI_STATUS.IN_PROGRESS,
+  [LEGACY_ACTIVE_AI_STATUS.UNDER_MONITORING_SPACED]: AI_STATUS.IN_PROGRESS,
+});
+
+// Compatibility is applied at read/transition boundaries only. Persisted
+// historical documents are not rewritten by this normalizer.
 export const normalizeAIStatus = (value) =>
-  value === LEGACY_ACTIVE_AI_STATUS.IN_PROGRESS ? AI_STATUS.IN_PROGRESS : value;
+  LEGACY_AI_STATUS_CANONICAL_MAP[value] || value;
 
 export const ACTIVE_AI_REQUEST_STATUSES = Object.freeze([
   AI_STATUS.PENDING,
@@ -116,6 +131,22 @@ export const ACTIVE_HEALTH_REQUEST_STATUSES = Object.freeze([
 
 export const isActiveHealthRequestStatus = (status) =>
   ACTIVE_HEALTH_REQUEST_STATUSES.includes(status);
+
+// Future Health vocabulary is re-exported for compatibility consumers. The
+// live HEALTH_STATUS enum and transition rules above remain unchanged in
+// Phase 1, so production mutations cannot begin writing `active` yet.
+export {
+  CANONICAL_HEALTH_REQUEST_STATUS,
+  CANONICAL_HEALTH_REQUEST_TYPE,
+  HEALTH_HANDLING_METHOD,
+  HEALTH_REQUEST_PRIORITY,
+  HEALTH_REQUEST_STATUS_COMPATIBILITY,
+  HEALTH_REQUEST_TYPE_COMPATIBILITY_GROUP,
+  healthRequestOwnerId,
+  normalizeHealthRequestStatus,
+  normalizeHealthRequestType,
+  normalizeHealthUrgency,
+} from "./health-request-vocabulary.js";
 
 export const PREGNANCY_RESULT = Object.freeze({
   PREGNANT: "Pregnant",

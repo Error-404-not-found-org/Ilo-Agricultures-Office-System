@@ -41,6 +41,10 @@ import {
 } from "../src/domain/status-vocabulary.js";
 
 import { normalizeVisitScheduleDate } from "../src/domain/visit-scheduling.js";
+import {
+  LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
+  LEGACY_PREGNANCY_POLICY_VERSION,
+} from "../src/domain/pregnancy-confirmation-policy.js";
 
 export const SEED_PREFIX = "RC26-";
 
@@ -370,6 +374,8 @@ const baseInsemination = ({
   aiDate,
   status = "done",
   seedBatch,
+  visitPeriod,
+  assignedToTechnician = true,
   extra = {},
 }) => ({
   _id,
@@ -377,22 +383,31 @@ const baseInsemination = ({
   farmerId,
   animalId,
 
-  technicianId,
-  approvedBy: technicianId,
+  ...(assignedToTechnician && technicianId
+    ? {
+        technicianId,
+        approvedBy: technicianId,
+      }
+    : {}),
 
   inseminationDate: aiDate,
 
   preferredDate: aiDate,
 
+  ...(visitPeriod ? { visitPeriod } : {}),
+
   scheduledDate: ACTIVE_AI_REQUEST_STATUSES.includes(status)
     ? aiDate
     : undefined,
 
-  estrus: "Natural",
-
-  sireBreed: "Angus",
-
-  sireCode: `SEED-SIRE-${seedBatch}`,
+  ...(status === "done"
+    ? {
+        estrus: "Natural",
+        sireBreed: "Angus",
+        sireCode: `SEED-SIRE-${seedBatch}`,
+        technicianNote: `Development lifecycle seed ${seedBatch}.`,
+      }
+    : {}),
 
   status,
 
@@ -406,13 +421,12 @@ const baseInsemination = ({
 
   outcomeVerificationStatus: "pending",
 
-  technicianNote: `Development lifecycle seed ${seedBatch}.`,
-
   statusHistory: [
     {
       status,
       note: `Seeded by ${seedBatch}.`,
-      actorId: technicianId,
+      actorId:
+        assignedToTechnician && technicianId ? technicianId : farmerId,
       createdAt: aiDate,
     },
   ],
@@ -578,6 +592,8 @@ const baseTask = ({
 
   notes,
 
+  visitPeriod,
+
   metadata = {},
 }) => ({
   _id,
@@ -611,6 +627,8 @@ const baseTask = ({
   metadata: {
     seedBatch,
 
+    ...(visitPeriod ? { visitPeriod } : {}),
+
     ...(inseminationId
       ? {
           inseminationId,
@@ -625,6 +643,7 @@ const confirmedPregnancy = ({
   _id,
   animalId,
   farmerId,
+  technicianId,
   inseminationId,
   aiDate,
   diagnosisDate,
@@ -655,6 +674,19 @@ const confirmedPregnancy = ({
 
   technicianNote:
     "Technician-confirmed pregnancy for development lifecycle testing.",
+
+  confirmation: {
+    methodCode: null,
+    stage: "legacy_unclassified",
+    confirmedAt: diagnosisDate,
+    confirmedBy: technicianId,
+    policyVersion: LEGACY_PREGNANCY_POLICY_VERSION,
+    earliestThresholdSnapshot: LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
+    recheckRequired: false,
+    recheckDueAt: null,
+  },
+
+  recheckStatus: "not_required",
 
   cycleStatus,
 
@@ -908,6 +940,8 @@ export const buildReproductionLifecyclePlan = ({
       animalId: scenario.motherId,
 
       farmerId,
+
+      technicianId,
 
       inseminationId: insemination._id,
 
@@ -1244,16 +1278,23 @@ export const buildReproductionLifecyclePlan = ({
 
     status: "pending",
 
+    assignedToTechnician: false,
+
     extra: {
       inseminationDate: undefined,
 
       scheduledDate: undefined,
 
       preferredDate: addDays(now, 3),
+
+      heatSigns: ["standing_heat", "clear_mucus"],
+
+      comment: "Farmer reports clear heat signs and requests AI service.",
     },
   });
 
-  s2.expectedResult = "Duplicate active AI request rejected";
+  s2.expectedResult =
+    "Unassigned request shows Accept & Set Visit; duplicate active AI request is rejected";
 
   // ============================================================
   // RC26-03 — AI SCHEDULED
@@ -1722,6 +1763,8 @@ export const buildReproductionLifecyclePlan = ({
 
     status: "pending",
 
+    assignedToTechnician: false,
+
     extra: {
       inseminationDate: undefined,
 
@@ -1734,10 +1777,15 @@ export const buildReproductionLifecyclePlan = ({
       attemptNumber: 2,
 
       previousAttemptId: attempt1._id,
+
+      heatSigns: ["standing_heat"],
+
+      comment: "Farmer requests re-insemination after verified return to heat.",
     },
   });
 
-  s16.expectedResult = "Attempt 2 linked to verified failed Attempt 1";
+  s16.expectedResult =
+    "Unassigned Attempt 2 shows Accept & Set Visit and remains linked to verified failed Attempt 1";
 
   // ============================================================
   // RC26-17 — AI IN PROGRESS

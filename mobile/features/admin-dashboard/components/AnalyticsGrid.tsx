@@ -101,7 +101,7 @@ export function AnalyticsGrid({ stats }: AnalyticsGridProps) {
           bg={isDark ? "rgba(124, 58, 237, 0.15)" : "#f5f3ff"}
         />
         <Card
-          title="Active AI Tasks"
+          title="AI Records"
           value={stats?.inseminations ?? "—"}
           icon="needle"
           color="#2563EB"
@@ -116,7 +116,7 @@ export function AnalyticsGrid({ stats }: AnalyticsGridProps) {
         />
         <Card
           title="Health Requests"
-          value={stats?.healthRequests ?? 14}
+          value={stats?.healthRequests ?? "—"}
           icon="medical-bag"
           color="#ef4444"
           bg={isDark ? "rgba(239, 68, 68, 0.15)" : "#fef2f2"}

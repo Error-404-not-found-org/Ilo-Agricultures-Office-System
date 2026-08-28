@@ -1,16 +1,10 @@
-import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
-import { Pregnancy } from "../models/pregnancy.model.js";
-import { Calving } from "../models/calving.model.js";
 import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
 import {
-  activeRequestKeyForAnimal,
   createAIRequestWithGuard,
 } from "../services/ai-request-creation.service.js";
-import { isActiveAIRequestStatus } from "../domain/status-vocabulary.js";
-import { createAuditLog } from "../services/audit.service.js";
 import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
 import {
   normalizeSemenDosesUsed,
@@ -18,6 +12,7 @@ import {
   normalizeSireCode,
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
+import { buildFarmerAIRequests } from "../domain/ai-request-presentation.js";
 
 export const createInsemination = async (req, res) => {
   try {
@@ -30,6 +25,7 @@ export const createInsemination = async (req, res) => {
       semenDosesUsed,
       estrus,
       visitPeriod,
+      previousAttemptId,
     } = req.body;
 
     const normalizedSireBreed = normalizeSireBreed(sireBreed);
@@ -37,7 +33,7 @@ export const createInsemination = async (req, res) => {
     const normalizedSemenDosesUsed = normalizeSemenDosesUsed(semenDosesUsed);
     const normalizedVisitPeriod = normalizeVisitPeriod(visitPeriod);
 
-    if (!req.user || !["technician", "admin"].includes(req.user.role)) {
+    if (!req.user || req.user.role !== "technician") {
       return res.status(403).json({
         message: "Use the AI service request form to request this service.",
       });
@@ -81,6 +77,7 @@ export const createInsemination = async (req, res) => {
         ? { visitPeriod: normalizedVisitPeriod }
         : {}),
       estrus,
+      ...(previousAttemptId ? { previousAttemptId } : {}),
       status: "approved",
       approvedBy: req.user._id,
     });
@@ -100,104 +97,17 @@ export const createInsemination = async (req, res) => {
 };
 
 export const updateInsemination = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      inseminationDate,
-      sireBreed,
-      sireCode,
-      semenDosesUsed,
-      estrus,
-      status,
-      visitPeriod,
-    } = req.body;
-
-    const existingRecord = await Insemination.findById(id);
-    if (!existingRecord) {
-      return res.status(404).json({ message: "Insemination record not found" });
-    }
-
-    if (status === "done" && existingRecord.status !== "done") {
-      return res.status(409).json({
-        message:
-          "AI service completion must use the canonical request completion workflow.",
-        code: "CANONICAL_AI_COMPLETION_REQUIRED",
-      });
-    }
-
-    const nextStatus = status || existingRecord.status;
-    const activeStatus = isActiveAIRequestStatus(nextStatus);
-    const hasSireBreed = Object.hasOwn(req.body, "sireBreed");
-    const hasSireCode = Object.hasOwn(req.body, "sireCode");
-    const hasSemenDosesUsed = Object.hasOwn(req.body, "semenDosesUsed");
-    const hasVisitPeriod = Object.hasOwn(req.body, "visitPeriod");
-    const normalizedSireBreed = hasSireBreed
-      ? normalizeSireBreed(sireBreed, {
-          required: existingRecord.status === "done",
-        })
-      : undefined;
-    const normalizedSireCode = hasSireCode
-      ? normalizeSireCode(sireCode, {
-          required: existingRecord.status === "done",
-        })
-      : undefined;
-    const normalizedSemenDosesUsed = hasSemenDosesUsed
-      ? normalizeSemenDosesUsed(semenDosesUsed)
-      : undefined;
-    const normalizedVisitPeriod = hasVisitPeriod
-      ? normalizeVisitPeriod(visitPeriod)
-      : undefined;
-    const insemination = await Insemination.findByIdAndUpdate(
-      id,
-      {
-        $set: {
-          inseminationDate,
-          ...(hasSireBreed ? { sireBreed: normalizedSireBreed } : {}),
-          ...(hasSireCode ? { sireCode: normalizedSireCode } : {}),
-          ...(hasSemenDosesUsed
-            ? { semenDosesUsed: normalizedSemenDosesUsed }
-            : {}),
-          ...(hasVisitPeriod ? { visitPeriod: normalizedVisitPeriod } : {}),
-          estrus,
-          status: nextStatus,
-          ...(activeStatus
-            ? {
-                activeRequestKey: activeRequestKeyForAnimal(
-                  existingRecord.animalId,
-                ),
-              }
-            : {}),
-        },
-        ...(!activeStatus ? { $unset: { activeRequestKey: 1 } } : {}),
-      },
-      { new: true, runValidators: true },
-    );
-
-    if (!insemination) {
-      return res.status(404).json({ message: "Insemination record not found" });
-    }
-
-    // Sync Animal Status if marked as 'done'
-    if (nextStatus === "done") {
-      await Animal.findByIdAndUpdate(insemination.animalId, {
-        reproductiveStatus: "Inseminated",
-      });
-      console.log(
-        `[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInsemination.`,
-      );
-    }
-
-    res.status(200).json({
-      message: "Insemination updated successfully",
-      insemination,
-    });
-  } catch (error) {
-    console.error("Error updating insemination:", error);
-    res.status(error.status || 500).json({
-      message: error.message || "Failed to update insemination",
-      code: error.code,
-    });
-  }
+  // This legacy endpoint accepted lifecycle-driving and historical clinical
+  // fields without an ownership-aware correction boundary. Canonical AI
+  // status/completion must be used instead. A future historical correction
+  // must have its own audited boundary; keeping this route produces an
+  // explicit compatibility response without permitting any record or Animal
+  // mutation.
+  return res.status(405).json({
+    message:
+      "Generic AI record editing is not available. Use the canonical AI service workflow; historical corrections require a dedicated audited administrative action.",
+    code: "GENERIC_INSEMINATION_MUTATION_DISABLED",
+  });
 };
 
 export const getAllInseminations = async (req, res) => {
@@ -250,7 +160,7 @@ export const getMyInseminations = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: records,
+      data: buildFarmerAIRequests(records),
       total,
       stats: { total, approved, pending },
       page: pageNum,
@@ -264,83 +174,12 @@ export const getMyInseminations = async (req, res) => {
 
 // DELETE /api/insemination/:id
 export const deleteInsemination = async (req, res) => {
-  const session = await mongoose.startSession();
-  try {
-    const { id } = req.params;
-    const reason = String(
-      req.body?.reason || "Administrative record correction",
-    ).trim();
-    const deleteTime = new Date();
-
-    let record;
-    await session.withTransaction(async () => {
-      record = await Insemination.findOne({ _id: id, deletedAt: null }).session(
-        session,
-      );
-      if (!record) {
-        const notFound = new Error("Insemination record not found.");
-        notFound.status = 404;
-        throw notFound;
-      }
-
-      const pregnancies = await Pregnancy.find({
-        inseminationId: id,
-        deletedAt: null,
-      }).session(session);
-      const pregIds = pregnancies.map((pregnancy) => pregnancy._id);
-
-      await Promise.all([
-        Pregnancy.updateMany(
-          { inseminationId: id, deletedAt: null },
-          { $set: { deletedAt: deleteTime } },
-          { session },
-        ),
-        Calving.updateMany(
-          { pregnancyId: { $in: pregIds }, deletedAt: null },
-          { $set: { deletedAt: deleteTime } },
-          { session },
-        ),
-        Insemination.updateOne(
-          { _id: id, deletedAt: null },
-          {
-            $set: { deletedAt: deleteTime },
-            $unset: { activeRequestKey: 1 },
-          },
-          { session },
-        ),
-      ]);
-
-      await createAuditLog(
-        {
-          entityType: "Insemination",
-          entityId: record._id,
-          action: "soft_delete_with_breeding_cascade",
-          actorId: req.user._id,
-          before: {
-            status: record.status,
-            deletedAt: record.deletedAt,
-            pregnancyCount: pregnancies.length,
-          },
-          after: { deletedAt: deleteTime },
-          metadata: { reason, role: req.user.role },
-        },
-        { session },
-      );
-    });
-
-    console.log(`[Insemination & Cascade Soft-Deleted] ${id}`);
-    res
-      .status(200)
-      .json({
-        message:
-          "Insemination and all linked breeding data soft-deleted successfully.",
-      });
-  } catch (error) {
-    console.error("[deleteInsemination ERROR]", error.message);
-    res.status(error.status || 500).json({
-      message: error.message || "Failed to delete insemination record.",
-    });
-  } finally {
-    await session.endSession();
-  }
+  // Ordinary Technician deletion and the former generic cascade could erase
+  // official Pregnancy/Calving history. Administrative archival remains on
+  // the explicit Admin-only route, which owns its audit behavior.
+  return res.status(405).json({
+    message:
+      "Generic AI record deletion is not available. Use the audited administrative archive action.",
+    code: "GENERIC_INSEMINATION_MUTATION_DISABLED",
+  });
 };

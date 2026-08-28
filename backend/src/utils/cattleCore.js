@@ -89,7 +89,11 @@ export function calculateAgeInMonths(birthDate) {
  * Validates that an animal is old enough to breed based on its species profile.
  */
 
-export function checkInseminationAgeEligibility(birthDate, species) {
+export function checkInseminationAgeEligibility(
+  birthDate,
+  species,
+  referenceDate,
+) {
   if (!birthDate) {
     return {
       isEligible: false,
@@ -110,7 +114,25 @@ export function checkInseminationAgeEligibility(birthDate, species) {
     };
   }
 
-  const ageInMonths = calculateAgeInMonths(birth);
+  let ageInMonths;
+  if (referenceDate === undefined) {
+    // Preserve live/current AI behavior for callers without an event date.
+    ageInMonths = calculateAgeInMonths(birth);
+  } else {
+    const reference = new Date(referenceDate);
+    if (Number.isNaN(reference.getTime())) {
+      return {
+        isEligible: false,
+        code: "INVALID_ELIGIBILITY_DATE",
+        reason: "The insemination eligibility date is invalid.",
+      };
+    }
+    ageInMonths =
+      (reference.getUTCFullYear() - birth.getUTCFullYear()) * 12 +
+      (reference.getUTCMonth() - birth.getUTCMonth()) -
+      (reference.getUTCDate() < birth.getUTCDate() ? 1 : 0);
+    ageInMonths = Math.max(0, ageInMonths);
+  }
   const normSpecies = normalizeSpecies(species);
   const profile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
 

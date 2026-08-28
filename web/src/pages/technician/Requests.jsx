@@ -32,6 +32,10 @@ import {
   getTechnicianStatus,
 } from "../../constants/technicianWorkflow";
 import {
+  WEB_ROLES,
+  getRequestActionPolicy,
+} from "../../constants/webRoles";
+import {
   ILOILO_CITY_DISTRICT_OPTIONS,
   ILOILO_CITY_NAME,
   ILOILO_MUNICIPALITY_OPTIONS,
@@ -217,9 +221,10 @@ const getServiceMeta = (request = {}) => {
   };
 };
 
-export default function OperationalInbox() {
+export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const queryClient = useQueryClient();
-  const isAdmin = window.location.pathname.startsWith("/admin");
+  const actionPolicy = getRequestActionPolicy(role);
+  const { isAdmin } = actionPolicy;
   const [searchParams] = useSearchParams();
   const requestedId = searchParams.get("requestId");
   const requestedStatusFilter = searchParams.get("status") || "pending";
@@ -237,7 +242,7 @@ export default function OperationalInbox() {
       const res = await axiosInstance.get("/technician/profile");
       return res.data || {};
     },
-    enabled: !isAdmin,
+    enabled: actionPolicy.isTechnician,
   });
 
   const [primaryView, setPrimaryView] = useState(initialRequestView);
@@ -449,7 +454,9 @@ export default function OperationalInbox() {
           : service.label,
         serviceBadge: service.badge,
         badgeClass: service.badgeClass,
-        iconColor: service.iconColor,
+        iconColor: isAdmin
+          ? "border-base-300 bg-base-200 text-base-content/70"
+          : service.iconColor,
         distanceText,
         farmerBadge,
         animalTag,
@@ -561,7 +568,7 @@ export default function OperationalInbox() {
 
     // Ensure newly claimed/updated tasks stack right at the top
     return mapped.sort((a, b) => b.updatedAtTime - a.updatedAtTime);
-  }, [queueData, primaryView]);
+  }, [isAdmin, queueData, primaryView]);
 
   const deepLinkedTask = requestedId
     ? requests.find((request) => String(request.id) === requestedId) || null
@@ -626,8 +633,9 @@ export default function OperationalInbox() {
 
   // Action Handlers
   const handleClaimRequest = async (request) => {
+    if (!actionPolicy.canClaim) return;
     if (
-      !isAdmin &&
+      actionPolicy.canSchedule &&
       request.workflowType === "AI" &&
       request.allowedAction === "CLAIM_AND_SCHEDULE"
     ) {
@@ -659,7 +667,7 @@ export default function OperationalInbox() {
   };
 
   const handleDeleteRequest = async (id, type) => {
-    if (isUpdating) return;
+    if (!actionPolicy.canCancelOwnRequest || isUpdating) return;
     if (!["insemination", "health"].includes(type)) {
       toast.error(
         "This service type cannot be cancelled from the generic queue.",
@@ -856,7 +864,7 @@ export default function OperationalInbox() {
   };
 
   const openRequest = (request) => {
-    if (!isAdmin && request.workflowType === "AI") {
+    if (actionPolicy.isTechnician && request.workflowType === "AI") {
       openAIRequest(request, "details");
       return;
     }
@@ -976,7 +984,7 @@ export default function OperationalInbox() {
                             </>
                           ) : primaryView === REQUEST_BOARD_VIEWS.MINE ? (
                             <>
-                              {!isAdmin && (
+                              {actionPolicy.isTechnician && (
                                 <option value="active">
                                   All active requests
                                 </option>
@@ -1285,7 +1293,7 @@ export default function OperationalInbox() {
                             dbUser?._id &&
                             String(reqTechId) !== String(dbUser._id);
                           const isAIClaimAndSchedule =
-                            !isAdmin &&
+                            actionPolicy.canSchedule &&
                             req.workflowType === "AI" &&
                             req.allowedAction === "CLAIM_AND_SCHEDULE";
 
@@ -1495,7 +1503,8 @@ export default function OperationalInbox() {
                                       </button>
                                     )}
 
-                                    {!isAIClaimAndSchedule &&
+                                    {actionPolicy.canClaim &&
+                                      !isAIClaimAndSchedule &&
                                       req.status === "pending" &&
                                       !reqTechId && (
                                         <button
@@ -1534,7 +1543,8 @@ export default function OperationalInbox() {
                                       </button>
                                     )}
 
-                                    {req.status === "in-progress" &&
+                                    {actionPolicy.canComplete &&
+                                      req.status === "in-progress" &&
                                       req.type !== "breeding_verification" &&
                                       !isAssignedToOther && (
                                         <button
@@ -1560,7 +1570,8 @@ export default function OperationalInbox() {
                                         </button>
                                       )}
 
-                                    {!isAssignedToOther &&
+                                    {actionPolicy.canCancelOwnRequest &&
+                                      !isAssignedToOther &&
                                       ["insemination", "health"].includes(
                                         req.type,
                                       ) && (
@@ -1838,15 +1849,17 @@ export default function OperationalInbox() {
         </p>
       </Modal>
 
-      <AIClaimScheduleAction
-        key={aiRequestModal.request?.workflowId || "closed-ai-request"}
-        modalState={aiRequestModal}
-        requestQueryKey={requestsQueryKey}
-        onClose={closeAIRequest}
-        onViewChange={(view) =>
-          setAIRequestModal((current) => ({ ...current, view }))
-        }
-      />
+      {actionPolicy.canSchedule && (
+        <AIClaimScheduleAction
+          key={aiRequestModal.request?.workflowId || "closed-ai-request"}
+          modalState={aiRequestModal}
+          requestQueryKey={requestsQueryKey}
+          onClose={closeAIRequest}
+          onViewChange={(view) =>
+            setAIRequestModal((current) => ({ ...current, view }))
+          }
+        />
+      )}
 
       {/* ===== TASK ACTION DIALOG MODAL ===== */}
       <RequestActionModal
@@ -1859,7 +1872,7 @@ export default function OperationalInbox() {
         onSuccess={() => {
           refetchQueue();
         }}
-        isAdmin={isAdmin}
+        role={actionPolicy.role}
       />
     </div>
   );

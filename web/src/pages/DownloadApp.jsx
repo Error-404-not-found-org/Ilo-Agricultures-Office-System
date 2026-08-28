@@ -1,242 +1,205 @@
-import { motion } from "framer-motion";
+import { SignUp, UserButton, useAuth } from "@clerk/clerk-react";
 import {
   CheckCircle2,
-  ChevronLeft,
   Download,
-  Leaf,
-  MapPinned,
-  ShieldCheck,
-  Sprout,
+  Smartphone,
+  TriangleAlert,
 } from "lucide-react";
-import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
-const APK_URL =
-  "https://expo.dev/accounts/johndong28/projects/mobile/builds/3fdaa274-212f-435e-9ceb-626608c66ebe";
-const QR_URL = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-  APK_URL,
-)}`;
-const LOGO_URL =
-  "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
-const MOCKUP_URL =
-  "https://res.cloudinary.com/donhulins/image/upload/v1780318231/mockup_1.png";
-const OTON_LOGO =
-  "https://res.cloudinary.com/donhulins/image/upload/v1780316603/OtonImg2_fwxtsh.png";
+import AuthShell from "../components/auth/AuthShell";
+import {
+  APP_DEEP_LINK_URL,
+  APP_DOWNLOAD_URL,
+} from "../config/appDistribution";
+import { clerkEmbeddedAppearance } from "../config/clerkAppearance";
+import { resolveFarmerDownloadAccess } from "../config/onboardingBridge";
+import axiosInstance from "../lib/axios";
 
 export default function DownloadApp() {
-  const navigate = useNavigate();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const [searchParams] = useSearchParams();
-  const source = searchParams.get("source") || searchParams.get("mode");
-  const isInviteFlow =
-    source === "invite" ||
-    source === "invite-complete" ||
-    source === "account-ready";
+  const [accessState, setAccessState] = useState("loading");
+  const [accessMessage, setAccessMessage] = useState("");
+  const hasInvitationTicket = Boolean(searchParams.get("__clerk_ticket"));
+  const displayState = !isLoaded
+    ? "loading"
+    : !isSignedIn
+      ? hasInvitationTicket
+        ? "invitation"
+        : "public"
+      : accessState;
 
-  const headline = isInviteFlow
-    ? "Your BreedSmart account is ready"
-    : "Install BreedSmart Mobile";
-  const intro = isInviteFlow
-    ? "Finish by installing the app, then sign in with the same account you used for the invitation."
-    : "Download the mobile app used by farmers and technicians to manage animal records, service requests, visits, and field updates.";
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isLoaded || !isSignedIn) return () => {};
+
+    const resolveIdentity = async () => {
+      try {
+        const token = await getToken();
+        const response = await axiosInstance.post(
+          "/user/bootstrap",
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (cancelled) return;
+
+        const nextAccess = resolveFarmerDownloadAccess(response.data?.user);
+        setAccessState(nextAccess);
+        if (nextAccess !== "farmer") {
+          setAccessMessage(
+            "This signed-in account is not a Farmer account. Please use the appropriate BreedSmart workspace.",
+          );
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setAccessState("error");
+        setAccessMessage(
+          error.response?.data?.message ||
+            "We could not confirm this account. Please try signing in again.",
+        );
+      }
+    };
+
+    resolveIdentity();
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken, isLoaded, isSignedIn]);
+
+  if (displayState === "invitation") {
+    return (
+      <AuthShell
+        context="BreedSmart Farmer"
+        title="Complete your Farmer account"
+        description="Your agricultural Technician has already prepared your BreedSmart profile. Create your account using the same email address that received the invitation."
+        helper="After setup, continue in the BreedSmart mobile app to manage your animals, requests, and records."
+      >
+        <SignUp
+          routing="virtual"
+          forceRedirectUrl="/download-app"
+          signInForceRedirectUrl="/download-app"
+          appearance={clerkEmbeddedAppearance}
+        />
+      </AuthShell>
+    );
+  }
+
+  if (displayState === "loading") {
+    return (
+      <AuthShell
+        context="BreedSmart Farmer"
+        title="Confirming your account"
+        description="BreedSmart is securely checking your Farmer profile."
+      >
+        <div
+          className="flex items-center justify-center gap-3 rounded-xl bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-600"
+          role="status"
+        >
+          <span className="loading loading-dots loading-sm text-[#17663a]" />
+          <span>Confirming your account</span>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (displayState === "not-farmer" || displayState === "error") {
+    return (
+      <AuthShell
+        context="BreedSmart Farmer"
+        title={
+          displayState === "not-farmer"
+            ? "This link is for a Farmer account"
+            : "We could not confirm your account"
+        }
+        description={
+          displayState === "not-farmer"
+            ? "You're currently signed in with a different BreedSmart role."
+            : "Your Farmer profile could not be verified. Review the message below, then sign in again if needed."
+        }
+        accountAction={<UserButton afterSignOutUrl="/" />}
+      >
+        <div
+          className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-5 text-amber-950"
+          role="alert"
+        >
+          <TriangleAlert
+            className="mt-0.5 h-5 w-5 shrink-0"
+            aria-hidden="true"
+          />
+          <span>{accessMessage}</span>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (displayState === "farmer") {
+    return (
+      <AuthShell
+        context="BreedSmart Farmer"
+        title="Your Farmer account is ready"
+        description="Your profile is connected. Continue in BreedSmart Mobile to manage your animals and service requests."
+        helper="Use the same BreedSmart account when signing in on your phone."
+        accountAction={<UserButton afterSignOutUrl="/" />}
+      >
+        <div className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+          <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+          <span>Farmer profile connected</span>
+        </div>
+        <AppActions />
+      </AuthShell>
+    );
+  }
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-[#f5fbf1] font-sans text-slate-950 antialiased">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -left-28 -top-32 h-80 w-80 rounded-full bg-emerald-300/35 blur-3xl" />
-        <div className="absolute -right-28 top-1/3 h-96 w-96 rounded-full bg-lime-300/35 blur-3xl" />
-        <div className="absolute bottom-0 left-1/4 h-72 w-72 rounded-full bg-amber-200/45 blur-3xl" />
-        <div className="absolute inset-x-0 bottom-0 h-60 bg-linear-to-t from-emerald-900/10 to-transparent" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-dvh max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
-        <header className="flex items-center justify-between gap-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-emerald-900/10 bg-white/80 px-4 text-[11px] font-black uppercase tracking-wider text-emerald-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
-          >
-            <ChevronLeft size={14} /> Go Back
-          </button>
-
-          <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-3 rounded-full border border-emerald-900/10 bg-white/85 px-4 py-2 shadow-sm sm:flex">
-            <img
-              src={OTON_LOGO}
-              alt="BreedSmart logo"
-              className="h-9 w-9 rounded-full object-contain"
-            />
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-950">
-              Oton Municipal Agriculture
-            </span>
-          </div>
-
-          <SignedIn>
-            <div className="flex items-center gap-3 rounded-full border border-emerald-900/10 bg-white/80 px-3 py-2 shadow-sm">
-              <UserButton afterSignOutUrl="/" />
-              <span className="hidden text-[11px] font-black uppercase tracking-wider text-emerald-950 sm:block">
-                Account
-              </span>
-            </div>
-          </SignedIn>
-        </header>
-
-        <section className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1.02fr_0.98fr] lg:py-12">
-          <div className="max-w-2xl">
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45 }}
-              className="mb-6 inline-flex items-center gap-3 rounded-full border border-emerald-900/10 bg-white/80 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-emerald-900 shadow-sm"
-            >
-              <img
-                src={LOGO_URL}
-                alt=""
-                className="h-7 w-7 rounded-full object-contain"
-              />
-              BreedSmart Mobile App
-            </motion.div>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05, duration: 0.45 }}
-              className="max-w-3xl text-5xl font-black leading-[0.95] tracking-tight text-emerald-950 sm:text-6xl lg:text-7xl"
-            >
-              {headline}
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.12, duration: 0.45 }}
-              className="mt-6 max-w-xl text-base font-semibold leading-7 text-slate-700 sm:text-lg"
-            >
-              {intro}
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.18, duration: 0.45 }}
-              className="mt-8 grid max-w-xl gap-4 rounded-4xl border border-emerald-900/10 bg-white/85 p-4 shadow-xl shadow-emerald-900/10 backdrop-blur sm:grid-cols-[148px_1fr]"
-            >
-              <div className="rounded-3xl border border-emerald-900/10 bg-white p-3 shadow-sm">
-                <img
-                  src={QR_URL}
-                  alt="QR code to download the BreedSmart APK"
-                  className="aspect-square w-full rounded-2xl object-contain"
-                />
-              </div>
-              <div className="flex flex-col justify-center">
-                <p className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
-                  Scan or tap to install
-                </p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
-                  Use your phone camera to scan the QR code, or tap the download
-                  button to get the Android APK.
-                </p>
-                <a
-                  href={APK_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-4 inline-flex h-14 items-center justify-center gap-3 rounded-full bg-emerald-700 px-6 text-sm font-black uppercase tracking-wider text-white shadow-xl shadow-emerald-900/20 transition hover:-translate-y-0.5 hover:bg-emerald-800"
-                >
-                  <Download size={19} /> Download APK
-                </a>
-              </div>
-            </motion.div>
-
-            <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
-              <TrustItem
-                icon={<ShieldCheck size={18} />}
-                title="Secure sign in"
-                body="Use your Clerk account in the mobile app."
-              />
-              <TrustItem
-                icon={<MapPinned size={18} />}
-                title="Field ready"
-                body="Built for farm visits and service requests."
-              />
-              <TrustItem
-                icon={<Leaf size={18} />}
-                title="Livestock records"
-                body="Track animals, health, breeding, and calving."
-              />
-            </div>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 18 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.5 }}
-            className="relative mx-auto w-full max-w-lg"
-          >
-            <div className="absolute -left-7 top-16 z-10 hidden rounded-3xl bg-white px-5 py-4 shadow-2xl shadow-emerald-900/10 lg:block">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                Service Status
-              </p>
-              <p className="mt-1 text-sm font-black text-emerald-950">
-                Ready for field use
-              </p>
-            </div>
-
-            <div className="relative rounded-[2.25rem] border border-emerald-900/10 bg-white/75 p-5 shadow-2xl shadow-emerald-900/15 backdrop-blur">
-              <div className="absolute right-6 top-10 z-10 flex items-center gap-2 rounded-full bg-white/90 px-3 py-2 shadow-sm">
-                <Sprout size={14} className="text-emerald-700" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-950">
-                  Farmer ready
+    <AuthShell
+      context="Official BreedSmart App"
+      title="BreedSmart Mobile"
+      description="The mobile app for Farmers and agricultural Technicians in Oton, Iloilo."
+      helper={
+        APP_DOWNLOAD_URL
+          ? "After installation, sign in using your authorized BreedSmart account."
+          : (
+              <span className="block space-y-1">
+                <span className="block font-semibold text-slate-800">
+                  Need the BreedSmart app?
                 </span>
-              </div>
-
-              <div className="overflow-hidden rounded-[1.75rem] bg-linear-to-br from-emerald-900 via-emerald-700 to-lime-500">
-                <img
-                  src={MOCKUP_URL}
-                  alt="BreedSmart mobile app mockup"
-                  className="mx-auto max-h-[560px] w-full object-contain drop-shadow-2xl"
-                />
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {["AI requests", "Health logs", "Animal records"].map(
-                  (item) => (
-                    <div
-                      key={item}
-                      className="flex items-center justify-center gap-1.5 rounded-2xl bg-emerald-50 px-2 py-3 text-center"
-                    >
-                      <CheckCircle2
-                        size={14}
-                        className="shrink-0 text-emerald-700"
-                      />
-                      <span className="text-[10px] font-black text-emerald-950">
-                        {item}
-                      </span>
-                    </div>
-                  ),
-                )}
-              </div>
-            </div>
-
-            <SignedOut>
-              <p className="mt-5 rounded-2xl border border-amber-300/60 bg-amber-100/80 px-4 py-3 text-center text-xs font-bold leading-5 text-amber-950">
-                If you received an invitation, complete account setup from your
-                email first. Then install the app and sign in.
-              </p>
-            </SignedOut>
-          </motion.div>
-        </section>
-      </div>
-    </main>
+                <span className="block">
+                  Please contact your agricultural technician or BreedSmart
+                  administrator for the latest installer.
+                </span>
+              </span>
+            )
+      }
+    >
+      <AppActions />
+    </AuthShell>
   );
 }
 
-function TrustItem({ icon, title, body }) {
+function AppActions() {
   return (
-    <div className="rounded-3xl border border-emerald-900/10 bg-white/75 p-4 shadow-sm backdrop-blur">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800">
-        {icon}
-      </div>
-      <p className="text-sm font-black text-emerald-950">{title}</p>
-      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-        {body}
-      </p>
+    <div className="grid gap-3">
+      <a
+        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17663a] px-5 font-bold text-white transition-colors hover:bg-[#12512e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17663a] focus-visible:ring-offset-2"
+        href={APP_DEEP_LINK_URL}
+      >
+        <Smartphone className="h-5 w-5" aria-hidden="true" />
+        Open BreedSmart App
+      </a>
+      {APP_DOWNLOAD_URL ? (
+        <a
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 font-bold text-slate-800 transition-colors hover:border-[#17663a] hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17663a] focus-visible:ring-offset-2"
+          href={APP_DOWNLOAD_URL}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <Download className="h-5 w-5" aria-hidden="true" />
+          Download BreedSmart
+        </a>
+      ) : null}
     </div>
   );
 }

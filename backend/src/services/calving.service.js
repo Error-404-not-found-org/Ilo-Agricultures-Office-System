@@ -127,6 +127,77 @@ const cleanupUploadedImages = async (uploads) => {
   }));
 };
 
+export const getCalvingReadiness = ({
+  mother,
+  pregnancy,
+  insemination,
+  at = new Date(),
+}) => {
+  if (pregnancy?.pregnancyDiagnosis?.result !== "Pregnant") {
+    return {
+      isEligible: false,
+      code: "PREGNANCY_NOT_CONFIRMED",
+      reason: "A technician-confirmed pregnancy is required.",
+      gestationDays: null,
+      minimumDays: null,
+      earliestEligibleDate: null,
+    };
+  }
+
+  const aiDate = new Date(insemination?.inseminationDate);
+  const checkDate = new Date(at);
+  if (Number.isNaN(aiDate.getTime()) || Number.isNaN(checkDate.getTime())) {
+    return {
+      isEligible: false,
+      code: "CALVING_READINESS_UNAVAILABLE",
+      reason: "Calving readiness cannot be calculated without a valid AI date.",
+      gestationDays: null,
+      minimumDays: null,
+      earliestEligibleDate: null,
+    };
+  }
+
+  const { avgGestationDays } = getBreedProfile(
+    mother?.species,
+    mother?.breed,
+  );
+  const minimumDays = avgGestationDays - EARLY_CALVING_TOLERANCE_DAYS;
+  // Calving forms capture a calendar date, while AI records can include a
+  // timestamp. Compare UTC calendar days so an AI time does not create an
+  // off-by-one result or make the displayed eligible date fail at midnight.
+  const aiCalendarDay = Date.UTC(
+    aiDate.getUTCFullYear(),
+    aiDate.getUTCMonth(),
+    aiDate.getUTCDate(),
+  );
+  const checkCalendarDay = Date.UTC(
+    checkDate.getUTCFullYear(),
+    checkDate.getUTCMonth(),
+    checkDate.getUTCDate(),
+  );
+  const gestationDays = Math.floor(
+    (checkCalendarDay - aiCalendarDay) / DAY_MS,
+  );
+  const earliestEligibleDate = new Date(
+    aiCalendarDay + minimumDays * DAY_MS,
+  );
+  const isEligible = gestationDays >= minimumDays;
+
+  return {
+    isEligible,
+    code: isEligible ? "CALVING_WINDOW_OPEN" : "CALVING_TOO_EARLY",
+    reason: isEligible
+      ? `Live-birth recording is available at Day ${gestationDays}.`
+      : `Live-birth recording becomes available on Day ${minimumDays}. Pregnancy loss can still be recorded when clinically applicable.`,
+    gestationDays,
+    minimumDays,
+    averageGestationDays: avgGestationDays,
+    daysRemaining: Math.max(0, minimumDays - gestationDays),
+    earliestEligibleDate,
+    expectedCalvingDate: pregnancy?.targetCalvingDate || null,
+  };
+};
+
 const validateChronology = ({ calvingDate, mother, pregnancy, insemination, outcome }) => {
   const aiDate = new Date(insemination.inseminationDate);
   const diagnosisDate = new Date(pregnancy.pregnancyDiagnosis?.date);
@@ -163,13 +234,20 @@ const validateChronology = ({ calvingDate, mother, pregnancy, insemination, outc
   }
 
   if (outcome !== "abortion") {
-    const { avgGestationDays } = getBreedProfile(mother.species, mother.breed);
-    const gestationDays = Math.floor((calvingDate - aiDate) / DAY_MS);
-    const minimumDays = avgGestationDays - EARLY_CALVING_TOLERANCE_DAYS;
-    if (gestationDays < minimumDays) {
+    const readiness = getCalvingReadiness({
+      mother,
+      pregnancy,
+      insemination,
+      at: calvingDate,
+    });
+    if (!readiness.isEligible) {
       throw new AppError(
-        `Calving is too early for ${mother.species}; at least ${minimumDays} gestation days are required.`,
-        { status: 422, code: "CALVING_TOO_EARLY", details: { gestationDays, minimumDays } },
+        `Calving is too early for ${mother.species}; at least ${readiness.minimumDays} gestation days are required.`,
+        {
+          status: 422,
+          code: readiness.code,
+          details: readiness,
+        },
       );
     }
   }
@@ -193,10 +271,26 @@ const normalizeDatabaseError = (error) => {
   return error;
 };
 
-const taskActorFilter = (actor) =>
-  actor.role === "farmer"
-    ? {}
-    : { $or: [{ technicianId: actor._id }, { technicianId: null }] };
+export const assertCalvingTaskAuthority = (task, actor) => {
+  if (!task) return task;
+  if (actor.role === "admin") {
+    throw new AppError("Calving recording requires a Farmer or Technician account.", {
+      status: 403,
+      code: "CALVING_CLINICAL_ROLE_REQUIRED",
+    });
+  }
+  if (
+    actor.role === "technician" &&
+    task.technicianId &&
+    String(task.technicianId) !== String(actor._id)
+  ) {
+    throw new AppError("This calving work is assigned to another Technician.", {
+      status: 403,
+      code: "CALVING_TASK_ASSIGNED_TO_OTHER",
+    });
+  }
+  return task;
+};
 
 const findMatchingCalvingTask = async ({
   taskId,
@@ -212,7 +306,6 @@ const findMatchingCalvingTask = async ({
     animalIds: mother._id,
     taskType: { $in: ["CD", "Calving"] },
     status: { $in: ["Pending", "In Progress"] },
-    ...taskActorFilter(actor),
   };
 
   if (taskId) {
@@ -246,14 +339,17 @@ const findMatchingCalvingTask = async ({
           relatedRecordType: "calving",
           relatedRecordId: existingCalving._id,
         }).session(session || null);
-        if (completedMatchingTask) return null;
+        if (completedMatchingTask) {
+          assertCalvingTaskAuthority(completedMatchingTask, actor);
+          return null;
+        }
       }
       throw new AppError("The calving task is inactive or does not match this record.", {
         status: 409,
         code: "TASK_RECORD_MISMATCH",
       });
     }
-    return suppliedTask;
+    return assertCalvingTaskAuthority(suppliedTask, actor);
   }
 
   const pregnancyTask = await Task.findOne({
@@ -263,7 +359,7 @@ const findMatchingCalvingTask = async ({
   })
     .sort({ dueDate: 1, createdAt: 1 })
     .session(session || null);
-  if (pregnancyTask) return pregnancyTask;
+  if (pregnancyTask) return assertCalvingTaskAuthority(pregnancyTask, actor);
 
   const inseminationTask = await Task.findOne({
     ...baseFilter,
@@ -271,9 +367,9 @@ const findMatchingCalvingTask = async ({
   })
     .sort({ dueDate: 1, createdAt: 1 })
     .session(session || null);
-  if (inseminationTask) return inseminationTask;
+  if (inseminationTask) return assertCalvingTaskAuthority(inseminationTask, actor);
 
-  return Task.findOne({
+  const fallbackTask = await Task.findOne({
     ...baseFilter,
     sourceType: { $in: ["task_scheduler", "client_profile", "manual"] },
     $and: [
@@ -288,12 +384,19 @@ const findMatchingCalvingTask = async ({
   })
     .sort({ dueDate: 1, createdAt: 1 })
     .session(session || null);
+  return assertCalvingTaskAuthority(fallbackTask, actor);
 };
 
 const completeCalvingTask = async ({ task, calving, actor, session }) => {
   if (!task) return null;
   const completedTask = await Task.findOneAndUpdate(
-    { _id: task._id, status: { $in: ["Pending", "In Progress"] } },
+    {
+      _id: task._id,
+      status: { $in: ["Pending", "In Progress"] },
+      ...(actor.role === "technician"
+        ? { $or: [{ technicianId: actor._id }, { technicianId: null }] }
+        : {}),
+    },
     {
       $set: {
         status: "Completed",
@@ -326,6 +429,13 @@ const loadAndValidateContext = async ({ motherId, pregnancyId, taskId, actor, ca
   if (String(currentPregnancy.animalId) !== String(currentMother._id)) {
     throw new AppError("The pregnancy record does not belong to this mother.", { status: 409, code: "PREGNANCY_MOTHER_MISMATCH" });
   }
+  if (actor.role === "admin") {
+    throw new AppError("Admin accounts cannot record clinical calving events.", {
+      status: 403,
+      code: "CALVING_CLINICAL_ROLE_REQUIRED",
+    });
+  }
+
   if (actor.role === "farmer" && String(currentMother.farmerId) !== String(actor._id)) {
     throw new AppError("You cannot record calving for another farmer's animal.", {
       status: 403,

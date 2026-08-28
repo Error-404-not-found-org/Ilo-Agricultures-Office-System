@@ -21,7 +21,6 @@ import {
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
 import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
-import { RequestWorkFilterChips } from "../components/RequestWorkBadge";
 import type { RequestItem } from "../types/technicianRequests.types";
 import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
 import { OPEN_REQUEST_FILTERS } from "../utils/requestWorkPresentation";
@@ -46,10 +45,14 @@ export default function TechnicianRequestsScreen({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { section } = useLocalSearchParams<{
+  const { section, workState } = useLocalSearchParams<{
     section?: string | string[];
+    workState?: string | string[];
   }>();
   const normalizedSection = Array.isArray(section) ? section[0] : section;
+  const normalizedWorkState = Array.isArray(workState)
+    ? workState[0]
+    : workState;
 
   const {
     search,
@@ -368,204 +371,224 @@ export default function TechnicianRequestsScreen({
 
         {activeSection === "openRequests" ? (
           <FlatList
-          style={{ flex: 1 }}
-          data={isLoading && !isRefetching ? [] : requests}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            paddingBottom: showBackButton ? 24 : insets.bottom + 96,
-            paddingHorizontal: 16,
-          }}
-          ListHeaderComponent={
-            <View style={{ paddingBottom: 4 }}>
-              <SearchBar
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search farmer or ear tag"
-                variant="directory"
-              />
+            style={{ flex: 1 }}
+            data={isLoading && !isRefetching ? [] : requests}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              paddingBottom: showBackButton ? 24 : insets.bottom + 96,
+              paddingHorizontal: 16,
+            }}
+            ListHeaderComponent={
+              <View style={{ paddingBottom: 4 }}>
+                <SearchBar
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search farmer or ear tag"
+                  variant="directory"
+                />
 
-              <RequestWorkFilterChips
-                options={OPEN_REQUEST_FILTERS}
-                value={type}
-                onChange={setType}
-                counts={openRequestCounts}
-                countsLoading={areOpenRequestCountsLoading}
-              />
+                <View style={{ marginTop: 12, marginBottom: 8 }}>
+                  <SelectDropdown
+                    label="Request Type"
+                    options={OPEN_REQUEST_FILTERS.map((opt) => {
+                      const count =
+                        openRequestCounts?.[
+                          opt.value as keyof typeof openRequestCounts
+                        ];
+                      return {
+                        label:
+                          count !== undefined
+                            ? `${opt.label} (${count})`
+                            : opt.label,
+                        value: opt.value,
+                      };
+                    })}
+                    value={type}
+                    onChange={(val) => setType(val as any)}
+                    highlightSelection={false}
+                  />
+                </View>
 
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 8,
-                }}
-              >
-                <Text
+                <View
                   style={{
-                    color: colors.textSecondary,
-                    fontFamily: "Outfit_600SemiBold",
-                    fontSize: 12,
-                  }}
-                >
-                  {showAdvancedFilters
-                    ? "Filter requests"
-                    : "All request types"}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setShowAdvancedFilters((current) => !current)}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    showAdvancedFilters
-                      ? "Hide request filters"
-                      : "Show request filters"
-                  }
-                  accessibilityState={{ expanded: showAdvancedFilters }}
-                  style={{
-                    minHeight: 44,
-                    paddingHorizontal: 12,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: showAdvancedFilters
-                      ? colors.primary
-                      : colors.border,
-                    backgroundColor: showAdvancedFilters
-                      ? isDark
-                        ? "rgba(16,185,129,0.14)"
-                        : colors.tint
-                      : colors.card,
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 7,
+                    justifyContent: "space-between",
+                    marginBottom: 8,
                   }}
                 >
-                  <SlidersHorizontal size={17} color={colors.primary} />
                   <Text
                     style={{
-                      color: colors.primary,
-                      fontFamily: "Outfit_700Bold",
+                      color: colors.textSecondary,
+                      fontFamily: "Outfit_600SemiBold",
                       fontSize: 12,
                     }}
                   >
-                    Filters
+                    {showAdvancedFilters
+                      ? "Filter requests"
+                      : "All request types"}
                   </Text>
-                </TouchableOpacity>
-              </View>
-
-              {showAdvancedFilters ? (
-                <View style={{ marginBottom: 12 }}>
-                  {/* Sort By Row */}
-                  <View style={{ marginTop: 4 }}>
-                    <SelectDropdown
-                      label="Sort By"
-                      options={sortOptions}
-                      value={sortBy}
-                      highlightSelection={false}
-                      onChange={async (val) => {
-                        if (val === "distance") {
-                          await handleNearMeToggle(true);
-                        } else {
-                          if (nearLat) {
-                            await handleNearMeToggle(false);
-                          }
-                          setSortBy(val as any);
-                        }
-                      }}
-                    />
-                  </View>
-
-                  {/* Location filters (Municipality & Barangay) */}
-                  <View
+                  <TouchableOpacity
+                    onPress={() =>
+                      setShowAdvancedFilters((current) => !current)
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      showAdvancedFilters
+                        ? "Hide request filters"
+                        : "Show request filters"
+                    }
+                    accessibilityState={{ expanded: showAdvancedFilters }}
                     style={{
+                      minHeight: 44,
+                      paddingHorizontal: 12,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: showAdvancedFilters
+                        ? colors.primary
+                        : colors.border,
+                      backgroundColor: showAdvancedFilters
+                        ? isDark
+                          ? "rgba(16,185,129,0.14)"
+                          : colors.tint
+                        : colors.card,
                       flexDirection: "row",
-                      gap: 8,
-                      marginTop: 12,
-                      marginBottom: 8,
+                      alignItems: "center",
+                      gap: 7,
                     }}
                   >
-                    <View style={{ flex: 1, minWidth: 0 }}>
+                    <SlidersHorizontal size={17} color={colors.primary} />
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 12,
+                      }}
+                    >
+                      Filters
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showAdvancedFilters ? (
+                  <View style={{ marginBottom: 12 }}>
+                    {/* Sort By Row */}
+                    <View style={{ marginTop: 4 }}>
                       <SelectDropdown
-                        label="Municipality"
-                        options={municipalityOptions}
-                        value={municipality}
-                        onChange={(value) => {
-                          setMunicipality(value);
-                          setBarangay("");
+                        label="Sort By"
+                        options={sortOptions}
+                        value={sortBy}
+                        highlightSelection={false}
+                        onChange={async (val) => {
+                          if (val === "distance") {
+                            await handleNearMeToggle(true);
+                          } else {
+                            if (nearLat) {
+                              await handleNearMeToggle(false);
+                            }
+                            setSortBy(val as any);
+                          }
                         }}
-                        searchable
-                        flex={1}
                       />
                     </View>
+
+                    {/* Location filters (Municipality & Barangay) */}
                     <View
                       style={{
-                        flex: 1,
-                        minWidth: 0,
-                        opacity: municipality ? 1 : 0.5,
+                        flexDirection: "row",
+                        gap: 8,
+                        marginTop: 12,
+                        marginBottom: 8,
                       }}
-                      pointerEvents={municipality ? "auto" : "none"}
                     >
-                      <SelectDropdown
-                        label="Barangay"
-                        options={barangayOptions}
-                        value={barangay}
-                        onChange={setBarangay}
-                        searchable
-                        flex={1}
-                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <SelectDropdown
+                          label="Municipality"
+                          options={municipalityOptions}
+                          value={municipality}
+                          onChange={(value) => {
+                            setMunicipality(value);
+                            setBarangay("");
+                          }}
+                          searchable
+                          flex={1}
+                        />
+                      </View>
+                      <View
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          opacity: municipality ? 1 : 0.5,
+                        }}
+                        pointerEvents={municipality ? "auto" : "none"}
+                      >
+                        <SelectDropdown
+                          label="Barangay"
+                          options={barangayOptions}
+                          value={barangay}
+                          onChange={setBarangay}
+                          searchable
+                          flex={1}
+                        />
+                      </View>
                     </View>
                   </View>
-                </View>
-              ) : null}
+                ) : null}
 
-              {isLoading && !isRefetching ? (
-                <AsyncState state="loading" />
-              ) : null}
-            </View>
-          }
-          renderItem={({ item }) => (
-            <RequestListCard
-              item={item}
-              onPress={() => handleActionPress(item)}
-            />
-          )}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={handleRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
-            />
-          }
-          ListEmptyComponent={
-            isLoading || isRefetching ? null : (
-              <AsyncState
-                state="empty"
-                title={
-                  hasOpenRequestFilters
-                    ? "No open requests match this filter."
-                    : "No open requests."
-                }
-                onAction={handleRefresh}
-                actionLabel="Refresh"
-                style={{ paddingVertical: 32 }}
+                {isLoading && !isRefetching ? (
+                  <AsyncState state="loading" />
+                ) : null}
+              </View>
+            }
+            renderItem={({ item }) => (
+              <RequestListCard
+                item={item}
+                onPress={() => handleActionPress(item)}
               />
-            )
-          }
-          ListFooterComponent={
-            !isLoading && pagination.totalPages > 1 ? (
-              <Pagination
-                page={page}
-                totalPages={pagination.totalPages}
-                onPrevious={() => setPage(page - 1)}
-                onNext={() => setPage(page + 1)}
+            )}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={handleRefresh}
+                colors={[colors.primary]}
+                tintColor={colors.primary}
               />
-            ) : null
-          }
+            }
+            ListEmptyComponent={
+              isLoading || isRefetching ? null : (
+                <AsyncState
+                  state="empty"
+                  title={
+                    hasOpenRequestFilters
+                      ? "No open requests match this filter."
+                      : "No open requests."
+                  }
+                  onAction={handleRefresh}
+                  actionLabel="Refresh"
+                  style={{ paddingVertical: 32 }}
+                />
+              )
+            }
+            ListFooterComponent={
+              !isLoading && pagination.totalPages > 1 ? (
+                <Pagination
+                  page={page}
+                  totalPages={pagination.totalPages}
+                  onPrevious={() => setPage(page - 1)}
+                  onNext={() => setPage(page + 1)}
+                />
+              ) : null
+            }
           />
         ) : (
-          <TechnicianMyWorkPanel />
+          <TechnicianMyWorkPanel
+            initialWorkState={
+              normalizedWorkState === "completed" ? "completed" : "active"
+            }
+          />
         )}
       </View>
     </ScreenLayout>

@@ -33,6 +33,11 @@ export interface BaseRequestItem {
   type: "ai" | "health" | "breeding_verification";
   serviceType?: string;
   requestType?: string;
+  requestKind?: "initial_ai" | "re_insemination";
+  attemptNumber?: number | null;
+  previousAttemptId?: any;
+  previousAttemptOutcome?: string | null;
+  previousAttemptVerified?: boolean;
   status: string;
   urgency: "urgent" | "normal";
   farmer: string;
@@ -52,7 +57,7 @@ export interface CandidateRequestItem extends BaseRequestItem {
   // Candidate-safe items intentionally omit private contact details
   farmerId?: never;
   farmerPhone?: never;
-  farmerImageUrl?: never;
+  farmerImageUrl?: string;
   location?: never;
   locationLabel?: never;
   distanceKm?: never;
@@ -124,6 +129,7 @@ export interface WorkQueueParty {
   phone?: string | null;
   location?: string;
   earTag?: string | null;
+  imageUrl?: string | null;
 }
 
 export interface WorkQueueItem {
@@ -136,6 +142,7 @@ export interface WorkQueueItem {
   allowedAction: AllowedAction;
   actionLabel: string | null;
   farmer: WorkQueueParty;
+  farmerImageUrl?: string | null;
   animal: WorkQueueParty;
   schedule: CanonicalSchedule;
   requestedAt: string | null;
@@ -144,6 +151,7 @@ export interface WorkQueueItem {
   taskType?: string;
   urgent?: boolean;
   overdue?: boolean;
+  farmerimageUrl?: string | null;
   notes?: string;
   raw?: any;
   requestKind?: "initial_ai" | "re_insemination";
@@ -155,11 +163,28 @@ export interface WorkQueueItem {
   [key: string]: any;
 }
 
+export interface WorkQueueResponse {
+  data: WorkQueueItem[];
+  pagination: PaginationInfo;
+  counts: Partial<
+    Record<"all" | "ai" | "health" | "pregnancy" | "calving", number>
+  >;
+}
+
+export interface WorkQueueFilters {
+  workState: "active" | "completed";
+  type: "all" | "ai" | "health" | "pregnancy" | "calving";
+  search?: string;
+  page: number;
+  limit: number;
+}
+
 export type TechnicianWorkType =
   | "ai"
   | "health"
   | "pregnancy_check"
   | "calving"
+  | "breeding_follow_up"
   | "task";
 
 export type TechnicianWorkTimingKind =
@@ -196,6 +221,7 @@ export interface TechnicianWorkItem {
   completedAt: string | null;
   serviceStartedAt: string | null;
   farmerName: string | null;
+  farmerImageUrl?: string | null;
   animalName: string | null;
   animalTag: string | null;
   location: string | null;
@@ -210,6 +236,7 @@ export interface TechnicianWorkItem {
     | "re_insemination"
     | "health"
     | "pregnancy_confirmation"
+    | "breeding_observation_review"
     | "calving_monitoring"
     | "task";
   attemptNumber: number | null;
@@ -221,10 +248,25 @@ export interface TechnicianWorkItem {
 export interface RequestsResponse {
   requests: RequestItem[];
   pagination: PaginationInfo;
+  counts?: Partial<Record<"all" | "ai" | "health" | "pregnancy", number>>;
 }
 export interface RequestFilters {
-  type: "all" | "ai" | "health" | "breeding_verification" | "calving";
-  status: "all" | "pending" | "approved" | "scheduled" | "in_progress" | "completed" | "declined" | "active";
+  type:
+    | "all"
+    | "ai"
+    | "health"
+    | "breeding_verification"
+    | "calving"
+    | "breeding_follow_up";
+  status:
+    | "all"
+    | "pending"
+    | "approved"
+    | "scheduled"
+    | "in_progress"
+    | "completed"
+    | "declined"
+    | "active";
   urgency: "all" | "urgent";
   assignment: "all" | "mine" | "unassigned";
   search: string;
@@ -235,6 +277,7 @@ export interface RequestFilters {
   sortBy?: "newest" | "distance" | "preferredDate" | "oldest";
   municipality?: string;
   barangay?: string;
+  includeCounts?: boolean;
 }
 
 export interface PaginationInfo {

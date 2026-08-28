@@ -338,11 +338,26 @@ export default function TechnicianRecordsScreen({
               isRefetching={isRefetching}
               onRefresh={refetchAll}
               filteredRecords={filteredRecords}
-              openDetails={(item: any) =>
-                router.push(
-                  `/(technician)/record-details?recordData=${encodeURIComponent(JSON.stringify(item))}` as any
-                )
-              }
+              openDetails={(item: any) => {
+                const itemAnimalId =
+                  typeof item.animalId === "string"
+                    ? item.animalId
+                    : item.animalId?._id || item.animalId?.id;
+                const itemSourceId =
+                  item.sourceId || item.id || item._id;
+                const itemSourceKind = item.recordKind;
+
+                router.push({
+                  pathname: "/(technician)/record-details",
+                  params: {
+                    animalId: String(itemAnimalId || ""),
+                    sourceId: String(itemSourceId || ""),
+                    sourceKind: String(itemSourceKind || ""),
+                    recordId: String(itemSourceId || ""),
+                    recordType: String(itemSourceKind || item.type || ""),
+                  },
+                });
+              }}
               isLoadingMore={isLoadingMore}
               hasMoreRecords={Boolean(hasMoreRecords)}
               onLoadMore={() => loadMoreRecords()}

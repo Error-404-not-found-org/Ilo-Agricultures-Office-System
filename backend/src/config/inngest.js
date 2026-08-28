@@ -5,15 +5,36 @@ import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
-import { Notification } from "../models/notification.model.js";
+import { Calving } from "../models/calving.model.js";
 import { Config } from "../models/config.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
-import { sendPushNotification } from "../lib/push-notifications.js";
+import {
+  notifyUserBestEffort,
+  sendNotificationPush,
+} from "../services/notification-delivery.service.js";
 import { getLegacyPregnancyReminderRelevance } from "../services/pregnancy-reminder-relevance.service.js";
+import {
+  buildPendingServiceReminderQueries,
+  buildReminderDedupeKey,
+  getExpectedCalvingReminderDates,
+  isExpectedCalvingReminderEligible,
+} from "../services/background-reminder.service.js";
+import { HEAT_RETURN_MONITORING_POLICY, isTerminalAIAttempt, getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
+import { ENV } from "./env.js";
+import { resolveReproductiveNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
 
 export const inngest = new Inngest({
   id: "ilo-agricultures-office-system-backend",
+  eventKey: ENV.INNGEST_EVENT_KEY,
 });
+
+const SYSTEM_SENDER_ID = "000000000000000000000000";
+
+const sendBackgroundReminder = ({ context, ...payload }) =>
+  notifyUserBestEffort(
+    { senderId: SYSTEM_SENDER_ID, ...payload },
+    context || "background-reminder",
+  );
 
 const handleUserSync = async ({ event }) => {
   await connectDB();
@@ -54,7 +75,7 @@ const handleUserSync = async ({ event }) => {
       email,
       name: name || "New User",
       imageUrl: image_url || "",
-      role, 
+      role,
       isVerified,
     });
     console.log(`Created new ${role} from Clerk signup: ${email}`);
@@ -104,94 +125,139 @@ const onInseminationApproved = inngest.createFunction(
     await connectDB();
     const { inseminationId, animalId, farmerId } = event.data;
 
+    const baseDate = await step.run("fetch-insemination-date", async () => {
+      const ins = await Insemination.findById(inseminationId);
+      if (!ins) return null;
+      return ins.inseminationDate || ins.createdAt;
+    });
+
+    if (!baseDate) return;
+
+    // Use canonical domain logic
+    const dates = getHeatReturnMonitoringDates(baseDate);
+
     // --- STEP 1: DAY 18 (HEAT DETECTION) ---
-    await step.sleep("wait-for-heat-window", "18 days");
+    if (dates.observationWindowStartDate > new Date()) {
+      await step.sleepUntil("wait-for-heat-window", dates.observationWindowStartDate);
 
-    const stillRelevant18 = await step.run("check-relevance-18", async () => {
-      const ins = await Insemination.findById(inseminationId);
-      return ins && ins.status === "done" && ins.isSuccess === null;
-    });
-
-    if (stillRelevant18) {
-      await step.run("send-heat-reminder", async () => {
-        const animal = await Animal.findById(animalId);
-        const title = "Watch for signs of heat";
-        const body = `It has been 18 days since the AI service for ${animal?.earTag || 'your animal'}. For the next 3 days, watch for standing heat, mounting behavior, or unusual restlessness.`;
-
-        await Notification.create({
-          recipientId: farmerId,
-          senderId: "000000000000000000000000",
-          type: "system",
-          relatedId: animalId,
-          title,
-          message: body,
-        });
-
-        const farmer = await User.findById(farmerId);
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
+      const stillRelevant18 = await step.run("check-relevance-18", async () => {
+        const ins = await Insemination.findById(inseminationId);
+        return ins && ins.status === "done" && !isTerminalAIAttempt(ins);
       });
-    }
 
-    // --- STEP 2: DAY 21 (FARMER CONFIRMATION) ---
-    await step.sleep("wait-for-confirmation", "3 days"); // Day 18 + 3 = Day 21
+      if (stillRelevant18) {
+        await step.run("send-heat-reminder", async () => {
+          const animal = await Animal.findById(animalId);
+          const title = "Watch for signs of heat";
+          const body = `It has been ${HEAT_RETURN_MONITORING_POLICY.observationWindowStartDays} days since the AI service for ${animal?.earTag || 'your animal'}. For the next 3 days, watch for standing heat, mounting behavior, or unusual restlessness.`;
 
-    const stillRelevant21 = await step.run("check-relevance-21", async () => {
-      const ins = await Insemination.findById(inseminationId);
-      return ins && ins.status === "done" && ins.isSuccess === null;
-    });
-
-    if (stillRelevant21) {
-      await step.run("ask-farmer-success", async () => {
-        const animal = await Animal.findById(animalId);
-        const title = "Share a breeding observation";
-        const body = `It has been 21 days since the AI service for ${animal?.earTag || 'your animal'}. Report any signs of heat or possible pregnancy for technician review.`;
-
-        await Notification.create({
-          recipientId: farmerId,
-          senderId: "000000000000000000000000",
-          type: "ai-request",
-          relatedId: inseminationId,
-          title,
-          message: body,
-        });
-
-        const farmer = await User.findById(farmerId);
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
-      });
-    }
-
-    // --- STEP 3: DAY 25 (TECHNICIAN NUDGE) ---
-    await step.sleep("wait-for-tech-nudge", "4 days"); // Day 21 + 4 = Day 25
-
-    if (stillRelevant21) {
-      await step.run("nudge-technician", async () => {
-        const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
-        const technicians = await User.find({ role: "technician" });
-        const title = "Farmer observation follow-up";
-        const body = `${ins.farmerId?.name || "A farmer"} has not yet submitted an observation for AI attempt ${ins.attemptNumber}. Contact the farmer if an update is needed.`;
-        
-        await Promise.all(technicians.map(async (tech) => {
-          await Notification.create({
-            recipientId: tech._id,
-            senderId: "000000000000000000000000",
+          const farmer = await User.findById(farmerId);
+          await sendBackgroundReminder({
+            context: "ai-heat-window-reminder",
+            recipient: farmer,
+            recipientId: farmerId,
             type: "system",
-            relatedId: inseminationId,
+            relatedId: animalId,
+            eventType: "ai_heat_window_start",
+            linkType: "animal",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "ai-heat-window-start",
+              relatedId: inseminationId,
+              recipientId: farmerId,
+              milestoneDate: dates.observationWindowStartDate,
+            }),
             title,
             message: body,
           });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, body);
-          }
-        }));
+        });
+      }
+    }
+
+    // --- STEP 2: DAY 21 (FARMER CONFIRMATION) ---
+    if (dates.expectedEstrousCycleDate > new Date()) {
+      await step.sleepUntil("wait-for-confirmation", dates.expectedEstrousCycleDate);
+
+      const stillRelevant21 = await step.run("check-relevance-21", async () => {
+        const ins = await Insemination.findById(inseminationId);
+        return ins && ins.status === "done" && !isTerminalAIAttempt(ins);
       });
+
+      if (stillRelevant21) {
+        await step.run("ask-farmer-success", async () => {
+          const animal = await Animal.findById(animalId);
+          const title = "Share a breeding observation";
+          const body = `It has been ${HEAT_RETURN_MONITORING_POLICY.expectedEstrousCycleDays} days since the AI service for ${animal?.earTag || 'your animal'}. Report any signs of heat or possible pregnancy for technician review.`;
+
+          const farmer = await User.findById(farmerId);
+          await sendBackgroundReminder({
+            context: "ai-farmer-follow-up-reminder",
+            recipient: farmer,
+            recipientId: farmerId,
+            type: "ai-request",
+            relatedId: inseminationId,
+            eventType: "ai_farmer_follow_up",
+            linkType: "request",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "ai-farmer-follow-up",
+              relatedId: inseminationId,
+              recipientId: farmerId,
+              milestoneDate: dates.expectedEstrousCycleDate,
+            }),
+            title,
+            message: body,
+          });
+        });
+      }
+    }
+
+    // --- STEP 3: DAY 25 (TECHNICIAN NUDGE) ---
+    if (dates.technicianFollowUpDate > new Date()) {
+      await step.sleepUntil("wait-for-tech-nudge", dates.technicianFollowUpDate);
+
+      const stillRelevant25 = await step.run("check-relevance-25", async () => {
+        const ins = await Insemination.findById(inseminationId);
+        return ins && ins.status === "done" && !isTerminalAIAttempt(ins);
+      });
+
+      if (stillRelevant25) {
+        await step.run("nudge-technician", async () => {
+          const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
+          const technicians = await resolveReproductiveNotificationTechnicians({
+            insemination: ins,
+          });
+          const title = "Farmer observation follow-up";
+          const body = `${ins.farmerId?.name || "A farmer"} has not yet submitted an observation for AI attempt ${ins.attemptNumber}. Contact the farmer if an update is needed.`;
+
+          await Promise.all(technicians.map(async (tech) => {
+            await sendBackgroundReminder({
+              context: "ai-technician-follow-up-reminder",
+              recipient: tech,
+              recipientId: tech._id,
+              type: "system",
+              relatedId: inseminationId,
+              eventType: "ai_technician_follow_up",
+              linkType: "request",
+              dedupeKey: buildReminderDedupeKey({
+                eventType: "ai-technician-follow-up",
+                relatedId: inseminationId,
+                recipientId: tech._id,
+                milestoneDate: dates.technicianFollowUpDate,
+              }),
+              title,
+              message: body,
+            });
+          }));
+        });
+      }
     }
 
     // --- STEP 4: DAY 60 (PD DIAGNOSIS REMINDER) ---
-    await step.sleep("wait-for-pd-window", "35 days"); // Day 25 + 35 = Day 60
+    if (dates.pregnancyDiagnosisDueDate > new Date()) {
+      await step.sleepUntil(
+        "wait-for-pd-window",
+        dates.pregnancyDiagnosisDueDate,
+      );
+    }
 
     const stillRelevant60 = await step.run("check-relevance-60", async () => {
       const relevance = await getLegacyPregnancyReminderRelevance({ inseminationId });
@@ -201,28 +267,41 @@ const onInseminationApproved = inngest.createFunction(
     if (stillRelevant60) {
       await step.run("send-pd-reminder", async () => {
         const ins = await Insemination.findById(inseminationId).populate("animalId", "earTag");
-        const technicians = await User.find({ role: "technician" });
+        const technicians = await resolveReproductiveNotificationTechnicians({
+          insemination: ins,
+        });
         const title = "Pregnancy diagnosis is due";
         const body = `${ins.animalId?.earTag || 'The animal'} reached 60 days after AI service. Schedule an appropriate pregnancy diagnosis.`;
 
         await Promise.all(technicians.map(async (tech) => {
-          await Notification.create({
+          await sendBackgroundReminder({
+            context: "ai-pregnancy-diagnosis-due-reminder",
+            recipient: tech,
             recipientId: tech._id,
-            senderId: "000000000000000000000000",
             type: "system",
             relatedId: inseminationId,
+            eventType: "pregnancy_diagnosis_due",
+            linkType: "request",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "ai-pregnancy-diagnosis-due",
+              relatedId: inseminationId,
+              recipientId: tech._id,
+              milestoneDate: dates.pregnancyDiagnosisDueDate,
+            }),
             title,
             message: body,
           });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, body);
-          }
         }));
       });
     }
 
     // --- STEP 5: DAY 75 (MISSED PD DIAGNOSIS NUDGE) ---
-    await step.sleep("wait-for-missed-pd-window", "15 days"); // Day 60 + 15 = Day 75
+    if (dates.pregnancyDiagnosisOverdueDate > new Date()) {
+      await step.sleepUntil(
+        "wait-for-missed-pd-window",
+        dates.pregnancyDiagnosisOverdueDate,
+      );
+    }
 
     const stillRelevant75 = await step.run("check-relevance-75", async () => {
       const relevance = await getLegacyPregnancyReminderRelevance({ inseminationId });
@@ -236,34 +315,48 @@ const onInseminationApproved = inngest.createFunction(
         const body = `${ins.animalId?.earTag || 'Your animal'} reached 75 days after AI service without an official pregnancy diagnosis. Please arrange a technician visit.`;
 
         // Notify Farmer
-        await Notification.create({
+        const farmer = await User.findById(farmerId);
+        await sendBackgroundReminder({
+          context: "ai-pregnancy-diagnosis-overdue-reminder",
+          recipient: farmer,
           recipientId: farmerId,
-          senderId: "000000000000000000000000",
           type: "system",
           relatedId: animalId,
+          eventType: "pregnancy_diagnosis_overdue",
+          linkType: "animal",
+          dedupeKey: buildReminderDedupeKey({
+            eventType: "ai-pregnancy-diagnosis-overdue",
+            relatedId: inseminationId,
+            recipientId: farmerId,
+            milestoneDate: dates.pregnancyDiagnosisOverdueDate,
+          }),
           title,
           message: body,
         });
 
-        const farmer = await User.findById(farmerId);
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
-
-        // Notify all technicians
-        const technicians = await User.find({ role: "technician" });
+        // Notify only the current reproductive-work owner.
+        const technicians = await resolveReproductiveNotificationTechnicians({
+          insemination: ins,
+        });
         await Promise.all(technicians.map(async (tech) => {
-          await Notification.create({
+          const technicianBody = `${farmer?.name || 'A farmer'}'s animal (${ins.animalId?.earTag || 'tag not recorded'}) reached 75 days after AI service without an official pregnancy diagnosis.`;
+          await sendBackgroundReminder({
+            context: "ai-pregnancy-diagnosis-overdue-technician-reminder",
+            recipient: tech,
             recipientId: tech._id,
-            senderId: "000000000000000000000000",
             type: "system",
             relatedId: inseminationId,
+            eventType: "pregnancy_diagnosis_overdue",
+            linkType: "request",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "ai-pregnancy-diagnosis-overdue",
+              relatedId: inseminationId,
+              recipientId: tech._id,
+              milestoneDate: dates.pregnancyDiagnosisOverdueDate,
+            }),
             title,
-            message: `${farmer?.name || 'A farmer'}'s animal (${ins.animalId?.earTag || 'tag not recorded'}) reached 75 days after AI service without an official pregnancy diagnosis.`,
+            message: technicianBody,
           });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, `${farmer?.name || 'A farmer'}'s animal (${ins.animalId?.earTag || 'tag not recorded'}) reached 75 days after AI service without an official pregnancy diagnosis.`);
-          }
         }));
       });
     }
@@ -279,101 +372,158 @@ const onPregnancyConfirmed = inngest.createFunction(
   { event: "pregnancy/confirmed" },
   async ({ event, step }) => {
     await connectDB();
-    const { pregnancyId, animalId, farmerId } = event.data;
+    const { pregnancyId, inseminationId, animalId, farmerId } = event.data;
 
-    // Step 1: Wait for late-term (approx 270 days for cattle)
-    await step.sleep("wait-for-gestation", "270 days");
+    const reminderContext = await step.run("resolve-calving-reminder-date", async () => {
+      if (!pregnancyId && !inseminationId) return null;
+      const pregnancy = pregnancyId
+        ? await Pregnancy.findById(pregnancyId)
+        : await Pregnancy.findOne({ inseminationId });
+      const dates = getExpectedCalvingReminderDates(
+        pregnancy?.targetCalvingDate,
+      );
+      if (!pregnancy || !dates) return null;
+      return {
+        pregnancyId: pregnancy._id,
+        animalId: pregnancy.animalId || animalId,
+        farmerId: pregnancy.farmerId || farmerId,
+        ...dates,
+      };
+    });
 
-    // Step 2: Send Notification
+    if (!reminderContext) return { skipped: "expected-calving-date-missing" };
+
+    const upcomingReminderDate = new Date(reminderContext.upcoming);
+    const overdueReminderDate = new Date(reminderContext.overdue);
+
+    if (upcomingReminderDate > new Date()) {
+      await step.sleepUntil(
+        "wait-for-expected-calving-window",
+        upcomingReminderDate,
+      );
+    }
+
     await step.run("send-calving-alert", async () => {
-      const animal = await Animal.findById(animalId);
-      const farmer = await User.findById(farmerId);
-
-      const farmerTitle = "Prepare for expected calving";
-      const farmerBody = `${animal?.earTag || 'Your animal'} is approaching the expected calving period. Prepare a clean, safe calving area and monitor the animal closely.`;
-
-      // Notify Farmer (In-app)
-      await Notification.create({
-        recipientId: farmerId,
-        senderId: "000000000000000000000000",
-        type: "system",
-        relatedId: animalId,
-        title: farmerTitle,
-        message: farmerBody,
+      const [pregnancy, animal, farmer] = await Promise.all([
+        Pregnancy.findById(reminderContext.pregnancyId),
+        Animal.findById(reminderContext.animalId),
+        User.findById(reminderContext.farmerId),
+      ]);
+      if (!isExpectedCalvingReminderEligible({ pregnancy, animal })) return;
+      if (new Date() >= new Date(pregnancy.targetCalvingDate)) return;
+      const technicians = await resolveReproductiveNotificationTechnicians({
+        pregnancy,
       });
 
-      // Notify Farmer (Push)
-      if (farmer?.pushToken) {
-        await sendPushNotification(farmer.pushToken, farmerTitle, farmerBody);
+      const farmerTitle = "Expected calving within 7 days";
+      const farmerBody = `Your animal (${animal.earTag || 'your animal'}) is expected to calve around ${new Date(pregnancy.targetCalvingDate).toLocaleDateString()}.`;
+      if (farmer) {
+        await sendBackgroundReminder({
+          context: "expected-calving-farmer-reminder",
+          recipient: farmer,
+          recipientId: farmer._id,
+          type: "system",
+          relatedId: animal._id,
+          category: "calving",
+          eventType: "expected_calving_7d",
+          linkType: "animal",
+          dedupeKey: buildReminderDedupeKey({
+            eventType: "expected-calving-7d",
+            relatedId: pregnancy._id,
+            recipientId: farmer._id,
+            milestoneDate: pregnancy.targetCalvingDate,
+          }),
+          title: farmerTitle,
+          message: farmerBody,
+          metadata: { pregnancyId: pregnancy._id, animalId: animal._id },
+        });
       }
 
-      // Notify all technicians
-      const technicians = await User.find({ role: "technician" });
       const techTitle = "Expected calving approaching";
-      const techBody = `Farmer ${farmer?.name || 'Farmer'}'s animal (${animal?.earTag || 'animal'}) is due for calving soon.`;
-
-      await Promise.all(technicians.map(async (tech) => {
-        await Notification.create({
+      const techBody = `${farmer?.name || 'A farmer'}'s animal (${animal.earTag || 'tag not recorded'}) is expected to calve around ${new Date(pregnancy.targetCalvingDate).toLocaleDateString()}.`;
+      await Promise.all(technicians.map((tech) => sendBackgroundReminder({
+        context: "expected-calving-technician-reminder",
+        recipient: tech,
+        recipientId: tech._id,
+        type: "system",
+        relatedId: animal._id,
+        category: "calving",
+        eventType: "expected_calving_7d",
+        linkType: "animal",
+        dedupeKey: buildReminderDedupeKey({
+          eventType: "expected-calving-7d",
+          relatedId: pregnancy._id,
           recipientId: tech._id,
-          senderId: "000000000000000000000000",
-          type: "system",
-          relatedId: animalId,
-          title: techTitle,
-          message: techBody,
-        });
-        if (tech.pushToken) {
-          await sendPushNotification(tech.pushToken, techTitle, techBody);
-        }
-      }));
+          milestoneDate: pregnancy.targetCalvingDate,
+        }),
+        title: techTitle,
+        message: techBody,
+        metadata: { pregnancyId: pregnancy._id, animalId: animal._id },
+      })));
     });
 
-    // Step 3: Wait for calving overdue (approx 20 days later / Day 290 total)
-    await step.sleep("wait-for-calving-overdue", "20 days");
+    if (overdueReminderDate > new Date()) {
+      await step.sleepUntil(
+        "wait-for-calving-overdue",
+        overdueReminderDate,
+      );
+    }
 
-    // Step 4: Check if animal is still marked as Pregnant (meaning no calving recorded yet)
-    const stillPregnant = await step.run("check-pregnant-status", async () => {
-      const animal = await Animal.findById(animalId);
-      return animal && animal.reproductiveStatus === "Pregnant";
-    });
+    await step.run("send-overdue-calving-alert", async () => {
+      const [pregnancy, animal, farmer] = await Promise.all([
+        Pregnancy.findById(reminderContext.pregnancyId),
+        Animal.findById(reminderContext.animalId),
+        User.findById(reminderContext.farmerId),
+      ]);
+      if (!isExpectedCalvingReminderEligible({ pregnancy, animal })) return;
+      const technicians = await resolveReproductiveNotificationTechnicians({
+        pregnancy,
+      });
 
-    if (stillPregnant) {
-      await step.run("send-overdue-calving-alert", async () => {
-        const animal = await Animal.findById(animalId);
-        const farmer = await User.findById(farmerId);
-        const title = "Expected calving date has passed";
-        const body = `${animal?.earTag || 'Your animal'} is more than 10 days past the expected calving date. Check for distress or difficulty giving birth and contact a technician promptly.`;
-
-        // Notify Farmer
-        await Notification.create({
-          recipientId: farmerId,
-          senderId: "000000000000000000000000",
+      const title = "Expected calving date has passed";
+      const body = `${animal.earTag || 'Your animal'} is more than 10 days past the expected calving date. Check for distress or difficulty giving birth and contact a technician promptly.`;
+      if (farmer) {
+        await sendBackgroundReminder({
+          context: "overdue-calving-farmer-reminder",
+          recipient: farmer,
+          recipientId: farmer._id,
           type: "system",
-          relatedId: animalId,
+          relatedId: animal._id,
+          category: "calving",
+          eventType: "expected_calving_overdue",
+          linkType: "animal",
+          dedupeKey: buildReminderDedupeKey({
+            eventType: "expected-calving-overdue-10d",
+            relatedId: pregnancy._id,
+            recipientId: farmer._id,
+            milestoneDate: pregnancy.targetCalvingDate,
+          }),
           title,
           message: body,
+          metadata: { pregnancyId: pregnancy._id, animalId: animal._id },
         });
+      }
 
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
-
-        // Notify all technicians
-        const technicians = await User.find({ role: "technician" });
-        await Promise.all(technicians.map(async (tech) => {
-          await Notification.create({
-            recipientId: tech._id,
-            senderId: "000000000000000000000000",
-            type: "system",
-            relatedId: animalId,
-            title,
-            message: `${farmer?.name || 'A farmer'}'s animal (${animal?.earTag || 'tag not recorded'}) is past the expected calving date and may need assistance.`,
-          });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, `${farmer?.name || 'A farmer'}'s animal (${animal?.earTag || 'tag not recorded'}) is past the expected calving date and may need assistance.`);
-          }
-        }));
-      });
-    }
+      await Promise.all(technicians.map((tech) => sendBackgroundReminder({
+        context: "overdue-calving-technician-reminder",
+        recipient: tech,
+        recipientId: tech._id,
+        type: "system",
+        relatedId: animal._id,
+        category: "calving",
+        eventType: "expected_calving_overdue",
+        linkType: "animal",
+        dedupeKey: buildReminderDedupeKey({
+          eventType: "expected-calving-overdue-10d",
+          relatedId: pregnancy._id,
+          recipientId: tech._id,
+          milestoneDate: pregnancy.targetCalvingDate,
+        }),
+        title,
+        message: `${farmer?.name || 'A farmer'}'s animal (${animal.earTag || 'tag not recorded'}) is past the expected calving date and may need assistance.`,
+        metadata: { pregnancyId: pregnancy._id, animalId: animal._id },
+      })));
+    });
   }
 );
 
@@ -381,7 +531,7 @@ const onPregnancyConfirmed = inngest.createFunction(
  * Triggered when a calving event is recorded.
  * Waits for the Voluntary Waiting Period (VWP, e.g. 60 days) to recommend re-breeding.
  */
-const onCalvingRecorded = inngest.createFunction(
+export const onCalvingRecorded = inngest.createFunction(
   { id: "livestock/vwp-reminder" },
   { event: "livestock/calving-recorded" },
   async ({ event, step }) => {
@@ -391,7 +541,15 @@ const onCalvingRecorded = inngest.createFunction(
       farmerId,
       calvingId,
       outcome = "live_birth",
+      numberOfCalves = 0,
+      actorRole,
     } = event.data;
+
+    const calvingDateValue = await step.run("resolve-calving-date", async () => {
+      const calving = calvingId ? await Calving.findById(calvingId) : null;
+      return calving?.date || event.ts || new Date();
+    });
+    const calvingDate = new Date(calvingDateValue);
 
     await step.run("send-calving-recorded-push", async () => {
       const [animal, farmer] = await Promise.all([
@@ -409,25 +567,79 @@ const onCalvingRecorded = inngest.createFunction(
             ? `A stillbirth was recorded for ${animalTag}. Open the record for details and follow-up guidance.`
             : `A calving outcome was recorded for ${animalTag}. Open the record to review the delivery details.`;
 
-      await sendPushNotification(
-        farmer.pushToken,
-        outcome === "abortion" ? "Pregnancy loss recorded" : "Calving recorded",
-        outcomeSummary,
-        {
+      await sendNotificationPush({
+        recipient: farmer,
+        title:
+          outcome === "abortion"
+            ? "Pregnancy loss recorded"
+            : "Calving recorded",
+        message: outcomeSummary,
+        type: "system",
+        eventType,
+        relatedId: calvingId || animalId,
+        linkType: calvingId ? "record" : "animal",
+        metadata: {
           type: "system",
-          eventType,
-          relatedId: calvingId || animalId,
-          linkType: calvingId ? "record" : "animal",
           recordId: calvingId,
           animalId,
           animalTag,
           outcomeSummary,
         },
-      );
+      });
     });
 
-    // Wait for VWP period (typically 60 days)
-    await step.sleep("wait-for-vwp-window", "60 days");
+    if (actorRole === "farmer") {
+      await step.run("notify-technicians-calving", async () => {
+        const animal = await Animal.findById(animalId);
+        if (!animal) return;
+
+        const animalTag = animal.earTag || animal.animalId || "an animal";
+        const title = "Calving recorded";
+
+        let message = `${animalTag} has a new calving record.`;
+        if (outcome === "abortion") {
+          message = `A pregnancy loss was recorded for ${animalTag}.`;
+        } else if (outcome === "stillbirth") {
+          message = `A stillbirth was recorded for ${animalTag}.`;
+        } else if (outcome === "live_birth" || outcome === "mixed") {
+          const calfWord = numberOfCalves === 1 ? "calf was" : "calves were";
+          message = `${animalTag} has a new calving record. ${numberOfCalves} living ${calfWord} recorded.`;
+        }
+
+        const technicians = await resolveReproductiveNotificationTechnicians({
+          calvingId,
+        });
+
+        await Promise.all(
+          technicians.map((tech) =>
+            notifyUserBestEffort(
+              {
+                recipient: tech,
+                senderId: farmerId,
+                type: "system",
+                relatedId: animalId,
+                linkType: "animal",
+                category: "calving",
+                eventType: "calving_recorded",
+                dedupeKey: `farmer-calving-recorded:${calvingId}:${tech._id}`,
+                title,
+                message,
+                metadata: { animalId, animalTag, calvingId },
+              },
+              "farmer-calving-recorded-notification",
+            ),
+          ),
+        );
+      });
+    }
+
+    // The Calving record date is canonical; event delivery time is only a
+    // compatibility fallback for older events without a resolvable record.
+    const vwpDueDate = new Date(calvingDate);
+    vwpDueDate.setUTCDate(vwpDueDate.getUTCDate() + 60);
+    if (vwpDueDate > new Date()) {
+      await step.sleepUntil("wait-for-vwp-window", vwpDueDate);
+    }
 
     // Check if the animal is still Open (reproductiveStatus is 'Open' or not Pregnant/Inseminated)
     const readyForBreeding = await step.run("check-breeding-readiness", async () => {
@@ -451,21 +663,25 @@ const onCalvingRecorded = inngest.createFunction(
             : "calving";
         const body = `Your animal Tag #${animal?.earTag || 'your animal'} has completed the 60-day recovery period following ${recoveryEvent} and may be evaluated for re-breeding.`;
 
-        // Notify Farmer (In-app)
-        await Notification.create({
+        const farmer = await User.findById(farmerId);
+        await sendBackgroundReminder({
+          context: "post-calving-breeding-review-reminder",
+          recipient: farmer,
           recipientId: farmerId,
-          senderId: "000000000000000000000000",
           type: "system",
           relatedId: animalId,
+          eventType: "post_calving_breeding_review",
+          linkType: "animal",
+          dedupeKey: buildReminderDedupeKey({
+            eventType: "post-calving-breeding-review-60d",
+            relatedId: calvingId || animalId,
+            recipientId: farmerId,
+            milestoneDate: vwpDueDate,
+          }),
           title,
           message: body,
+          metadata: { animalId, recordId: calvingId },
         });
-
-        // Notify Farmer (Push)
-        const farmer = await User.findById(farmerId);
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body);
-        }
       });
     }
   }
@@ -490,7 +706,6 @@ const automatedGestationLifecycle = inngest.createFunction(
         lastInseminationDate: { $lte: sixtyDaysAgo }
       });
 
-      const technicians = await User.find({ role: "technician" });
       const title = "Pregnancy diagnosis is due";
 
       let reminders = 0;
@@ -505,22 +720,36 @@ const automatedGestationLifecycle = inngest.createFunction(
           inseminationId: insemination._id,
         });
         if (!relevance.isRelevant) continue;
+        const technicians = await resolveReproductiveNotificationTechnicians({
+          insemination,
+        });
 
         const body = `${animal.earTag || 'The animal'} reached 60 days after AI service. Schedule an appropriate pregnancy diagnosis.`;
 
         // Notify technicians
+        const milestoneDate = new Date(insemination.inseminationDate || insemination.createdAt);
+        milestoneDate.setUTCDate(
+          milestoneDate.getUTCDate() +
+            HEAT_RETURN_MONITORING_POLICY.pregnancyDiagnosisDueDays,
+        );
         await Promise.all(technicians.map(async (tech) => {
-          await Notification.create({
+          await sendBackgroundReminder({
+            context: "daily-pregnancy-diagnosis-due-reminder",
+            recipient: tech,
             recipientId: tech._id,
-            senderId: "000000000000000000000000",
             type: "system",
-            relatedId: animal._id,
+            relatedId: insemination._id,
+            eventType: "pregnancy_diagnosis_due",
+            linkType: "request",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "ai-pregnancy-diagnosis-due",
+              relatedId: insemination._id,
+              recipientId: tech._id,
+              milestoneDate,
+            }),
             title,
             message: body,
           });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, body);
-          }
         }));
         reminders += 1;
       }
@@ -532,54 +761,74 @@ const automatedGestationLifecycle = inngest.createFunction(
       const sevenDaysFromNow = new Date();
       sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
 
-      const animals = await Animal.find({
-        reproductiveStatus: "Pregnant",
-        expectedCalvingDate: { $lte: sevenDaysFromNow, $gt: new Date() }
-      }).populate("farmerId");
+      const pregnancies = await Pregnancy.find({
+        cycleStatus: "active",
+        deletedAt: null,
+        targetCalvingDate: { $lte: sevenDaysFromNow, $gt: new Date() },
+      });
 
-      const technicians = await User.find({ role: "technician" });
-
-      for (const animal of animals) {
-        const farmer = animal.farmerId;
+      let alertsSent = 0;
+      for (const pregnancy of pregnancies) {
+        const [animal, farmer] = await Promise.all([
+          Animal.findById(pregnancy.animalId),
+          User.findById(pregnancy.farmerId),
+        ]);
+        if (!isExpectedCalvingReminderEligible({ pregnancy, animal })) continue;
+        const technicians = await resolveReproductiveNotificationTechnicians({
+          pregnancy,
+        });
         const farmerTitle = "Expected calving within 7 days";
-        const farmerBody = `Your animal (${animal.earTag || 'your animal'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
+        const farmerBody = `Your animal (${animal.earTag || 'your animal'}) is expected to calve around ${new Date(pregnancy.targetCalvingDate).toLocaleDateString()}.`;
 
         if (farmer) {
-          // Notify Farmer (In-app)
-          await Notification.create({
+          await sendBackgroundReminder({
+            context: "daily-expected-calving-farmer-reminder",
+            recipient: farmer,
             recipientId: farmer._id,
-            senderId: "000000000000000000000000",
             type: "system",
             relatedId: animal._id,
+            category: "calving",
+            eventType: "expected_calving_7d",
+            linkType: "animal",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "expected-calving-7d",
+              relatedId: pregnancy._id,
+              recipientId: farmer._id,
+              milestoneDate: pregnancy.targetCalvingDate,
+            }),
             title: farmerTitle,
             message: farmerBody,
+            metadata: { pregnancyId: pregnancy._id, animalId: animal._id },
           });
-
-          // Notify Farmer (Push)
-          if (farmer.pushToken) {
-            await sendPushNotification(farmer.pushToken, farmerTitle, farmerBody);
-          }
         }
 
-        // Notify Technicians (In-app & Push)
         const techTitle = "Expected calving approaching";
-        const techBody = `${farmer?.name || 'A farmer'}'s animal (${animal.earTag || 'tag not recorded'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
-        
+        const techBody = `${farmer?.name || 'A farmer'}'s animal (${animal.earTag || 'tag not recorded'}) is expected to calve around ${new Date(pregnancy.targetCalvingDate).toLocaleDateString()}.`;
+
         for (const tech of technicians) {
-          await Notification.create({
+          await sendBackgroundReminder({
+            context: "daily-expected-calving-technician-reminder",
+            recipient: tech,
             recipientId: tech._id,
-            senderId: "000000000000000000000000",
             type: "system",
             relatedId: animal._id,
+            category: "calving",
+            eventType: "expected_calving_7d",
+            linkType: "animal",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "expected-calving-7d",
+              relatedId: pregnancy._id,
+              recipientId: tech._id,
+              milestoneDate: pregnancy.targetCalvingDate,
+            }),
             title: techTitle,
             message: techBody,
+            metadata: { pregnancyId: pregnancy._id, animalId: animal._id },
           });
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, techTitle, techBody);
-          }
         }
+        alertsSent += 1;
       }
-      return { alertsSent: animals.length };
+      return { alertsSent };
     });
   }
 );
@@ -627,16 +876,16 @@ const remindPendingServices = inngest.createFunction(
     await connectDB();
 
     await step.run("remind-technicians", async () => {
-      // Find all AI/Health requests scheduled for today or earlier that are not done/resolved/cancelled
-      const pendingAI = await Insemination.find({
-        status: { $in: ["approved", "in-progress"] },
-        scheduledDate: { $lte: new Date() }
-      }).populate("farmerId", "name").populate("animalId", "earTag animalId").populate("approvedBy");
+      const reminderQueries = buildPendingServiceReminderQueries(new Date());
+      const pendingAI = await Insemination.find(reminderQueries.ai)
+        .populate("farmerId", "name")
+        .populate("animalId", "earTag animalId")
+        .populate("approvedBy");
 
-      const pendingHealth = await HealthRequest.find({
-        status: { $in: ["approved", "in-progress"] },
-        scheduledDate: { $lte: new Date() }
-      }).populate("farmerId", "name").populate("animalId", "earTag animalId").populate("handledBy");
+      const pendingHealth = await HealthRequest.find(reminderQueries.health)
+        .populate("farmerId", "name")
+        .populate("animalId", "earTag animalId")
+        .populate("handledBy");
 
       // Notify Technicians for pending AI
       for (const request of pendingAI) {
@@ -644,19 +893,29 @@ const remindPendingServices = inngest.createFunction(
         if (tech) {
           const title = "AI service record needed";
           const body = `Today's AI visit for ${request.farmerId?.name || 'the farmer'} and ${request.animalId?.earTag || request.animalId?.animalId || 'the animal'} does not have a completed service record. Open the visit to finish it.`;
-          
-          await Notification.create({
+
+          await sendBackgroundReminder({
+            context: "pending-ai-service-reminder",
+            recipient: tech,
             recipientId: tech._id,
-            senderId: "000000000000000000000000",
             type: "ai-request",
             relatedId: request._id,
+            eventType: "ai_scheduled_service_due",
+            linkType: "request",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "ai-scheduled-service-due",
+              relatedId: request._id,
+              recipientId: tech._id,
+              milestoneDate: request.scheduledDate,
+              period: request.visitPeriod,
+            }),
             title,
             message: body,
+            metadata: {
+              scheduledDate: request.scheduledDate,
+              visitPeriod: request.visitPeriod,
+            },
           });
-
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, body);
-          }
         }
       }
 
@@ -666,19 +925,29 @@ const remindPendingServices = inngest.createFunction(
         if (tech) {
           const title = "Health service record needed";
           const body = `Today's health visit for ${request.farmerId?.name || 'the farmer'} and ${request.animalId?.earTag || request.animalId?.animalId || 'the animal'} does not have a completed service record. Open the visit to finish it.`;
-          
-          await Notification.create({
+
+          await sendBackgroundReminder({
+            context: "pending-health-visit-reminder",
+            recipient: tech,
             recipientId: tech._id,
-            senderId: "000000000000000000000000",
             type: "health-request",
             relatedId: request._id,
+            eventType: "health_scheduled_visit_due",
+            linkType: "request",
+            dedupeKey: buildReminderDedupeKey({
+              eventType: "health-scheduled-visit-due",
+              relatedId: request._id,
+              recipientId: tech._id,
+              milestoneDate: request.scheduledDate,
+              period: request.visitPeriod,
+            }),
             title,
             message: body,
+            metadata: {
+              scheduledDate: request.scheduledDate,
+              visitPeriod: request.visitPeriod,
+            },
           });
-
-          if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, body);
-          }
         }
       }
 
@@ -690,9 +959,9 @@ const remindPendingServices = inngest.createFunction(
 export const functions = [
   syncUserCreated,
   syncUserUpdated,
-  deleteUserFromDB, 
-  onInseminationApproved, 
-  onPregnancyConfirmed, 
+  deleteUserFromDB,
+  onInseminationApproved,
+  onPregnancyConfirmed,
   onCalvingRecorded,
   dailyStatsAggregation,
   automatedGestationLifecycle,

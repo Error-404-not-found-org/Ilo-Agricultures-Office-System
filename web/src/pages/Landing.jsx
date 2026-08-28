@@ -1,5 +1,14 @@
-import { Navigate } from 'react-router-dom';
-import { useUser } from '@clerk/clerk-react';
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
+import { toast } from "sonner";
+
+import AuthShell from "../components/auth/AuthShell";
+import axiosInstance from "../lib/axios";
+import {
+  getStaffAccessNavigationState,
+  STAFF_SIGN_IN_INTENT_KEY,
+} from "../config/staffAccess";
 
 import PublicNavbar from './landing/components/PublicNavbar';
 import LandingHero from './landing/components/LandingHero';
@@ -14,14 +23,139 @@ import PublicFooter from './landing/components/PublicFooter';
 
 export default function Landing() {
   const { isSignedIn, isLoaded, user } = useUser();
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const consumedStaffAccessMessage = useRef(null);
+  const [isHandlingStaffAccessFeedback, setIsHandlingStaffAccessFeedback] =
+    useState(() => Boolean(location.state?.staffAccessMessage));
+  const [isRejectingStaffAccess, setIsRejectingStaffAccess] = useState(false);
+  const hasStaffSignInIntent =
+    window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY) === "true";
 
-  if (isLoaded && isSignedIn) {
+  useEffect(() => {
+    const feedback = location.state?.staffAccessMessage;
+    if (!feedback || consumedStaffAccessMessage.current === feedback) return;
+
+    consumedStaffAccessMessage.current = feedback;
+    navigate(
+      `${location.pathname}${location.search}${location.hash}`,
+      { replace: true, state: null },
+    );
+
+    if (feedback.type === "error") {
+      toast.error(feedback.title, { description: feedback.description });
+    }
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isLoaded || !isSignedIn || !hasStaffSignInIntent) {
+      return () => {};
+    }
+
+    const rejectStaffAccess = async (role) => {
+      const navigationState = getStaffAccessNavigationState(role);
+      setIsHandlingStaffAccessFeedback(true);
+      setIsRejectingStaffAccess(true);
+      window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
+
+      try {
+        await signOut(() => {
+          setIsRejectingStaffAccess(false);
+          navigate("/", { replace: true, state: navigationState });
+        });
+      } catch {
+        setIsRejectingStaffAccess(false);
+        toast.error("Unable to sign out", {
+          description:
+            "Please try again before using another BreedSmart account.",
+        });
+        return;
+      }
+
+    };
+
+    const resolveStaffAccess = async () => {
+      try {
+        const token = await getToken();
+        const response = await axiosInstance.post(
+          "/user/bootstrap",
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (cancelled) return;
+
+        const role = response.data?.user?.role;
+        if (role === "admin") {
+          window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
+          navigate("/admin/dashboard", { replace: true });
+          return;
+        }
+        if (role === "technician") {
+          window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
+          navigate("/technician/dashboard", { replace: true });
+          return;
+        }
+
+        await rejectStaffAccess(role);
+      } catch {
+        if (cancelled) return;
+        await rejectStaffAccess();
+      }
+    };
+
+    resolveStaffAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    getToken,
+    hasStaffSignInIntent,
+    isLoaded,
+    isSignedIn,
+    navigate,
+    signOut,
+  ]);
+
+  if (isRejectingStaffAccess) {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title="Signing you out"
+        description="This account cannot access the staff workspace."
+      >
+        <div
+          className="flex items-center justify-center gap-3 rounded-xl bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-600"
+          role="status"
+        >
+          <span className="loading loading-dots loading-sm text-[#17663a]" />
+          <span>Signing you out…</span>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (
+    isLoaded &&
+    isSignedIn &&
+    !hasStaffSignInIntent &&
+    !isHandlingStaffAccessFeedback
+  ) {
     const role = user?.publicMetadata?.role;
-    if (role === 'admin') {
+    if (role === "admin") {
       return <Navigate to="/admin/dashboard" replace />;
-    } else if (role === 'technician') {
+    } else if (role === "technician") {
       return <Navigate to="/technician/dashboard" replace />;
-    } else if (role === 'farmer') {
+    } else if (role === "farmer") {
       // Farmers do not have a web portal dashboard; redirect them to the app download page
       return <Navigate to="/download-app" replace />;
     }

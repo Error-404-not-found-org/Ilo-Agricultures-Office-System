@@ -3,8 +3,6 @@ import { View, Text, TouchableOpacity, Image } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import { useNetInfo } from "@react-native-community/netinfo";
-import { useTheme } from "@/lib/theme";
 import { Bell } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
@@ -15,8 +13,6 @@ const PRIMARY = "#1e3a5f";
 export function DashboardHero() {
   const { user } = useUser();
   const router = useRouter();
-  const netInfo = useNetInfo();
-  const { colors, isDark } = useTheme();
   const api = useApi();
 
   const { data: unreadData } = useQuery<{ count: number }>({
@@ -104,7 +100,7 @@ export function DashboardHero() {
             <Text
               style={{
                 color: "#bfdbfe",
-                fontSize: 11,
+                fontSize: 12,
                 fontFamily: "Outfit_600SemiBold",
                 textTransform: "uppercase",
                 letterSpacing: 1,
@@ -126,7 +122,7 @@ export function DashboardHero() {
             <Bell size={20} color="white" />
             {unreadCount > 0 && (
               <View className="absolute -top-1 -right-1 bg-red-500 w-4 h-4 rounded-full border border-white items-center justify-center">
-                <Text className="text-white text-[9px] font-bold">
+                <Text className="text-white text-xs font-bold">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </Text>
               </View>
@@ -148,13 +144,13 @@ export function DashboardHero() {
           <Text
             style={{
               color: "rgba(255, 255, 255, 0.6)",
-              fontSize: 10,
+              fontSize: 12,
               fontFamily: "Outfit_700Bold",
               textTransform: "uppercase",
               letterSpacing: 0.5,
             }}
           >
-            Today's Date
+            {"Today's Date"}
           </Text>
           <Text
             style={{

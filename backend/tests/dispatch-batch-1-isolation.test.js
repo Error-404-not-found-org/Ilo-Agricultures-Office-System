@@ -46,6 +46,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     healthFind: HealthRequest.find,
     healthCount: HealthRequest.countDocuments,
     taskFind: Task.find,
+    taskCount: Task.countDocuments,
     pregnancyCount: Pregnancy.countDocuments,
     calvingCount: Calving.countDocuments,
     animalCount: Animal.countDocuments,
@@ -57,6 +58,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     HealthRequest.find = originals.healthFind;
     HealthRequest.countDocuments = originals.healthCount;
     Task.find = originals.taskFind;
+    Task.countDocuments = originals.taskCount;
     Pregnancy.countDocuments = originals.pregnancyCount;
     Calving.countDocuments = originals.calvingCount;
     Animal.countDocuments = originals.animalCount;
@@ -129,10 +131,10 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     const candidateItem = res2.body.pendingRequests[0];
     // Farmer display name is required by the request-card contract.
     // Contact information and precise location remain claim-gated.
-    // Only the display name is exposed.
+    // The display name and profile image are card presentation fields.
     const expectedKeys = [
       "id", "type", "status", "isReadyToday", "time", "preferredTime",
-      "displayDate", "farmer", "animalTag", "municipality", "barangay", "displayStatus",
+      "displayDate", "farmer", "farmerImageUrl", "animalTag", "municipality", "barangay", "displayStatus",
       "task", "urgent", "overdue", "sentTime", "createdAt"
     ].sort();
     assert.deepEqual(Object.keys(candidateItem).sort(), expectedKeys);
@@ -169,6 +171,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
   });
 
   await t.test("Requests: unassigned AI and Health responses contain Farmer name while remaining candidate-safe", async () => {
+    Task.countDocuments = () => Promise.resolve(0);
     Insemination.find = () => queryResult([{
       _id: "ai-unassigned",
       status: "pending",
@@ -203,5 +206,72 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     assert.equal(healthReq.farmer, "Health Farmer");
     assert.equal(healthReq.raw, undefined);
     assert.equal(healthReq.farmerPhone, undefined);
+  });
+
+  await t.test("Requests: a skip hides the request only from that Technician", async () => {
+    const skippedBy = ["tech-a"];
+    const request = {
+      _id: "ai-skipped-by-a",
+      status: "pending",
+      createdAt: new Date(),
+      declinedByTechnicianIds: skippedBy,
+      farmerId: { name: "Test Farmer", address: { city: "Oton" } },
+      animalId: { earTag: "T-SKIP" },
+      dispatch: { location: { municipalityCode: "063034000" } },
+    };
+    const technician = (id) => ({
+      _id: id,
+      role: "technician",
+      status: "active",
+      isVerified: true,
+      profileClaimStatus: "claimed",
+      dispatchProfile: {
+        acceptsNewRequests: true,
+        availabilityStatus: "available",
+        serviceCapabilities: ["AI"],
+        serviceMunicipalities: [{ municipalityCode: "063034000" }],
+      },
+    });
+
+    Insemination.find = (query) => {
+      const excludedTechnician = query.declinedByTechnicianIds?.$ne;
+      return queryResult(
+        skippedBy.includes(String(excludedTechnician)) ? [] : [request],
+      );
+    };
+    Insemination.countDocuments = (query) => {
+      const excludedTechnician = query.declinedByTechnicianIds?.$ne;
+      return Promise.resolve(
+        skippedBy.includes(String(excludedTechnician)) ? 0 : 1,
+      );
+    };
+    HealthRequest.find = () => queryResult([]);
+    HealthRequest.countDocuments = () => Promise.resolve(0);
+    Task.find = () => queryResult([]);
+    Task.countDocuments = () => Promise.resolve(0);
+
+    const techAResponse = mockResponse();
+    await getTechnicianRequests(
+      {
+        user: technician("tech-a"),
+        query: { assignment: "unassigned" },
+      },
+      techAResponse,
+    );
+    assert.equal(techAResponse.statusCode, 200);
+    assert.equal(techAResponse.body.requests.length, 0);
+
+    const techBResponse = mockResponse();
+    await getTechnicianRequests(
+      {
+        user: technician("tech-b"),
+        query: { assignment: "unassigned" },
+      },
+      techBResponse,
+    );
+    assert.equal(techBResponse.statusCode, 200);
+    assert.equal(techBResponse.body.requests.length, 1);
+    assert.equal(techBResponse.body.requests[0].id, request._id);
+    assert.equal(request.status, "pending");
   });
 });

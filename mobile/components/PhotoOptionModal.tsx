@@ -2,6 +2,7 @@ import React from "react";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Image as ImageIcon, X } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
+import { AnimatedBottomSheet } from "@/components/shared/AnimatedBottomSheet";
 
 export type PhotoOptionModalProps = {
   visible: boolean;
@@ -21,17 +22,12 @@ export function PhotoOptionModal({
   const { colors, isDark } = useTheme();
 
   return (
-    <Modal
+    <AnimatedBottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      onClose={onClose}
+      backgroundColor={colors.card}
     >
-      <View className="flex-1 bg-black/50 justify-end">
-        <View
-          className="rounded-t-[32px] p-6 pb-10 shadow-2xl"
-          style={{ backgroundColor: colors.card }}
-        >
+        <View className="p-6 shadow-2xl">
           {/* Header */}
           <View className="flex-row justify-between items-center mb-6">
             <Text
@@ -47,7 +43,7 @@ export function PhotoOptionModal({
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Close photo options"
-              className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full"
+              className="bg-slate-100 dark:bg-slate-800 rounded-full items-center justify-center min-w-[48px] min-h-[48px]"
             >
               <X size={20} color={isDark ? "#94a3b8" : "#64748b"} />
             </TouchableOpacity>
@@ -108,8 +104,7 @@ export function PhotoOptionModal({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
-    </Modal>
+    </AnimatedBottomSheet>
   );
 }
 

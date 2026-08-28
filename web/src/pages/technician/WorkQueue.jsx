@@ -32,6 +32,8 @@ import {
 import {
   MY_WORK_FILTERS,
   getServicePresentation,
+  formatCanonicalVisitSchedule,
+  isDateOnlyWorkflowType,
   normalizeServiceType,
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
@@ -48,22 +50,6 @@ const toTitleCase = (str) => {
 };
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
-
-const formatCanonicalAISchedule = (schedule = {}) => {
-  if (!schedule.date) return "Not scheduled";
-  const date = new Date(schedule.date);
-  if (Number.isNaN(date.getTime())) return "Not scheduled";
-  const dateLabel = date.toLocaleDateString("en-US", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const periodLabel = schedule.visitPeriod
-    ? toTitleCase(schedule.visitPeriod)
-    : null;
-  return [dateLabel, periodLabel].filter(Boolean).join(" · ");
-};
 
 const formatRecordDate = (value) => {
   if (!value) return "Not recorded";
@@ -552,11 +538,11 @@ export default function WorkQueue() {
 
                             {/* 3. SCHEDULE */}
                             <td className="p-3.5 align-top">
-                              {task.workflowType === "AI" ? (
+                              {["AI", "Health"].includes(task.workflowType) ? (
                                 <span
                                   className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
                                 >
-                                  {formatCanonicalAISchedule(task.schedule)}
+                                  {formatCanonicalVisitSchedule(task.schedule)}
                                 </span>
                               ) : (
                                 (() => {
@@ -570,9 +556,13 @@ export default function WorkQueue() {
                                     >
                                       {sched.date}
                                     </span>
-                                    <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
-                                      {sched.time}
-                                    </span>
+                                    {!isDateOnlyWorkflowType(
+                                      task.workflowType,
+                                    ) ? (
+                                      <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
+                                        {sched.time}
+                                      </span>
+                                    ) : null}
                                   </div>
                                 );
                                 })()
@@ -821,7 +811,7 @@ export default function WorkQueue() {
               <div>
                 <p className="text-xs text-base-content/55">Scheduled visit</p>
                 <p className="font-semibold">
-                  {formatCanonicalAISchedule(selectedAIRecord.schedule)}
+                  {formatCanonicalVisitSchedule(selectedAIRecord.schedule)}
                 </p>
               </div>
               <div>

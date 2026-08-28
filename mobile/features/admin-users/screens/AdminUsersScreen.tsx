@@ -7,12 +7,18 @@ import {
   RefreshControl,
   Image,
   ScrollView,
-  Alert,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Header from "@/components/Header";
-import { Mail, Shield, MapPin, Phone } from "lucide-react-native";
+import {
+  BriefcaseBusiness,
+  CircleAlert,
+  CircleCheck,
+  Mail,
+  MapPin,
+  Phone,
+} from "lucide-react-native";
 import {
   SearchBar,
   AsyncState,
@@ -20,10 +26,17 @@ import {
   Pagination,
   CustomDialog,
 } from "@/components/shared";
-import { useAdminUsers, UserStats } from "../hooks/useAdminUsers";
+import { useAdminUsers } from "../hooks/useAdminUsers";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useTheme } from "@/lib/theme";
 import { UserItem } from "../types/adminUsers.types";
+import {
+  getAccountStatePresentation,
+  getCapabilityLabels,
+  getDispatchReadinessPresentation,
+  getFieldAreaLabel,
+  getReceiveRequestsPresentation,
+} from "../utils/dispatchPresentation";
 
 const PRIMARY = "#1e3a5f";
 
@@ -61,7 +74,8 @@ const StatChip = React.memo(function StatChip({
         alignItems: "center",
         gap: 6,
         paddingHorizontal: 14,
-        paddingVertical: 8,
+        minHeight: 44,
+        paddingVertical: 10,
         borderRadius: 14,
         backgroundColor: isActive
           ? color
@@ -84,7 +98,7 @@ const StatChip = React.memo(function StatChip({
       <Text
         style={{
           fontFamily: "Outfit_600SemiBold",
-          fontSize: 11,
+          fontSize: 12,
           color: isActive ? "rgba(255,255,255,0.85)" : colors.textSecondary,
         }}
       >
@@ -116,7 +130,6 @@ export default function AdminUsersScreen() {
     isError,
     refetch,
     isRefetching,
-    handleUserPress,
     handleSuspendUser,
     handleVerifyUser,
     handleRestoreUser,
@@ -189,8 +202,8 @@ export default function AdminUsersScreen() {
           style={{
             backgroundColor: "#2563eb",
             paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderRadius: 20,
+            minHeight: 48,
+            borderRadius: 14,
             flexDirection: "row",
             alignItems: "center",
             gap: 6,
@@ -201,7 +214,7 @@ export default function AdminUsersScreen() {
             style={{
               color: "#fff",
               fontFamily: "Outfit_700Bold",
-              fontSize: 12,
+              fontSize: 14,
             }}
           >
             Create
@@ -295,7 +308,7 @@ export default function AdminUsersScreen() {
         {totalPages > 1 && (
           <Text
             style={{
-              fontSize: 11,
+              fontSize: 12,
               fontFamily: "Outfit_600SemiBold",
               color: colors.textMuted,
             }}
@@ -503,19 +516,6 @@ export default function AdminUsersScreen() {
   );
 }
 
-const getUserAccountStatus = (user: UserItem) => {
-  if (user.clerkId) {
-    return "Connected";
-  }
-  if (user.status === "blocked" || user.status === "suspended") {
-    return "Blocked";
-  }
-  if (!user.email && user.phoneNumber) {
-    return "Claimable";
-  }
-  return "No App Account";
-};
-
 const formatUserAddress = (address?: UserItem["address"]) => {
   if (!address) return "No address registered";
   const parts = [
@@ -545,6 +545,11 @@ const UserCard = React.memo(function UserCard({
   const { colors, isDark } = useTheme();
   const roleStyle = ROLE_COLORS[item.role] || ROLE_COLORS.farmer;
   const hasImage = !!item.imageUrl;
+  const accountState = getAccountStatePresentation(item);
+  const dispatchReadiness = getDispatchReadinessPresentation(item);
+  const fieldArea = getFieldAreaLabel(item.dispatchProfile);
+  const capabilities = getCapabilityLabels(item.dispatchProfile);
+  const receiveRequests = getReceiveRequestsPresentation(item.dispatchProfile);
 
   return (
     <TouchableOpacity
@@ -626,32 +631,22 @@ const UserCard = React.memo(function UserCard({
               flexWrap: "wrap",
             }}
           >
-            <StatusBadge label={item.role} />
-            {item.isVerified && (
-              <StatusBadge label="Verified" variant="success" />
+            <StatusBadge
+              label={
+                item.role === "admin"
+                  ? "Administrator"
+                  : item.role === "technician"
+                    ? "Technician"
+                    : "Farmer"
+              }
+            />
+            <StatusBadge label={accountState.label} variant={accountState.tone} />
+            {item.role === "technician" && (
+              <StatusBadge
+                label={dispatchReadiness.title}
+                variant={dispatchReadiness.tone}
+              />
             )}
-            {item.status === "suspended" && (
-              <StatusBadge label="Suspended" variant="danger" />
-            )}
-            {!item.isVerified && (
-              <StatusBadge label="Unverified" variant="warning" />
-            )}
-            {!!item.deletedAt && (
-              <StatusBadge label="Deleted" variant="danger" />
-            )}
-
-            {/* Account Connection Status Badge */}
-            {!item.deletedAt &&
-              (() => {
-                const status = getUserAccountStatus(item);
-                if (status === "Connected")
-                  return <StatusBadge label="Connected" variant="success" />;
-                if (status === "Blocked")
-                  return <StatusBadge label="Blocked" variant="danger" />;
-                if (status === "Claimable")
-                  return <StatusBadge label="Claimable" variant="warning" />;
-                return <StatusBadge label="No App Account" variant="neutral" />;
-              })()}
           </View>
         </View>
       </View>
@@ -787,17 +782,48 @@ const UserCard = React.memo(function UserCard({
                   color: colors.textSecondary,
                 }}
               >
-                Assigned Area:{" "}
+                Field Area:{" "}
                 <Text
                   style={{
                     fontFamily: "Outfit_700Bold",
                     color: colors.textPrimary,
                   }}
                 >
-                  {formatUserAddress(item.address) === "No address registered"
-                    ? "Not Assigned"
-                    : formatUserAddress(item.address)}
+                  {fieldArea}
                 </Text>
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+              {dispatchReadiness.eligible ? (
+                <CircleCheck size={14} color="#16a34a" />
+              ) : (
+                <CircleAlert size={14} color="#d97706" />
+              )}
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  fontFamily: "Outfit_500Medium",
+                  color: colors.textSecondary,
+                }}
+              >
+                {dispatchReadiness.eligible
+                  ? "Eligible for matching new requests"
+                  : dispatchReadiness.blockers[0] || "Dispatch setup is incomplete"}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+              <BriefcaseBusiness size={14} color="#2563eb" />
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  fontFamily: "Outfit_500Medium",
+                  color: colors.textSecondary,
+                }}
+              >
+                {receiveRequests.label}
+                {capabilities.length ? ` · ${capabilities.join(", ")}` : " · No capabilities assigned"}
               </Text>
             </View>
             <View
@@ -833,7 +859,7 @@ const UserCard = React.memo(function UserCard({
       {/* Quick Action Hint */}
       <Text
         style={{
-          fontSize: 10,
+          fontSize: 12,
           fontFamily: "Outfit_500Medium",
           color: colors.textMuted,
           textAlign: "center",
@@ -841,7 +867,7 @@ const UserCard = React.memo(function UserCard({
           opacity: 0.6,
         }}
       >
-        Long press for quick actions
+        Tap for details · Long press for account actions
       </Text>
     </TouchableOpacity>
   );

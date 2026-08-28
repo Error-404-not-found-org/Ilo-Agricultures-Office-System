@@ -87,9 +87,18 @@ const InseminationSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Set only by the Previous AI workflow. Missing remains the backwards-
+    // compatible value for ordinary live/request-linked AI records.
+    entryMode: {
+      type: String,
+      enum: ["history_only", "continue_tracking"],
+      default: undefined,
+    },
     attemptNumber: {
       type: Number,
-      default: 1,
+      default: function defaultAttemptNumber() {
+        return this.entryMode === "history_only" ? undefined : 1;
+      },
     },
     previousAttemptId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -98,7 +107,11 @@ const InseminationSchema = new mongoose.Schema(
     },
     attemptSeriesId: {
       type: mongoose.Schema.Types.ObjectId,
-      default: () => new mongoose.Types.ObjectId(),
+      default: function defaultAttemptSeriesId() {
+        return this.entryMode === "history_only"
+          ? undefined
+          : new mongoose.Types.ObjectId();
+      },
     },
     preferredDate: {
       type: Date,
@@ -162,6 +175,7 @@ const InseminationSchema = new mongoose.Schema(
         "technician_pregnancy_diagnosis",
         "technician_negative_pd",
         "technician_return_to_heat",
+        "technician_accepted_farmer_report",
         "legacy",
         null,
       ],
@@ -192,6 +206,15 @@ const InseminationSchema = new mongoose.Schema(
       enum: ["possible_pregnancy", "return_to_heat", "unsure", null],
       default: null,
     },
+    observationSource: {
+      type: String,
+      enum: ["farmer", "technician", "farmer_app", "technician_phone", "technician_field", "paper_record", null],
+      default: null,
+    },
+    observationRecordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     farmerOutcomeReportedAt: { type: Date },
     farmerObservationSigns: {
       type: [String],
@@ -205,6 +228,29 @@ const InseminationSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    farmerPregnancyReport: {
+      type: Boolean,
+      default: false,
+    },
+    farmerPregnancyReportedAt: { type: Date },
+    farmerPregnancyNotes: {
+      type: String,
+      default: "",
+    },
+    farmerPregnancyPhotos: {
+      type: [String],
+      default: [],
+    },
+    pregnancyReportVerificationStatus: {
+      type: String,
+      enum: ["not_requested", "pending", "more_info_requested", "accepted", "rejected"],
+      default: "not_requested",
+    },
+    pregnancyReportReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    pregnancyReportReviewedAt: { type: Date },
     verificationRequested: {
       type: Boolean,
       default: false,

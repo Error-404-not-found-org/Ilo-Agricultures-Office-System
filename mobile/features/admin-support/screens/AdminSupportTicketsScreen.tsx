@@ -15,7 +15,7 @@ import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { StatusBadge, CustomDialog } from "@/components/shared";
+import { AsyncState, StatusBadge } from "@/components/shared";
 import { toast } from "sonner-native";
 
 const PRIMARY = "#1e3a5f";
@@ -36,6 +36,7 @@ export default function AdminSupportTicketsScreen() {
     isLoading,
     refetch,
     isRefetching,
+    isError,
   } = useQuery<any>({
     queryKey: ["admin-support-tickets"],
     queryFn: async () => {
@@ -94,7 +95,7 @@ export default function AdminSupportTicketsScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
@@ -120,7 +121,7 @@ export default function AdminSupportTicketsScreen() {
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontFamily: "Outfit_700Bold",
                   color: activeTab === idx ? "#fff" : colors.textSecondary,
                 }}
@@ -137,6 +138,8 @@ export default function AdminSupportTicketsScreen() {
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
               <ActivityIndicator size="large" color={PRIMARY} />
             </View>
+          ) : isError ? (
+            <AsyncState state="error" title="Support tickets unavailable" message="The support queue could not be loaded." actionLabel="Retry" onAction={refetch} />
           ) : (
             <FlatList
               data={filteredTickets}
@@ -166,16 +169,24 @@ export default function AdminSupportTicketsScreen() {
                     <Text style={{ fontSize: 15, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
                       {item.name || "Anonymous Submitter"}
                     </Text>
-                    <StatusBadge label={item.status || "pending"} />
+                    <StatusBadge
+                      label={
+                        item.status === "in-progress"
+                          ? "In progress"
+                          : item.status === "resolved"
+                            ? "Resolved"
+                            : "Pending"
+                      }
+                    />
                   </View>
                   <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.textSecondary, marginBottom: 8 }} numberOfLines={2}>
                     {item.message || "No message."}
                   </Text>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 0.5, borderTopColor: colors.border, paddingTop: 8 }}>
-                    <Text style={{ fontSize: 10, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
                       Phone: {item.phoneNumber || item.userId?.phoneNumber || "N/A"}
                     </Text>
-                    <Text style={{ fontSize: 10, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
                       {new Date(item.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
@@ -221,7 +232,7 @@ export default function AdminSupportTicketsScreen() {
                 <Text style={{ fontSize: 18, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
                   Review Support Ticket
                 </Text>
-                <TouchableOpacity onPress={() => setSelectedTicket(null)}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close ticket" onPress={() => setSelectedTicket(null)} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
                   <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -229,7 +240,7 @@ export default function AdminSupportTicketsScreen() {
               <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
                 {/* User Info */}
                 <View style={{ marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 4 }}>
                     SUBMITTER DETAILS
                   </Text>
                   <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
@@ -245,7 +256,7 @@ export default function AdminSupportTicketsScreen() {
 
                 {/* Message Body */}
                 <View style={{ marginBottom: 16 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 4 }}>
                     TICKET DESCRIPTION
                   </Text>
                   <View style={{ backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
@@ -257,18 +268,27 @@ export default function AdminSupportTicketsScreen() {
 
                 {/* Actions Block */}
                 <View>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 8 }}>
                     UPDATE TICKET QUEUE STATUS
                   </Text>
+                  {updateStatusMutation.isPending ? (
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 8 }}>
+                      Updating ticket…
+                    </Text>
+                  ) : null}
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     <TouchableOpacity
                       onPress={() => handleUpdateStatus(selectedTicket._id, "in-progress")}
+                      disabled={updateStatusMutation.isPending}
                       style={{
                         flex: 1,
                         backgroundColor: "#3b82f6",
                         paddingVertical: 10,
                         borderRadius: 10,
                         alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: 48,
+                        opacity: updateStatusMutation.isPending ? 0.65 : 1,
                       }}
                     >
                       <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Outfit_700Bold" }}>In Progress</Text>
@@ -276,12 +296,16 @@ export default function AdminSupportTicketsScreen() {
 
                     <TouchableOpacity
                       onPress={() => handleUpdateStatus(selectedTicket._id, "resolved")}
+                      disabled={updateStatusMutation.isPending}
                       style={{
                         flex: 1,
                         backgroundColor: "#10b981",
                         paddingVertical: 10,
                         borderRadius: 10,
                         alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: 48,
+                        opacity: updateStatusMutation.isPending ? 0.65 : 1,
                       }}
                     >
                       <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Outfit_700Bold" }}>Mark Resolved</Text>
@@ -289,6 +313,7 @@ export default function AdminSupportTicketsScreen() {
 
                     <TouchableOpacity
                       onPress={() => handleUpdateStatus(selectedTicket._id, "pending")}
+                      disabled={updateStatusMutation.isPending}
                       style={{
                         flex: 1,
                         backgroundColor: colors.card,
@@ -297,6 +322,9 @@ export default function AdminSupportTicketsScreen() {
                         paddingVertical: 10,
                         borderRadius: 10,
                         alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: 48,
+                        opacity: updateStatusMutation.isPending ? 0.65 : 1,
                       }}
                     >
                       <Text style={{ color: colors.textPrimary, fontSize: 12, fontFamily: "Outfit_700Bold" }}>Pending</Text>

@@ -25,7 +25,7 @@ test("Workflow consolidation: legacy AI status route delegates to canonical cont
   );
   assert.match(
     routes,
-    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician", "admin"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
+    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
   );
 });
 
@@ -85,7 +85,7 @@ test("Workflow consolidation: legacy compatibility route and canonical route sha
   const routes = readSource("../src/routes/technician.routes.js");
   assert.match(
     routes,
-    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician", "admin"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
+    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
   );
   assert.match(
     routes,
@@ -122,10 +122,12 @@ test("Workflow consolidation: inactive technician AI status controller is remove
 
 test("Workflow consolidation: AI status transitions reject invalid moves (e.g. pending -> done)", async () => {
   const originalFindById = Insemination.findById;
-  Insemination.findById = async () => ({
-    _id: "507f1f77bcf86cd799439021",
-    status: "pending",
-    approvedBy: "507f1f77bcf86cd799439011",
+  Insemination.findById = () => ({
+    populate: () => ({
+      _id: "507f1f77bcf86cd799439021",
+      status: "pending",
+      approvedBy: "507f1f77bcf86cd799439011",
+    }),
   });
 
   const recorder = createResponseRecorder();

@@ -33,15 +33,21 @@ export default function AppDownloadSection() {
           {/* Left / Top: Direct Download & Steps */}
           <div className="lg:col-span-8 space-y-6">
             <div className="space-y-4">
-              <a
-                href={APK_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-[#074033] hover:bg-[#052E24] text-white text-base font-extrabold transition-all shadow-md hover:shadow-lg w-full sm:w-auto"
-              >
-                <Download size={20} />
-                Download Farmer App
-              </a>
+              {APK_URL ? (
+                <a
+                  href={APK_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-[#074033] hover:bg-[#052E24] text-white text-base font-extrabold transition-all shadow-md hover:shadow-lg w-full sm:w-auto"
+                >
+                  <Download size={20} />
+                  Download Farmer App
+                </a>
+              ) : (
+                <p className="inline-flex rounded-2xl bg-amber-50 px-5 py-4 text-sm font-bold text-amber-900">
+                  The current app download is not configured yet.
+                </p>
+              )}
               <p className="text-xs font-semibold text-slate-500">
                 Installs via the official BreedSmart build destination on Expo.
               </p>
@@ -66,7 +72,7 @@ export default function AppDownloadSection() {
           </div>
 
           {/* Right / Bottom: QR Code Container (Desktop View) */}
-          <div className="lg:col-span-4 flex flex-col items-center justify-center p-6 bg-[#EDF3E8]/60 rounded-2xl border border-slate-200/60 text-center">
+          {QR_URL && <div className="lg:col-span-4 flex flex-col items-center justify-center p-6 bg-[#EDF3E8]/60 rounded-2xl border border-slate-200/60 text-center">
             <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs mb-3">
               <img
                 src={QR_URL}
@@ -83,7 +89,7 @@ export default function AppDownloadSection() {
             <span className="text-[11px] font-medium text-slate-600 mt-1">
               Point your smartphone camera to access the download.
             </span>
-          </div>
+          </div>}
 
         </div>
 

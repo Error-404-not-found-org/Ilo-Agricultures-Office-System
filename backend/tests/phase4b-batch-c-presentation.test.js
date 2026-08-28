@@ -16,6 +16,14 @@ registerHooks({
         shortCircuit: true,
       };
     }
+    if (specifier.endsWith("visitScheduleAvailability")) {
+      return {
+        url: pathToFileURL(
+          path.join(root, "mobile/features/technician-requests/utils/visitScheduleAvailability.ts"),
+        ).href,
+        shortCircuit: true,
+      };
+    }
     return nextResolve(specifier, context);
   },
 });
@@ -58,6 +66,28 @@ test("calendar targets tasks first and formats a compact accessible animal ident
   const identity = calendar.getCalendarAnimalIdentity({ id: "1", type: "task", animalTag: "SEED-repro-manual-20260717-RC26-260717-05-AI-DAY21" });
   assert.equal(identity.compact, "RC26-05");
   assert.match(identity.full, /^SEED-repro-manual/);
+});
+
+test("calendar requires real request schedules and presents Manila dayparts", () => {
+  assert.equal(calendar.getCalendarVisitDate({
+    id: "request-unscheduled",
+    type: "health",
+    preferredDate: "2026-08-28",
+    createdAt: "2026-08-27T00:00:00.000Z",
+  }), null);
+  const scheduled = {
+    id: "request-scheduled",
+    type: "health",
+    scheduledDate: "2026-08-28",
+    visitPeriod: "morning",
+  };
+  const date = calendar.getCalendarVisitDate(scheduled);
+  assert.equal(date.getFullYear(), 2026);
+  assert.equal(date.getMonth(), 7);
+  assert.equal(date.getDate(), 28);
+  assert.equal(calendar.getCalendarVisitPeriodLabel(scheduled), "Morning");
+  assert.equal(calendar.getCalendarVisitPeriodLabel({ ...scheduled, visitPeriod: "afternoon" }), "Afternoon");
+  assert.equal(calendar.isCalendarCancellationRequested({ ...scheduled, raw: { cancellationStatus: "requested" } }), true);
 });
 
 test("structured notification events produce human-readable templates and categories", () => {
@@ -125,6 +155,9 @@ test("Batch C screens preserve touch targets, safe-area padding, flexible text, 
   const detailSource = source("mobile/app/notification-details.tsx");
   assert.match(calendarSource, /insets\.bottom \+ 92/);
   assert.match(calendarSource, /insets\.bottom \+ 24/);
+  assert.match(calendarSource, /void refetch\(\)/);
+  assert.match(calendarSource, /getCalendarVisitPeriodLabel/);
+  assert.doesNotMatch(calendarSource, /format\(date,\s*["']h:mm a["']\)/);
   assert.match(listSource, /insets\.bottom \+ 96/);
   assert.match(detailSource, /isDark \? "light-content" : "dark-content"/);
   assert.match(detailSource, /accessibilityLabel="Go back"/);

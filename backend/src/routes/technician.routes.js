@@ -20,7 +20,6 @@ import {
   walkInLivestock,
   toggleFarmerVerification,
   getTechnicianAnalytics,
-  deleteAnimal,
   deletePregnancyCheck,
   deleteCalving,
   correctPregnancyCheck,
@@ -36,7 +35,9 @@ import {
   claimRequest,
   getAIServiceContext,
   updateDispatchStatus,
+  previousInsemination,
 } from "../controllers/technician.controllers.js";
+import { deleteAnimal as archiveAnimal } from "../controllers/animals.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import {
   getCleanupSurvey,
@@ -75,24 +76,31 @@ router.get("/notifications", getMyNotifications);
 router.get("/profile", getMyProfile);
 
 router.get("/ai-service-context", getAIServiceContext);
-router.post("/walk-in-insemination", walkInInsemination);
+router.post("/walk-in-insemination", requireRole(["technician"]), walkInInsemination);
+router.post("/previous-insemination", requireRole(["technician"]), previousInsemination);
 router.post("/walk-in-livestock", walkInLivestock);
 // Compatibility alias for installed clients and queued offline mutations.
 router.patch(
   "/inseminations/:id/status",
-  requireRole(["technician", "admin"]),
+  requireRole(["technician"]),
   updateCanonicalAIRequestStatus,
 );
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);
-router.post("/pregnancy-check", recordPregnancyCheck);
+router.post(
+  "/pregnancy-check",
+  requireRole(["technician"]),
+  recordPregnancyCheck,
+);
 router.post(
   "/pregnancy-checks/:id/continuation-recheck",
+  requireRole(["technician"]),
   recordPregnancyContinuation,
 );
-router.post("/record-calving", recordCalving);
+router.post("/record-calving", requireRole(["technician"]), recordCalving);
 router.patch("/farmers/:id/verify", toggleFarmerVerification);
-router.delete("/animals/:id", deleteAnimal);
+// Compatibility alias: legacy Technician clients share the canonical archive workflow.
+router.delete("/animals/:id", archiveAnimal);
 router.delete(
   "/pregnancy-checks/:id",
   requireRole(["admin"]),

@@ -128,6 +128,23 @@ export const formatAnimalRecord = (
 
   if (kind === "insemination" || kind === "ai") {
     const number = Number(record.attemptNumber || 1);
+    const serviceStatus = String(record.status || record.source?.status || "").toLowerCase();
+    const serviceCompleted = serviceStatus === "done" || serviceStatus === "completed";
+    if (!serviceCompleted) {
+      const statusLabel = words(serviceStatus || "operational");
+      return {
+        title: `AI attempt ${number} · ${animalReference}`,
+        pageTitle: `AI Attempt ${number}`,
+        category: "Reproduction",
+        date,
+        animalReference,
+        fullAnimalReference,
+        badges: [
+          { label: statusLabel, domain: "service", variant: "warning" },
+        ],
+        details: [`Status: ${statusLabel}`],
+      };
+    }
     const failed = record.isSuccess === false || /failed|unsuccessful|re-heat/i.test(record.outcome || "");
     const confirmed = record.isSuccess === true || /pregnant|successful/i.test(record.outcome || "");
     const previous = record.previousAttemptReference || attemptNumber(record.previousAttemptId);
@@ -161,7 +178,9 @@ export const formatAnimalRecord = (
 
   if (kind === "pregnancy") {
     const result = record.pregnancyDiagnosis?.result || record.result;
-    const pregnant = String(result).toLowerCase() === "pregnant";
+    const resultString = String(result).toLowerCase();
+    const isPregnant = resultString === "pregnant";
+    const isEmpty = resultString === "empty" || resultString === "not_pregnant";
     const method = record.confirmation?.methodCode;
     const technician = personName(record.confirmation?.confirmedBy || record.technicianId);
     const relatedAttempt = record.inseminationId?.attemptNumber;
@@ -174,9 +193,11 @@ export const formatAnimalRecord = (
       animalReference,
       fullAnimalReference,
       badges: [
-        pregnant
+        isPregnant
           ? { label: "Pregnancy confirmed", domain: "pregnancy", variant: "success" }
-          : { label: "Not pregnant", domain: "pregnancy", variant: "neutral" },
+          : isEmpty
+            ? { label: "Not pregnant", domain: "pregnancy", variant: "neutral" }
+            : { label: "Pending confirmation", domain: "pregnancy", variant: "warning" },
         ...(recheck ? [recheck] : []),
       ],
       details: [

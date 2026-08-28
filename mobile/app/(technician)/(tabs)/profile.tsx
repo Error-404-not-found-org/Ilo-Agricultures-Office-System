@@ -41,6 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // Theme system and UI components
 import { useTheme } from "@/lib/theme";
 import { useApi } from "@/lib/api";
+import { signOutWithPushCleanup } from "@/lib/notifications";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getIloiloBarangayOptions,
@@ -207,7 +208,7 @@ const TechnicianProfile = () => {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      await signOutWithPushCleanup(api, signOut);
       toast.success("Signed out completely");
       router.replace("/(auth)");
     } catch (err) {
@@ -609,7 +610,7 @@ const TechnicianProfile = () => {
               icon={<Briefcase size={18} color={colors.textSecondary} />}
               label="Service Schedule"
               onPress={() =>
-                router.push("/(technician)/(tabs)/technician.calendar" as any)
+                router.push("/(technician)/technician.calendar" as any)
               }
             />
 

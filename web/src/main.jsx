@@ -7,6 +7,11 @@ import { SocketProvider } from "./contexts/SocketContext.jsx";
 import "./index.css";
 import App from "./App.jsx";
 import AppToaster from "./components/ui/AppToaster.jsx";
+import { applyTheme, getStoredTheme } from "./lib/theme.js";
+import {
+  clerkAppearance,
+  clerkLocalization,
+} from "./config/clerkAppearance.js";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -16,9 +21,16 @@ if (!PUBLISHABLE_KEY) {
 
 const queryClient = new QueryClient();
 
+// Apply the persisted theme before React renders to prevent a stale-theme flash.
+applyTheme(getStoredTheme());
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      appearance={clerkAppearance}
+      localization={clerkLocalization}
+    >
       <SocketProvider>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>

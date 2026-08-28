@@ -9,11 +9,15 @@ import {
   confirmAIOutcome,
   submitFarmerBreedingObservation,
   verifyFarmerBreedingObservation,
+  recordTechnicianBreedingObservation,
   deleteRequest,
   getAIRequestDetail,
   cancelAIRequest,
   respondAICancellation,
   dismissAIRequestForFarmer,
+  submitFarmerPregnancyReport,
+  verifyFarmerPregnancyReport,
+  getUpcomingVisits,
 } from "../controllers/ai-request.controllers.js";
 import {
   protectedRoute,
@@ -31,6 +35,9 @@ router.post("/:id/re-insemination", protectedRoute, requestLimiter, createReInse
 // Farmer views their own requests
 router.get("/my", protectedRoute, getMyRequests);
 
+// Farmer dashboard: canonical scheduled AI + Health visits in one request.
+router.get("/upcoming", protectedRoute, requireRole(["farmer"]), getUpcomingVisits);
+
 // Get single AI request detail
 router.get("/:id", protectedRoute, getAIRequestDetail);
 
@@ -46,7 +53,7 @@ router.get(
 router.patch(
   "/:id/status",
   protectedRoute,
-  requireRole(["technician", "admin"]),
+  requireRole(["technician"]),
   updateRequestStatus,
 );
 
@@ -65,7 +72,26 @@ router.patch("/:id/outcome", protectedRoute, confirmAIOutcome);
 router.post("/:id/farmer-observation", protectedRoute, submitFarmerBreedingObservation);
 
 // Technician/Admin verifies a breeding observation / records PD check
-router.post("/:id/verify-breeding-observation", protectedRoute, verifyFarmerBreedingObservation);
+router.post(
+  "/:id/verify-breeding-observation",
+  protectedRoute,
+  requireRole(["technician"]),
+  verifyFarmerBreedingObservation,
+);
+
+// Technician records a breeding observation via phone call or field visit
+router.post("/:id/technician-observation", protectedRoute, requireRole(["technician"]), recordTechnicianBreedingObservation);
+
+// Farmer submits a pregnancy report with evidence
+router.post("/:id/farmer-pregnancy-report", protectedRoute, submitFarmerPregnancyReport);
+
+// Technician reviews a farmer pregnancy report (Request More Info or Accept)
+router.post(
+  "/:id/verify-pregnancy-report",
+  protectedRoute,
+  requireRole(["technician"]),
+  verifyFarmerPregnancyReport,
+);
 
 // Farmer/Tech/Admin cancels a request (smart cancel with reason)
 router.patch("/:id/cancel", protectedRoute, cancelAIRequest);

@@ -6,6 +6,7 @@ import { AxiosInstance } from "axios";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
 import { queryClient } from "../lib/queryClient";
+import { getBootstrapUserQueryKey } from "@/features/auth/hooks/useBootstrapUser";
 
 const OFFLINE_FALLBACK_TIMEOUT_MS = 7000;
 const CONNECTIVITY_CHECK_TIMEOUT_MS = 1500;
@@ -67,6 +68,16 @@ const refreshConnectivity = async () => {
   const state = await Promise.race([NetInfo.refresh(), timeout]);
   if (timer) clearTimeout(timer);
   return state;
+};
+
+export const getOfflineMutationOwner = (clerkUserId?: string) => {
+  const dbUserResponse = queryClient.getQueryData(
+    getBootstrapUserQueryKey(clerkUserId),
+  ) as any;
+  return {
+    ownerUserId: dbUserResponse?.user?._id as string | undefined,
+    ownerRole: dbUserResponse?.user?.role as string | undefined,
+  };
 };
 
 export async function executeOfflineMutation<TData = any, TVariables = any>(
@@ -207,9 +218,7 @@ export function useOfflineMutation<TData = any, TError = any, TVariables = any, 
   return useMutation({
     ...mutationOptions,
     mutationFn: async (variables: TVariables): Promise<MutationResult<TData>> => {
-      const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
-      const ownerUserId = dbUserResponse?.user?._id;
-      const ownerRole = dbUserResponse?.user?.role;
+      const { ownerUserId, ownerRole } = getOfflineMutationOwner(user?.id);
       if (!ownerUserId) {
         throw new Error("Cannot execute offline mutation without an authoritative user session");
       }

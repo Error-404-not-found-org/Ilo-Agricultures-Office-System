@@ -18,6 +18,7 @@ import {
   getAnimalHealthHistory,
   getAnimalRecords,
   getOfficialRecords,
+  getOfficialRecordDetail,
   getAnimalReproductionEligibility,
   getAnimalTimeline,
   createFarmerAnimalUpdate,
@@ -29,11 +30,21 @@ import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 const router = Router();
 
 router.post("/register", protectedRoute, registerAnimal);
-router.get("/all", protectedRoute, getAllAnimals);
+router.get(
+  "/all",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  getAllAnimals,
+);
 router.get("/farmer/:farmerId", protectedRoute, requireRole(["technician", "admin"]), getAnimalsByFarmer);
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/records", protectedRoute, getOfficialRecords);
 router.get("/archived", protectedRoute, getArchivedAnimals);
+router.get(
+  "/:id/records/:recordKind/:recordId",
+  protectedRoute,
+  getOfficialRecordDetail,
+);
 router.get("/:id/timeline", protectedRoute, getAnimalTimeline);
 router.get("/:id/history", protectedRoute, getAnimalTimeline);
 router.get("/:id/records", protectedRoute, getAnimalRecords);
@@ -46,14 +57,19 @@ router.put("/wizard/:id", protectedRoute, updateAnimalWizard);
 router.delete("/:id", protectedRoute, deleteAnimal);
 
 // Breeding Lifecycle
-router.patch("/:id/reproductive-status", protectedRoute, updateReproductiveStatus);
+router.patch(
+  "/:id/reproductive-status",
+  protectedRoute,
+  requireRole(["technician"]),
+  updateReproductiveStatus,
+);
 router.post(
   "/re-inseminate",
   protectedRoute,
   requestLimiter,
   createLegacyReInseminationRequest,
 );
-router.post("/record-calving", protectedRoute, recordCalving);
+router.post("/record-calving", protectedRoute, requireRole(["farmer", "technician"]), recordCalving);
 router.patch("/:id/restore", protectedRoute, restoreAnimal);
 
 export default router;

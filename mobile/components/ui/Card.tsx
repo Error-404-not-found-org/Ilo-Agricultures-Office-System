@@ -16,7 +16,13 @@ export interface CardProps extends Omit<ViewProps, "style"> {
   accessibilityLabel?: string;
 }
 
-export function Card({ children, style, onPress, variant = "default", ...props }: CardProps) {
+export function Card({
+  children,
+  style,
+  onPress,
+  variant = "default",
+  ...props
+}: CardProps) {
   const { colors, isDark } = useTheme();
 
   const cardStyle: ViewStyle = {

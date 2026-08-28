@@ -1,4 +1,4 @@
-import { QueryClient, onlineManager } from '@tanstack/react-query';
+import { QueryClient, onlineManager, type QueryKey } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
@@ -48,8 +48,46 @@ export const asyncStoragePersister = {
       await defaultPersister.removeClient();
     } catch (err) {
       console.error("Failed to remove query client state", err);
+      throw err;
     }
   }
+};
+
+const QUERY_CACHE_OWNER_KEY = 'BREEDSMART_QUERY_CACHE_OWNER';
+
+export const establishQueryCacheOwner = async ({
+  ownerUserId,
+  bootstrapQueryKey,
+  bootstrapData,
+}: {
+  ownerUserId: string;
+  bootstrapQueryKey: QueryKey;
+  bootstrapData: unknown;
+}) => {
+  const persistedOwner = await AsyncStorage.getItem(QUERY_CACHE_OWNER_KEY);
+  if (persistedOwner === ownerUserId) return false;
+
+  // The persisted TanStack cache is device-global. Clear it before rendering
+  // data for a different Mongo user, then restore only the bootstrap identity
+  // that was just verified by the backend.
+  queryClient.clear();
+  await asyncStoragePersister.removeClient();
+  queryClient.setQueryData(bootstrapQueryKey, bootstrapData);
+  await AsyncStorage.setItem(QUERY_CACHE_OWNER_KEY, ownerUserId);
+  return true;
+};
+
+export const clearQueryCacheIdentity = async () => {
+  queryClient.clear();
+  await asyncStoragePersister.removeClient();
+  await AsyncStorage.removeItem(QUERY_CACHE_OWNER_KEY);
+};
+
+export const clearDownloadableAppCache = async () => {
+  // User-owned queue/history, authentication, preferences, push-token state,
+  // and the verified cache-owner marker are intentionally preserved.
+  queryClient.clear();
+  await asyncStoragePersister.removeClient();
 };
 
 // Configure dehydration to skip large queries

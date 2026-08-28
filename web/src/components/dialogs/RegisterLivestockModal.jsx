@@ -39,7 +39,13 @@ const RegisterLivestockModal = ({
   const [imagePreview, setImagePreview] = useState(null);
   const [formData, setFormData] = useState(initialFormData);
 
-  const { data: farmers = [] } = useQuery({
+  const {
+    data: farmers = [],
+    error: farmersError,
+    isError: isFarmersError,
+    isLoading: isLoadingFarmers,
+    refetch: refetchFarmers,
+  } = useQuery({
     queryKey: ["farmers", "list"],
     queryFn: async () => {
       const response = await axiosInstance.get("/user?role=farmer");
@@ -76,15 +82,17 @@ const RegisterLivestockModal = ({
       const response = await axiosInstance.post("/technician/walk-in-livestock", data);
       return response.data;
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       toast.success(
         livestock
           ? "Livestock profile updated successfully!"
           : "Livestock profile registered successfully!",
       );
-      queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["animals"] });
-      queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["technician"] }),
+        queryClient.invalidateQueries({ queryKey: ["animals"] }),
+        queryClient.invalidateQueries({ queryKey: ["farmer-animals"] }),
+      ]);
       onSuccess?.(result?.animal || result?.data || result);
       onClose();
     },
@@ -151,6 +159,14 @@ const RegisterLivestockModal = ({
   const handleImageChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      event.target.value = "";
+      return toast.error("Please select a valid image file.");
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      event.target.value = "";
+      return toast.error("Animal photos must be 5 MB or smaller.");
+    }
 
     const reader = new FileReader();
     reader.onloadend = () => setImagePreview(reader.result);
@@ -175,6 +191,7 @@ const RegisterLivestockModal = ({
     <Modal
       isOpen={isOpen}
       onClose={closeSafely}
+      closeOnEscape
       title={livestock ? "Edit Animal" : "Register Animal"}
       subtitle={
         livestock
@@ -262,7 +279,17 @@ const RegisterLivestockModal = ({
                   aria-label="Matching farmers"
                   className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl"
                 >
-                  {filteredFarmers.length ? (
+                  {isLoadingFarmers ? (
+                    <div className="space-y-2 p-3" role="status" aria-label="Loading farmers">
+                      <div className="skeleton h-10 w-full" />
+                      <div className="skeleton h-10 w-full" />
+                    </div>
+                  ) : isFarmersError ? (
+                    <div className="alert alert-error m-2 w-auto text-sm" role="alert">
+                      <span>{farmersError?.response?.data?.message || "Unable to load farmers."}</span>
+                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchFarmers()}>Try again</button>
+                    </div>
+                  ) : filteredFarmers.length ? (
                     filteredFarmers.map((farmer) => (
                       <button
                         key={farmer._id}
@@ -300,6 +327,7 @@ const RegisterLivestockModal = ({
               <Select id="livestock-species" label="Species" required value={formData.species} onChange={updateField("species")} options={CATTLE_SPECIES} placeholder="" />
               <Select id="livestock-breed" label="Genetic breed" required value={formData.breed} onChange={updateField("breed")} options={BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS} placeholder="Select breed" />
               <Select id="livestock-color" label="Primary color" required value={formData.color} onChange={updateField("color")} options={CATTLE_COLORS} placeholder="Select color" />
+              <Select id="livestock-gender" label="Sex" required value={formData.gender} onChange={updateField("gender")} options={["Female", "Male"]} placeholder="" />
               <Input id="livestock-brand" label="Brand name (optional)" value={formData.brand} maxLength={15} onChange={updateField("brand")} placeholder="e.g. Circle-X" />
               <Input id="livestock-birth-date" label="Birth date" required type="date" value={formData.dob} onChange={updateField("dob")} max={new Date().toISOString().split("T")[0]} />
             </div>

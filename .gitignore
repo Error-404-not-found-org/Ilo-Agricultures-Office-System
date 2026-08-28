@@ -7,7 +7,10 @@ scripts/
 backend/scripts/*
 !backend/scripts/audit-duplicate-ear-tags.js
 !backend/scripts/seed-reproduction-lifecycle.js
+!backend/scripts/seed-postpartum-test-animals.js
 !backend/scripts/cleanup-reproduction-lifecycle.js
+!backend/scripts/cleanup-test-account-records.js
+!backend/scripts/seed-reproduction-test-accounts.js
 
 # Local assistant / IDE state
 .codex/
@@ -60,6 +63,11 @@ old_web/
 !backend/tests/
 !backend/tests/**
 
+# Mobile regression tests added for canonical farmer record details.
+!mobile/tests/
+mobile/tests/*
+!mobile/tests/farmerOfficialRecordDetail.test.cjs
+
 
 # Local planning documents
 docs/
@@ -70,3 +78,7 @@ backend/tests/fixtures/*.json
 !backend/tests/fixtures/psgc-small-fixture.json
 
 backend/backups/
+
+
+backend/scripts/cleanup-test-account-records.js
+backend/scripts/seed-reproduction-test-accounts.js

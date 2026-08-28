@@ -51,6 +51,7 @@ import {
   formatVisitPeriod,
   formatVisitSchedule,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 const PRIMARY = "#00643B";
 
@@ -89,6 +90,9 @@ export function FarmerHomeScreen() {
   const [isModalVisible, setIsModalVisible] = React.useState(false);
   const [statusBarOnHero, setStatusBarOnHero] = React.useState(true);
   const [heroHeaderHeight, setHeroHeaderHeight] = React.useState(260);
+  const selectedHealthPriority = getHealthUrgencyPresentation(
+    selectedActivity?.details?.urgency,
+  );
 
   const [congratsModalVisible, setCongratsModalVisible] = React.useState(false);
   const [congratsInfo, setCongratsInfo] = React.useState<{
@@ -205,7 +209,6 @@ export function FarmerHomeScreen() {
           animalId,
           requestId: item.relatedId,
           defaultReport: item.farmerObservation?.reportType || "unsure",
-          requestVerification: "true",
         },
       } as never);
       return;
@@ -231,41 +234,6 @@ export function FarmerHomeScreen() {
       selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
     [activityFeed],
   );
-
-  const handleOutcome = async (
-    requestId: string,
-    isSuccess: boolean,
-    animalName: string,
-    animalId: string,
-    req?: any,
-  ) => {
-    if (outcomeMutation.isPending) return;
-    try {
-      await outcomeMutation.mutateAsync({ requestId, isSuccess });
-
-      if (!isSuccess) {
-        setReInseminateInfo({
-          requestId,
-          animalId,
-          animalName,
-        });
-        setReInseminateModalVisible(true);
-      } else {
-        toast.success(
-          "Possible pregnancy signs saved. A technician pregnancy check is still required.",
-        );
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to record pregnancy outcome.");
-    }
-  };
-
-  const handleCancelRequest = (id: string, type: string, animalTag: string) => {
-    setCancelInfo({ id, type, animalTag });
-    setCancellationReason("");
-    setModalVisible(true);
-  };
 
   const handleConfirmCancel = async () => {
     if (!cancelInfo) return;
@@ -732,9 +700,7 @@ export function FarmerHomeScreen() {
                       reproductiveOutcome={reproductiveOutcome}
                       accessibilityLabel={`${
                         isHealthVisit ? "Health check" : "AI service"
-                      } for ${getFullAnimalReference(
-                        visit.animalId,
-                      )}.${
+                      } for ${getFullAnimalReference(visit.animalId)}.${
                         visitSchedule ? ` Scheduled ${visitSchedule}.` : ""
                       } Service status ${visit.status}.`}
                       icon={
@@ -906,6 +872,7 @@ export function FarmerHomeScreen() {
                   variant="preview"
                   cardWidth={dashboardLayout.animalCardWidth}
                   nextAction={
+                    animal.reproductiveStatus === "Pregnant" &&
                     animal.expectedCalvingDate
                       ? `Calving ${format(new Date(animal.expectedCalvingDate), "MMM d")}`
                       : undefined
@@ -966,6 +933,13 @@ export function FarmerHomeScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`${item.title}. ${item.outcome}. Full animal identifier ${item.fullAnimalReference}.`}
                   onPress={() => {
+                    if (item.type === "health") {
+                      router.push({
+                        pathname: "/(farmer)/health-request-detail",
+                        params: { id: item.id },
+                      });
+                      return;
+                    }
                     router.push({
                       pathname: "/(farmer)/animal-record-detail",
                       params: {
@@ -1488,16 +1462,12 @@ export function FarmerHomeScreen() {
                               value={selectedActivity.details.symptoms}
                             />
                             <DetailRow
-                              label="Urgency"
-                              value={selectedActivity.details.urgency}
+                              label="Farmer request priority"
+                              value={selectedHealthPriority.label}
                               highlightColor={
-                                selectedActivity.details.urgency?.toLowerCase() ===
-                                "high"
+                                selectedHealthPriority.priority === "urgent"
                                   ? "#dc2626"
-                                  : selectedActivity.details.urgency?.toLowerCase() ===
-                                      "medium"
-                                    ? "#d97706"
-                                    : "#059669"
+                                  : "#059669"
                               }
                             />
                             <DetailRow

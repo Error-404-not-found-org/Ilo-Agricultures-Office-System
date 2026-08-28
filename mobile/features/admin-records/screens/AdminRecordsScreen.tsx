@@ -58,6 +58,9 @@ export default function AdminRecordsScreen() {
       <Text style={{ fontSize: 24, fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary, marginBottom: 16 }}>
         Records Registry
       </Text>
+      <Text style={{ fontSize: 13, fontFamily: 'Outfit_500Medium', color: colors.textSecondary, marginTop: -10, marginBottom: 16 }}>
+        Review and export official insemination, pregnancy, and calving records.
+      </Text>
 
       {/* Aggregate Summary Widget */}
       <AdminRecordsSummary
@@ -85,6 +88,8 @@ export default function AdminRecordsScreen() {
       {/* Export & Date Range Actions Row */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 8 }}>
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Choose record date range"
           onPress={() => setShowCalendarModal(true)}
           style={{
             flexDirection: "row",
@@ -95,6 +100,7 @@ export default function AdminRecordsScreen() {
             borderRadius: 12,
             paddingVertical: 8,
             paddingHorizontal: 12,
+            minHeight: 44,
             gap: 6,
           }}
         >
@@ -106,6 +112,8 @@ export default function AdminRecordsScreen() {
 
         <View style={{ flexDirection: "row", gap: 6 }}>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Export CSV"
             onPress={() => handleExport("csv")}
             style={{
               backgroundColor: colors.card,
@@ -114,16 +122,19 @@ export default function AdminRecordsScreen() {
               borderRadius: 12,
               paddingVertical: 8,
               paddingHorizontal: 12,
+              minHeight: 44,
               flexDirection: 'row',
               alignItems: "center",
               gap: 4,
             }}
           >
             <MaterialCommunityIcons name="file-delimited" size={14} color="#16a34a" />
-            <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textSecondary }}>CSV</Text>
+            <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary }}>CSV</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Export Excel"
             onPress={() => handleExport("excel")}
             style={{
               backgroundColor: colors.card,
@@ -132,16 +143,19 @@ export default function AdminRecordsScreen() {
               borderRadius: 12,
               paddingVertical: 8,
               paddingHorizontal: 12,
+              minHeight: 44,
               flexDirection: 'row',
               alignItems: "center",
               gap: 4,
             }}
           >
             <MaterialCommunityIcons name="file-excel" size={14} color="#10b981" />
-            <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textSecondary }}>EXCEL</Text>
+            <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary }}>Excel</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Export PDF"
             onPress={() => handleExport("pdf")}
             style={{
               backgroundColor: colors.card,
@@ -150,13 +164,14 @@ export default function AdminRecordsScreen() {
               borderRadius: 12,
               paddingVertical: 8,
               paddingHorizontal: 12,
+              minHeight: 44,
               flexDirection: 'row',
               alignItems: "center",
               gap: 4,
             }}
           >
             <MaterialCommunityIcons name="file-pdf-box" size={14} color="#ef4444" />
-            <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textSecondary }}>PDF</Text>
+            <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary }}>PDF</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -167,7 +182,7 @@ export default function AdminRecordsScreen() {
           Showing {currentData.length} of {totalRecordsCount} records
         </Text>
         {totalPages > 1 && (
-          <Text style={{ fontSize: 11, fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }}>
+          <Text style={{ fontSize: 12, fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }}>
             Page {page} of {totalPages}
           </Text>
         )}

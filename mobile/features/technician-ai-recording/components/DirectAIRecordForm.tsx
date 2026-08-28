@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  History,
+  RefreshCw,
   Search,
   UserRound,
   X,
@@ -35,15 +37,21 @@ import { isCanonicalWorkflowId } from "@/features/technician-requests/utils/aiWo
 import { AIRecordingFields } from "./AIRecordingFields";
 import type {
   AIRecordingValues,
+  PreviousAIEntryMode,
   RecordAIRouteMode,
   SelectedAnimal,
   SelectedFarmer,
 } from "../types/technicianAIRecording.types";
+import { getPreviousAIDateBounds } from "../utils/previousAI";
 
 interface DirectAIRecordFormProps {
   route: Extract<RecordAIRouteMode, { kind: "direct" }>;
   values: AIRecordingValues;
   saving: boolean;
+  isHistoricalMode?: boolean;
+  entryMode: PreviousAIEntryMode;
+  submissionError?: string | null;
+  onEntryModeChange: (value: PreviousAIEntryMode) => void;
   onValuesChange: (next: Partial<AIRecordingValues>) => void;
   onReview: (farmer: SelectedFarmer, animal: SelectedAnimal) => void;
 }
@@ -65,6 +73,10 @@ export function DirectAIRecordForm({
   route,
   values,
   saving,
+  isHistoricalMode,
+  entryMode,
+  submissionError,
+  onEntryModeChange,
   onValuesChange,
   onReview,
 }: DirectAIRecordFormProps) {
@@ -125,6 +137,22 @@ export function DirectAIRecordForm({
     () =>
       selectedAnimal ? getAIEligibility({ animal: selectedAnimal }) : null,
     [selectedAnimal],
+  );
+  const blocksCurrentAI = Boolean(
+    !isHistoricalMode && eligibility && !eligibility.isEligible,
+  );
+  const historicalDateBounds = useMemo(
+    () =>
+      getPreviousAIDateBounds(
+        selectedAnimal?.birthDate,
+        selectedAnimal?.species,
+        selectedAnimal?.breed,
+      ),
+    [
+      selectedAnimal?.birthDate,
+      selectedAnimal?.species,
+      selectedAnimal?.breed,
+    ],
   );
 
   useEffect(() => {
@@ -256,9 +284,9 @@ export function DirectAIRecordForm({
       toast.error("Select an animal before recording the service.");
       return;
     }
-    if (eligibility && !eligibility.isEligible) {
+    if (blocksCurrentAI) {
       toast.error(
-        eligibility.reason || "This animal is not eligible for AI service.",
+        eligibility?.reason || "This animal is not eligible for AI service.",
       );
       return;
     }
@@ -348,11 +376,7 @@ export function DirectAIRecordForm({
             </Text>
             <AnimalSummaryCard
               animal={selectedAnimal}
-              alert={
-                eligibility && !eligibility.isEligible
-                  ? eligibility.reason
-                  : undefined
-              }
+              alert={blocksCurrentAI ? eligibility?.reason : undefined}
             />
           </View>
         ) : (
@@ -442,11 +466,7 @@ export function DirectAIRecordForm({
                   <AnimalSummaryCard
                     animal={selectedAnimal}
                     onPress={() => setShowAnimalModal(true)}
-                    alert={
-                      eligibility && !eligibility.isEligible
-                        ? eligibility.reason
-                        : undefined
-                    }
+                    alert={blocksCurrentAI ? eligibility?.reason : undefined}
                   />
                 ) : animals.length > 0 ? (
                   <TouchableOpacity
@@ -530,7 +550,7 @@ export function DirectAIRecordForm({
         )}
       </View>
 
-      {selectedAnimal && eligibility && !eligibility.isEligible ? (
+      {selectedAnimal && blocksCurrentAI ? (
         <View
           style={{
             flexDirection: "row",
@@ -552,11 +572,96 @@ export function DirectAIRecordForm({
               marginLeft: 8,
             }}
           >
-            {eligibility.reason}
+            {eligibility?.reason}
           </Text>
         </View>
       ) : null}
 
+      {isHistoricalMode ? (
+        <View
+          style={{
+            padding: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 16,
+            backgroundColor: colors.card,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.textPrimary,
+              fontFamily: "Outfit_700Bold",
+              fontSize: 15,
+            }}
+          >
+            What should BreedSmart do with this previous AI record?
+          </Text>
+          {[
+            {
+              value: "history_only" as const,
+              title: "Add to History Only",
+              copy: "Save this previous insemination in the animal's reproductive history without changing the current breeding cycle.",
+              Icon: History,
+            },
+            {
+              value: "continue_tracking" as const,
+              title: "Continue Tracking",
+              copy: "Use this insemination as the start of the animal's current breeding cycle and continue tracking from the actual AI date.",
+              Icon: RefreshCw,
+            },
+          ].map((option) => {
+            const selected = entryMode === option.value;
+            return (
+              <TouchableOpacity
+                key={option.value}
+                disabled={saving}
+                onPress={() => onEntryModeChange(option.value)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected, disabled: saving }}
+                style={{
+                  flexDirection: "row",
+                  padding: 14,
+                  marginTop: 12,
+                  borderWidth: selected ? 2 : 1,
+                  borderColor: selected ? colors.primary : colors.border,
+                  borderRadius: 14,
+                  backgroundColor: selected
+                    ? colors.surfaceSubtle
+                    : colors.background,
+                }}
+              >
+                <option.Icon
+                  size={20}
+                  color={selected ? colors.primary : colors.textMuted}
+                />
+                <View style={{ flex: 1, marginLeft: 11 }}>
+                  <Text
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 14,
+                    }}
+                  >
+                    {option.title}
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                      lineHeight: 18,
+                      marginTop: 3,
+                    }}
+                  >
+                    {option.copy}
+                  </Text>
+                </View>
+                {selected ? <Check size={19} color={colors.primary} /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
       <View
         style={{
           padding: 16,
@@ -574,11 +679,22 @@ export function DirectAIRecordForm({
             marginBottom: 14,
           }}
         >
-          Actual Service Details
+          {isHistoricalMode
+            ? "Previous AI Service Details"
+            : "Actual Service Details"}
         </Text>
         <AIRecordingFields
           values={values}
           disabled={saving}
+          isHistoricalMode={isHistoricalMode}
+          minimumDate={
+            isHistoricalMode
+              ? historicalDateBounds.minimumDate || undefined
+              : undefined
+          }
+          maximumDate={
+            isHistoricalMode ? historicalDateBounds.maximumDate : undefined
+          }
           onDateChange={(inseminationDate) =>
             onValuesChange({ inseminationDate })
           }
@@ -597,12 +713,39 @@ export function DirectAIRecordForm({
         />
       </View>
 
+      {isHistoricalMode && submissionError ? (
+        <View
+          accessibilityRole="alert"
+          style={{
+            flexDirection: "row",
+            padding: 13,
+            borderWidth: 1,
+            borderColor: colors.errorForeground,
+            borderRadius: 14,
+            backgroundColor: colors.errorContainer,
+          }}
+        >
+          <AlertTriangle size={18} color={colors.errorForeground} />
+          <Text
+            style={{
+              flex: 1,
+              color: colors.errorForeground,
+              fontFamily: "Outfit_500Medium",
+              fontSize: 12,
+              lineHeight: 18,
+              marginLeft: 8,
+            }}
+          >
+            {submissionError}
+          </Text>
+        </View>
+      ) : null}
       <Button
         label="Review & Complete"
         size="lg"
         style={{ marginTop: 10 }}
         loading={saving}
-        disabled={saving || Boolean(eligibility && !eligibility.isEligible)}
+        disabled={saving || blocksCurrentAI}
         onPress={review}
       />
 

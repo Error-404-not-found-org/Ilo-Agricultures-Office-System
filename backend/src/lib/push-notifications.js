@@ -9,6 +9,16 @@ const EXPO_PUSH_TOKEN_PATTERN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 export const isValidExpoPushToken = (pushToken) =>
   typeof pushToken === "string" && EXPO_PUSH_TOKEN_PATTERN.test(pushToken);
 
+export const isDeviceNotRegisteredResponse = (response) => {
+  const payload = response?.data ?? response;
+  const tickets = Array.isArray(payload) ? payload : [payload];
+  return tickets.some(
+    (ticket) =>
+      ticket?.status === "error" &&
+      ticket?.details?.error === "DeviceNotRegistered",
+  );
+};
+
 /**
  * Sends a push notification via Expo Push API
  * @param {string} pushToken - The recipient's Expo push token

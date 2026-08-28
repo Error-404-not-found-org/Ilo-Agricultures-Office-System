@@ -1,4 +1,5 @@
 import { AppError } from "../utils/app-error.js";
+import { HEAT_RETURN_MONITORING_POLICY } from "./reproduction-policy.js";
 import {
   getMethodThresholdForSpecies,
   LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
@@ -7,6 +8,7 @@ import {
 } from "./pregnancy-confirmation-policy.js";
 
 export const PREGNANCY_DIAGNOSIS_MINIMUM_DAYS = LEGACY_PREGNANCY_DIAGNOSIS_DAYS;
+export const FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS = HEAT_RETURN_MONITORING_POLICY.observationWindowStartDays;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const COMPLETED_AI_STATUSES = new Set(["done", "resolved", "completed"]);
 
@@ -17,6 +19,72 @@ const formatAvailableDate = (date) =>
     year: "numeric",
     timeZone: "UTC",
   });
+
+export const getFarmerBreedingObservationReadiness = ({
+  insemination,
+  at = new Date(),
+}) => {
+  const status = String(insemination?.status || "").trim().toLowerCase();
+  if (!COMPLETED_AI_STATUSES.has(status)) {
+    return {
+      isEligible: false,
+      code: "AI_SERVICE_NOT_COMPLETED",
+      reason: "Breeding observations require a completed AI service.",
+      daysPostAI: null,
+      minimumDays: FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS,
+      availableDate: null,
+    };
+  }
+
+  const aiDate = insemination?.inseminationDate
+    ? new Date(insemination.inseminationDate)
+    : null;
+  if (!aiDate || Number.isNaN(aiDate.getTime())) {
+    return {
+      isEligible: false,
+      code: "AI_SERVICE_DATE_REQUIRED",
+      reason: "The completed AI service date is missing or invalid.",
+      daysPostAI: null,
+      minimumDays: FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS,
+      availableDate: null,
+    };
+  }
+
+  const checkedAt = at instanceof Date ? at : new Date(at);
+  const daysPostAI = Math.max(
+    0,
+    Math.floor((checkedAt.getTime() - aiDate.getTime()) / MILLISECONDS_PER_DAY),
+  );
+  const availableDate = new Date(aiDate);
+  availableDate.setUTCDate(
+    availableDate.getUTCDate() + FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS,
+  );
+  const isEligible = daysPostAI >= FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS;
+
+  return {
+    isEligible,
+    code: isEligible
+      ? "FARMER_OBSERVATION_AVAILABLE"
+      : "FARMER_OBSERVATION_TOO_EARLY",
+    reason: isEligible
+      ? "Breeding observation is available."
+      : `Breeding update will be available on ${formatAvailableDate(availableDate)}.`,
+    daysPostAI,
+    minimumDays: FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS,
+    availableDate: availableDate.toISOString(),
+  };
+};
+
+export const assertFarmerBreedingObservationWindow = (input) => {
+  const readiness = getFarmerBreedingObservationReadiness(input);
+  if (readiness.isEligible) return readiness;
+
+  throw new AppError(readiness.reason, {
+    status: readiness.code.startsWith("FARMER_OBSERVATION_") ? 422 : 409,
+    code: readiness.code,
+    details: readiness,
+  });
+};
 
 export const getPregnancyCheckReadiness = ({
   insemination,

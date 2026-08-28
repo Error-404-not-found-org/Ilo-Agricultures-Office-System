@@ -9,7 +9,10 @@ import { Insemination } from "../src/models/insemination.model.js";
 import { Notification } from "../src/models/notification.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Task } from "../src/models/task.model.js";
-import { persistCalving } from "../src/services/calving.service.js";
+import {
+  getCalvingReadiness,
+  persistCalving,
+} from "../src/services/calving.service.js";
 import cloudinary from "../src/config/cloudinary.js";
 import { recordCalving as recordFarmerCalving } from "../src/controllers/animals.controllers.js";
 import { isPregnancyCycleActive } from "../src/domain/pregnancy-lifecycle.js";
@@ -298,6 +301,39 @@ const withHarness = async (overrides, work) => {
   try { await work(harness.state); } finally { harness.restore(); }
 };
 
+test("Calving readiness: Beef Cattle opens at Day 253 using the backend chronology rule", () => {
+  const context = {
+    mother: { species: "Beef Cattle", breed: "Angus" },
+    pregnancy: basePregnancy,
+    insemination: {
+      ...baseInsemination,
+      inseminationDate: new Date("2026-01-01T07:10:55.956Z"),
+    },
+  };
+
+  const day149 = getCalvingReadiness({
+    ...context,
+    at: new Date("2026-05-30T00:00:00.000Z"),
+  });
+  assert.equal(day149.isEligible, false);
+  assert.equal(day149.code, "CALVING_TOO_EARLY");
+  assert.equal(day149.gestationDays, 149);
+  assert.equal(day149.minimumDays, 253);
+  assert.equal(day149.daysRemaining, 104);
+  assert.equal(
+    day149.earliestEligibleDate.toISOString(),
+    "2026-09-11T00:00:00.000Z",
+  );
+
+  const day253 = getCalvingReadiness({
+    ...context,
+    at: new Date("2026-09-11T00:00:00.000Z"),
+  });
+  assert.equal(day253.isEligible, true);
+  assert.equal(day253.code, "CALVING_WINDOW_OPEN");
+  assert.equal(day253.gestationDays, 253);
+});
+
 test("Calving: natural birth creates a female calf and all canonical records", async () => {
   await withHarness({}, async (state) => {
     const result = await persistCalving(validInput({ taskId: ids.task }));
@@ -444,6 +480,21 @@ test("Calving: rejects future, pre-AI, pre-diagnosis, and impossible early dates
     await assert.rejects(persistCalving(validInput({ date: new Date("2025-09-30") })), { code: "CALVING_BEFORE_AI" });
     await assert.rejects(persistCalving(validInput({ date: new Date("2025-11-01") })), { code: "CALVING_BEFORE_PREGNANCY_DIAGNOSIS" });
     await assert.rejects(persistCalving(validInput({ date: new Date("2026-01-15") })), { code: "CALVING_TOO_EARLY" });
+  });
+});
+
+test("Calving: a confirmed early pregnancy loss bypasses only the live-birth minimum", async () => {
+  await withHarness({}, async (state) => {
+    const result = await persistCalving(validInput({
+      outcome: "abortion",
+      calvingEase: "Abortion",
+      date: new Date("2026-01-15T00:00:00.000Z"),
+      numberOfCalves: 0,
+      calves: [],
+    }));
+    assert.equal(result.calving.outcome, "abortion");
+    assert.equal(result.offspring.length, 0);
+    assert.equal(state.inserted.length, 0);
   });
 });
 

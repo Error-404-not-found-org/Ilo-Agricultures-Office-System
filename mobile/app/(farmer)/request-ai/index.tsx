@@ -4,10 +4,10 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Modal,
   FlatList,
   ActivityIndicator,
   Image,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
@@ -32,6 +32,8 @@ import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
+import { AnimatedBottomSheet } from "@/components/shared/AnimatedBottomSheet";
+import { Text as AppText } from "@/components/ui/Text";
 import { safeBack } from "@/utils/navigation";
 import { useApi } from "@/lib/api";
 import {
@@ -172,7 +174,8 @@ export default function RequestAI() {
   const previousAttemptId = Array.isArray(params.requestId)
     ? params.requestId[0]
     : params.requestId;
-  const isReInsemination = params.mode === "re-inseminate" && Boolean(previousAttemptId);
+  const isReInsemination =
+    params.mode === "re-inseminate" && Boolean(previousAttemptId);
   const scrollRef = useRef<ScrollView>(null);
   const submitLockRef = useRef(false);
   const { colors, isDark } = useTheme();
@@ -187,8 +190,7 @@ export default function RequestAI() {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [selectedSigns, setSelectedSigns] = useState<string[]>([]);
   const [comment, setComment] = useState("");
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
@@ -198,6 +200,7 @@ export default function RequestAI() {
     useState(false);
   const [ageModalVisible, setAgeModalVisible] = useState(false);
   const [ageCheckReason, setAgeCheckReason] = useState("");
+  const { height } = useWindowDimensions();
 
   const handleToggleSign = (id: string) => {
     setSelectedSigns((prev) => {
@@ -216,14 +219,15 @@ export default function RequestAI() {
   const api = useApi();
   const [serverConflictRequest, setServerConflictRequest] = useState<any>(null);
 
-  const { data: previousAttemptData, isLoading: loadingPreviousAttempt } = useQuery({
-    queryKey: ["ai-request", previousAttemptId, "re-insemination-context"],
-    queryFn: async () => {
-      const response = await api.get(`/ai-request/${previousAttemptId}`);
-      return response.data?.data || response.data;
-    },
-    enabled: isReInsemination,
-  });
+  const { data: previousAttemptData, isLoading: loadingPreviousAttempt } =
+    useQuery({
+      queryKey: ["ai-request", previousAttemptId, "re-insemination-context"],
+      queryFn: async () => {
+        const response = await api.get(`/ai-request/${previousAttemptId}`);
+        return response.data?.data || response.data;
+      },
+      enabled: isReInsemination,
+    });
   const previousAttempt = previousAttemptData;
 
   const mutation = useOfflineMutation(
@@ -245,8 +249,7 @@ export default function RequestAI() {
         // Reset Form
         setSelectedAnimal(null);
         setComment("");
-        setImageUri(null);
-        setImageBase64(null);
+        setPhotos([]);
 
         for (const queryKey of AI_REQUEST_INVALIDATION_KEYS) {
           queryClient.invalidateQueries({ queryKey: [...queryKey] });
@@ -308,9 +311,7 @@ export default function RequestAI() {
     ? aiRequestsData
     : aiRequestsData?.data || [];
   const activeRequest = findActiveAIRequestForAnimal(
-    serverConflictRequest
-      ? [...aiRequests, serverConflictRequest]
-      : aiRequests,
+    serverConflictRequest ? [...aiRequests, serverConflictRequest] : aiRequests,
     selectedAnimal?._id,
   );
   const submitState = getAIRequestSubmitState({
@@ -336,28 +337,31 @@ export default function RequestAI() {
   }, [animalsData, params.animalId, params.mode]);
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
+    if (photos.length >= 5) {
+      toast.error("You can attach up to 5 photos only.");
+      return;
+    }
     const result = await pickImageFromSource(source, { aspect: [4, 3] });
     if (result) {
-      setImageUri(result.uri);
-      setImageBase64(result.base64);
+      setPhotos((prev) => [
+        ...prev,
+        { uri: result.uri, base64: result.base64 },
+      ]);
       toast.success("Photo attached!");
     }
-  };
-
-  const removeImage = () => {
-    setImageUri(null);
-    setImageBase64(null);
   };
 
   const submitRequest = async () => {
     if (!selectedAnimal) return;
 
+    const base64Photos = photos.map((p) => p.base64);
+
     const payload = buildFarmerAIRequestPayload(
       selectedAnimal._id,
-      imageBase64,
+      base64Photos,
       comment,
       selectedSigns,
-      HEAT_SIGNS
+      HEAT_SIGNS,
     );
 
     setIsSubmitting(true);
@@ -411,7 +415,8 @@ export default function RequestAI() {
       });
       if (!eligibility.isEligible) {
         setAgeCheckReason(
-          eligibility.reason || "This animal is not currently eligible for insemination.",
+          eligibility.reason ||
+            "This animal is not currently eligible for insemination.",
         );
         setAgeModalVisible(true);
         return;
@@ -424,6 +429,13 @@ export default function RequestAI() {
 
       if (selectedSigns.length > 5) {
         showSubmitError("You can select a maximum of 5 heat signs.");
+        return;
+      }
+
+      if (photos.length === 0) {
+        showSubmitError(
+          "Please attach at least one photo of the animal to help technicians assess the condition.",
+        );
         return;
       }
 
@@ -441,7 +453,9 @@ export default function RequestAI() {
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <FarmerRequestHeader
-        title={isReInsemination ? "Request Re-insemination" : "Request AI Service"}
+        title={
+          isReInsemination ? "Request Re-insemination" : "Request AI Service"
+        }
         onBack={safeBack}
       />
 
@@ -463,12 +477,8 @@ export default function RequestAI() {
           <View
             className="rounded-2xl p-4 mb-5 border flex-row items-start"
             style={{
-              backgroundColor: isDark
-                ? "rgba(16, 185, 129, 0.08)"
-                : "#f0fdf4",
-              borderColor: isDark
-                ? "rgba(16, 185, 129, 0.2)"
-                : "#bbf7d0",
+              backgroundColor: isDark ? "rgba(16, 185, 129, 0.08)" : "#f0fdf4",
+              borderColor: isDark ? "rgba(16, 185, 129, 0.2)" : "#bbf7d0",
             }}
           >
             <View
@@ -488,8 +498,9 @@ export default function RequestAI() {
                 className="text-xs mt-1 leading-5"
                 style={{ color: colors.textSecondary }}
               >
-                Select an eligible female animal and record the heat signs you observed.
-                A technician will review your request and schedule the visit.
+                Select an eligible female animal and record the heat signs you
+                observed. A technician will review your request and schedule the
+                visit.
               </Text>
             </View>
           </View>
@@ -506,12 +517,12 @@ export default function RequestAI() {
               borderColor: colors.border,
             }}
           >
-            <Text
-              className="text-xs font-bold uppercase tracking-widest mb-4"
-              style={{ color: colors.textMuted }}
+            <AppText
+              textRole="label"
+              style={{ color: colors.textMuted, marginBottom: 16 }}
             >
               Your Information
-            </Text>
+            </AppText>
 
             {loadingProfile && !farmer ? (
               <ActivityIndicator color={primaryColor} />
@@ -520,24 +531,32 @@ export default function RequestAI() {
                 {/* Name */}
                 <View className="flex-row items-center gap-3">
                   <View
-                    className="w-8 h-8 rounded-full items-center justify-center"
+                    className="w-8 h-8 rounded-full items-center justify-center overflow-hidden"
                     style={{ backgroundColor: colors.tint }}
                   >
-                    <User size={15} color={primaryColor} />
+                    {farmer.imageUrl ? (
+                      <Image
+                        source={{ uri: farmer.imageUrl }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <User size={15} color={primaryColor} />
+                    )}
                   </View>
                   <View>
-                    <Text
-                      className="text-[11px] font-medium"
+                    <AppText
+                      textRole="label"
                       style={{ color: colors.textMuted }}
                     >
                       Full Name
-                    </Text>
-                    <Text
-                      className="text-[14px] font-semibold"
+                    </AppText>
+                    <AppText
+                      textRole="bodyStrong"
                       style={{ color: colors.textPrimary }}
                     >
                       {farmer.name}
-                    </Text>
+                    </AppText>
                   </View>
                 </View>
 
@@ -550,27 +569,27 @@ export default function RequestAI() {
                     <MapPin size={15} color={primaryColor} />
                   </View>
                   <View className="flex-1">
-                    <Text
-                      className="text-[11px] font-medium"
+                    <AppText
+                      textRole="label"
                       style={{ color: colors.textMuted }}
                     >
                       Address
-                    </Text>
-                    <Text
-                      className="text-[14px] font-semibold leading-tight"
+                    </AppText>
+                    <AppText
+                      textRole="bodyStrong"
                       style={{ color: colors.textSecondary }}
                     >
                       {formatAddress(farmer.address)}
-                    </Text>
+                    </AppText>
                   </View>
                 </View>
               </View>
             ) : (
               <View className="flex-row items-center gap-2">
                 <AlertCircle size={16} color={colors.error} />
-                <Text className="text-sm" style={{ color: colors.error }}>
+                <AppText textRole="body" style={{ color: colors.error }}>
                   Could not load profile
-                </Text>
+                </AppText>
               </View>
             )}
           </View>
@@ -578,7 +597,10 @@ export default function RequestAI() {
           {isReInsemination && (
             <View
               className="rounded-3xl p-5 mb-5 border"
-              style={{ backgroundColor: colors.card, borderColor: colors.border }}
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              }}
             >
               <Text
                 className="text-xs font-bold uppercase tracking-widest mb-3"
@@ -590,24 +612,47 @@ export default function RequestAI() {
                 <ActivityIndicator color={primaryColor} />
               ) : previousAttempt ? (
                 <View className="gap-2">
-                  <Text className="text-base font-bold" style={{ color: colors.textPrimary }}>
+                  <Text
+                    className="text-base font-bold"
+                    style={{ color: colors.textPrimary }}
+                  >
                     Attempt #{previousAttempt.attemptNumber || 1}
                   </Text>
-                  <Text className="text-sm" style={{ color: colors.textSecondary }}>
-                    Service date: {previousAttempt.inseminationDate
-                      ? new Date(previousAttempt.inseminationDate).toLocaleDateString()
+                  <Text
+                    className="text-sm"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    Service date:{" "}
+                    {previousAttempt.inseminationDate
+                      ? new Date(
+                          previousAttempt.inseminationDate,
+                        ).toLocaleDateString()
                       : "Not recorded"}
                   </Text>
-                  <Text className="text-sm" style={{ color: colors.textSecondary }}>
+                  <Text
+                    className="text-sm"
+                    style={{ color: colors.textSecondary }}
+                  >
                     Outcome: {previousAttempt.outcome || "Pending"}
                   </Text>
-                  <Text className="text-sm" style={{ color: colors.textSecondary }}>
-                    Confirmed by: {previousAttempt.outcomeConfirmationSource
-                      ? previousAttempt.outcomeConfirmationSource.replaceAll("_", " ")
+                  <Text
+                    className="text-sm"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    Confirmed by:{" "}
+                    {previousAttempt.outcomeConfirmationSource
+                      ? previousAttempt.outcomeConfirmationSource.replaceAll(
+                          "_",
+                          " ",
+                        )
                       : "Not recorded"}
                   </Text>
-                  <Text className="text-xs mt-1" style={{ color: colors.textMuted }}>
-                    The new request will be linked as Attempt #{(previousAttempt.attemptNumber || 1) + 1}.
+                  <Text
+                    className="text-xs mt-1"
+                    style={{ color: colors.textMuted }}
+                  >
+                    The new request will be linked as Attempt #
+                    {(previousAttempt.attemptNumber || 1) + 1}.
                   </Text>
                 </View>
               ) : (
@@ -638,25 +683,43 @@ export default function RequestAI() {
             }}
           >
             {selectedAnimal ? (
-              <View>
+              <View className="flex-1 mr-3">
                 <Text
                   className="text-[15px] font-bold"
-                  style={[requestFormStyles.fieldValue, { color: colors.textPrimary }]}
+                  style={[
+                    requestFormStyles.fieldValue,
+                    { color: colors.textPrimary },
+                  ]}
                 >
-                  {selectedAnimal.animalId}
-                  {selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ""}
+                  {selectedAnimal.earTag
+                    ? `Ear tag ${selectedAnimal.earTag}`
+                    : `Registry ID ${selectedAnimal.animalId}`}
                 </Text>
                 <Text
                   className="text-sm"
-                  style={[requestFormStyles.fieldPlaceholder, { color: colors.textSecondary }]}
+                  style={[
+                    requestFormStyles.fieldPlaceholder,
+                    { color: colors.textSecondary },
+                  ]}
                 >
-                  {selectedAnimal.species}, {selectedAnimal.breed}
+                  {selectedAnimal.breed} · {selectedAnimal.species}
                 </Text>
+                {selectedAnimal.earTag && (
+                  <Text
+                    className="text-xs mt-1"
+                    style={{ color: colors.textMuted }}
+                  >
+                    Registry ID: {selectedAnimal.animalId}
+                  </Text>
+                )}
               </View>
             ) : (
               <Text
                 className="text-sm"
-                style={[requestFormStyles.fieldPlaceholder, { color: colors.textMuted }]}
+                style={[
+                  requestFormStyles.fieldPlaceholder,
+                  { color: colors.textMuted },
+                ]}
               >
                 Tap to choose an animal
               </Text>
@@ -677,14 +740,22 @@ export default function RequestAI() {
             >
               <AlertCircle size={20} color="#d97706" />
               <View className="flex-1">
-                <Text className="font-bold text-sm" style={{ color: colors.textPrimary }}>
+                <Text
+                  className="font-bold text-sm"
+                  style={{ color: colors.textPrimary }}
+                >
                   Active AI request
                 </Text>
-                <Text className="text-xs mt-1" style={{ color: colors.textSecondary }}>
-                  Artificial Insemination · {String(activeRequest.status || "pending")
+                <Text
+                  className="text-xs mt-1"
+                  style={{ color: colors.textSecondary }}
+                >
+                  Artificial Insemination ·{" "}
+                  {String(activeRequest.status || "pending")
                     .replace(/[-_]/g, " ")
                     .replace(/\b\w/g, (character) => character.toUpperCase())}
-                  {"\n"}Complete or cancel this request before creating another one.
+                  {"\n"}Complete or cancel this request before creating another
+                  one.
                 </Text>
                 {activeRequest._id && (
                   <TouchableOpacity
@@ -818,51 +889,84 @@ export default function RequestAI() {
             )}
 
           {/* ── Photo Attachment ─────────────────────────────────────────── */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Attach Photo (Optional)
-          </Text>
-          {imageUri ? (
-            <View className="mb-5 relative">
+          <View className="flex-row items-center justify-between mb-3 mt-2">
+            <Text
+              className="text-xs font-bold uppercase tracking-widest ml-1"
+              style={[
+                requestFormStyles.fieldLabel,
+                { color: colors.textMuted },
+              ]}
+            >
+              Attach Photos * {photos.length > 0 ? `(${photos.length}/5)` : ""}
+            </Text>
+            {photos.length > 0 && photos.length < 5 && (
               <TouchableOpacity
                 onPress={() => setPhotoModalVisible(true)}
-                activeOpacity={0.9}
+                className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                style={{
+                  backgroundColor: isDark ? "rgba(52,211,153,0.15)" : "#ecfdf5",
+                }}
               >
-                <Image
-                  source={{ uri: imageUri }}
-                  className="w-full h-48 rounded-2xl"
-                  resizeMode="cover"
-                />
+                <Camera size={14} color={primaryColor} />
+                <Text
+                  className="text-[11px] font-outfit-bold uppercase tracking-wider"
+                  style={{ color: primaryColor }}
+                >
+                  Add Photo
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={removeImage}
-                className="absolute top-2 right-2 bg-black/50 rounded-full w-8 h-8 items-center justify-center"
-              >
-                <X size={16} color="white" />
-              </TouchableOpacity>
-            </View>
-          ) : (
+            )}
+          </View>
+
+          {photos.length === 0 ? (
             <TouchableOpacity
               onPress={() => setPhotoModalVisible(true)}
-              className="w-full h-36 border-2 border-dashed rounded-2xl items-center justify-center mb-5 gap-2"
+              activeOpacity={0.7}
+              className="w-full h-32 border-2 border-dashed rounded-3xl items-center justify-center gap-3 mb-6"
               style={{
-                backgroundColor: colors.card,
-                borderColor: colors.border,
+                backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                borderColor: isDark ? colors.border : "#e2e8f0",
               }}
             >
-              <Camera size={28} color={colors.textMuted} />
+              <View
+                className="w-12 h-12 rounded-full items-center justify-center"
+                style={{ backgroundColor: isDark ? colors.border : "#f1f5f9" }}
+              >
+                <Camera size={22} color={colors.textSecondary} />
+              </View>
               <Text
-                className="text-sm font-medium"
+                className="text-[13px] font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                Tap to attach a photo
-              </Text>
-              <Text className="text-xs" style={{ color: colors.textMuted }}>
-                of the animal in heat
+                Tap to upload up to 5 photos
               </Text>
             </TouchableOpacity>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="mb-6"
+            >
+              <View className="flex-row gap-3">
+                {photos.map((photo, index) => (
+                  <View key={index} className="relative">
+                    <Image
+                      source={{ uri: photo.uri }}
+                      className="w-28 h-28 rounded-[20px]"
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity
+                      onPress={() =>
+                        setPhotos((prev) => prev.filter((_, i) => i !== index))
+                      }
+                      className="absolute top-2 right-2 bg-black/60 rounded-full w-8 h-8 items-center justify-center backdrop-blur-md border border-white/20"
+                    >
+                      <X size={16} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
           )}
 
           {/* ── Comment Box ──────────────────────────────────────────────── */}
@@ -877,12 +981,12 @@ export default function RequestAI() {
             style={[
               requestFormStyles.textInput,
               {
-              minHeight: 120,
-              textAlignVertical: "top",
-              elevation: 1,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              color: colors.textPrimary,
+                minHeight: 120,
+                textAlignVertical: "top",
+                elevation: 1,
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                color: colors.textPrimary,
               },
             ]}
             value={comment}
@@ -909,8 +1013,9 @@ export default function RequestAI() {
             activeOpacity={0.85}
             className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
             style={{
-              backgroundColor:
-                submitState.disabled ? colors.textMuted : primaryColor,
+              backgroundColor: submitState.disabled
+                ? colors.textMuted
+                : primaryColor,
               shadowColor: primaryColor,
             }}
           >
@@ -933,169 +1038,171 @@ export default function RequestAI() {
       </View>
 
       {/* ── Animal Selection Modal ──────────────────────────────────────────── */}
-      <Modal
-        animationType="slide"
-        transparent
+      {/* Animal Modal */}
+      <AnimatedBottomSheet
         visible={animalModalVisible}
-        onRequestClose={() => setAnimalModalVisible(false)}
+        onClose={() => setAnimalModalVisible(false)}
+        backgroundColor={colors.card}
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View
-            className="rounded-t-[32px] p-6 pb-12 max-h-[75%]"
-            style={{ backgroundColor: colors.card }}
-          >
-            <View className="flex-row justify-between items-center mb-4">
-              <Text
-                className="text-lg font-bold"
-                style={[requestFormStyles.modalTitle, { color: colors.textPrimary }]}
-              >
-                Select Animal
-              </Text>
-              <TouchableOpacity
-                onPress={() => setAnimalModalVisible(false)}
-                className="p-1 rounded-full"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f1f5f9",
-                }}
-              >
-                <X size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
+        <View
+          className="px-6 pt-6 pb-0"
+          style={{
+            backgroundColor: colors.card,
+          }}
+        >
+          {/* Header */}
+          <View className="flex-row justify-between items-center mb-4">
+            <Text
+              className="text-lg font-bold"
+              style={[
+                requestFormStyles.modalTitle,
+                { color: colors.textPrimary },
+              ]}
+            >
+              Select Animal
+            </Text>
 
-            {isLoadingAnimals ? (
-              <View className="items-center py-20">
-                <ActivityIndicator color={primaryColor} size="large" />
-                <Text
-                  className="mt-4 font-medium"
-                  style={{ color: colors.textMuted }}
+            <TouchableOpacity
+              onPress={() => setAnimalModalVisible(false)}
+              className="p-1 rounded-full"
+              style={{
+                backgroundColor: isDark ? colors.background : "#f8fafc",
+              }}
+            >
+              <X size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {isLoadingAnimals ? (
+            <View className="items-center py-20">
+              <ActivityIndicator color={primaryColor} size="large" />
+
+              <Text
+                className="mt-4 font-outfit-bold"
+                style={{ color: colors.textMuted }}
+              >
+                Loading your animals...
+              </Text>
+            </View>
+          ) : animals.length === 0 ? (
+            <View className="items-center py-10 gap-3">
+              <AlertCircle size={36} color={colors.textMuted} />
+
+              <Text
+                className="text-center font-medium"
+                style={{ color: colors.textSecondary }}
+              >
+                You have no registered animals yet.
+              </Text>
+
+              <Text
+                className="text-xs text-center"
+                style={{ color: colors.textMuted }}
+              >
+                Register an animal before reporting a health concern.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={animals}
+              keyExtractor={(item) => item._id}
+              // IMPORTANT:
+              // only the LIST gets capped
+              style={{
+                maxHeight: height * 0.55,
+                flexGrow: 0,
+              }}
+              contentContainerStyle={{
+                paddingBottom: 12,
+              }}
+              showsVerticalScrollIndicator={animals.length > 4}
+              nestedScrollEnabled
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedAnimal(item);
+                    setAnimalModalVisible(false);
+                  }}
+                  className="py-4 px-3 border-b flex-row items-center justify-between"
+                  style={{
+                    borderBottomColor: colors.border,
+                    backgroundColor:
+                      selectedAnimal?._id === item._id
+                        ? isDark
+                          ? "rgba(239, 68, 68, 0.15)"
+                          : "#fef2f2"
+                        : undefined,
+                    borderRadius: selectedAnimal?._id === item._id ? 16 : 0,
+                  }}
                 >
-                  Loading your animals...
-                </Text>
-              </View>
-            ) : animals.length === 0 ? (
-              <View className="items-center py-10 gap-3">
-                <AlertCircle size={36} color={colors.textMuted} />
-                <Text
-                  className="text-center font-medium"
-                  style={{ color: colors.textSecondary }}
-                >
-                  You have no registered animals yet.
-                </Text>
-                <Text
-                  className="text-xs text-center"
-                  style={{ color: colors.textMuted }}
-                >
-                  Please register an animal first before requesting AI.
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={animals}
-                keyExtractor={(item) => item._id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (item.reproductiveStatus === "Pregnant") {
-                        setPregnantModalVisible(true);
-                        return;
-                      }
-                      if (item.gender === "Male") {
-                        setMaleModalVisible(true);
-                        return;
-                      }
-                      const ageCheck = checkInseminationAgeEligibility(
-                        item.birthDate,
-                        item.species,
-                      );
-                      if (!ageCheck.isEligible) {
-                        setAgeCheckReason(
-                          ageCheck.reason ||
-                            "Animal is too young for insemination.",
-                        );
-                        setAgeModalVisible(true);
-                        return;
-                      }
-                      setSelectedAnimal(item);
-                      setAnimalModalVisible(false);
-                    }}
-                    className={`py-4 px-3 border-b flex-row items-center justify-between ${item.reproductiveStatus === "Pregnant" || item.gender === "Male" || !checkInseminationAgeEligibility(item.birthDate, item.species).isEligible ? "opacity-50" : ""}`}
-                    style={{
-                      borderBottomColor: colors.border,
-                      backgroundColor:
-                        selectedAnimal?._id === item._id
-                          ? colors.tint
-                          : undefined,
-                      borderRadius: selectedAnimal?._id === item._id ? 16 : 0,
-                    }}
-                  >
-                    <View className="flex-row items-center gap-3">
-                      <View className="flex-1">
+                  <View className="flex-row items-center gap-3 flex-1">
+                    <View className="flex-1">
+                      <Text
+                        className="text-[15px] font-bold"
+                        style={[
+                          requestFormStyles.modalItemTitle,
+                          { color: colors.textPrimary },
+                        ]}
+                      >
+                        {item.earTag
+                          ? `Ear tag ${item.earTag}`
+                          : `Registry ID ${item.animalId}`}
+                      </Text>
+
+                      <View className="flex-row items-center gap-2 mt-1">
                         <Text
-                          className="text-[15px] font-bold"
-                          style={[requestFormStyles.modalItemTitle, { color: colors.textPrimary }]}
+                          className="text-xs"
+                          style={[
+                            requestFormStyles.modalItemMeta,
+                            { color: colors.textMuted },
+                          ]}
                         >
-                          {item.animalId}
-                          {item.earTag ? ` · ${item.earTag}` : ""}
+                          {item.breed} · {item.species}
                         </Text>
-                        <View className="flex-row items-center gap-2 mt-1">
-                          <Text
-                            className="text-xs"
-                            style={[requestFormStyles.modalItemMeta, { color: colors.textMuted }]}
+
+                        {item.reproductiveStatus && (
+                          <View
+                            className={`px-2 py-0.5 rounded-full ${
+                              item.reproductiveStatus === "Pregnant"
+                                ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200"
+                                : "bg-gray-100 dark:bg-slate-800"
+                            }`}
                           >
-                            {item.species} · {item.breed}
-                          </Text>
-                          {item.reproductiveStatus && (
-                            <View
-                              className={`px-2 py-0.5 rounded-full ${item.reproductiveStatus === "Pregnant" ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200" : "bg-gray-100 dark:bg-slate-800"}`}
+                            <Text
+                              className="text-[9px] font-outfit-black uppercase"
+                              style={{
+                                color:
+                                  item.reproductiveStatus === "Pregnant"
+                                    ? "#9333ea"
+                                    : colors.textMuted,
+                              }}
                             >
-                              <Text
-                                className={`text-[9px] font-black uppercase ${item.reproductiveStatus === "Pregnant" ? "text-purple-600" : "text-gray-500"}`}
-                              >
-                                {item.reproductiveStatus}
-                              </Text>
-                            </View>
-                          )}
-                          {item.gender === "Male" && (
-                            <View className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200">
-                              <Text className="text-[9px] font-black uppercase text-red-600">
-                                Male
-                              </Text>
-                            </View>
-                          )}
-                          {!checkInseminationAgeEligibility(
-                            item.birthDate,
-                            item.species,
-                          ).isEligible && (
-                            <View className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200">
-                              <Text className="text-[9px] font-black uppercase text-amber-600">
-                                Underage
-                              </Text>
-                            </View>
-                          )}
-                        </View>
+                              {item.reproductiveStatus}
+                            </Text>
+                          </View>
+                        )}
                       </View>
-                      {item.reproductiveStatus === "Pregnant" && (
-                        <AlertCircle size={16} color="#9333ea" />
-                      )}
-                      {item.gender === "Male" && (
-                        <AlertCircle size={16} color="#ef4444" />
-                      )}
-                      {!checkInseminationAgeEligibility(
-                        item.birthDate,
-                        item.species,
-                      ).isEligible && <AlertCircle size={16} color="#d97706" />}
-                      {selectedAnimal?._id === item._id && (
-                        <Check size={18} color={primaryColor} />
+
+                      {item.earTag && (
+                        <Text
+                          className="text-xs mt-1"
+                          style={{ color: colors.textMuted }}
+                        >
+                          Registry ID: {item.animalId}
+                        </Text>
                       )}
                     </View>
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
 
+                    {selectedAnimal?._id === item._id && (
+                      <Check size={18} color={primaryColor} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      </AnimatedBottomSheet>
       {/* Photo Selector Modal */}
       <PhotoOptionModal
         visible={photoModalVisible}

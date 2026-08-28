@@ -16,6 +16,12 @@ test("H4 candidate Health detail exposes decision-safe request and locality fiel
     urgency: "high",
     symptoms: ["Swollen leg", "Limping"],
     farmerNotes: "Started after grazing.",
+    requestDetails: {
+      version: 1,
+      assistanceRequested: "medicine_request",
+      observedSigns: ["diarrhea", "not_eating_normally"],
+      farmerDescription: "Started after grazing.",
+    },
     photos: [" https://example.test/leg.jpg ", "", null],
     imageUrl: "https://example.test/overview.jpg",
     createdAt: "2026-08-07T06:00:00.000Z",
@@ -46,6 +52,12 @@ test("H4 candidate Health detail exposes decision-safe request and locality fiel
   assert.equal(candidate.municipality, "Pavia");
   assert.deepEqual(candidate.symptoms, ["Swollen leg", "Limping"]);
   assert.equal(candidate.farmerNotes, "Started after grazing.");
+  assert.deepEqual(candidate.requestDetails, {
+    version: 1,
+    assistanceRequested: "medicine_request",
+    observedSigns: ["diarrhea", "not_eating_normally"],
+    farmerDescription: "Started after grazing.",
+  });
   assert.deepEqual(candidate.photos, ["https://example.test/leg.jpg"]);
   assert.equal(candidate.imageUrl, "https://example.test/overview.jpg");
 });

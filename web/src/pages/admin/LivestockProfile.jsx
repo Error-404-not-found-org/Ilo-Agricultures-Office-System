@@ -3,124 +3,121 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
+  ChevronRight,
   Download,
-  Phone,
   MapPin,
   User,
-  Activity,
   Syringe,
   Stethoscope,
-  Info,
   AlertCircle,
   ShieldCheck,
   CheckCircle2,
   Tag,
   Heart,
   Calendar,
-  ChevronRight,
   Search,
-  Plus,
+  PlusCircle,
   FileText,
   Beef,
+  Dna,
+  Edit3,
+  HeartPulse,
+  Baby,
+  ClipboardList,
+  Eye,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import EditInseminationModal from "../../components/dialogs/EditInseminationModal";
 import AddMedicalRecordModal from "../../components/dialogs/AddMedicalRecordModal";
 import ActivityDetailsModal from "../../components/dialogs/ActivityDetailsModal";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import RecordCalfDropModal from "../../components/dialogs/RecordCalvingModal";
-import { getBreedingAttemptPresentation } from "../../utils/reproductionWorkflow";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
+import { WEB_ROLES, normalizeWebRole } from "../../constants/webRoles";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function statusChip(status) {
-  const s = status?.toLowerCase() || "";
-  if (s === "pregnant")
-    return "badge-success";
-  if (s === "inseminated" || s === "likely pregnant")
-    return "badge-info";
-  if (s === "in heat" || s === "post-partum" || s === "postpartum")
-    return "badge-warning";
-  if (s === "dry") return "badge-ghost";
-  if (s === "open" || s === "normal")
-    return "badge-primary";
-  return "badge-ghost";
-}
-
 function cleanLocationPart(value) {
   const text = String(value || "").trim();
-  return ["", "n/a", "na", "unknown", "not provided"].includes(text.toLowerCase()) ? "" : text;
+  return ["", "n/a", "na", "unknown", "not provided"].includes(
+    text.toLowerCase(),
+  )
+    ? ""
+    : text;
 }
 
 function getOwnerLocation(address) {
   const value = Array.isArray(address) ? address[0] || {} : address || {};
-  return [cleanLocationPart(value.barangay), cleanLocationPart(value.city || value.municipality)]
-    .filter(Boolean)
-    .join(", ") || "Location not provided";
+  return (
+    [
+      cleanLocationPart(value.barangay),
+      cleanLocationPart(value.city || value.municipality),
+    ]
+      .filter(Boolean)
+      .join(", ") || "Not recorded"
+  );
 }
 
 function getRecordMeta(kind) {
   switch (kind) {
     case "AI":
       return {
-        bg: "border-info/20 bg-info/10 text-info",
-        icon: <Syringe size={17} />,
-        label: "AI Record",
+        bg: "bg-info/10 text-info border-info/20",
+        icon: <Syringe size={14} />,
+        label: "AI Service",
       };
     case "Health":
       return {
-        bg: "border-error/20 bg-error/10 text-error",
-        icon: <Stethoscope size={17} />,
+        bg: "bg-error/10 text-error border-error/20",
+        icon: <Stethoscope size={14} />,
         label: "Health Record",
       };
     case "Pregnancy Check":
       return {
-        bg: "border-success/20 bg-success/10 text-success",
-        icon: <ShieldCheck size={17} />,
+        bg: "bg-success/10 text-success border-success/20",
+        icon: <ShieldCheck size={14} />,
         label: "Pregnancy Check",
       };
     case "Calving":
       return {
-        bg: "border-secondary/20 bg-secondary/10 text-secondary",
-        icon: <Heart size={17} />,
+        bg: "bg-secondary/10 text-secondary border-secondary/20",
+        icon: <Heart size={14} />,
         label: "Calving Event",
       };
     default:
       return {
-        bg: "border-base-300 bg-base-200 text-base-content/60",
-        icon: <FileText size={17} />,
+        bg: "bg-base-200 text-base-content/60 border-base-300",
+        icon: <FileText size={14} />,
         label: "Record",
       };
   }
 }
 
-function fmtDate(d, style = "medium") {
+function fmtDate(d) {
   if (!d) return "Not recorded";
-  return new Date(d).toLocaleDateString(undefined, { dateStyle: style });
-}
-
-function fmtTime(d) {
-  if (!d) return "";
-  return new Date(d).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
+  const parsed = new Date(d);
+  if (isNaN(parsed.getTime())) return "Not recorded";
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
 function formatAge(birthDate) {
-  if (!birthDate) return "Unknown";
+  if (!birthDate) return "Not recorded";
   const birth = new Date(birthDate);
-  if (isNaN(birth.getTime())) return "Unknown";
+  if (isNaN(birth.getTime())) return "Not recorded";
   const now = new Date();
   let diffMonths =
     (now.getFullYear() - birth.getFullYear()) * 12 +
     (now.getMonth() - birth.getMonth());
   if (diffMonths < 0) diffMonths = 0;
-  
+
   const years = Math.floor(diffMonths / 12);
   const months = diffMonths % 12;
-  
+
   if (years > 0) {
     return `${years} year${years > 1 ? "s" : ""}${months > 0 ? `, ${months} month${months > 1 ? "s" : ""}` : ""}`;
   } else {
@@ -128,85 +125,27 @@ function formatAge(birthDate) {
   }
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function MetricCard({ icon, label, value, sub, accent = false }) {
-  return (
-    <div className="rounded-box border border-base-300 bg-base-200 p-4 flex flex-col gap-1">
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-base-content/60 uppercase tracking-wider">
-        {icon}
-        {label}
-      </span>
-      <p
-        className={`text-lg font-bold leading-tight truncate ${
-          accent
-            ? "text-primary"
-            : "text-base-content"
-        }`}
-      >
-        {value}
-      </p>
-      {sub && (
-        <p className="text-[11px] text-base-content/60 font-medium">
-          {sub}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function InfoCell({ label, value, mono = false, accent = false }) {
-  return (
-    <div className="rounded-box border border-base-300 bg-base-200 p-3">
-      <p className="text-[10px] font-semibold text-base-content/60 uppercase tracking-wider mb-1">
-        {label}
-      </p>
-      <p
-        className={`text-sm font-semibold truncate ${
-          mono ? "font-mono" : ""
-        } ${accent ? "text-primary" : "text-base-content"}`}
-      >
-        {value || "Not recorded"}
-      </p>
-    </div>
-  );
-}
-
-
-
-// ── Tabs config ────────────────────────────────────────────────────────────
-
-const TABS = [
-  { id: "dashboard", label: "Overview", icon: <Activity size={13} /> },
-  { id: "records", label: "Animal Records", icon: <FileText size={13} /> },
-  { id: "reproduction", label: "Breeding ledger", icon: <Syringe size={13} /> },
-  { id: "clinical", label: "Medical records", icon: <Stethoscope size={13} /> },
-  { id: "bio", label: "Technical bio", icon: <Info size={13} /> },
-];
-
 // ── Main component ─────────────────────────────────────────────────────────
 
-export default function LivestockProfile() {
+export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("dashboard");
-  const [selectedInsemination, setSelectedInsemination] = useState(null);
+  const isAdmin = normalizeWebRole(role) === WEB_ROLES.ADMIN;
+
+  // Top level state hooks (all declared before any conditional returns)
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [isAddMedicalModalOpen, setIsAddMedicalModalOpen] = useState(false);
-  const [medicalInitialType, setMedicalInitialType] = useState("Vaccination");
-  const [isAddRecordDropdownOpen, setIsAddRecordDropdownOpen] = useState(false);
+  const [medicalInitialType] = useState("Vaccination");
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isPDModalOpen, setIsPDModalOpen] = useState(false);
   const [isCalvingModalOpen, setIsCalvingModalOpen] = useState(false);
+  const [isRegisterLivestockOpen, setIsRegisterLivestockOpen] = useState(false);
+  const [isAddRecordMenuOpen, setIsAddRecordMenuOpen] = useState(false);
+  const [showAllRecords, setShowAllRecords] = useState(false);
   const [recordSearch, setRecordSearch] = useState("");
   const [recordTypeFilter, setRecordTypeFilter] = useState("All");
-  const [recordFromDate, setRecordFromDate] = useState("");
-  const [recordToDate, setRecordToDate] = useState("");
-  const [recordDateBasis, setRecordDateBasis] = useState("service");
-  const [recordRecentDays, setRecordRecentDays] = useState("All");
-  const [recentReferenceTime] = useState(() => Date.now());
-  const isAdminPath = window.location.pathname.startsWith("/admin");
+  const [currentTimestamp] = useState(() => Date.now());
 
   const { data: medicalHistory = [], isLoading: isLoadingMedical } = useQuery({
     queryKey: ["medical", id],
@@ -237,11 +176,12 @@ export default function LivestockProfile() {
       recordDate:
         record.inseminationDate || record.dateOfAI || record.createdAt,
       recordTitle: `AI Attempt #${record.attemptNumber || 1}`,
-      recordSummary: [record.sireBreed, record.sireCode]
-        .filter(Boolean)
-        .join(" · ") || "Artificial insemination service",
+      recordSummary:
+        [record.sireBreed, record.sireCode].filter(Boolean).join(" · ") ||
+        "Artificial insemination service",
       recordStatus: record.status || record.outcome || "Completed",
-      recordedBy: record.technicianId?.name || record.approvedBy?.name,
+      recordedBy:
+        record.technicianId?.name || record.approvedBy?.name || "Not recorded",
       dateEntered: record.createdAt,
       originId: record._id,
       originLabel: "AI service request",
@@ -251,14 +191,14 @@ export default function LivestockProfile() {
       ...record,
       recordKind: "Health",
       recordDate: record.date || record.createdAt,
-      recordTitle: record.type || "Health Record",
+      recordTitle: record.type || "Check-up",
       recordSummary:
         record.details?.diagnosis ||
         record.details?.medicineName ||
         record.note ||
         "Routine health service",
       recordStatus: "Completed",
-      recordedBy: record.technicianId?.name,
+      recordedBy: record.technicianId?.name || "Not recorded",
       isHistoricalEntry: record.isHistoricalEntry,
       dateEntered: record.createdAt,
       originId: record.healthRequestId?._id || record.healthRequestId,
@@ -266,17 +206,24 @@ export default function LivestockProfile() {
     }));
 
     const pdEvents = (animal?.inseminations || [])
-      .filter(ins => ins.pregnancy)
-      .map(ins => {
+      .filter((ins) => ins.pregnancy)
+      .map((ins) => {
         const preg = ins.pregnancy;
         return {
           ...preg,
           recordKind: "Pregnancy Check",
-          recordDate: preg.pregnancyDiagnosis?.date || preg.diagnosisDate || preg.createdAt,
+          recordDate:
+            preg.pregnancyDiagnosis?.date ||
+            preg.diagnosisDate ||
+            preg.createdAt,
           recordTitle: "Pregnancy Diagnosis",
-          recordSummary: `Result: ${preg.pregnancyDiagnosis?.result || preg.result || preg.status || "Not recorded"}`,
-          recordStatus: preg.pregnancyDiagnosis?.result || preg.result || preg.status || "Completed",
-          recordedBy: preg.diagnosedBy || preg.technicianId?.name,
+          recordSummary: `Pregnancy result: ${preg.pregnancyDiagnosis?.result || preg.result || preg.status || "Not recorded"}`,
+          recordStatus:
+            preg.pregnancyDiagnosis?.result ||
+            preg.result ||
+            preg.status ||
+            "Completed",
+          recordedBy: preg.diagnosedBy || preg.technicianId?.name || "Not recorded",
           dateEntered: preg.createdAt,
         };
       });
@@ -286,9 +233,10 @@ export default function LivestockProfile() {
       recordKind: "Calving",
       recordDate: calving.date || calving.createdAt,
       recordTitle: "Calving Record",
-      recordSummary: `Calving ease: ${calving.calvingEase || "Not recorded"}. Calves: ${calving.calves?.length || calving.numberOfCalves || 0}`,
+      recordSummary: `Calving ease: ${calving.calvingEase || "Not recorded"}. Calves: ${calving.calves?.length ?? calving.numberOfCalves ?? "Not recorded"}`,
       recordStatus: "Completed",
-      recordedBy: calving.recordedBy || calving.technicianId?.name,
+      recordedBy:
+        calving.recordedBy || calving.technicianId?.name || "Not recorded",
       dateEntered: calving.createdAt,
     }));
 
@@ -302,28 +250,25 @@ export default function LivestockProfile() {
     return combinedRecords.filter((record) => {
       const matchesType =
         recordTypeFilter === "All" || record.recordKind === recordTypeFilter;
-      const selectedDate = recordDateBasis === "entry" ? record.dateEntered : record.recordDate;
-      const recordTime = new Date(selectedDate || 0).getTime();
-      const matchesFrom = !recordFromDate || recordTime >= new Date(`${recordFromDate}T00:00:00`).getTime();
-      const matchesTo = !recordToDate || recordTime <= new Date(`${recordToDate}T23:59:59`).getTime();
-      const recentCutoff = recordRecentDays === "All"
-        ? null
-        : recentReferenceTime - Number(recordRecentDays) * 24 * 60 * 60 * 1000;
-      const matchesRecent = recentCutoff === null || recordTime >= recentCutoff;
       const searchable = [
         record.recordTitle,
+        record.recordKind,
         record.recordSummary,
         record.recordStatus,
         record.recordedBy,
         record.sireCode,
         record.note,
+        record.type,
+        record.details?.diagnosis,
+        record.details?.medicineName,
+        fmtDate(record.recordDate),
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return matchesType && matchesFrom && matchesTo && matchesRecent && (!query || searchable.includes(query));
+      return matchesType && (!query || searchable.includes(query));
     });
-  }, [combinedRecords, recordSearch, recordTypeFilter, recordFromDate, recordToDate, recordDateBasis, recordRecentDays, recentReferenceTime]);
+  }, [combinedRecords, recordSearch, recordTypeFilter]);
 
   const isLoading = isLoadingAnimal || isLoadingMedical;
 
@@ -334,7 +279,7 @@ export default function LivestockProfile() {
       ["Species", animal.species || "Not recorded"],
       ["Breed", animal.breed || "Not recorded"],
       ["Sex", animal.gender || "Not recorded"],
-      ["Reproductive status", animal.reproductiveStatus || "Normal"],
+      ["Reproductive status", animal.reproductiveStatus || "Not recorded"],
       ["Owner", animal.farmerId?.name || "Not recorded"],
       ["Owner location", getOwnerLocation(animal.farmerId?.address)],
     ];
@@ -352,8 +297,14 @@ export default function LivestockProfile() {
       [],
       ["RECORD TYPE", "TITLE", "DATE", "STATUS", "SUMMARY", "RECORDED BY"],
       ...recordRows,
-    ].map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    ]
+      .map((row) =>
+        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
+    const url = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+    );
     const link = document.createElement("a");
     link.href = url;
     link.download = `BreedSmart_Animal_${animal.earTag || animal.animalId || "record"}_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -368,12 +319,19 @@ export default function LivestockProfile() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex-1 bg-base-200 p-4 md:p-6">
-        <div className="mx-auto max-w-7xl space-y-5">
-          <div className="skeleton h-14 w-full" />
-          <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <div className="space-y-4"><div className="skeleton h-72 w-full" /><div className="skeleton h-64 w-full" /></div>
-            <div className="space-y-4"><div className="skeleton h-14 w-full" /><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-28" />)}</div><div className="skeleton h-80 w-full" /></div>
+        <div className="mx-auto max-w-6xl space-y-6">
+          <div className="skeleton h-14 w-full rounded-xl" />
+          <div className="skeleton h-56 w-full rounded-3xl" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="skeleton h-28 w-full rounded-3xl" />
+            <div className="skeleton h-28 w-full rounded-3xl" />
+            <div className="skeleton h-28 w-full rounded-3xl" />
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="skeleton h-48 w-full rounded-3xl" />
+            <div className="skeleton h-48 w-full rounded-3xl" />
+          </div>
+          <div className="skeleton h-64 w-full rounded-3xl" />
         </div>
       </div>
     );
@@ -384,17 +342,38 @@ export default function LivestockProfile() {
   if (error || !animal) {
     return (
       <div className="flex min-h-screen flex-1 items-center justify-center bg-base-200 p-6">
-        <div role="alert" className="alert alert-error max-w-xl">
+        <div role="alert" className="alert alert-error max-w-xl shadow-lg">
           <AlertCircle size={20} />
-          <div><div className="font-bold">Animal profile could not be loaded.</div><div className="text-sm">{error?.response?.data?.message || error?.message || "The animal may no longer be available."}</div></div>
-          <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: ["animal", id] })} className="btn btn-sm">Retry</button>
-          <button type="button" onClick={() => navigate(-1)} className="btn btn-sm btn-ghost"><ChevronLeft size={14} /> Back</button>
+          <div>
+            <div className="font-bold">Animal profile could not be loaded.</div>
+            <div className="text-sm">
+              {error?.response?.data?.message ||
+                error?.message ||
+                "The animal may no longer be available."}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: ["animal", id] })
+            }
+            className="btn btn-sm"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="btn btn-sm btn-ghost"
+          >
+            <ChevronLeft size={14} /> Back
+          </button>
         </div>
       </div>
     );
   }
 
-  // ── Derived data ─────────────────────────────────────────────────────────
+  // ── Derived Data ─────────────────────────────────────────────────────────
 
   const latestInsemination =
     animal.inseminations
@@ -406,52 +385,54 @@ export default function LivestockProfile() {
   const activeWithdrawalRecord = (medicalHistory || []).find((record) => {
     if (!record.details?.withdrawalEndDate) return false;
     const endDate = new Date(record.details.withdrawalEndDate);
-    return endDate > new Date();
+    return endDate.getTime() > currentTimestamp;
   });
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  const daysAgoInsemination = latestInsemination
+    ? Math.floor(
+        (currentTimestamp - new Date(latestInsemination.inseminationDate).getTime()) /
+          (1000 * 60 * 60 * 24),
+      )
+    : null;
+
+  const displayedRecords =
+    showAllRecords || recordSearch.trim().length > 0
+      ? visibleRecords
+      : visibleRecords.slice(0, 5);
 
   return (
-    <div className="min-h-screen flex-1 overflow-y-auto bg-base-200 text-base-content">
-      {/* ── Top header ── */}
-      <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-base-300 bg-base-100/95 px-4 backdrop-blur sm:px-8">
+    <div className="min-h-screen flex-1 overflow-y-auto bg-base-200 text-base-content font-sans">
+      {/* ── Top Header Bar ── */}
+      <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-base-300 bg-base-100/95 px-4 sm:px-8 backdrop-blur-md">
         <div className="flex items-center gap-3 min-w-0">
           <button
+            type="button"
             onClick={() => navigate(-1)}
-            className="btn btn-ghost btn-sm btn-square text-base-content/60"
-            aria-label="Back to animal registry"
+            className="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-base-content"
+            aria-label="Back to animals list"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={18} />
           </button>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="flex items-center gap-1.5 truncate text-base font-bold text-base-content">
-                <Tag size={14} className="text-base-content/45 shrink-0" />
-                Animal #{animal.earTag || animal.animalId}
-              </h1>
-              <span
-                className={`badge badge-sm badge-soft ${statusChip(
-                  animal.reproductiveStatus,
-                )}`}
-              >
-                {animal.reproductiveStatus || "Normal"}
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs text-base-content/60">
-              Animal record · ID ending 
-              {animal._id?.slice(-8).toUpperCase()}
-            </p>
+            <h1 className="flex items-center gap-2 text-base font-extrabold text-base-content truncate">
+              Animal #{animal.earTag || animal.animalId || "Not recorded"}
+            </h1>
           </div>
         </div>
-        <button type="button" onClick={handleExportCSV} className="btn btn-sm">
-          <Download size={12} /> Export
+        <button
+          type="button"
+          onClick={handleExportCSV}
+          className="btn btn-sm btn-ghost hover:bg-base-200 border border-base-300 rounded-xl gap-1.5 font-bold"
+        >
+          <Download size={14} /> Export
         </button>
       </header>
 
-      {/* ── Page body ── */}
-      <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 lg:p-8">
+      {/* ── Main Layout Body ── */}
+      <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 w-full">
+        {/* Medication Withdrawal Warning Alert if active */}
         {activeWithdrawalRecord && (
-          <div role="alert" className="alert alert-error mb-6 items-start">
+          <div role="alert" className="alert alert-error rounded-2xl shadow-sm items-start">
             <AlertCircle className="shrink-0 mt-0.5" size={18} />
             <div className="flex-1 min-w-0">
               <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -460,7 +441,7 @@ export default function LivestockProfile() {
               <p className="mt-1 text-xs leading-relaxed">
                 Meat and milk from this animal are unsafe for consumption or sale until{" "}
                 <span className="font-bold">
-                  {fmtDate(activeWithdrawalRecord.details?.withdrawalEndDate, "long")}
+                  {fmtDate(activeWithdrawalRecord.details?.withdrawalEndDate)}
                 </span>{" "}
                 due to recent treatment with{" "}
                 <span className="font-bold">
@@ -470,834 +451,525 @@ export default function LivestockProfile() {
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
-          {/* ── Left sidebar ── */}
-          <aside className="space-y-4">
-            {/* Identity card */}
-            <div className="card card-border overflow-hidden bg-base-100 shadow-sm">
-              {/* Photo */}
-              <div className="h-44 bg-base-200 relative">
-                {animal.imageUrl ? (
-                  <img
-                    src={animal.imageUrl}
-                    alt={`Animal ${animal.earTag || animal.animalId}`}
-                    width="280"
-                    height="176"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-base-200 text-primary/45" role="img" aria-label={`No photo available for animal ${animal.earTag || animal.animalId}`}>
-                    <Beef size={56} aria-hidden="true" />
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-linear-to-t from-black/30 to-transparent pointer-events-none" />
-                {/* Floating tag */}
-                <div className="absolute bottom-3 left-3 flex gap-1.5">
-                  <span className="text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-sm">
-                    {animal.species || "Bovine"}
-                  </span>
-                  <span className="text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-sm">
-                    {animal.breed || "Crossbreed"}
-                  </span>
+
+        {/* ── SECTION 1: ProfileHeader ── */}
+        <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm flex flex-col lg:flex-row items-start lg:items-center gap-6">
+          {/* AnimalImage */}
+          <div className="w-full lg:w-72 h-52 lg:h-48 rounded-2xl overflow-hidden shrink-0 bg-base-200 relative border border-base-300">
+            <AnimalImageFallback
+              imageUrl={animal.imageUrl || animal.photoUrl}
+              tag={animal.earTag || animal.animalId || "Not recorded"}
+              className="w-full h-full object-cover"
+              iconSize={48}
+            />
+          </div>
+
+          {/* AnimalInfo & StatusBadge */}
+          <div className="flex-1 min-w-0 space-y-4 w-full">
+            {/* Title + StatusBadge */}
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-2xl font-black text-base-content tracking-tight">
+                {animal.name || animal.earTag || "Unnamed animal"}
+              </h2>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-success/20 bg-success/15 text-xs font-extrabold text-success">
+                <CheckCircle2 size={14} />
+                {animal.reproductiveStatus || "Not recorded"}
+              </span>
+            </div>
+
+            {/* Metadata Info Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8 pt-1">
+              {/* Ear Tag */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
+                  <Tag size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-base-content/60 font-medium">Ear Tag</p>
+                  <p className="text-sm font-bold text-base-content truncate">
+                    {animal.earTag || animal.animalId || "Not recorded"}
+                  </p>
                 </div>
               </div>
 
-              {/* Owner block */}
-              <div className="p-4 space-y-3">
-                <p className="text-[10px] font-semibold text-base-content/60 uppercase tracking-wider">
-                  Ownership details
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <User size={15} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-base-content">
-                      {animal.farmerId?.name || "Unknown farmer"}
-                    </p>
-                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-base-content/60">
-                      <MapPin size={10} />
-                      {getOwnerLocation(animal.farmerId?.address)}
-                    </p>
-                  </div>
+              {/* Age */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
+                  <Calendar size={16} />
                 </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-base-content/60 font-medium">Age</p>
+                  <p className="text-sm font-bold text-base-content truncate">
+                    {formatAge(animal.dateOfBirth || animal.birthDate)}
+                  </p>
+                </div>
+              </div>
 
-                {animal.farmerId?.phoneNumber && (
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <Phone size={12} className="text-base-content/60 shrink-0" />
-                    <a
-                      href={`tel:${animal.farmerId.phoneNumber}`}
-                      className="rounded-sm font-mono font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
-                    >
-                      {animal.farmerId.phoneNumber}
-                    </a>
-                  </div>
-                )}
+              {/* Species */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
+                  <Beef size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-base-content/60 font-medium">Species</p>
+                  <p className="text-sm font-bold text-base-content truncate">
+                    {animal.species || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Owner */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
+                  <User size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-base-content/60 font-medium">Owner</p>
+                  <p className="text-sm font-bold text-base-content truncate">
+                    {animal.farmerId?.name || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Breed */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
+                  <Dna size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-base-content/60 font-medium">Breed</p>
+                  <p className="text-sm font-bold text-base-content truncate">
+                    {animal.breed || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
+                  <MapPin size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-base-content/60 font-medium">Location</p>
+                  <p className="text-sm font-bold text-base-content truncate">
+                    {getOwnerLocation(animal.farmerId?.address)}
+                  </p>
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Quick vitals */}
-            <div className="card card-border space-y-3 bg-base-100 p-4 shadow-sm">
-              <p className="text-[10px] font-semibold text-base-content/60 uppercase tracking-wider">
-                Quick vitals
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <InfoCell label="Ear tag" value={animal.earTag} mono />
-                <InfoCell label="Gender" value={animal.gender || "Female"} />
-                <InfoCell label="Age" value={formatAge(animal.birthDate)} />
-                <InfoCell label="Birth Date" value={fmtDate(animal.birthDate, "medium")} />
-                <InfoCell label="Color" value={animal.color || "—"} />
-                <InfoCell
-                  label="Repro. status"
-                  value={animal.reproductiveStatus || "Normal"}
-                  accent
-                />
-              </div>
-            </div>
-          </aside>
+          {/* ActionButtons */}
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 justify-center w-full lg:w-48 lg:ml-auto">
+            {/* Edit Profile */}
+            <button
+              type="button"
+              onClick={() => setIsRegisterLivestockOpen(true)}
+              className="btn btn-primary font-bold rounded-xl gap-2 px-5 py-2.5 w-full shadow-sm"
+            >
+              <Edit3 size={15} /> Edit Profile
+            </button>
 
-          {/* ── Right panel ── */}
-          <div className="space-y-4">
-            {/* Tab bar */}
-            <div role="tablist" aria-label="Livestock profile sections" className="tabs tabs-box tabs-sm flex max-w-full flex-wrap gap-1 border border-base-300 bg-base-100 p-1 shadow-sm">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`tab h-auto min-h-9 flex-1 gap-1.5 whitespace-nowrap font-semibold ${
-                    activeTab === tab.id
-                      ? "tab-active bg-primary text-primary-content"
-                      : "text-base-content/65 hover:bg-base-200 hover:text-base-content"
-                  }`}
+            {!isAdmin && (
+              <>
+            {/* Add Record Dropdown */}
+            <div
+              className={`dropdown dropdown-end w-full ${isAddRecordMenuOpen ? "dropdown-open" : ""}`}
+            >
+              <button
+                type="button"
+                tabIndex={0}
+                aria-expanded={isAddRecordMenuOpen}
+                onClick={() => setIsAddRecordMenuOpen((isOpen) => !isOpen)}
+                className="btn btn-outline btn-primary font-bold rounded-xl gap-2 px-5 py-2.5 w-full"
+              >
+                <PlusCircle size={15} /> Add Record
+              </button>
+              {isAddRecordMenuOpen && (
+                <ul
+                  tabIndex={0}
+                  className="dropdown-content z-30 menu p-2 shadow-xl bg-base-100 rounded-2xl w-56 mt-2 border border-base-300 text-base-content"
                 >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAIModalOpen(true);
+                      setIsAddRecordMenuOpen(false);
+                    }}
+                    className="text-xs font-bold py-2.5 flex items-center gap-2"
+                  >
+                    <Syringe size={15} className="text-info" /> Artificial Insemination (AI)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddMedicalModalOpen(true);
+                      setIsAddRecordMenuOpen(false);
+                    }}
+                    className="text-xs font-bold py-2.5 flex items-center gap-2"
+                  >
+                    <Stethoscope size={15} className="text-error" /> Health / Medical Log
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPDModalOpen(true);
+                      setIsAddRecordMenuOpen(false);
+                    }}
+                    className="text-xs font-bold py-2.5 flex items-center gap-2"
+                  >
+                    <ShieldCheck size={15} className="text-success" /> Pregnancy Diagnosis (PD)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCalvingModalOpen(true);
+                      setIsAddRecordMenuOpen(false);
+                    }}
+                    className="text-xs font-bold py-2.5 flex items-center gap-2"
+                  >
+                    <Heart size={15} className="text-secondary" /> Calving Record
+                  </button>
+                </li>
+                </ul>
+              )}
             </div>
-
-            {/* ── Tab: Overview ── */}
-            {activeTab === "dashboard" && (
-              <div className="space-y-4 animate-in fade-in duration-150">
-                {/* Metric strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <MetricCard
-                    icon={<Heart size={11} />}
-                    label="Repro. status"
-                    value={animal.reproductiveStatus || "Normal"}
-                    sub={
-                      latestInsemination
-                        ? `Attempt #${latestInsemination.attemptNumber}`
-                        : "No records"
-                    }
-                    accent
-                  />
-                  <MetricCard
-                    icon={<Calendar size={11} />}
-                    label="Last insemination"
-                    value={
-                      latestInsemination
-                        ? fmtDate(latestInsemination.inseminationDate, "short")
-                        : "—"
-                    }
-                    sub={latestInsemination?.sireBreed || "—"}
-                  />
-                  <MetricCard
-                    icon={<ShieldCheck size={11} />}
-                    label="Medical records"
-                    value={medicalHistory.length}
-                    sub="Total logged"
-                  />
-                </div>
-
-                {/* Breeding timeline */}
-                <div className="card card-border bg-base-100 p-5 shadow-sm">
-                  <h3 className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                    <Syringe size={12} /> Breeding timeline
-                  </h3>
-
-                  {!animal.inseminations?.length ? (
-                    <p className="py-6 text-center text-sm italic text-base-content/60">
-                      No insemination records logged yet.
-                    </p>
-                  ) : (
-                    <div className="space-y-0">
-                      {animal.inseminations
-                        .slice()
-                        .sort(
-                          (a, b) =>
-                            new Date(b.inseminationDate) -
-                            new Date(a.inseminationDate),
-                        )
-                        .map((ins, i, arr) => (
-                          <button
-                            type="button"
-                            key={ins._id}
-                            className="group flex w-full gap-3 rounded-box text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
-                            onClick={() => {
-                              setSelectedActivity({
-                                ...ins,
-                                type: "Insemination",
-                                title: `AI Service — ${ins.sireBreed || "N/A"}`,
-                                description:
-                                  ins.technicianNote ||
-                                  "Artificial insemination recorded.",
-                                date: ins.inseminationDate,
-                                status: ins.status || "Done",
-                                iconType: "Syringe",
-                                details: {
-                                  sireBreed: ins.sireBreed,
-                                  sireCode: ins.sireCode,
-                                  attemptNumber: ins.attemptNumber,
-                                },
-                              });
-                            }}
-                          >
-                            {/* Timeline spine */}
-                            <div className="flex flex-col items-center w-5 shrink-0 pt-1">
-                              <div
-                                className={`w-2.5 h-2.5 rounded-full border-2 shrink-0 ${
-                                  i === 0
-                                    ? "border-primary bg-primary"
-                                    : "border-base-300 bg-base-100"
-                                }`}
-                              />
-                              {i < arr.length - 1 && (
-                                <div className="my-1 w-px flex-1 bg-base-300" />
-                              )}
-                            </div>
-
-                            {/* Event card */}
-                            <div
-                              className={`mb-3 flex-1 rounded-box border p-3 transition-colors group-hover:border-primary/40 ${
-                                i === 0
-                                  ? "border-primary/20 bg-primary/10"
-                                  : "border-base-300 bg-base-200"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <p className="text-xs font-semibold text-base-content">
-                                    Attempt #{ins.attemptNumber} —{" "}
-                                    {ins.sireBreed || "Crossbreed"}
-                                  </p>
-                                  <p className="mt-0.5 font-mono text-[11px] text-base-content/60">
-                                    {ins.sireCode || "—"}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <span
-                                    className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).serviceProgress.badgeClass}`}
-                                    aria-label={`Service progress: ${getBreedingAttemptPresentation(ins).serviceProgress.label}`}
-                                  >
-                                    {getBreedingAttemptPresentation(ins).serviceProgress.label}
-                                  </span>
-                                  <span
-                                    className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).reproductiveOutcome.badgeClass}`}
-                                    aria-label={`Reproductive outcome: ${getBreedingAttemptPresentation(ins).reproductiveOutcome.label}`}
-                                  >
-                                    {getBreedingAttemptPresentation(ins).reproductiveOutcome.label}
-                                  </span>
-                                </div>
-                              </div>
-                              <p className="mt-2 text-[11px] text-base-content/60">
-                                {fmtDate(ins.inseminationDate)}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Notifications */}
-                <div className="card card-border space-y-3 bg-base-100 p-5 shadow-sm">
-                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                    <AlertCircle size={12} /> Active notifications
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {animal.reproductiveStatus === "Pregnant" && (
-                      <div className="alert alert-success items-start py-3 text-xs">
-                        <CheckCircle2
-                          size={14}
-                          className="shrink-0 mt-0.5"
-                        />
-                        <p className="text-xs font-medium leading-relaxed">
-                          Confirmed pregnant. Switch to high-protein feed and
-                          schedule prenatal check.
-                        </p>
-                      </div>
-                    )}
-                    <div className="alert alert-info items-start py-3 text-xs">
-                      <ShieldCheck
-                        size={14}
-                        className="shrink-0 mt-0.5"
-                      />
-                      <p className="text-xs font-medium leading-relaxed">
-                        Vaccination schedule is current. Local records up to
-                        date.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Tab: Animal Records ── */}
-            {activeTab === "records" && (
-              <div className="card card-border overflow-hidden bg-base-100 shadow-sm animate-in fade-in duration-150">
-                <div className="space-y-4 border-b border-base-300 p-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-base-content">
-                        Complete Animal History
-                      </h3>
-                      <p className="mt-1 text-[11px] text-base-content/60">
-                        Health and breeding records for this animal, newest first.
-                      </p>
-                    </div>
-                    {!isAdminPath && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setIsAddRecordDropdownOpen(!isAddRecordDropdownOpen)}
-                          className="btn btn-primary btn-sm"
-                          aria-haspopup="menu"
-                          aria-expanded={isAddRecordDropdownOpen}
-                        >
-                          <Plus size={14} /> Add Record
-                        </button>
-                        {isAddRecordDropdownOpen && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-40" 
-                              onClick={() => setIsAddRecordDropdownOpen(false)} 
-                            />
-                            <div role="menu" className="menu menu-sm absolute right-0 z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
-                              <button
-                                onClick={() => {
-                                  setIsAddRecordDropdownOpen(false);
-                                  setIsAIModalOpen(true);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              >
-                                <Syringe size={14} className="text-info" />
-                                Artificial Insemination (AI)
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setIsAddRecordDropdownOpen(false);
-                                  setIsPDModalOpen(true);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              >
-                                <ShieldCheck size={14} className="text-success" />
-                                Pregnancy Diagnosis (PD)
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setIsAddRecordDropdownOpen(false);
-                                  setIsCalvingModalOpen(true);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              >
-                                <Heart size={14} className="text-secondary" />
-                                Calving Record
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setIsAddRecordDropdownOpen(false);
-                                  setMedicalInitialType("Check-up");
-                                  setIsAddMedicalModalOpen(true);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              >
-                                <Stethoscope size={14} className="text-error" />
-                                Health / Medical Log
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setIsAddRecordDropdownOpen(false);
-                                  setMedicalInitialType("General Note");
-                                  setIsAddMedicalModalOpen(true);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              >
-                                <FileText size={14} className="text-base-content/60" />
-                                General Note
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <label className="relative flex-1">
-                      <span className="sr-only">Search animal records</span>
-                      <Search
-                        size={14}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50"
-                      />
-                      <input
-                        value={recordSearch}
-                        onChange={(event) => setRecordSearch(event.target.value)}
-                        placeholder="Search diagnosis, medicine, sire code, technician, or notes…"
-                        className="input input-sm h-10 w-full pl-9 text-xs placeholder:text-base-content/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      />
-                    </label>
-                    <label>
-                      <span className="sr-only">Filter animal records by type</span>
-                      <select
-                        value={recordTypeFilter}
-                        onChange={(event) => setRecordTypeFilter(event.target.value)}
-                        className="select select-sm h-10 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      >
-                        <option value="All">All record types</option>
-                        <option value="Health">Health records</option>
-                        <option value="AI">AI records</option>
-                        <option value="Pregnancy Check">Pregnancy checks</option>
-                        <option value="Calving">Calving events</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="sr-only">Choose which record date to filter</span>
-                      <select
-                        value={recordDateBasis}
-                        onChange={(event) => setRecordDateBasis(event.target.value)}
-                        className="select select-sm h-10 w-full text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:w-auto"
-                      >
-                        <option value="service">Service date</option>
-                        <option value="entry">Entry date</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span className="sr-only">Show recent animal records</span>
-                      <select
-                        value={recordRecentDays}
-                        onChange={(event) => setRecordRecentDays(event.target.value)}
-                        className="select select-sm h-10 w-full text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:w-auto"
-                      >
-                        <option value="All">All activity</option>
-                        <option value="7">Last 7 days</option>
-                        <option value="30">Last 30 days</option>
-                        <option value="90">Last 90 days</option>
-                      </select>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold text-base-content/60">From</span>
-                      <input
-                        type="date"
-                        value={recordFromDate}
-                        max={recordToDate || new Date().toISOString().slice(0, 10)}
-                        onChange={(event) => setRecordFromDate(event.target.value)}
-                        className="input input-sm h-10 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      />
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold text-base-content/60">To</span>
-                      <input
-                        type="date"
-                        value={recordToDate}
-                        min={recordFromDate || undefined}
-                        max={new Date().toISOString().slice(0, 10)}
-                        onChange={(event) => setRecordToDate(event.target.value)}
-                        className="input input-sm h-10 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                {visibleRecords.length === 0 ? (
-                  <div className="px-6 py-14 text-center">
-                    <FileText size={28} className="mx-auto mb-3 text-base-content/35" />
-                    <p className="text-sm font-semibold text-base-content/70">
-                      {combinedRecords.length === 0
-                        ? "No animal records have been entered yet."
-                        : "No records match your search or filter."}
-                    </p>
-                    <p className="mt-1 text-xs text-base-content/60">
-                      {combinedRecords.length === 0
-                        ? "Add a health record or record a breeding service to begin the history."
-                        : "Try a different term or select all record types."}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-base-300">
-                    {visibleRecords.map((record) => {
-                      const meta = getRecordMeta(record.recordKind);
-                      return (
-                        <button
-                          type="button"
-                          key={`${record.recordKind}-${record._id}`}
-                          onClick={() => {
-                            const kind = record.recordKind;
-                            let iconType = "FileText";
-                            let details = {};
-                            if (kind === "AI") {
-                              iconType = "Syringe";
-                              details = {
-                                sireBreed: record.sireBreed,
-                                sireCode: record.sireCode,
-                                attemptNumber: record.attemptNumber,
-                              };
-                            } else if (kind === "Health") {
-                              iconType = "Stethoscope";
-                              details = {
-                                diagnosis: record.details?.diagnosis,
-                                medicine: record.details?.medicineName,
-                                requestType: record.type,
-                              };
-                            } else if (kind === "Pregnancy Check") {
-                              iconType = "ShieldCheck";
-                              details = {
-                                result: record.result || record.status,
-                                method: record.method,
-                              };
-                            } else if (kind === "Calving") {
-                              iconType = "Heart";
-                              details = {
-                                status: record.status,
-                                outcome: record.outcome,
-                                calvesCount: record.calves?.length || 0,
-                              };
-                            }
-                            setSelectedActivity({
-                              ...record,
-                              type: kind,
-                              title: record.recordTitle,
-                              description: record.recordSummary,
-                              date: record.recordDate,
-                              status: record.recordStatus,
-                              iconType,
-                              technicianName: record.recordedBy,
-                              details,
-                            });
-                          }}
-                          className="flex w-full items-center gap-4 border-none px-5 py-4 text-left transition-colors hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
-                        >
-                          <span
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.bg}`}
-                          >
-                            {meta.icon}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-base-content">
-                                {record.recordTitle}
-                              </span>
-                              <span className="badge badge-ghost badge-sm text-[9px] font-bold uppercase tracking-wide">
-                                {meta.label}
-                              </span>
-                              {record.isHistoricalEntry && (
-                                <span className="badge badge-warning badge-soft badge-sm text-[9px] font-bold uppercase tracking-wide">
-                                  Past Record
-                                </span>
-                              )}
-                            </span>
-                            <span className="mt-1 block truncate text-xs text-base-content/70">
-                              {record.recordSummary}
-                            </span>
-                            <span className="mt-1 block text-[10px] text-base-content/60">
-                              Service date: {fmtDate(record.recordDate)}
-                              {record.recordedBy ? `, recorded by ${record.recordedBy}` : ""}
-                            </span>
-                            {record.dateEntered && (
-                              <span className="mt-0.5 block text-[10px] text-warning">
-                                Entered in BreedSmart: {fmtDate(record.dateEntered)}
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-right shrink-0 hidden sm:block">
-                            <span className="block text-[10px] font-semibold text-primary">
-                              {record.recordStatus}
-                            </span>
-                            <ChevronRight size={14} className="ml-auto mt-1 text-base-content/35" />
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── Tab: Reproduction ── */}
-            {activeTab === "reproduction" && (
-              <div className="card card-border overflow-hidden bg-base-100 shadow-sm animate-in fade-in duration-150">
-                <div className="border-b border-base-300 px-5 py-4">
-                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                    <Syringe size={12} /> Historical breeding records
-                  </h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="table table-sm w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-base-300 bg-base-200 text-[10px] font-semibold uppercase tracking-wider text-base-content/60">
-                        <th className="px-5 py-3">Attempt</th>
-                        <th className="px-4 py-3">Sire lineage</th>
-                        <th className="px-4 py-3">Service progress</th>
-                        <th className="px-4 py-3">Reproductive outcome</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-base-300">
-                      {!animal.inseminations?.length ? (
-                        <tr>
-                          <td
-                            colSpan={5}
-                            className="px-5 py-10 text-center italic text-base-content/60"
-                          >
-                            No breeding records logged yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        animal.inseminations.map((ins) => (
-                          <tr
-                            key={ins._id}
-                            className="transition-colors hover:bg-base-200/70"
-                          >
-                            <td className="px-5 py-3.5">
-                              <p className="font-semibold text-base-content">
-                                Attempt #{ins.attemptNumber}
-                              </p>
-                              <p className="mt-0.5 text-[10px] text-base-content/60">
-                                {fmtDate(ins.inseminationDate)}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <p className="font-semibold text-base-content/80">
-                                {ins.sireBreed || "Crossbreed"}
-                              </p>
-                              <p className="mt-0.5 font-mono text-[10px] text-primary">
-                                {ins.sireCode || "—"}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <span
-                                className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).serviceProgress.badgeClass}`}
-                              >
-                                {getBreedingAttemptPresentation(ins).serviceProgress.label}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <span
-                                className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).reproductiveOutcome.badgeClass}`}
-                              >
-                                {getBreedingAttemptPresentation(ins).reproductiveOutcome.label}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5 text-right">
-                              <button
-                                onClick={() => {
-                                  if (isAdminPath) {
-                                    setSelectedActivity({
-                                      ...ins,
-                                      type: "Insemination",
-                                      title: `AI Service — ${ins.sireBreed || "N/A"}`,
-                                      description: ins.technicianNote || "Artificial insemination recorded.",
-                                      date: ins.inseminationDate,
-                                      status: ins.status || "Done",
-                                      iconType: "Syringe",
-                                      technicianName: ins.technicianId?.name,
-                                      details: {
-                                        sireBreed: ins.sireBreed,
-                                        sireCode: ins.sireCode,
-                                        attemptNumber: ins.attemptNumber,
-                                      },
-                                    });
-                                  } else {
-                                    setSelectedInsemination(ins);
-                                  }
-                                }}
-                                type="button"
-                                aria-label={`Open insemination attempt ${ins.attemptNumber}`}
-                                className="btn btn-ghost btn-xs btn-square text-base-content/60"
-                              >
-                                <ChevronRight size={13} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* ── Tab: Clinical ── */}
-            {activeTab === "clinical" && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-in fade-in duration-150">
-                {/* Treatment table */}
-                <div className="card card-border overflow-hidden bg-base-100 shadow-sm xl:col-span-2">
-                  <div className="flex items-center justify-between border-b border-base-300 px-5 py-4">
-                    <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                      <Stethoscope size={12} /> Treatment ledger
-                    </h3>
-                    {!isAdminPath && (
-                      <button
-                        onClick={() => setIsAddMedicalModalOpen(true)}
-                        type="button"
-                        className="btn btn-primary btn-xs text-[10px] font-bold"
-                      >
-                        + Add Record
-                      </button>
-                    )}
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="table table-sm w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-base-300 bg-base-200 text-[10px] font-semibold uppercase tracking-wider text-base-content/60">
-                          <th className="px-5 py-3">Date</th>
-                          <th className="px-4 py-3">Type</th>
-                          <th className="px-4 py-3">Diagnosis / medicine</th>
-                          <th className="px-4 py-3 text-right">Officer</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-base-300">
-                        {!medicalHistory.length ? (
-                          <tr>
-                            <td
-                              colSpan={4}
-                              className="px-5 py-10 text-center italic text-base-content/60"
-                            >
-                              No clinical records found.
-                            </td>
-                          </tr>
-                        ) : (
-                          medicalHistory.map((rec) => (
-                            <tr
-                              key={rec._id}
-                              onClick={() =>
-                                setSelectedActivity({
-                                  ...rec,
-                                  type: "Health",
-                                  title: `Medical: ${rec.type?.toUpperCase()}`,
-                                  description:
-                                    rec.note ||
-                                    rec.details?.diagnosis ||
-                                    "Procedure logged.",
-                                  date: rec.date,
-                                  status: "Done",
-                                  iconType: "HeartPulse",
-                                  technicianName: rec.technicianId?.name,
-                                  details: {
-                                    diagnosis: rec.details?.diagnosis,
-                                    medicine: rec.details?.medicineName,
-                                    requestType: rec.type,
-                                  },
-                                })
-                              }
-                              className="cursor-pointer transition-colors hover:bg-base-200/70 focus-within:bg-base-200/70"
-                            >
-                              <td className="px-5 py-3.5">
-                                <p className="font-semibold text-base-content">
-                                  {fmtDate(rec.date, "short")}
-                                </p>
-                                <p className="mt-0.5 text-[10px] text-base-content/60">
-                                  {fmtTime(rec.date)}
-                                </p>
-                              </td>
-                              <td className="px-4 py-3.5">
-                                <span className="badge badge-success badge-soft badge-sm text-[10px] font-bold">
-                                  {rec.type || "Checkup"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3.5">
-                                <p className="max-w-[180px] truncate font-semibold text-base-content/80">
-                                  {rec.details?.diagnosis ||
-                                    rec.details?.medicineName ||
-                                    "Routine treatment"}
-                                </p>
-                              </td>
-                              <td className="px-4 py-3.5 text-right text-base-content/70">
-                                {rec.technicianId?.name || "System"}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Tab: Bio ── */}
-            {activeTab === "bio" && (
-              <div className="card card-border bg-base-100 p-5 shadow-sm animate-in fade-in duration-150">
-                <h3 className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                  <Info size={12} /> Technical biological record
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <InfoCell
-                    label="Registry gender"
-                    value={animal.gender || "Female"}
-                  />
-                  <InfoCell
-                    label="Species"
-                    value={animal.species || "Bovine"}
-                  />
-                  <InfoCell
-                    label="Breed"
-                    value={animal.breed || "Crossbreed"}
-                  />
-                  <InfoCell label="Coat color" value={animal.color || "—"} />
-                  <InfoCell label="Ear tag ID" value={animal.earTag} mono />
-                  <InfoCell
-                    label="Age"
-                    value={formatAge(animal.birthDate)}
-                  />
-                  <InfoCell
-                    label="Birth Date"
-                    value={fmtDate(animal.birthDate, "medium")}
-                  />
-                  <InfoCell
-                    label="Ownership"
-                    value={animal.farmerId?.name || "—"}
-                  />
-                  <InfoCell
-                    label="Barangay"
-                    value={getOwnerLocation(animal.farmerId?.address)}
-                  />
-                  <InfoCell
-                    label="Repro. status"
-                    value={animal.reproductiveStatus || "Normal"}
-                    accent
-                  />
-                  <InfoCell
-                    label="UID"
-                    value={animal._id?.slice(-8).toUpperCase()}
-                    mono
-                  />
-                </div>
-              </div>
+              </>
             )}
           </div>
         </div>
+
+        {/* ── SECTION 2: SummaryCards ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* LastServiceCard */}
+          <div className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center gap-4">
+            <div className="size-14 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
+              <Calendar size={22} className="stroke-[2.2]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
+                Last AI Service
+              </p>
+              <p className="text-lg font-black text-base-content truncate mt-0.5">
+                {latestInsemination
+                  ? fmtDate(latestInsemination.inseminationDate)
+                  : "Not recorded"}
+              </p>
+              <p className="text-xs font-medium text-base-content/60">
+                {daysAgoInsemination != null
+                  ? `${daysAgoInsemination} days ago`
+                  : "No AI service date recorded"}
+              </p>
+            </div>
+          </div>
+
+          {/* PregnancyCard with next page navigation arrow */}
+          <div
+            onClick={() => {
+              if (!isAdmin) navigate("/technician/ledger");
+            }}
+            className={`bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center justify-between gap-4 group ${
+              isAdmin
+                ? ""
+                : "cursor-pointer hover:border-primary/60 hover:shadow-md transition-all"
+            }`}
+            role={isAdmin ? undefined : "button"}
+            tabIndex={isAdmin ? undefined : 0}
+            onKeyDown={(event) => {
+              if (
+                !isAdmin &&
+                (event.key === "Enter" || event.key === " ")
+              ) {
+                navigate("/technician/ledger");
+              }
+            }}
+          >
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="size-14 rounded-full bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
+                <Baby size={22} className="stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
+                  Pregnancy Stage
+                </p>
+                <p className="text-lg font-black text-base-content truncate mt-0.5">
+                  {animal.reproductiveStatus || "Not recorded"}
+                </p>
+                <p className="text-xs font-medium text-base-content/60">
+                  {latestInsemination?.pregnancy?.targetCalvingDate
+                    ? `Expected ${fmtDate(latestInsemination.pregnancy.targetCalvingDate)}`
+                    : "Pregnancy stage not recorded"}
+                </p>
+              </div>
+            </div>
+            <div className="size-9 rounded-full bg-base-200 text-base-content/60 group-hover:bg-primary group-hover:text-primary-content flex items-center justify-center transition-colors shrink-0">
+              <ChevronRight size={18} />
+            </div>
+          </div>
+
+          {/* HealthCard */}
+          <div className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center gap-4">
+            <div className="size-14 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
+              <HeartPulse size={22} className="stroke-[2.2]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
+                Health Status
+              </p>
+              <p className="text-lg font-black text-base-content truncate mt-0.5">
+                {activeWithdrawalRecord
+                  ? "Under Withdrawal"
+                  : animal.healthStatus || "Not recorded"}
+              </p>
+              <p className="text-xs font-medium text-base-content/60">
+                {activeWithdrawalRecord
+                  ? `Active until ${fmtDate(activeWithdrawalRecord.details.withdrawalEndDate)}`
+                  : "No active withdrawal warning"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── SECTION 3: DetailsGrid ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* AnimalDetailsCard */}
+          <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 text-primary font-extrabold text-base border-b border-base-300 pb-3">
+              <Beef size={18} />
+              <span>Animal Details</span>
+            </div>
+
+            <div className="space-y-3.5 text-sm">
+              <div className="flex justify-between items-center py-1">
+                <span className="text-base-content/60 font-medium">Date of Birth</span>
+                <span className="font-bold text-base-content">
+                  {fmtDate(animal.dateOfBirth || animal.birthDate)}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-t border-base-200">
+                <span className="text-base-content/60 font-medium">Color / Markings</span>
+                <span className="font-bold text-base-content">
+                  {animal.colorMarkings || animal.color || "Not recorded"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-t border-base-200">
+                <span className="text-base-content/60 font-medium">Weight</span>
+                <span className="font-bold text-base-content">
+                  {animal.weight ? `${animal.weight} kg` : "Not recorded"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-t border-base-200">
+                <span className="text-base-content/60 font-medium">Milk Production</span>
+                <span className="font-bold text-base-content">
+                  {animal.milkProduction
+                    ? `${animal.milkProduction} L / day`
+                    : "Not recorded"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* OwnerInformationCard */}
+          <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 text-primary font-extrabold text-base border-b border-base-300 pb-3">
+              <User size={18} />
+              <span>Owner Information</span>
+            </div>
+
+            <div className="space-y-3.5 text-sm">
+              <div className="flex justify-between items-center py-1">
+                <span className="text-base-content/60 font-medium">Name</span>
+                <span className="font-bold text-base-content">
+                  {animal.farmerId?.name || "Not recorded"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-t border-base-200">
+                <span className="text-base-content/60 font-medium">Contact Number</span>
+                <span className="font-bold text-base-content font-mono">
+                  {animal.farmerId?.phoneNumber ||
+                    animal.farmerId?.phone ||
+                    "Not recorded"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-start py-1 border-t border-base-200 gap-4">
+                <span className="text-base-content/60 font-medium shrink-0">Address</span>
+                <span className="font-bold text-base-content text-right leading-snug">
+                  {getOwnerLocation(animal.farmerId?.address)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── SECTION 4: RecentRecordsTable ── */}
+        <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-base-300 pb-4">
+            <div
+              role="tablist"
+              aria-label="Livestock profile sections"
+              className="tabs tabs-border"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected="true"
+                className="tab tab-active gap-2 font-extrabold text-primary"
+              >
+                <ClipboardList size={18} />
+                Animal Records
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search
+                  size={15}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50 z-10"
+                />
+                <input
+                  type="text"
+                  aria-label="Search animal records"
+                  placeholder="Search records..."
+                  value={recordSearch}
+                  onChange={(e) => setRecordSearch(e.target.value)}
+                  className="input input-sm border border-base-300 bg-base-200/80 text-base-content placeholder:text-base-content/50 pl-9 rounded-xl text-xs w-full focus:outline-none focus:border-primary focus:bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all"
+                />
+              </div>
+
+              <select
+                aria-label="Filter animal records by type"
+                value={recordTypeFilter}
+                onChange={(e) => setRecordTypeFilter(e.target.value)}
+                className="select select-sm border border-base-300 bg-base-200/80 text-base-content rounded-xl text-xs font-semibold focus:outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <option value="All">All record types</option>
+                <option value="AI">AI records</option>
+                <option value="Health">Health records</option>
+                <option value="Pregnancy Check">Pregnancy checks</option>
+                <option value="Calving">Calving events</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            {displayedRecords.length === 0 ? (
+              <div className="py-12 text-center text-base-content/50 space-y-2">
+                <FileText size={36} className="mx-auto text-base-content/30" />
+                <p className="text-sm font-semibold">No records match your search.</p>
+              </div>
+            ) : (
+              <table className="table table-zebra w-full text-left">
+                <thead>
+                  <tr className="border-b border-base-200 text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Record Type</th>
+                    <th className="py-3 px-4">Details</th>
+                    <th className="py-3 px-4">Technician</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {displayedRecords.map((record, index) => {
+                    const meta = getRecordMeta(record.recordKind);
+                    return (
+                      <tr
+                        key={record._id || record.id || index}
+                        className="hover:bg-base-200/50 transition-colors"
+                      >
+                        <td className="py-3.5 px-4 font-bold text-base-content/90 whitespace-nowrap">
+                          {fmtDate(record.recordDate)}
+                        </td>
+
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${meta.bg}`}
+                          >
+                            {meta.icon}
+                            {record.recordTitle}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 max-w-xs truncate text-base-content/80 font-medium">
+                          {record.recordSummary || "Routine record entry"}
+                        </td>
+
+                        <td className="py-3.5 px-4 font-semibold text-base-content/80 whitespace-nowrap">
+                          {record.recordedBy || "Not recorded"}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedActivity(record)}
+                            className="btn btn-xs btn-ghost text-success font-bold"
+                          >
+                            <Eye size={13} className="mr-1" /> View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {visibleRecords.length > 5 && (
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllRecords(!showAllRecords)}
+                className="btn btn-ghost btn-sm text-primary font-bold hover:bg-primary/10 rounded-xl"
+              >
+                {showAllRecords ? "Show recent records only" : "View all records"}
+              </button>
+            </div>
+          )}
+        </div>
       </main>
 
-      {/* ── Modals ── */}
-      <EditInseminationModal
-        isOpen={!!selectedInsemination}
-        onClose={() => setSelectedInsemination(null)}
-        insemination={selectedInsemination}
-        animalId={id}
+      {/* Modals */}
+      <RegisterLivestockModal
+        isOpen={isRegisterLivestockOpen}
+        livestock={animal}
+        onClose={() => setIsRegisterLivestockOpen(false)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["animal", id] });
+        }}
       />
+
       <ActivityDetailsModal
         isOpen={!!selectedActivity}
         onClose={() => setSelectedActivity(null)}
         activity={selectedActivity}
         onOpenSource={(activity) => {
-          if (!activity?.originId || isAdminPath) return;
-          navigate(`/technician/requests?requestId=${activity.originId}&status=completed`);
+          if (!activity?.originId) return;
+          const requestPath = isAdmin
+            ? "/admin/requests"
+            : "/technician/requests";
+          const status = isAdmin ? "all" : "completed";
+          navigate(
+            `${requestPath}?requestId=${encodeURIComponent(activity.originId)}&status=${status}`,
+          );
         }}
       />
-      <AddMedicalRecordModal
+
+      {!isAdmin && (
+        <>
+          <AddMedicalRecordModal
         key={medicalInitialType}
         isOpen={isAddMedicalModalOpen}
         onClose={() => setIsAddMedicalModalOpen(false)}
@@ -1309,6 +981,7 @@ export default function LivestockProfile() {
           queryClient.invalidateQueries({ queryKey: ["medical", id] });
         }}
       />
+
       <AIServiceModal
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
@@ -1319,6 +992,7 @@ export default function LivestockProfile() {
           queryClient.invalidateQueries({ queryKey: ["medical", id] });
         }}
       />
+
       <PregnancyDiagnosisModal
         isOpen={isPDModalOpen}
         onClose={() => setIsPDModalOpen(false)}
@@ -1329,6 +1003,7 @@ export default function LivestockProfile() {
           queryClient.invalidateQueries({ queryKey: ["medical", id] });
         }}
       />
+
       <RecordCalfDropModal
         isOpen={isCalvingModalOpen}
         onClose={() => setIsCalvingModalOpen(false)}
@@ -1339,6 +1014,8 @@ export default function LivestockProfile() {
           queryClient.invalidateQueries({ queryKey: ["medical", id] });
         }}
       />
+        </>
+      )}
     </div>
   );
 }

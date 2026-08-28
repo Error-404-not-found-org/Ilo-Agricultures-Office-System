@@ -218,7 +218,7 @@ const userSchema = new mongoose.Schema(
           provinceName: { type: String },
           source: {
             type: String,
-            enum: ["admin_assigned"],
+            enum: ["admin_assigned", "technician_registration"],
             default: "admin_assigned",
           },
           assignedBy: {

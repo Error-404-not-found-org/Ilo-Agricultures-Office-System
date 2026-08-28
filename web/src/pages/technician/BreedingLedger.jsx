@@ -522,14 +522,12 @@ export default function BreedingLedger() {
   const handleDeleteRecord = async (record) => {
     setConfirmModal({
       isOpen: true,
-      title: `Delete ${activeTab === "insemination" ? "AI Insemination" : activeTab === "pregnancy" ? "Pregnancy Check" : "Calving"} Record`,
+      title: `Delete ${activeTab === "pregnancy" ? "Pregnancy Check" : "Calving"} Record`,
       message: `Are you sure you want to delete this historical ${activeTab} record entry? This operation cannot be undone.`,
       onConfirm: async () => {
         try {
           let endpoint = "";
-          if (activeTab === "insemination") {
-            endpoint = `/insemination/${record.id}`;
-          } else if (activeTab === "pregnancy") {
+          if (activeTab === "pregnancy") {
             endpoint = `/technician/pregnancy-checks/${record.id}`;
           } else if (activeTab === "calving") {
             endpoint = `/technician/calvings/${record.id}`;
@@ -1448,7 +1446,6 @@ export default function BreedingLedger() {
               <InseminationTab
                 records={paginatedRecords}
                 onInspect={handleOpenModal}
-                onDelete={handleDeleteRecord}
                 sortConfig={sortConfig}
                 onSort={handleSort}
               />

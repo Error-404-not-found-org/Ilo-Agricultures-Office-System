@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Image,
   Text,
@@ -11,8 +11,11 @@ import {
   ScrollView,
 } from "react-native";
 import {
+  Activity,
   CalendarClock,
+  CircleCheck,
   FileText,
+  MessageSquare,
   Stethoscope,
   Info,
   AlertCircle,
@@ -23,9 +26,14 @@ import { toast } from "sonner-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
+import { healthRequestKeys } from "@/lib/queryKeys";
 import { useTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ImageViewerModal, type ImageViewerItem } from "@/components/shared";
 import { getHealthRequestDetail } from "@/features/health-requests/services/healthRequests.service";
+import { getStructuredHealthRequestPresentation } from "@/features/farmer-requests/utils/healthRequestInput";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
+import { getFarmerHealthRequestDetailSections } from "@/features/farmer-requests/utils/healthRequestDetailLayout";
 import {
   FarmerScreen,
   AsyncState,
@@ -40,6 +48,7 @@ import {
   RequestDetailNotice,
   RequestDetailRow,
 } from "@/features/farmer-requests/components/RequestDetailPrimitives";
+import { HealthRequestResponseSections } from "@/features/farmer-requests/components/HealthRequestResponseSections";
 import {
   formatVisitSchedule,
   getRequestList,
@@ -66,6 +75,44 @@ const stageIndex = (status?: string) =>
     resolved: 4,
     done: 4,
   })[status || "pending"] ?? 0;
+
+const getHealthCategoryLabel = (value: unknown) => {
+  const normalized = getRequestText(value)?.toLowerCase();
+  if (
+    ["disease", "injury", "wound", "health_concern"].includes(normalized || "")
+  ) {
+    return "Sick or Injured Animal";
+  }
+  if (normalized === "pregnancy_complication") {
+    return "Pregnancy-related health concern";
+  }
+  if (
+    ["medicine", "deworming", "medicine_request"].includes(normalized || "")
+  ) {
+    return "Medicine or Dewormer";
+  }
+  if (
+    ["checkup", "vaccination", "preventive_care"].includes(normalized || "")
+  ) {
+    return "Checkup or Vaccination";
+  }
+  if (normalized === "other") return "Other Health Assistance";
+  return getRequestText(value)?.replaceAll("_", " ") || "Health concern";
+};
+
+const formatSubmittedDate = (value: unknown) => {
+  const text = getRequestText(value);
+  if (!text) return null;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
 
 function HealthRequestDetailSkeleton() {
   const { colors } = useTheme();
@@ -183,12 +230,29 @@ export default function HealthRequestDetailScreen() {
   const [reasonModalVisible, setReasonModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
 
   const query = useQuery({
-    queryKey: ["health-request", id],
+    queryKey: healthRequestKeys.detail(id),
     enabled: Boolean(id),
     queryFn: () => getHealthRequestDetail(api, id),
   });
+
+  const galleryImages = useMemo<ImageViewerItem[]>(() => {
+    const request = query.data;
+    if (!request) return [];
+
+    const photoUris = getRequestList(
+      request.photos?.length ? request.photos : [request.imageUrl],
+    ).slice(0, 5);
+
+    return photoUris.map((uri, index) => ({
+      uri,
+      fileName: `health-request-photo-${index + 1}`,
+      accessibilityLabel: `Health request photo ${index + 1} of ${photoUris.length}`,
+    }));
+  }, [query.data]);
 
   if (query.isLoading) {
     return <HealthRequestDetailSkeleton />;
@@ -215,9 +279,29 @@ export default function HealthRequestDetailScreen() {
 
   const statusLabel = getRequestText(request.status);
   const status = statusLabel?.toLowerCase() || "unknown";
+  const resolvedHandlingMethod = getRequestText(
+    request.handlingMethod,
+  )?.toLowerCase();
+  const isAdviceResponse =
+    ["resolved", "done", "completed"].includes(status) &&
+    resolvedHandlingMethod === "advice";
+  const isOfficePickupResponse =
+    ["resolved", "done", "completed"].includes(status) &&
+    resolvedHandlingMethod === "office_pickup";
+  const isNonClinicalResponse = isAdviceResponse || isOfficePickupResponse;
+  const hasOfficialMedicalRecord = Boolean(request.medicalRecordId);
+  const displayStatusLabel = isAdviceResponse
+    ? "Advice provided"
+    : isOfficePickupResponse
+      ? "Pickup information available"
+      : ["resolved", "done", "completed"].includes(status) &&
+          !hasOfficialMedicalRecord
+        ? "Request resolved"
+        : statusLabel;
+  const structuredInput = getStructuredHealthRequestPresentation(request);
   const requestType =
-    getRequestText(request.requestType)?.replaceAll("_", " ") ||
-    "Health concern";
+    structuredInput?.assistanceLabel ||
+    getHealthCategoryLabel(request.requestType);
   const animalLabel =
     getRequestText(animal.earTag) ||
     getRequestText(animal.animalId) ||
@@ -226,8 +310,21 @@ export default function HealthRequestDetailScreen() {
       : null) ||
     "Animal identifier not provided";
   const urgency = getRequestText(request.urgency);
-  const symptoms = getRequestText(request.symptoms);
-  const farmerNotes = getRequestText(request.farmerNotes);
+  const urgencyPresentation = getHealthUrgencyPresentation(urgency);
+  const symptoms = structuredInput
+    ? structuredInput.observedSigns.join(", ")
+    : getRequestText(request.symptoms);
+  const observedSigns = structuredInput?.observedSigns?.length
+    ? structuredInput.observedSigns
+    : symptoms
+      ? [symptoms]
+      : [];
+  const farmerNotes = structuredInput
+    ? structuredInput.farmerDescription
+    : getRequestText(request.farmerNotes);
+  const showSeparateFarmerNote = Boolean(
+    farmerNotes && !symptoms?.toLowerCase().includes(farmerNotes.toLowerCase()),
+  );
   const cancellationReasonDisplay = getRequestText(request.cancellationReason);
   const cancellationResponseReason = getRequestText(
     request.cancellationResponseReason,
@@ -243,19 +340,25 @@ export default function HealthRequestDetailScreen() {
     request.visitPeriod,
   );
   const preferredDate = formatVisitSchedule(request.preferredDate, null);
-  const responseFields = [
-    ["Findings", getRequestText(request.findings)],
-    ["Diagnosis", getRequestText(request.diagnosis)],
-    ["Treatment", getRequestText(request.treatment)],
-    ["Medicine", getRequestText(request.medicineGiven)],
-    ["Dosage", getRequestText(request.dosage)],
-    ["Resolution", getRequestText(request.resolutionNotes)],
-  ].filter((entry): entry is [string, string] => entry[1] !== null);
-  const photos = getRequestList(
-    request.photos?.length ? request.photos : [request.imageUrl],
-  );
+  const submittedDate = formatSubmittedDate(request.createdAt);
+  const responseFields = hasOfficialMedicalRecord
+    ? [
+        ["Findings", getRequestText(request.findings)],
+        ["Diagnosis", getRequestText(request.diagnosis)],
+        ["Treatment", getRequestText(request.treatment)],
+        ["Medicine", getRequestText(request.medicineGiven)],
+        ["Dosage", getRequestText(request.dosage)],
+        ["Resolution", getRequestText(request.resolutionNotes)],
+      ].filter((entry): entry is [string, string] => entry[1] !== null)
+    : [];
   const showProgress =
-    status !== "unknown" && status !== "cancelled" && status !== "rejected";
+    !isNonClinicalResponse &&
+    status !== "unknown" &&
+    status !== "cancelled" &&
+    status !== "rejected";
+  const detailSections = getFarmerHealthRequestDetailSections(request);
+  const responseFirst = detailSections[0] === "response";
+  const scheduledVisitFirst = detailSections[0] === "scheduled_visit";
 
   return (
     <FarmerScreen scroll={false}>
@@ -266,15 +369,64 @@ export default function HealthRequestDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 48 }}
       >
+        {isNonClinicalResponse ? (
+          <View className="mx-5 mt-5 flex-row items-center gap-3">
+            <View
+              className="h-10 w-10 items-center justify-center rounded-xl"
+              style={{ backgroundColor: colors.successContainer }}
+            >
+              <CircleCheck size={21} color={colors.success} />
+            </View>
+            <View className="flex-1">
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 16,
+                }}
+              >
+                Technician responded
+              </Text>
+              <Text
+                className="mt-0.5"
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                }}
+              >
+                {displayStatusLabel}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {responseFirst || scheduledVisitFirst ? (
+          <HealthRequestResponseSections request={request} />
+        ) : null}
+
         {/* Concern Card */}
         <View
-          className="mx-5 mt-5 p-4 border"
+          className="mx-5 p-4 border"
           style={{
+            marginTop: responseFirst || scheduledVisitFirst ? 16 : 20,
             borderRadius: 16,
             backgroundColor: colors.card,
             borderColor: colors.border,
           }}
         >
+          <Text
+            style={{
+              color: colors.textPrimary,
+              fontFamily: "Outfit_700Bold",
+              fontSize: 14,
+              marginBottom: 12,
+            }}
+          >
+            {responseFirst || scheduledVisitFirst
+              ? "Your original request"
+              : "Your request"}
+          </Text>
           <View className="flex-row items-start justify-between gap-3">
             <View className="flex-1">
               <Text
@@ -301,162 +453,261 @@ export default function HealthRequestDetailScreen() {
             </View>
 
             <View className="items-end gap-2">
-              {statusLabel ? <StatusBadge label={statusLabel} /> : null}
-              {urgency ? <StatusBadge label={`${urgency} urgency`} /> : null}
+              {!responseFirst && !scheduledVisitFirst && displayStatusLabel ? (
+                <StatusBadge label={displayStatusLabel} />
+              ) : null}
+              {urgencyPresentation.priority === "urgent" ? (
+                <StatusBadge label={urgencyPresentation.label} />
+              ) : null}
             </View>
           </View>
 
-          {symptoms ? (
-            <Text
-              className="mt-3"
-              style={{
-                color: colors.textSecondary,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 13,
-                lineHeight: 19,
-              }}
-            >
-              {symptoms}
-            </Text>
+          {observedSigns.length ? (
+            <View className="mt-4">
+              <View className="flex-row items-center gap-2">
+                <Activity size={16} color={colors.primary} />
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 12,
+                  }}
+                >
+                  Observed signs
+                </Text>
+              </View>
+              <View className="mt-2 flex-row flex-wrap gap-2">
+                {observedSigns.map((sign) => (
+                  <View
+                    key={sign}
+                    className="rounded-full px-3 py-1.5"
+                    style={{ backgroundColor: colors.surfaceSubtle }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 12,
+                      }}
+                    >
+                      {sign}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
           ) : (
             <View className="mt-3">
-              <RequestDetailNotice message="Symptoms were not provided with this request." />
+              <RequestDetailNotice message="Observations and a description were not provided with this request." />
             </View>
           )}
 
-          {farmerNotes ? (
-            <Text
-              className="mt-2"
-              style={{
-                color: colors.textMuted,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 11,
-                lineHeight: 16,
-              }}
-            >
-              Your note: {farmerNotes}
-            </Text>
+          {showSeparateFarmerNote ? (
+            <View className="mt-4">
+              <View className="flex-row items-center gap-2">
+                <MessageSquare size={16} color={colors.primary} />
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 12,
+                  }}
+                >
+                  Your description
+                </Text>
+              </View>
+              <Text
+                className="mt-2"
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 13,
+                  lineHeight: 19,
+                }}
+              >
+                {farmerNotes}
+              </Text>
+            </View>
           ) : null}
 
-          {photos.length ? (
+          {submittedDate ? (
+            <View className="mt-4 flex-row items-center gap-2">
+              <CalendarClock size={16} color={colors.primary} />
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                }}
+              >
+                Submitted {submittedDate}
+              </Text>
+            </View>
+          ) : null}
+
+          {galleryImages.length ? (
             <View className="flex-row flex-wrap gap-2 mt-3">
-              {photos.slice(0, 4).map((uri: string) => (
-                <Image
-                  key={uri}
-                  source={{ uri }}
-                  className="w-16 h-16"
-                  style={{ borderRadius: 10 }}
-                />
+              {galleryImages.map((photo, index) => (
+                <TouchableOpacity
+                  key={`${photo.fileName}-${index}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${photo.accessibilityLabel}`}
+                  onPress={() => {
+                    setGalleryInitialIndex(index);
+                    setGalleryVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
+                >
+                  <Image
+                    source={{ uri: photo.uri }}
+                    resizeMode="cover"
+                    accessibilityLabel={photo.accessibilityLabel}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </TouchableOpacity>
               ))}
             </View>
           ) : null}
         </View>
 
         {/* Progress Card */}
-        <View
-          className="mx-5 mt-5 p-4 border"
-          style={{
-            borderRadius: 16,
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-          }}
-        >
-          <SectionHeader title="Case progress" />
-          {showProgress ? (
-            <View className="mt-2">
-              <WorkflowProgress
-                steps={stages}
-                currentIndex={stageIndex(status)}
-              />
-            </View>
-          ) : null}
-          <View className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex-row items-start gap-2.5">
-            <Info
-              size={16}
-              color={colors.textSecondary}
-              style={{ marginTop: 2 }}
+        {detailSections.includes("progress") ? (
+          <View
+            className="mx-5 mt-5 p-4 border"
+            style={{
+              borderRadius: 16,
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            }}
+          >
+            <SectionHeader
+              title={
+                isNonClinicalResponse ? "Technician responded" : "Case progress"
+              }
             />
-            <Text
-              className="flex-1 leading-5 text-[12px]"
-              style={{
-                color: colors.textSecondary,
-                fontFamily: "Outfit_500Medium",
-              }}
-            >
-              {(() => {
-                const s = status;
-                if (s === "pending")
-                  return "Your health report has been submitted. A technician will review and assign your case shortly.";
-                if (s === "approved" || s === "assigned" || s === "triaged")
-                  return "Your case has been approved. A technician will contact you to schedule a visit shortly.";
-                if (s === "scheduled") {
-                  return scheduledDate
-                    ? `A visit has been scheduled for ${scheduledDate}. Please make sure someone is available to assist.`
-                    : "The visit is marked as scheduled, but the appointment time is not yet available. Please wait for the technician's confirmation.";
-                }
-                if (s === "in-progress" || s === "in_progress")
-                  return "A technician is currently attending to the animal's medical assistance.";
-                if (s === "resolved" || s === "done")
-                  return "This medical request has been resolved. Check diagnosis and advice details below.";
-                if (s === "cancelled")
-                  return "This request has been cancelled.";
-                return "Current service progress is not yet available.";
-              })()}
-            </Text>
+            {showProgress ? (
+              <View className="mt-2">
+                <WorkflowProgress
+                  steps={stages}
+                  currentIndex={stageIndex(status)}
+                />
+              </View>
+            ) : null}
+            <View className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex-row items-start gap-2.5">
+              <Info
+                size={16}
+                color={colors.textSecondary}
+                style={{ marginTop: 2 }}
+              />
+              <Text
+                className="flex-1 leading-5 text-[12px]"
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                }}
+              >
+                {(() => {
+                  const s = status;
+                  if (isAdviceResponse)
+                    return "A technician provided advice for this request. No farm visit or medical treatment was recorded.";
+                  if (isOfficePickupResponse)
+                    return "Pickup information is available from the technician. This does not mean treatment was performed or that the item was already collected.";
+                  if (s === "pending")
+                    return "Your health report has been submitted. A technician will review and assign your case shortly.";
+                  if (s === "approved" || s === "assigned" || s === "triaged")
+                    return "Your case has been approved. A technician will contact you to schedule a visit shortly.";
+                  if (s === "scheduled") {
+                    return scheduledDate
+                      ? `A visit has been scheduled for ${scheduledDate}. Please make sure someone is available to assist.`
+                      : "The visit is marked as scheduled, but the appointment time is not yet available. Please wait for the technician's confirmation.";
+                  }
+                  if (s === "in-progress" || s === "in_progress")
+                    return "A technician is currently attending to the animal's medical assistance.";
+                  if (s === "resolved" || s === "done")
+                    return hasOfficialMedicalRecord
+                      ? "The farm visit was completed and an official medical record is available."
+                      : "This health request was resolved. No official medical record is linked to this response.";
+                  if (s === "cancelled")
+                    return "This request has been cancelled.";
+                  return "Current service progress is not yet available.";
+                })()}
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : null}
 
-        <RequestDetailCard
-          title="Visit and care details"
-          description="Assignment, appointment, and technician-provided care information."
-        >
-          <RequestDetailRow
-            icon={<Stethoscope size={17} color={colors.primary} />}
-            label="Assigned technician"
-            value={
-              handlerName
-                ? `${handlerName} (${handlerRole})`
-                : hasHandlerReference
-                  ? "Assigned technician details are not yet available"
-                  : "Not assigned yet"
+        {!isNonClinicalResponse &&
+        detailSections.includes("clinical_details") &&
+        (hasHandlerReference || hasOfficialMedicalRecord) ? (
+          <RequestDetailCard
+            title={
+              hasOfficialMedicalRecord
+                ? "Technician and care details"
+                : "Technician details"
             }
-          />
-          <RequestDetailRow
-            icon={<CalendarClock size={17} color={colors.primary} />}
-            label={
-              scheduledDate
-                ? "Confirmed visit"
-                : preferredDate
-                  ? "Legacy preferred date"
-                  : "Visit schedule"
+            description={
+              hasOfficialMedicalRecord
+                ? "Assignment and care recorded for this request."
+                : "Assignment details for this request response."
             }
-            value={
-              scheduledDate ||
-              preferredDate ||
-              "Not scheduled yet"
-            }
-            isLast={responseFields.length === 0}
-          />
+          >
+            <RequestDetailRow
+              icon={<Stethoscope size={17} color={colors.primary} />}
+              label="Assigned technician"
+              value={
+                handlerName
+                  ? `${handlerName} (${handlerRole})`
+                  : hasHandlerReference
+                    ? "Assigned technician details are not yet available"
+                    : "Not assigned yet"
+              }
+            />
+            {!scheduledDate ? (
+              <RequestDetailRow
+                icon={<CalendarClock size={17} color={colors.primary} />}
+                label={
+                  preferredDate ? "Legacy preferred date" : "Visit schedule"
+                }
+                value={preferredDate || "Not scheduled yet"}
+                isLast={responseFields.length === 0}
+              />
+            ) : null}
 
-          {responseFields.length > 0 ? (
-            <View className="pt-4 gap-4">
-              {responseFields.map(([label, value]) => (
-                <RequestDetailField key={label} label={label} value={value} />
-              ))}
-            </View>
-          ) : (
-            <View className="mt-3">
-              <RequestDetailNotice message="Technician findings and care details are not yet available." />
-            </View>
-          )}
-        </RequestDetailCard>
+            {responseFields.length > 0 ? (
+              <View className="pt-4 gap-4">
+                {responseFields.map(([label, value]) => (
+                  <RequestDetailField key={label} label={label} value={value} />
+                ))}
+              </View>
+            ) : (
+              <View className="mt-3">
+                <RequestDetailNotice message="Technician findings and care details are not yet available." />
+              </View>
+            )}
+          </RequestDetailCard>
+        ) : null}
 
-        {request.status === "resolved" ? (
+        {request.status === "resolved" && request.medicalRecordId ? (
           <TouchableOpacity
             onPress={() =>
               router.push({
                 pathname: "/(farmer)/health-report-preview",
-                params: { id },
+                params: {
+                  id: request.medicalRecordId,
+                  animalId:
+                    typeof request.animalId === "string"
+                      ? request.animalId
+                      : request.animalId?._id,
+                },
               })
             }
             className="mx-5 mt-5 py-3 flex-row items-center justify-center border"
@@ -584,6 +835,14 @@ export default function HealthRequestDetailScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        <ImageViewerModal
+          visible={galleryVisible}
+          images={galleryImages}
+          initialIndex={galleryInitialIndex}
+          title="Health request photos"
+          onClose={() => setGalleryVisible(false)}
+        />
 
         {/* Cancellation Reason Modal */}
         <Modal
@@ -719,7 +978,7 @@ export default function HealthRequestDetailScreen() {
                       );
                       setReasonModalVisible(false);
                       queryClient.invalidateQueries({
-                        queryKey: ["health-request", id],
+                        queryKey: healthRequestKeys.detail(id),
                       });
                       queryClient.invalidateQueries({
                         queryKey: ["farmer", "health-requests"],

@@ -15,7 +15,7 @@ export default function FarmerAppSection() {
             Farmer Android App
           </div>
 
-          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-normal text-slate-900 tracking-tight leading-tight">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
             Cattle care in the palm of your hand
           </h2>
 
@@ -37,8 +37,8 @@ export default function FarmerAppSection() {
 
           <div className="pt-4">
             <a
-              href="#download-app"
-              className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-full bg-breedsmart-deep hover:bg-breedsmart-dark text-white text-sm font-bold transition-all shadow-md hover:shadow-lg"
+              href="/download-app"
+              className="inline-flex min-h-12 items-center justify-center gap-2 px-7 py-3 rounded-xl bg-breedsmart-deep hover:bg-breedsmart-dark text-white text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-breedsmart-deep focus-visible:ring-offset-2"
             >
               Download Farmer App
             </a>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, FlatList, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, FlatList, Image, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Save, Info, X, Camera, Image as ImageIcon } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, Save, Info, X, Camera, Image as ImageIcon, Calendar } from 'lucide-react-native';
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -41,6 +42,7 @@ interface CalfEntry {
     imageUri?: string;
     imageBase64?: string;
     isLiving?: boolean;
+    isCustomColor?: boolean;
 }
 
 const CALF_COLOR_OPTIONS = [
@@ -52,6 +54,16 @@ const CALF_COLOR_OPTIONS = [
     'Spotted',
     'Mixed',
 ];
+
+const getCalendarDayDifference = (laterValue: string, earlierValue: string) => {
+    const later = new Date(laterValue);
+    const earlier = new Date(earlierValue);
+    if (Number.isNaN(later.getTime()) || Number.isNaN(earlier.getTime())) return null;
+
+    const laterDay = Date.UTC(later.getUTCFullYear(), later.getUTCMonth(), later.getUTCDate());
+    const earlierDay = Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth(), earlier.getUTCDate());
+    return Math.floor((laterDay - earlierDay) / 86400000);
+};
 
 export default function RecordCalfDropScreen() {
     const router = useRouter();
@@ -82,10 +94,10 @@ export default function RecordCalfDropScreen() {
     const [searchAnimalQuery, setSearchAnimalQuery] = useState('');
 
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [tempDate, setTempDate] = useState<Date>(new Date());
     const [calvingEase, setCalvingEase] = useState('Natural');
     const [outcome, setOutcome] = useState<'live_birth' | 'mixed' | 'stillbirth' | 'abortion'>('live_birth');
-    const [numCalves, setNumCalves] = useState(1);
-    const [numCalvesInput, setNumCalvesInput] = useState('1');
     const [calves, setCalves] = useState<CalfEntry[]>([
         { sex: 'F', earTag: '', color: '', brand: '' }
     ]);
@@ -166,12 +178,12 @@ export default function RecordCalfDropScreen() {
                         setFarmerName(animalData.farmerId.name || '');
                         setSelectedAnimal(animalData);
                         setMotherTag(animalData.earTag || animalData.animalId || '');
-                        
+
                         // Fetch all animals for this farmer to get the count
                         const farmerId = animalData.farmerId._id || animalData.farmerId;
                         const farmerAnimalsRes = await api.get(`/animals/farmer/${farmerId}`);
-                        const list = Array.isArray(farmerAnimalsRes.data) 
-                            ? farmerAnimalsRes.data 
+                        const list = Array.isArray(farmerAnimalsRes.data)
+                            ? farmerAnimalsRes.data
                             : (farmerAnimalsRes.data?.data || []);
                         setFarmerAnimalCount(list.length);
                         const historyRes = await api.get(`/technician/animal-history/${initialMotherId}`);
@@ -258,29 +270,18 @@ export default function RecordCalfDropScreen() {
         }
     };
 
-    const handleNumChange = (val: string) => {
-        const cleaned = val.replace(/[^0-9]/g, '');
-        setNumCalvesInput(cleaned);
-        if (!cleaned) return;
-
-        const count = Math.min(Math.max(parseInt(cleaned, 10), 1), 5);
-        
-        let newCalves = [...calves];
-        if (count > newCalves.length) {
-            for (let i = newCalves.length; i < count; i++) {
-                newCalves.push({ sex: 'F', earTag: '', color: '', brand: '' });
-            }
-        } else {
-            newCalves = newCalves.slice(0, count);
+    const addCalf = () => {
+        if (calves.length >= 5) {
+            return toast.error("Maximum 5 calves per event");
         }
-        setNumCalves(count);
-        setCalves(newCalves);
+        setCalves([...calves, { sex: 'F', earTag: '', color: '', brand: '', isLiving: outcome !== 'stillbirth' }]);
     };
 
-    const handleNumBlur = () => {
-        if (!numCalvesInput) {
-            setNumCalvesInput(numCalves.toString());
-        }
+    const removeCalf = (index: number) => {
+        if (calves.length === 1) return;
+        const newCalves = [...calves];
+        newCalves.splice(index, 1);
+        setCalves(newCalves);
     };
 
     const isLiveBirth = outcome === 'live_birth';
@@ -289,12 +290,8 @@ export default function RecordCalfDropScreen() {
         const nextOutcome = value as typeof outcome;
         setOutcome(nextOutcome);
         if (nextOutcome === 'abortion') {
-            setNumCalves(0);
-            setNumCalvesInput('0');
             setCalves([]);
         } else if (calves.length === 0) {
-            setNumCalves(1);
-            setNumCalvesInput('1');
             setCalves([{ sex: 'F', earTag: '', color: '', brand: '', isLiving: nextOutcome !== 'stillbirth' }]);
         } else {
             setCalves(calves.map((calf, index) => ({
@@ -304,7 +301,7 @@ export default function RecordCalfDropScreen() {
         }
     };
 
-    const updateCalf = (index: number, field: string, value: string) => {
+    const updateCalf = (index: number, field: keyof CalfEntry, value: any) => {
         const newCalves = [...calves];
         (newCalves[index] as any)[field] = value;
         setCalves(newCalves);
@@ -344,6 +341,25 @@ export default function RecordCalfDropScreen() {
             return false;
         }
 
+        if (outcome !== 'abortion') {
+            const readiness = selectedPregnancy?.calvingReadiness;
+            const aiDateValue = selectedPregnancy?.insemination?.inseminationDate;
+            const gestationDays = aiDateValue
+                ? getCalendarDayDifference(date, aiDateValue)
+                : null;
+            if (typeof readiness?.minimumDays !== 'number' || gestationDays === null) {
+                toast.error('Calving readiness is unavailable. Refresh the selected animal before continuing.');
+                return false;
+            }
+            if (gestationDays < readiness.minimumDays) {
+                const availableDate = readiness.earliestEligibleDate
+                    ? new Date(readiness.earliestEligibleDate).toLocaleDateString()
+                    : `Day ${readiness.minimumDays}`;
+                toast.error(`Live-birth recording is too early at Day ${gestationDays}. It becomes available ${availableDate}.`);
+                return false;
+            }
+        }
+
         const normalizedCalves = calves.map((calf) => ({
             ...calf,
             sex: calf.sex?.trim(),
@@ -352,7 +368,7 @@ export default function RecordCalfDropScreen() {
             brand: calf.brand?.trim(),
         }));
 
-        if (numCalves !== normalizedCalves.length) {
+        if (outcome !== 'abortion' && calves.length !== normalizedCalves.length) {
             toast.error('The number of calves must match the entered calf rows.');
             return false;
         }
@@ -403,7 +419,7 @@ export default function RecordCalfDropScreen() {
                 date,
                 calvingEase,
                 outcome,
-                numberOfCalves: numCalves,
+                numberOfCalves: isAbortion ? 0 : calves.length,
                 calves: calves.filter(c => c.isLiving !== false).map(c => ({
                     sex: c.sex,
                     earTag: c.earTag,
@@ -445,12 +461,12 @@ export default function RecordCalfDropScreen() {
                 ? 'Submitting calving record…'
                 : null;
 
-    const filteredFarmers = farmers.filter(f => 
+    const filteredFarmers = farmers.filter(f =>
         f.name?.toLowerCase().includes(searchFarmerQuery.toLowerCase()) ||
         f.address?.phoneNumber?.includes(searchFarmerQuery)
     );
 
-    const filteredAnimals = animals.filter(a => 
+    const filteredAnimals = animals.filter(a =>
         a.earTag?.toLowerCase().includes(searchAnimalQuery.toLowerCase()) ||
         a.breed?.toLowerCase().includes(searchAnimalQuery.toLowerCase())
     );
@@ -458,6 +474,24 @@ export default function RecordCalfDropScreen() {
     const aiDate = selectedPregnancy?.insemination?.inseminationDate;
     const diagnosisDate = selectedPregnancy?.pregnancyDiagnosis?.date;
     const expectedCalvingDate = selectedPregnancy?.targetCalvingDate || selectedAnimal?.expectedCalvingDate;
+    const calvingReadiness = selectedPregnancy?.calvingReadiness;
+    const selectedGestationDays = aiDate && date
+        ? getCalendarDayDifference(date, aiDate)
+        : null;
+    const minimumGestationDays = typeof calvingReadiness?.minimumDays === 'number'
+        ? calvingReadiness.minimumDays
+        : null;
+    const isLiveOutcomeTooEarly = outcome !== 'abortion' && (
+        minimumGestationDays === null ||
+        selectedGestationDays === null ||
+        selectedGestationDays < minimumGestationDays
+    );
+    const earliestCalvingDate = calvingReadiness?.earliestEligibleDate;
+    const calvingReadinessMessage = minimumGestationDays === null || selectedGestationDays === null
+        ? 'Authoritative calving readiness is unavailable. Refresh the selected animal before recording a live-birth outcome.'
+        : selectedGestationDays < minimumGestationDays
+            ? `Selected date is Day ${selectedGestationDays}. Live-birth, mixed, and stillbirth records open on Day ${minimumGestationDays}${earliestCalvingDate ? ` (${new Date(earliestCalvingDate).toLocaleDateString()})` : ''}. Select Abortion only for a confirmed pregnancy loss.`
+            : `Calving window is open at Day ${selectedGestationDays}.`;
     const eventTiming = (() => {
         if (!expectedCalvingDate || !date) return 'Timing unavailable';
         const differenceDays = Math.round(
@@ -493,7 +527,7 @@ export default function RecordCalfDropScreen() {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
-                
+
                 {/* Standalone Selection Flow */}
                 {!initialMotherId && (
                     <>
@@ -547,16 +581,67 @@ export default function RecordCalfDropScreen() {
                             <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-bold text-xs mt-2">{eventTiming}</Text>
                         </View>
 
+                        {isLiveOutcomeTooEarly ? (
+                            <View
+                                accessibilityRole="alert"
+                                style={{
+                                    flexDirection: 'row',
+                                    gap: 10,
+                                    padding: 12,
+                                    marginBottom: 16,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: colors.warningBorder,
+                                    backgroundColor: colors.warningContainer,
+                                }}
+                            >
+                                <AlertTriangle size={18} color={colors.warningForeground} />
+                                <View style={{ flex: 1, gap: 3 }}>
+                                    <Text
+                                        style={{
+                                            color: colors.warningForeground,
+                                            fontFamily: 'Outfit_700Bold',
+                                            fontSize: 13,
+                                        }}
+                                    >
+                                        Live-birth window not open
+                                    </Text>
+                                    <Text
+                                        style={{
+                                            color: colors.textSecondary,
+                                            fontFamily: 'Outfit_400Regular',
+                                            fontSize: 12,
+                                            lineHeight: 18,
+                                        }}
+                                    >
+                                        {calvingReadinessMessage}
+                                    </Text>
+                                </View>
+                            </View>
+                        ) : null}
+
                         <View className="gap-y-4">
                             <View>
-                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Drop Date</Text>
-                                <TextInput 
-                                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 text-slate-800 dark:text-white font-outfit-medium"
-                                    value={date}
-                                    onChangeText={setDate}
-                                    placeholder="YYYY-MM-DD"
-                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                />
+                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Calving Date</Text>
+                                <Text className="text-slate-400 dark:text-slate-500 text-[10px] font-outfit-medium mb-2 ml-1">Date the calf was born or the calving occurred.</Text>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setTempDate(date ? new Date(`${date}T00:00:00`) : new Date());
+                                        setShowDatePicker(true);
+                                    }}
+                                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 flex-row items-center"
+                                >
+                                    <Calendar size={18} color={colors.primary} />
+                                    <Text className="ml-3 flex-1 text-slate-800 dark:text-white font-outfit-medium text-[13px]">
+                                        {date
+                                            ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+                                                month: "short",
+                                                day: "numeric",
+                                                year: "numeric",
+                                            })
+                                            : "Select date"}
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
 
                             <View>
@@ -575,7 +660,7 @@ export default function RecordCalfDropScreen() {
                                 <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Delivery Method</Text>
                                 <View className="flex-row flex-wrap gap-2">
                                     {['Natural', 'Normal', 'Difficult', 'Cesarean'].map(opt => (
-                                        <TouchableOpacity 
+                                        <TouchableOpacity
                                             key={opt}
                                             onPress={() => setCalvingEase(opt)}
                                             className={`px-4 py-2.5 rounded-xl border ${calvingEase === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}
@@ -588,18 +673,10 @@ export default function RecordCalfDropScreen() {
                             </View>
 
                             {!isAbortion && <View>
-                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Number of Calves</Text>
-                                <View className="flex-row items-center gap-3">
-                                    <TextInput 
-                                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 text-slate-800 dark:text-white font-outfit-bold flex-1"
-                                        value={numCalvesInput}
-                                        onChangeText={handleNumChange}
-                                        onBlur={handleNumBlur}
-                                        keyboardType="numeric"
-                                        placeholder="1"
-                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                    />
-                                    <Text className="text-slate-400 dark:text-slate-500 font-outfit-bold text-xs uppercase">Head</Text>
+                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Number of calves born</Text>
+                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center justify-between">
+                                    <Text className="text-slate-700 dark:text-slate-300 font-outfit-bold">{calves.length} {calves.length === 1 ? 'Calf' : 'Calves'}</Text>
+                                    <Text className="text-slate-400 font-outfit-medium text-[10px] uppercase">Determined by entries below</Text>
                                 </View>
                             </View>}
                         </View>
@@ -635,14 +712,19 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : <View className="gap-y-4 mb-8">
                             {calves.map((calf, idx) => (
-                                <View key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
-                                    <View className="flex-row items-center gap-2 mb-4">
-                                        <View className="w-6 h-6 bg-emerald-500 rounded-full items-center justify-center">
-                                            <Text className="text-white text-[10px] font-outfit-black">{idx + 1}</Text>
-                                        </View>
+                                <View key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[32px] p-6 relative shadow-sm">
+                                    <View className="absolute -top-3 -left-2 w-8 h-8 rounded-full bg-emerald-500 items-center justify-center shadow-md z-10">
+                                        <Text className="text-white text-[10px] font-outfit-black">{idx + 1}</Text>
+                                    </View>
+                                    <View className="flex-row items-center justify-between mb-4 mt-2">
                                         <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-sm">
                                             {calf.isLiving !== false ? 'Living Calf Details' : 'Stillborn Calf Details'}
                                         </Text>
+                                        {calves.length > 1 && (
+                                            <TouchableOpacity onPress={() => removeCalf(idx)} className="w-8 h-8 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
+                                                <X size={16} color={colors.error || '#e11d48'} />
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
 
                                     {outcome === 'mixed' && (
@@ -655,81 +737,116 @@ export default function RecordCalfDropScreen() {
                                         </View>
                                     )}
 
-                                    <View className="gap-y-4">
+                                    <View className="gap-5">
                                         <View>
-                                            <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Sex</Text>
-                                            <View className="flex-row bg-slate-50 dark:bg-slate-800 rounded-xl p-1 border border-slate-100 dark:border-slate-700">
-                                                <TouchableOpacity 
+                                            <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Gender / Sex</Text>
+                                            <View className="flex-row gap-2">
+                                                <TouchableOpacity
                                                     onPress={() => updateCalf(idx, 'sex', 'F')}
-                                                    className={`flex-1 py-2 rounded-lg items-center ${calf.sex === 'F' ? 'bg-rose-100 dark:bg-rose-900/30' : ''}`}
+                                                    className={`flex-1 py-3 rounded-xl items-center border ${calf.sex === 'F' ? 'bg-rose-50 dark:bg-rose-900/10 border-rose-500' : 'bg-slate-50 dark:bg-slate-800 border-transparent'}`}
                                                 >
-                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'F' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>Female</Text>
+                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'F' ? 'text-rose-500' : 'text-slate-400 dark:text-slate-500'}`}>Female</Text>
                                                 </TouchableOpacity>
-                                                <TouchableOpacity 
+                                                <TouchableOpacity
                                                     onPress={() => updateCalf(idx, 'sex', 'M')}
-                                                    className={`flex-1 py-2 rounded-lg items-center ${calf.sex === 'M' ? 'bg-blue-100 dark:bg-blue-900/30' : ''}`}
+                                                    className={`flex-1 py-3 rounded-xl items-center border ${calf.sex === 'M' ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-500' : 'bg-slate-50 dark:bg-slate-800 border-transparent'}`}
                                                 >
-                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'M' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>Male</Text>
+                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'M' ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>Male</Text>
                                                 </TouchableOpacity>
-                                            </View>
-                                        </View>
-
-                                        <View className="flex-row gap-3">
-                                            <View className="flex-1">
-                                                <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Color</Text>
-                                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                                    <View className="flex-row gap-2 pr-2">
-                                                        {CALF_COLOR_OPTIONS.map((color) => (
-                                                            <TouchableOpacity
-                                                                key={color}
-                                                                onPress={() => updateCalf(idx, 'color', color)}
-                                                                className={`px-3 py-2 rounded-xl border ${
-                                                                    calf.color === color
-                                                                        ? 'bg-emerald-600 border-emerald-600'
-                                                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
-                                                                }`}
-                                                            >
-                                                                <Text className={`font-outfit-black text-[10px] ${
-                                                                    calf.color === color
-                                                                        ? 'text-white'
-                                                                        : 'text-slate-500 dark:text-slate-300'
-                                                                }`}>
-                                                                    {color}
-                                                                </Text>
-                                                            </TouchableOpacity>
-                                                        ))}
-                                                    </View>
-                                                </ScrollView>
-                                            </View>
-                                            <View className="flex-1">
-                                                <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Brand Mark</Text>
-                                                <TextInput 
-                                                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-white font-outfit-bold text-xs"
-                                                    placeholder="Optional"
-                                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                    value={calf.brand}
-                                                    onChangeText={(v) => updateCalf(idx, 'brand', v)}
-                                                />
                                             </View>
                                         </View>
 
                                         <View>
-                                            <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Ear Tag / ID No.</Text>
-                                            <TextInput 
-                                                className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-black text-xs uppercase"
-                                                placeholder="CALF-XXXX"
-                                                placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                value={calf.earTag}
-                                                onChangeText={(v) => updateCalf(idx, 'earTag', v)}
-                                            />
-                                            {calf.isLiving !== false && <View className="mt-2 ml-1">
-                                                <EarTagGenerator
-                                                    farmerName={farmerName}
-                                                    animalCount={farmerAnimalCount + idx}
-                                                    onGenerate={(tag) => updateCalf(idx, 'earTag', tag)}
-                                                    isDark={isDark}
-                                                />
-                                            </View>}
+                                            <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Calf Color</Text>
+                                            <View className="flex-row flex-wrap gap-2 mb-2">
+                                                {CALF_COLOR_OPTIONS.map((color) => (
+                                                    <TouchableOpacity
+                                                        key={color}
+                                                        onPress={() => {
+                                                            updateCalf(idx, 'color', color);
+                                                            updateCalf(idx, 'isCustomColor', false);
+                                                        }}
+                                                        className={`px-3 py-2 rounded-xl border ${
+                                                            calf.color === color && !calf.isCustomColor
+                                                                ? 'bg-emerald-600 border-transparent'
+                                                                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                                        }`}
+                                                    >
+                                                        <Text className={`font-outfit-black text-[10px] ${
+                                                            calf.color === color && !calf.isCustomColor
+                                                                ? 'text-white'
+                                                                : 'text-slate-500 dark:text-slate-400'
+                                                        }`}>
+                                                            {color}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        updateCalf(idx, 'isCustomColor', true);
+                                                        if (CALF_COLOR_OPTIONS.includes(calf.color)) {
+                                                            updateCalf(idx, 'color', '');
+                                                        }
+                                                    }}
+                                                    className={`px-3 py-2 rounded-xl border ${
+                                                        calf.isCustomColor
+                                                            ? 'bg-emerald-600 border-transparent'
+                                                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                                    }`}
+                                                >
+                                                    <Text className={`font-outfit-black text-[10px] ${
+                                                        calf.isCustomColor ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+                                                    }`}>
+                                                        Other
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                            {calf.isCustomColor && (
+                                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center">
+                                                    <TextInput
+                                                        className="text-slate-800 dark:text-white font-outfit-medium text-[13px] flex-1"
+                                                        value={calf.color}
+                                                        onChangeText={(v) => updateCalf(idx, 'color', v)}
+                                                        placeholder="Describe color..."
+                                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                                    />
+                                                </View>
+                                            )}
+                                        </View>
+
+                                        <View className="flex-row gap-4">
+                                            <View className="flex-1">
+                                                <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Ear Tag / ID No.</Text>
+                                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center">
+                                                    <TextInput
+                                                        className="text-slate-800 dark:text-white font-outfit-black text-[13px] uppercase flex-1"
+                                                        placeholder="CALF-XXXX"
+                                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                                        value={calf.earTag}
+                                                        onChangeText={(v) => updateCalf(idx, 'earTag', v)}
+                                                    />
+                                                </View>
+                                                {calf.isLiving !== false && <View className="mt-2 ml-1">
+                                                    <EarTagGenerator
+                                                        farmerName={farmerName}
+                                                        animalCount={farmerAnimalCount + idx}
+                                                        onGenerate={(tag) => updateCalf(idx, 'earTag', tag)}
+                                                        isDark={isDark}
+                                                    />
+                                                </View>}
+                                            </View>
+                                            <View className="flex-1">
+                                                <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Brand Mark</Text>
+                                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center">
+                                                    <TextInput
+                                                        className="text-slate-800 dark:text-white font-outfit-bold text-[13px] flex-1"
+                                                        placeholder="Optional"
+                                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                                        value={calf.brand}
+                                                        onChangeText={(v) => updateCalf(idx, 'brand', v)}
+                                                    />
+                                                </View>
+                                            </View>
                                         </View>
 
                                         {/* Calf Image Picker */}
@@ -786,6 +903,17 @@ export default function RecordCalfDropScreen() {
                                     </View>
                                 </View>
                             ))}
+                            {calves.length < 5 && (
+                                <TouchableOpacity
+                                    onPress={addCalf}
+                                    className="bg-white dark:bg-slate-900 border-2 border-dashed border-emerald-200 dark:border-emerald-900/50 rounded-2xl p-4 items-center justify-center flex-row gap-2"
+                                >
+                                    <View className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-900/20 items-center justify-center">
+                                        <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-black text-lg">+</Text>
+                                    </View>
+                                    <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-sm">Add Another Calf</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>}
 
                         <TechnicianFormSection title="Technical Notes">
@@ -819,7 +947,7 @@ export default function RecordCalfDropScreen() {
                             className="mb-4"
                             onPress={handleSave}
                             loading={submissionLocked}
-                            disabled={submissionLocked}
+                            disabled={submissionLocked || isLiveOutcomeTooEarly}
                         >
                             <Save size={19} color="white" style={{ marginRight: 9 }} />
                             <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white text-sm">Submit Calving Registry</Text>
@@ -876,7 +1004,7 @@ export default function RecordCalfDropScreen() {
             <TechnicianPickerSheet
               visible={showAnimalModal}
               title="Select Pregnant Cow"
-              subtitle="Only eligible pregnancy records are shown"
+              subtitle="Active confirmed pregnancies; timing is checked after selection"
               onClose={() => setShowAnimalModal(false)}
             >
               <TechnicianPickerSearch
@@ -917,7 +1045,7 @@ export default function RecordCalfDropScreen() {
               onConfirm={submitCalvingRecord}
               title="Submit Calving Registry?"
               message={isLiveBirth
-                ? `This will create ${numCalves} living offspring record${numCalves > 1 ? "s" : ""} for ${motherTag || "the selected mother"}.`
+                ? `This will create ${calves.length} living offspring record${calves.length > 1 ? "s" : ""} for ${motherTag || "the selected mother"}.`
                 : `This will record a ${calvingEase.toLowerCase()} without creating living livestock profiles for ${motherTag || "the selected mother"}.`}
               confirmText="Submit"
               cancelText="Review"

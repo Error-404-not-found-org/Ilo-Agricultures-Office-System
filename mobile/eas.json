@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 14.1.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -9,8 +9,10 @@
       "distribution": "internal",
       "channel": "development"
     },
+
     "preview": {
       "distribution": "internal",
+      "autoIncrement": true,
       "android": {
         "buildType": "apk"
       },
@@ -20,14 +22,30 @@
       },
       "channel": "preview"
     },
+
+    "production-apk": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYnJlZWRzbWFydG90b24uc2l0ZSQ",
+        "EXPO_PUBLIC_API_URL": "https://api.breedsmartoton.site/api"
+      },
+      "channel": "production"
+    },
+
     "production": {
       "channel": "production",
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYnJlZWRzbWFydG90b24uc2l0ZSQ",
         "EXPO_PUBLIC_API_URL": "https://api.breedsmartoton.site/api"
       }
     }
   },
+
   "submit": {
     "production": {}
   }

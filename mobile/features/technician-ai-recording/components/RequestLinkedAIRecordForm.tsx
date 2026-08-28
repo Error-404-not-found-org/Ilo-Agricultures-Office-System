@@ -1,6 +1,20 @@
-import React, { useMemo } from "react";
-import { Image, ScrollView, Text, View } from "react-native";
-import { AlertTriangle, CalendarDays, FileText, UserRound } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
+import {
+  Image,
+  ScrollView,
+  Text,
+  View,
+  Modal,
+  TouchableOpacity,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { X } from "lucide-react-native";
+import {
+  AlertTriangle,
+  CalendarDays,
+  FileText,
+  UserRound,
+} from "lucide-react-native";
 import { Button } from "@/components/ui/Button";
 import { useTheme } from "@/lib/theme";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
@@ -14,6 +28,7 @@ interface RequestLinkedAIRecordFormProps {
   context: RequestLinkedContext;
   values: AIRecordingValues;
   saving: boolean;
+  historicalTimeConfirmationRequired: boolean;
   onValuesChange: (next: Partial<AIRecordingValues>) => void;
   onReview: () => void;
 }
@@ -87,6 +102,25 @@ function SummaryLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+const formatFarmLocation = (value?: string | null) => {
+  if (!value) return "Location not provided";
+
+  return (
+    value
+      // Remove Google Plus Code at the beginning: PHF6+QQ
+      .replace(/^[A-Z0-9]{4,8}\+[A-Z0-9]{2,3}\s*,?\s*/i, "")
+      // Split address parts
+      .split(",")
+      .map((part) => part.trim())
+      // Remove unnecessary regional/country labels
+      .filter(
+        (part) => !/^(Western Visayas|Region VI|Philippines)$/i.test(part),
+      )
+      .filter(Boolean)
+      .join(", ")
+  );
+};
+
 const formatAddress = (address: any) => {
   if (!address) return "No location provided";
   if (typeof address === "string") return address;
@@ -101,10 +135,14 @@ export function RequestLinkedAIRecordForm({
   context,
   values,
   saving,
+  historicalTimeConfirmationRequired,
   onValuesChange,
   onReview,
 }: RequestLinkedAIRecordFormProps) {
   const { colors } = useTheme();
+  const [selectedAttachment, setSelectedAttachment] = useState<string | null>(
+    null,
+  );
   const eligibilityWarning = useMemo(() => {
     const hasRequiredIdentity = Boolean(
       context.animal.gender || context.animal.sex,
@@ -119,7 +157,8 @@ export function RequestLinkedAIRecordForm({
     context.animal.earTag ||
     context.animal.animalId ||
     "Animal";
-  const earTag = context.animal.earTag || context.animal.animalId || "Not provided";
+  const earTag =
+    context.animal.earTag || context.animal.animalId || "Not provided";
   const scheduledDate = context.scheduledDate
     ? new Date(context.scheduledDate).toLocaleDateString("en-PH", {
         month: "long",
@@ -139,7 +178,13 @@ export function RequestLinkedAIRecordForm({
       showsVerticalScrollIndicator={false}
     >
       <SectionCard title="Request Summary">
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
           <View
             style={{
               width: 42,
@@ -150,7 +195,16 @@ export function RequestLinkedAIRecordForm({
               backgroundColor: colors.tint,
             }}
           >
-            <UserRound size={21} color={colors.primary} />
+            <Image
+              source={{
+                uri: context.farmer.imageUrl,
+              }}
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: 100,
+              }}
+            />
           </View>
           <View style={{ flex: 1, marginLeft: 11 }}>
             <Text
@@ -174,13 +228,39 @@ export function RequestLinkedAIRecordForm({
             </Text>
           </View>
         </View>
-        <SummaryLine label="Animal" value={animalName} />
+        <SummaryLine
+          label="Animal Species"
+          value={
+            context.animal.species ||
+            context.animal.animalSpecies ||
+            "Not provided"
+          }
+        />
         <SummaryLine label="Ear tag" value={earTag} />
-        <SummaryLine label="Breed" value={context.animal.breed || "Not provided"} />
-        <SummaryLine label="Location" value={formatAddress(context.farmer.address)} />
+        <SummaryLine
+          label="Breed"
+          value={context.animal.breed || "Not provided"}
+        />
+        <SummaryLine
+          label="Location"
+          value={formatAddress(context.farmer.address || "No location")}
+        />
+        <SummaryLine
+          label="Farm Location"
+          value={formatFarmLocation(
+            context.farmer.farmLocation?.detectedAddress?.trim() ||
+            context.raw?.farmLocation?.detectedAddress?.trim() ||
+              "Not provided",
+          )}
+        />
+
         <SummaryLine
           label="Attempt"
-          value={context.attemptNumber ? `Attempt ${context.attemptNumber}` : "Not recorded"}
+          value={
+            context.attemptNumber
+              ? `Attempt ${context.attemptNumber}`
+              : "Not recorded"
+          }
         />
         {context.previousAttempt ? (
           <SummaryLine
@@ -192,33 +272,11 @@ export function RequestLinkedAIRecordForm({
             }
           />
         ) : null}
-      </SectionCard>
 
-      <SectionCard title="Scheduled Visit">
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <CalendarDays size={20} color={colors.primary} />
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text
-              style={{
-                color: colors.textPrimary,
-                fontFamily: "Outfit_700Bold",
-                fontSize: 14,
-              }}
-            >
-              {scheduledDate}
-            </Text>
-            <Text
-              style={{
-                color: colors.textSecondary,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 12,
-                marginTop: 3,
-              }}
-            >
-              {period}
-            </Text>
-          </View>
-        </View>
+        <SummaryLine
+          label="Scheduled Visit"
+          value={`${scheduledDate} ${period}`}
+        />
       </SectionCard>
 
       <SectionCard title="Farmer-submitted Observations">
@@ -287,19 +345,23 @@ export function RequestLinkedAIRecordForm({
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {context.attachmentUrls.map((url) => (
-                <Image
+                <TouchableOpacity
                   key={url}
-                  source={{ uri: url }}
-                  accessibilityLabel="Farmer-submitted AI request attachment"
-                  style={{
-                    width: 104,
-                    height: 82,
-                    borderRadius: 10,
-                    marginRight: 8,
-                    backgroundColor: colors.tint,
-                  }}
-                  resizeMode="cover"
-                />
+                  onPress={() => setSelectedAttachment(url)}
+                >
+                  <Image
+                    source={{ uri: url }}
+                    accessibilityLabel="Farmer-submitted AI request attachment"
+                    style={{
+                      width: 104,
+                      height: 82,
+                      borderRadius: 10,
+                      marginRight: 8,
+                      backgroundColor: colors.tint,
+                    }}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
@@ -328,7 +390,38 @@ export function RequestLinkedAIRecordForm({
               marginLeft: 8,
             }}
           >
-            {eligibilityWarning} The scheduled request may still be completed; the server will perform final validation.
+            {eligibilityWarning} The scheduled request may still be completed;
+            the server will perform final validation.
+          </Text>
+        </View>
+      ) : null}
+
+      {historicalTimeConfirmationRequired ? (
+        <View
+          accessibilityRole="alert"
+          style={{
+            flexDirection: "row",
+            padding: 13,
+            borderWidth: 1,
+            borderColor: colors.warning,
+            borderRadius: 14,
+            backgroundColor: colors.warningContainer,
+          }}
+        >
+          <AlertTriangle size={18} color={colors.warningForeground} />
+          <Text
+            style={{
+              flex: 1,
+              color: colors.warningForeground,
+              fontFamily: "Outfit_500Medium",
+              fontSize: 12,
+              lineHeight: 18,
+              marginLeft: 8,
+            }}
+          >
+            The historical date was initialized from the scheduled visit. Select
+            the actual service time to confirm it; Morning/Afternoon is not an
+            exact procedure time.
           </Text>
         </View>
       ) : null}
@@ -337,8 +430,12 @@ export function RequestLinkedAIRecordForm({
         <AIRecordingFields
           values={values}
           disabled={saving}
-          onDateChange={(inseminationDate) => onValuesChange({ inseminationDate })}
-          onTimeChange={(inseminationTime) => onValuesChange({ inseminationTime })}
+          onDateChange={(inseminationDate) =>
+            onValuesChange({ inseminationDate })
+          }
+          onTimeChange={(inseminationTime) =>
+            onValuesChange({ inseminationTime })
+          }
           onEstrusChange={(estrus) => onValuesChange({ estrus })}
           onSireBreedChange={(sireBreed) => onValuesChange({ sireBreed })}
           onSireCodeChange={(sireCode) => onValuesChange({ sireCode })}
@@ -358,6 +455,126 @@ export function RequestLinkedAIRecordForm({
         loading={saving}
         onPress={onReview}
       />
+
+      <Modal
+        visible={!!selectedAttachment}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedAttachment(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.4)",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 16,
+            }}
+          >
+            {/* Header */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 14,
+              }}
+            >
+              <View>
+                <Text
+                  style={{
+                    color: "#111827",
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 17,
+                  }}
+                >
+                  Attachment
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    fontFamily: "Outfit_400Regular",
+                    fontSize: 13,
+                    marginTop: 2,
+                  }}
+                >
+                  Farmer submitted photo
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setSelectedAttachment(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: "#F3F4F6",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={19} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Image */}
+            {selectedAttachment ? (
+              <View
+                style={{
+                  width: "100%",
+                  height: 300,
+                  backgroundColor: "#F3F4F6",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                }}
+              >
+                <Image
+                  source={{ uri: selectedAttachment }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                  }}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : null}
+
+            {/* Close */}
+            <TouchableOpacity
+              onPress={() => setSelectedAttachment(null)}
+              style={{
+                marginTop: 16,
+                minHeight: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#D1D5DB",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: "#374151",
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 14,
+                }}
+              >
+                Close
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }

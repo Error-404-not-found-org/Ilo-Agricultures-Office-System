@@ -4,12 +4,11 @@ import { BreedingObservationScreen } from "@/features/breeding/screens/BreedingO
 import type { BreedingObservationType } from "@/features/breeding/services/breedingObservation.service";
 
 export default function ReportBreedingObservationRoute() {
-  const { animalId, requestId, defaultReport, requestVerification } =
+  const { animalId, requestId, defaultReport } =
     useLocalSearchParams<{
       animalId: string;
       requestId?: string;
       defaultReport?: BreedingObservationType;
-      requestVerification?: string;
     }>();
 
   return (
@@ -17,7 +16,6 @@ export default function ReportBreedingObservationRoute() {
       animalId={animalId || ""}
       requestId={requestId}
       defaultReport={defaultReport || "unsure"}
-      requestVerification={requestVerification === "true"}
     />
   );
 }

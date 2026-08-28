@@ -31,9 +31,22 @@ import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
 } from "@/features/breeding/utils/breedingObservationPresentation";
+import { technicianKeys } from "@/lib/queryKeys";
+import {
+  buildPregnancyContinuationPayload,
+  isPregnancyContinuationStage,
+  type PregnancyContinuationResult,
+  type TechnicianBreedingVerificationResult,
+} from "@/features/breeding/utils/technicianBreedingVerification";
+import type { WorkQueueResponse } from "@/features/technician-requests/types/technicianRequests.types";
 
 export default function PregnancyVerificationScreen() {
-  const { id } = useLocalSearchParams();
+  const routeParams = useLocalSearchParams<{
+    id?: string;
+    workflowStage?: string;
+    pregnancyId?: string;
+  }>();
+  const id = routeParams.id;
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
@@ -47,7 +60,7 @@ export default function PregnancyVerificationScreen() {
 
   // Form states
   const [verificationResult, setVerificationResult] = useState<
-    "pregnant" | "not_pregnant" | "return_to_heat" | "needs_recheck" | ""
+    TechnicianBreedingVerificationResult | PregnancyContinuationResult | ""
   >("");
   const [checkMethod, setCheckMethod] = useState("");
   const [checkedAt, setCheckedAt] = useState<Date>(new Date());
@@ -57,7 +70,18 @@ export default function PregnancyVerificationScreen() {
   // Date picker visibility states
   const [showCheckedAtPicker, setShowCheckedAtPicker] = useState(false);
   const [showNextCheckDatePicker, setShowNextCheckDatePicker] = useState(false);
+  const [methodValidationError, setMethodValidationError] = useState(false);
   const pregnancyReadiness = task?.pregnancyReadiness || insem?.pregnancyReadiness || null;
+  const workflowStage =
+    task?.metadata?.workflowStage ||
+    task?.workflowStage ||
+    routeParams.workflowStage ||
+    "initial_confirmation";
+  const isContinuationWorkflow = isPregnancyContinuationStage(workflowStage);
+  const pregnancyId =
+    task?.pregnancy?._id ||
+    task?.metadata?.pregnancyId ||
+    routeParams.pregnancyId;
   const methodBased = pregnancyReadiness?.policyMode === "method_based";
   const methodOptions = methodBased
     ? pregnancyReadiness?.methods || []
@@ -82,7 +106,7 @@ export default function PregnancyVerificationScreen() {
         if (res.data?.insemination) {
           const insemData = res.data.insemination;
           setInsem(insemData);
-          
+
           const animalObj = insemData.animalId;
           const start = insemData.inseminationDate || insemData.createdAt;
           if (start && animalObj) {
@@ -106,20 +130,31 @@ export default function PregnancyVerificationScreen() {
   }, [id, api]);
 
   const handleVerify = async () => {
-    if (officialDiagnosis && !officialDiagnosisReady) {
+    if (!verificationResult) {
+      toast.error("Please select a verification result.");
+      return;
+    }
+    if (isContinuationWorkflow) {
+      if (!pregnancyId) {
+        toast.error("This follow-up task is missing its Pregnancy record link.");
+        return;
+      }
+      if (verificationResult === "follow_up_required" && !nextCheckDate) {
+        toast.error("Please specify the next follow-up date.");
+        return;
+      }
+    } else if (officialDiagnosis && !officialDiagnosisReady) {
       toast.error(
         pregnancyReadiness?.reason || "Pregnancy check is not yet available.",
       );
       return;
     }
-    if (!verificationResult) {
-      toast.error("Please select a verification result.");
+    if (!isContinuationWorkflow && !checkMethod) {
+      setMethodValidationError(true);
+      toast.error("Select a diagnostic method before saving the pregnancy check.");
       return;
     }
-    if (!checkMethod && (methodBased || officialDiagnosis)) {
-      toast.error("Please select a diagnostic method.");
-      return;
-    }
+    setMethodValidationError(false);
     if (verificationResult === "needs_recheck" && !nextCheckDate) {
       toast.error("Please specify a next check date for rechecks.");
       return;
@@ -127,22 +162,74 @@ export default function PregnancyVerificationScreen() {
 
     setSubmitting(true);
     try {
-      await api.post(`/ai-request/${insem._id}/verify-breeding-observation`, {
-        verificationResult,
-        checkMethod,
-        checkedAt: checkedAt.toISOString(),
-        technicianNotes: notes,
-        nextCheckDate: nextCheckDate ? nextCheckDate.toISOString() : undefined,
-        policyVersion: pregnancyReadiness?.policyVersion,
-        taskId: task?._id,
-      });
+      if (isContinuationWorkflow) {
+        await api.post(
+          `/technician/pregnancy-checks/${pregnancyId}/continuation-recheck`,
+          buildPregnancyContinuationPayload({
+            result: verificationResult as PregnancyContinuationResult,
+            checkedAt,
+            notes,
+            followUpDate: nextCheckDate,
+            taskId: String(task?._id || id),
+          }),
+        );
+      } else {
+        await api.post(`/ai-request/${insem._id}/verify-breeding-observation`, {
+          verificationResult,
+          checkMethod,
+          checkedAt: checkedAt.toISOString(),
+          technicianNotes: notes,
+          nextCheckDate: nextCheckDate ? nextCheckDate.toISOString() : undefined,
+          policyVersion: pregnancyReadiness?.policyVersion,
+          taskId: task?._id,
+        });
+      }
+
+      // Optimistically synchronize the Work Queue cache for conclusive results
+      if (isContinuationWorkflow || verificationResult !== "needs_recheck") {
+        queryClient.setQueriesData<WorkQueueResponse>(
+          { queryKey: technicianKeys.workQueue() },
+          (oldData) => {
+            if (!oldData || !Array.isArray(oldData.data)) return oldData;
+            return {
+              ...oldData,
+              data: oldData.data.filter((item) => {
+                // Remove the completed PD task
+                if (task?._id && item.id === task._id) return false;
+
+                // Remove the Insemination item itself
+                if (insem?._id && item.id === insem._id) return false;
+                if (insem?._id && item.workflowId === insem._id) return false;
+
+                // Remove related tasks (like BreedingFollowUp)
+                if (
+                  insem?._id &&
+                  item.raw?.metadata?.inseminationId === insem._id
+                ) {
+                  return false;
+                }
+                if (insem?._id && item.raw?.inseminationId === insem._id) {
+                  return false;
+                }
+
+                return true;
+              }),
+            };
+          },
+        );
+      }
 
       queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
-      toast.success("Pregnancy verification recorded!");
-      
+      queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
+      toast.success(
+        isContinuationWorkflow
+          ? "Pregnancy follow-up recorded!"
+          : "Pregnancy verification recorded!",
+      );
+
       // Navigate back and dismiss this screen
       router.dismiss(2);
     } catch (err: any) {
@@ -196,7 +283,7 @@ export default function PregnancyVerificationScreen() {
           <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Pregnancy Verification
+          {isContinuationWorkflow ? "Pregnancy Follow-up" : "Pregnancy Verification"}
         </Text>
       </View>
 
@@ -205,149 +292,27 @@ export default function PregnancyVerificationScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
-          {/* Animal & Farmer Overview */}
+          {/* Compact Context Summary */}
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.cardHeader}>
-              <Heart size={20} color={isDark ? "#34d399" : "#00643B"} />
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Animal Details</Text>
-            </View>
-            <View style={styles.grid}>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Ear Tag / ID</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {animal.earTag || animal.animalId || "N/A"}
+            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+              Cow {animal.earTag || animal.animalId || "N/A"} · Attempt #{insem.attemptNumber || "N/A"}
+            </Text>
+            <View style={{ marginTop: 8, gap: 2 }}>
+              <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 13, color: colors.textSecondary }}>
+                AI date: {formatDate(insem.inseminationDate || insem.scheduledDate)}
+              </Text>
+              {pregnancyReadiness?.daysPostAI !== undefined ? (
+                <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 13, color: colors.textSecondary }}>
+                  Day {pregnancyReadiness.daysPostAI} after AI
                 </Text>
-              </View>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Breed / Species</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {animal.breed} ({animal.species})
-                </Text>
-              </View>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Farmer</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {task.farmerId?.name || "N/A"}
-                </Text>
-              </View>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Reproductive Status</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {animal.reproductiveStatus || "N/A"}
-                </Text>
-              </View>
+              ) : null}
             </View>
           </View>
-
-          {/* Farmer observation is supportive context, not a diagnosis. */}
-          {insem.farmerOutcomeReport ? (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.cardHeader}>
-              <FileText size={20} color={isDark ? "#34d399" : "#00643B"} />
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Farmer Breeding Observation</Text>
-            </View>
-            
-            <View style={styles.obsSection}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>Reported Condition</Text>
-              <View style={[styles.badge, { backgroundColor: isDark ? "rgba(139, 92, 246, 0.15)" : "#f5f3ff" }]}>
-                <Text style={[styles.badgeText, { color: isDark ? "#c4b5fd" : "#7c3aed" }]}>
-                  {getBreedingObservationLabel(insem.farmerOutcomeReport)}
-                </Text>
-              </View>
-            </View>
-
-            {insem.farmerObservationSigns && insem.farmerObservationSigns.length > 0 && (
-              <View style={styles.obsSection}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Observed Signs</Text>
-                <View style={styles.signsRow}>
-                  {insem.farmerObservationSigns.map((sign: string) => (
-                    <View key={sign} style={[styles.signPill, { backgroundColor: colors.border }]}>
-                      <Text style={[styles.signText, { color: colors.textPrimary }]}>
-                        {getBreedingObservationSignLabel(sign)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {insem.farmerObservationNotes ? (
-              <View style={styles.obsSection}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Farmer Notes</Text>
-                <Text style={[styles.notesText, { color: colors.textPrimary }]}>
-                  {insem.farmerObservationNotes}
-                </Text>
-              </View>
-            ) : null}
-            <View
-              style={[
-                styles.obsSection,
-                {
-                  borderRadius: 12,
-                  padding: 12,
-                  backgroundColor: isDark
-                    ? "rgba(245,158,11,0.1)"
-                    : "#FFFBEB",
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: isDark ? "#FCD34D" : "#92400E",
-                  fontFamily: "Outfit_600SemiBold",
-                  fontSize: 12,
-                  lineHeight: 17,
-                }}
-              >
-                Farmer observation only. Record your official diagnosis below.
-              </Text>
-            </View>
-          </View>
-          ) : null}
-
-          {/* Scientific Milestones Checklist */}
-          {milestones && !methodBased && (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.cardHeader}>
-                <CalendarCheck size={20} color={isDark ? "#34d399" : "#00643B"} />
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Scientific Milestones</Text>
-              </View>
-              <Text style={[styles.milestonesDesc, { color: colors.textSecondary }]}>
-                Milestone estimates calculated relative to insemination date: {formatDate(insem.inseminationDate || insem.createdAt)}
-              </Text>
-              <View style={styles.milestoneList}>
-                <View style={[styles.milestoneItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Heat Return Window (Day 21)</Text>
-                  <Text style={[styles.milestoneValue, { color: colors.textSecondary }]}>
-                    {formatDate(milestones.heatReturnCheckDate)}
-                  </Text>
-                </View>
-                <View style={[styles.milestoneItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Optimal Ultrasound Window (Day 35)</Text>
-                  <Text style={[styles.milestoneValue, { color: colors.textSecondary }]}>
-                    {formatDate(milestones.ultrasoundCheckDate)}
-                  </Text>
-                </View>
-                <View style={[styles.milestoneItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Manual Palpation Threshold (Day 60)</Text>
-                  <Text style={[styles.milestoneValue, { color: colors.textSecondary }]}>
-                    {formatDate(milestones.palpationCheckDate)}
-                  </Text>
-                </View>
-                <View style={[styles.milestoneItem, { borderBottomColor: "transparent" }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Target Calving Estimate</Text>
-                  <Text style={[styles.milestoneValue, { color: isDark ? "#34d399" : "#00643B", fontFamily: "Outfit_700Bold" }]}>
-                    {formatDate(milestones.expectedCalvingDate)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          )}
 
           {/* Verification Outcome Form */}
           <Text style={[styles.sectionTitle, { color: isDark ? "#34d399" : "#00643B" }]}>Verification Form</Text>
 
-          {pregnancyReadiness && !pregnancyReadiness.isEligible && (
+          {!isContinuationWorkflow && pregnancyReadiness && !pregnancyReadiness.isEligible && (
             <View
               style={[
                 styles.card,
@@ -371,8 +336,45 @@ export default function PregnancyVerificationScreen() {
           )}
 
           {/* Outcome Segmented Control */}
-          <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Pregnancy Diagnosis Outcome</Text>
+          <Text style={[styles.formLabel, { color: colors.textPrimary }]}>
+            {isContinuationWorkflow ? "Pregnancy Follow-up Outcome" : "Pregnancy Diagnosis Outcome"}
+          </Text>
           <View style={styles.segmentedControl}>
+            {isContinuationWorkflow ? (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    verificationResult === "continuing" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
+                    { borderColor: colors.border },
+                  ]}
+                  onPress={() => setVerificationResult("continuing")}
+                >
+                  <Text style={[styles.segmentText, { color: verificationResult === "continuing" ? "#fff" : colors.textPrimary }]}>Continuing</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    verificationResult === "loss_detected" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
+                    { borderColor: colors.border },
+                  ]}
+                  onPress={() => setVerificationResult("loss_detected")}
+                >
+                  <Text style={[styles.segmentText, { color: verificationResult === "loss_detected" ? "#fff" : colors.textPrimary }]}>Loss detected</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    verificationResult === "follow_up_required" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
+                    { borderColor: colors.border },
+                  ]}
+                  onPress={() => setVerificationResult("follow_up_required")}
+                >
+                  <Text style={[styles.segmentText, { color: verificationResult === "follow_up_required" ? "#fff" : colors.textPrimary }]}>Follow-up</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
             <TouchableOpacity
               style={[
                 styles.segmentBtn,
@@ -444,9 +446,13 @@ export default function PregnancyVerificationScreen() {
                 Recheck
               </Text>
             </TouchableOpacity>
+              </>
+            )}
           </View>
 
           {/* Diagnostic Check Method */}
+          {!isContinuationWorkflow && (
+            <>
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Diagnostic Method</Text>
           <View style={styles.pillRow}>
             {methodOptions.map(
@@ -467,7 +473,10 @@ export default function PregnancyVerificationScreen() {
                     },
                     checkMethod === method.methodCode && styles.pillBtnActive,
                   ]}
-                  onPress={() => setCheckMethod(method.methodCode)}
+                  onPress={() => {
+                    setCheckMethod(method.methodCode);
+                    setMethodValidationError(false);
+                  }}
                 >
                   <Text
                     style={[
@@ -486,12 +495,20 @@ export default function PregnancyVerificationScreen() {
               )
             )}
           </View>
+          {methodValidationError && (
+            <Text style={{ color: "#ef4444", fontSize: 12, marginTop: 4, fontFamily: "Outfit_500Medium", marginBottom: 8 }}>
+              Select a diagnostic method before saving the pregnancy check.
+            </Text>
+          )}
+            </>
+          )}
+
 
           {/* Date of Diagnosis */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Checked At</Text>
           <TouchableOpacity
             style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
-            disabled={officialDiagnosis && !officialDiagnosisReady}
+            disabled={!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady}
             onPress={() => setShowCheckedAtPicker(true)}
           >
             <CalendarIcon size={18} color={colors.textSecondary} />
@@ -501,12 +518,14 @@ export default function PregnancyVerificationScreen() {
           </TouchableOpacity>
 
           {/* Next Check Date (Visible only on needs_recheck) */}
-          {verificationResult === "needs_recheck" && (
+          {(verificationResult === "needs_recheck" || verificationResult === "follow_up_required") && (
             <>
-              <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Next Recheck Date</Text>
+              <Text style={[styles.formLabel, { color: colors.textPrimary }]}>
+                {verificationResult === "follow_up_required" ? "Next Follow-up Date" : "Next Recheck Date"}
+              </Text>
               <TouchableOpacity
                 style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
-                disabled={officialDiagnosis && !officialDiagnosisReady}
+                disabled={!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady}
                 onPress={() => setShowNextCheckDatePicker(true)}
               >
                 <CalendarIcon size={18} color={colors.textSecondary} />
@@ -520,7 +539,7 @@ export default function PregnancyVerificationScreen() {
           {/* Notes */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Technician notes</Text>
           <TextInput
-            editable={!officialDiagnosis || officialDiagnosisReady}
+            editable={isContinuationWorkflow || !officialDiagnosis || officialDiagnosisReady}
             multiline
             numberOfLines={4}
             placeholder="Add diagnosis details, health notes, recommendation..."
@@ -539,12 +558,12 @@ export default function PregnancyVerificationScreen() {
 
           {/* Submit Button */}
           <TouchableOpacity
-            disabled={submitting || (officialDiagnosis && !officialDiagnosisReady)}
+            disabled={submitting || (!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady)}
             style={[
               styles.submitBtn,
               {
                 backgroundColor:
-                  submitting || (officialDiagnosis && !officialDiagnosisReady)
+                  submitting || (!isContinuationWorkflow && officialDiagnosis && !officialDiagnosisReady)
                     ? colors.textMuted
                     : isDark ? "#10b981" : "#00643B",
                 shadowColor: isDark ? "transparent" : "#00643B",
@@ -557,7 +576,9 @@ export default function PregnancyVerificationScreen() {
             ) : (
               <>
                 <CheckCircle size={20} color="#fff" />
-                <Text style={styles.submitBtnText}>Submit Verification</Text>
+                <Text style={styles.submitBtnText}>
+                  {isContinuationWorkflow ? "Save Pregnancy Follow-up" : "Save Pregnancy Confirmation"}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -622,14 +643,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   card: {
-    padding: 20,
-    borderRadius: 24,
+    padding: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
+    marginBottom: 16,
   },
   cardHeader: {
     flexDirection: "row",
@@ -799,12 +816,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    borderRadius: 24,
+    borderRadius: 16,
     gap: 12,
     marginBottom: 40,
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 8,
   },
   submitBtnText: {
     color: "#fff",

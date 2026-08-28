@@ -10,6 +10,7 @@ import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Task } from "../src/models/task.model.js";
 import {
+  completeInitialConfirmationTask,
   confirmPregnancyDiagnosis,
   recordPregnancyContinuationRecheck,
 } from "../src/services/pregnancy-confirmation.service.js";
@@ -66,6 +67,7 @@ function installDiagnosisStubs({
     target[key] = value;
   };
   const now = new Date("2026-07-18T00:00:00.000Z");
+  const completedAt = new Date("2026-06-13T08:30:00.000Z");
   const animal = {
     _id: ids.animal,
     farmerId: ids.farmer,
@@ -81,6 +83,9 @@ function installDiagnosisStubs({
     status: "done",
     outcome: "Pending",
     isSuccess: null,
+    technicianId: ids.actor,
+    approvedBy: ids.actor,
+    completedAt,
     inseminationDate: new Date(now.getTime() - daysPostAI * 24 * 60 * 60 * 1000),
   };
   const initialTask = {
@@ -145,6 +150,10 @@ function installDiagnosisStubs({
     state.pregnancy = { _id: ids.pregnancy, cycleStatus: "active", ...data };
     return [state.pregnancy];
   });
+  replace(Pregnancy, "updateOne", async (_filter, update) => {
+    if (state.pregnancy) Object.assign(state.pregnancy, update.$set || {});
+    return { modifiedCount: state.pregnancy ? 1 : 0 };
+  });
   replace(Insemination, "updateOne", async (_filter, update) => {
     Object.assign(insemination, update.$set || {});
     return { modifiedCount: 1 };
@@ -163,6 +172,7 @@ function installDiagnosisStubs({
       : [created];
     return state.continuationTasks[0];
   });
+  replace(Task, "updateOne", async () => ({ matchedCount: 0, modifiedCount: 0 }));
   replace(Task, "updateMany", async () => ({ modifiedCount: 0 }));
   replace(AnimalTimelineEvent, "create", async (_entries, options) => {
     assert.ok(options.session);
@@ -179,6 +189,7 @@ function installDiagnosisStubs({
   return {
     state,
     now,
+    completedAt,
     restore() {
       for (const [target, key, original] of originals.reverse()) target[key] = original;
     },
@@ -186,6 +197,75 @@ function installDiagnosisStubs({
 }
 
 const actor = { _id: ids.actor, role: "technician", name: "Policy Tech" };
+
+test("a diagnosis cannot reconcile an initial task assigned to another technician", async () => {
+  const originalFind = Task.find;
+  const assignedTechnicianId = "507f1f77bcf86cd799439099";
+  const task = {
+    _id: ids.task,
+    farmerId: ids.farmer,
+    animalIds: [ids.animal],
+    technicianId: assignedTechnicianId,
+    taskType: "PD",
+    status: "Pending",
+    metadata: {
+      workflowStage: "initial_confirmation",
+      inseminationId: ids.insemination,
+    },
+    async save() { return this; },
+  };
+  let queryFilter = null;
+  Task.find = (filter) => {
+    queryFilter = filter;
+    return query([task]);
+  };
+  try {
+    await assert.rejects(
+      () => completeInitialConfirmationTask({
+        animal: { _id: ids.animal, farmerId: ids.farmer },
+        insemination: { _id: ids.insemination, technicianId: ids.actor },
+        pregnancy: { _id: ids.pregnancy },
+        actor,
+        methodCode: "ultrasound",
+        policyVersion: activePolicy.version,
+        session: {},
+      }),
+      (error) => error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER" && error.status === 403,
+    );
+    assert.equal("$or" in queryFilter, false);
+    assert.equal(task.status, "Pending");
+  } finally {
+    Task.find = originalFind;
+  }
+});
+
+test("automatic diagnosis reconciliation does not complete an unrelated Pregnancy task", async () => {
+  const originalFind = Task.find;
+  const unrelated = {
+    _id: ids.task,
+    taskType: "PD",
+    status: "Pending",
+    metadata: {
+      workflowStage: "continuation_recheck",
+      pregnancyId: "507f1f77bcf86cd799439098",
+    },
+  };
+  Task.find = () => query([unrelated]);
+  try {
+    const completed = await completeInitialConfirmationTask({
+      animal: { _id: ids.animal, farmerId: ids.farmer },
+      insemination: { _id: ids.insemination, technicianId: ids.actor },
+      pregnancy: { _id: ids.pregnancy },
+      actor,
+      session: {},
+    });
+
+    assert.equal(completed, null);
+    assert.equal(unrelated.status, "Pending");
+  } finally {
+    Task.find = originalFind;
+  }
+});
 
 test("method-based early diagnosis snapshots policy and creates one continuation task", async () => {
   const stubs = installDiagnosisStubs({ daysPostAI: 35 });
@@ -210,6 +290,7 @@ test("method-based early diagnosis snapshots policy and creates one continuation
     assert.equal(stubs.state.initialTask.status, "Completed");
     assert.equal(stubs.state.timelineWrites, 1);
     assert.equal(stubs.state.auditWrites, 1);
+    assert.equal(stubs.state.insemination.completedAt, stubs.completedAt);
   } finally {
     stubs.restore();
   }
@@ -290,6 +371,7 @@ test("method policy rejects missing, disabled, early, stale, and unauthorized su
           diagnosisDate: stubs.now,
           methodCode: input.methodCode,
           policyVersion: input.policyVersion,
+          taskId: ids.task,
           actor,
         }),
         (error) => error.code === input.code,
@@ -311,6 +393,7 @@ test("standard diagnosis creates no continuation task and negative diagnosis ret
       diagnosisDate: standard.now,
       methodCode: "ultrasound",
       policyVersion: activePolicy.version,
+      taskId: ids.task,
       actor,
     });
     assert.equal(result.pregnancy.pregnancyDiagnosis.result, "Empty");
@@ -443,7 +526,7 @@ test("completed matching task replay returns the existing diagnosis without new 
   }
 });
 
-test("concurrent diagnosis submissions produce one Pregnancy result", async () => {
+test("two technicians racing an unassigned diagnosis Task produce one owner and one Pregnancy", async () => {
   const stubs = installDiagnosisStubs({ daysPostAI: 35 });
   const input = {
     animalId: ids.animal,
@@ -458,12 +541,25 @@ test("concurrent diagnosis submissions produce one Pregnancy result", async () =
   try {
     const outcomes = await Promise.allSettled([
       confirmPregnancyDiagnosis(input),
-      confirmPregnancyDiagnosis(input),
+      confirmPregnancyDiagnosis({
+        ...input,
+        actor: {
+          _id: "507f1f77bcf86cd799439088",
+          role: "technician",
+        },
+      }),
     ]);
     assert.equal(outcomes.filter((item) => item.status === "fulfilled").length, 1);
     const rejected = outcomes.find((item) => item.status === "rejected");
-    assert.equal(rejected.reason.code, "PREGNANCY_DIAGNOSIS_EXISTS");
+    assert.ok([
+      "PREGNANCY_DIAGNOSIS_EXISTS",
+      "PREGNANCY_WORK_ASSIGNED_TO_OTHER",
+    ].includes(rejected.reason.code));
     assert.equal(stubs.state.pregnancy._id, ids.pregnancy);
+    assert.ok([
+      ids.actor,
+      "507f1f77bcf86cd799439088",
+    ].includes(String(stubs.state.initialTask.technicianId)));
   } finally {
     stubs.restore();
   }
@@ -581,6 +677,96 @@ test("diagnostic follow-up task updates the linked Pregnancy instead of creating
     assert.equal(followUpTask.status, "Completed");
   } finally {
     Pregnancy.updateOne = originalPregnancyUpdate;
+    stubs.restore();
+  }
+});
+
+test("continuation rejects an explicitly supplied task owned by another technician", async () => {
+  const pregnancy = {
+    _id: ids.pregnancy,
+    animalId: ids.animal,
+    farmerId: ids.farmer,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-06-01") },
+    confirmation: { recheckRequired: true },
+    cycleStatus: "active",
+    recheckStatus: "pending",
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 65, existingPregnancy: pregnancy });
+  let taskQuery = null;
+  Task.findOne = (filter) => {
+    taskQuery = filter;
+    return query({
+      ...stubs.state.initialTask,
+      technicianId: "507f1f77bcf86cd799439099",
+      metadata: {
+        workflowStage: "continuation_recheck",
+        pregnancyId: ids.pregnancy,
+      },
+    });
+  };
+  try {
+    await assert.rejects(
+      () => recordPregnancyContinuationRecheck({
+        pregnancyId: ids.pregnancy,
+        result: "continuing",
+        checkedAt: stubs.now,
+        taskId: ids.task,
+        actor,
+      }),
+      (error) => error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER" && error.status === 403,
+    );
+    assert.equal("$or" in taskQuery, false);
+    assert.equal(pregnancy.recheckStatus, "pending");
+  } finally {
+    stubs.restore();
+  }
+});
+
+test("continuation without a taskId cannot mutate another technician's assigned task", async () => {
+  const pregnancy = {
+    _id: ids.pregnancy,
+    animalId: ids.animal,
+    farmerId: ids.farmer,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-06-01") },
+    confirmation: { recheckRequired: true },
+    cycleStatus: "active",
+    recheckStatus: "pending",
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 65, existingPregnancy: pregnancy });
+  const assignedTechnicianId = "507f1f77bcf86cd799439099";
+  const continuationTask = {
+    ...stubs.state.initialTask,
+    technicianId: assignedTechnicianId,
+    metadata: {
+      workflowStage: "continuation_recheck",
+      pregnancyId: ids.pregnancy,
+    },
+  };
+  let taskQuery = null;
+  Task.find = (filter) => {
+    taskQuery = filter;
+    return query([continuationTask]);
+  };
+  try {
+    await assert.rejects(
+      () => recordPregnancyContinuationRecheck({
+        pregnancyId: ids.pregnancy,
+        result: "continuing",
+        checkedAt: stubs.now,
+        actor,
+      }),
+      (error) => error.code === "PREGNANCY_WORK_ASSIGNED_TO_OTHER" && error.status === 403,
+    );
+    assert.equal("$or" in taskQuery, false);
+    assert.ok(
+      taskQuery["metadata.pregnancyId"].$in.some(
+        (value) => String(value) === ids.pregnancy,
+      ),
+    );
+    assert.equal(continuationTask.status, "Pending");
+  } finally {
     stubs.restore();
   }
 });

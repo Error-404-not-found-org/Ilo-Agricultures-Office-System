@@ -1,6 +1,35 @@
 import { verifyPostpartumWindow } from "../utils/cattleCore.js";
-import { ANIMAL_REPRODUCTIVE_STATUS } from "./status-vocabulary.js";
+import {
+  ANIMAL_REPRODUCTIVE_STATUS,
+  normalizeAnimalReproductiveStatus,
+} from "./status-vocabulary.js";
 import { resolveReproductionNextAction } from "./reproduction-next-action.js";
+
+export const resolveEffectiveReproductiveStatus = ({
+  animal,
+  now = new Date(),
+} = {}) => {
+  const storedStatus = normalizeAnimalReproductiveStatus(
+    animal?.reproductiveStatus,
+  );
+  if (storedStatus !== ANIMAL_REPRODUCTIVE_STATUS.POST_PARTUM) {
+    return storedStatus;
+  }
+
+  const recoveryAnchor =
+    animal?.lastCalvingDate || animal?.lastPregnancyLossDate;
+  if (!recoveryAnchor) return storedStatus;
+
+  const recovery = verifyPostpartumWindow(
+    recoveryAnchor,
+    now,
+    animal?.species,
+    animal?.breed,
+  );
+  return recovery.isSafe
+    ? ANIMAL_REPRODUCTIVE_STATUS.NORMAL
+    : storedStatus;
+};
 
 export const getReproductionEligibility = ({
   animal,
@@ -9,8 +38,21 @@ export const getReproductionEligibility = ({
   tasks = [],
   now = new Date(),
 }) => {
-  const nextAction = resolveReproductionNextAction({
+  const effectiveReproductiveStatus = resolveEffectiveReproductiveStatus({
     animal,
+    now,
+  });
+  const effectiveAnimal =
+    effectiveReproductiveStatus === animal?.reproductiveStatus
+      ? animal
+      : {
+          ...(typeof animal?.toObject === "function"
+            ? animal.toObject()
+            : animal),
+          reproductiveStatus: effectiveReproductiveStatus,
+        };
+  const nextAction = resolveReproductionNextAction({
+    animal: effectiveAnimal,
     activeRequest,
     activePregnancy,
     tasks,
@@ -20,13 +62,14 @@ export const getReproductionEligibility = ({
   // A confirmed pregnancy always blocks another AI request.
   if (
     activePregnancy ||
-    animal.reproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
+    effectiveReproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
   ) {
     return {
       eligible: false,
       code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
       reason:
         "There is already an active pregnancy registered for this animal.",
+      effectiveReproductiveStatus,
       nextAction,
       nextActionAt: nextAction?.at || undefined,
     };
@@ -56,6 +99,7 @@ export const getReproductionEligibility = ({
         eligible: false,
         code: "POSTPARTUM_RECOVERY",
         reason: `The animal is still within the postpartum recovery period. Rebreeding is allowed after ${recovery.requiredDays} days post-calving.`,
+        effectiveReproductiveStatus,
         nextAction,
         nextActionAt,
         requiredRecoveryDays: recovery.requiredDays,
@@ -70,8 +114,9 @@ export const getReproductionEligibility = ({
       eligible: false,
       code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
       reason: nextAction
-        ? `An artificial insemination service has already been scheduled for this animal.`
+        ? "An artificial insemination service has already been scheduled for this animal."
         : "A new AI request cannot be created while another AI request is active.",
+      effectiveReproductiveStatus,
       nextAction,
       nextActionAt: nextAction?.at || undefined,
     };
@@ -81,6 +126,7 @@ export const getReproductionEligibility = ({
     eligible: true,
     code: "AVAILABLE",
     reason: "Animal is available for an AI service request.",
+    effectiveReproductiveStatus,
     nextAction: null,
   };
 };

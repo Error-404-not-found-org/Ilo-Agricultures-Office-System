@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { ScrollView, Text, View, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { toast } from "sonner-native";
 import { AppPageHeader } from "@/components/AppPageHeader";
@@ -10,12 +10,14 @@ import { getAIEligibility } from "@/lib/reproductionEligibility";
 import { safeBack } from "@/utils/navigation";
 import {
   useWalkInInseminationMutation,
+  usePreviousInseminationMutation,
   useCompleteAIRequestMutation,
 } from "@/features/technician/hooks/useTechnicianFieldRecords";
 import {
   formatLocalCalendarDate,
   formatLocalTime,
-  getStaticDefaultTime,
+  getActualInseminationDefaults,
+  getAIRecordingErrorMessage,
   isCanonicalWorkflowId,
   validateAIRecording,
 } from "@/features/technician-requests/utils/aiWorkflow";
@@ -26,67 +28,89 @@ import { useRecordAIContext } from "../hooks/useRecordAIContext";
 import type {
   AIRecordingValues,
   DirectInseminationPayload,
+  PreviousAIEntryMode,
   NormalizedInseminationDetails,
   RequestLinkedInseminationPayload,
   ReviewSnapshot,
   SelectedAnimal,
   SelectedFarmer,
 } from "../types/technicianAIRecording.types";
+import {
+  buildPreviousInseminationPayload,
+  getPreviousAIErrorMessage,
+  validatePreviousAIDate,
+} from "../utils/previousAI";
 
 const MY_WORK_PATH = "/(technician)/(tabs)/technician.requests?section=myWork";
 
-const initialValues = (): AIRecordingValues => ({
-  inseminationDate: new Date(),
-  inseminationTime: getStaticDefaultTime(),
-  estrus: "",
-  sireBreed: "",
-  sireCode: "",
-  semenDosesUsed: "1",
-  technicianNote: "",
-});
-
-const recordingErrorMessage = (error: any) => {
-  const code = String(error?.response?.data?.code || "");
-  const status = error?.response?.status;
-  if (
-    status === 409 ||
-    /ALREADY|COMPLETED|DUPLICATE|TERMINAL/.test(code)
-  ) {
-    return "This AI request was already completed or changed. Refresh My Work before trying again.";
-  }
-  if (!error?.response) {
-    return (
-      error?.message ||
-      "The service could not be submitted or queued. Check the connection and try again."
-    );
-  }
-  return (
-    error.response?.data?.message ||
-    error.message ||
-    "Failed to complete the insemination record."
-  );
+const initialValues = (): AIRecordingValues => {
+  const defaults = getActualInseminationDefaults();
+  return {
+    inseminationDate: defaults.inseminationDate,
+    inseminationTime: defaults.inseminationTime,
+    estrus: "",
+    sireBreed: "",
+    sireCode: "",
+    semenDosesUsed: "1",
+    technicianNote: "",
+  };
 };
 
 export default function RecordAIScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const {
-    mode,
-    requestContext,
-    contextError,
-    isRequestLoading,
-    requestError,
-  } = useRecordAIContext();
+  const { mode, requestContext, contextError, isRequestLoading, requestError } =
+    useRecordAIContext();
   const requestMutation = useCompleteAIRequestMutation(
     mode.kind === "request-linked" ? mode.workflowId : "placeholder",
   );
   const walkInMutation = useWalkInInseminationMutation();
+  const previousMutation = usePreviousInseminationMutation();
+  const [isHistoricalMode, setIsHistoricalMode] = useState(false);
+  const [previousEntryMode, setPreviousEntryMode] =
+    useState<PreviousAIEntryMode>("history_only");
+  const [previousRecordError, setPreviousRecordError] = useState<string | null>(
+    null,
+  );
   const submissionLockRef = useRef(false);
+  const initializedWorkflowRef = useRef<string | null>(null);
   const [values, setValues] = useState<AIRecordingValues>(initialValues);
-  const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(null);
-  const saving = requestMutation.isPending || walkInMutation.isPending;
+  const [
+    historicalTimeConfirmationRequired,
+    setHistoricalTimeConfirmationRequired,
+  ] = useState(false);
+  const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(
+    null,
+  );
+  const saving =
+    requestMutation.isPending ||
+    walkInMutation.isPending ||
+    previousMutation.isPending;
+
+  useEffect(() => {
+    if (
+      !requestContext ||
+      initializedWorkflowRef.current === requestContext.workflowId
+    ) {
+      return;
+    }
+    initializedWorkflowRef.current = requestContext.workflowId;
+    const defaults = getActualInseminationDefaults(
+      requestContext.scheduledDate,
+    );
+    setValues((current) => ({
+      ...current,
+      inseminationDate: defaults.inseminationDate,
+      inseminationTime: defaults.inseminationTime,
+    }));
+    setHistoricalTimeConfirmationRequired(defaults.requiresTimeConfirmation);
+  }, [requestContext]);
 
   const updateValues = (next: Partial<AIRecordingValues>) => {
+    setPreviousRecordError(null);
+    if (next.inseminationTime) {
+      setHistoricalTimeConfirmationRequired(false);
+    }
     setValues((current) => ({ ...current, ...next }));
   };
 
@@ -135,6 +159,12 @@ export default function RecordAIScreen() {
 
   const openReview = (farmer: SelectedFarmer, animal: SelectedAnimal) => {
     toast.dismiss();
+    if (historicalTimeConfirmationRequired) {
+      toast.error(
+        "Confirm the actual historical service time. The visit period is not an exact procedure time.",
+      );
+      return;
+    }
     if (!isCanonicalWorkflowId(farmer?._id)) {
       toast.error("A valid farmer is required before recording this service.");
       return;
@@ -144,10 +174,25 @@ export default function RecordAIScreen() {
       return;
     }
 
-    if (mode.kind === "direct") {
+    if (isHistoricalMode) {
+      const dateError = validatePreviousAIDate(
+        values.inseminationDate,
+        animal.birthDate,
+        animal.species,
+        animal.breed,
+      );
+      if (dateError) {
+        setPreviousRecordError(dateError);
+        return;
+      }
+    }
+
+    if (mode.kind === "direct" && !isHistoricalMode) {
       const eligibility = getAIEligibility({ animal });
       if (!eligibility.isEligible) {
-        toast.error(eligibility.reason || "This animal is not eligible for AI service.");
+        toast.error(
+          eligibility.reason || "This animal is not eligible for AI service.",
+        );
         return;
       }
     }
@@ -164,10 +209,15 @@ export default function RecordAIScreen() {
     let accepted = false;
 
     try {
-      let payload: RequestLinkedInseminationPayload | DirectInseminationPayload | any;
+      let payload:
+        | RequestLinkedInseminationPayload
+        | DirectInseminationPayload
+        | any;
       if (mode.kind === "request-linked") {
         if (!requestContext || requestContext.workflowId !== mode.workflowId) {
-          throw new Error("The official AI request context is no longer available.");
+          throw new Error(
+            "The official AI request context is no longer available.",
+          );
         }
         payload = {
           status: "done",
@@ -191,6 +241,10 @@ export default function RecordAIScreen() {
       let result;
       if (mode.kind === "request-linked") {
         result = await requestMutation.mutateAsync(payload);
+      } else if (isHistoricalMode) {
+        result = await previousMutation.mutateAsync(
+          buildPreviousInseminationPayload(payload, previousEntryMode),
+        );
       } else {
         result = await walkInMutation.mutateAsync(payload);
       }
@@ -202,7 +256,11 @@ export default function RecordAIScreen() {
         toast.success(
           mode.kind === "request-linked"
             ? "Insemination completed successfully."
-            : "Direct AI record saved successfully.",
+            : isHistoricalMode
+              ? previousEntryMode === "history_only"
+                ? "Previous AI added to history."
+                : "Previous AI tracking started."
+              : "Direct AI record saved successfully.",
         );
       }
 
@@ -215,8 +273,24 @@ export default function RecordAIScreen() {
         }
       });
     } catch (error: any) {
-      console.error(error);
-      toast.error(recordingErrorMessage(error));
+      if (__DEV__) console.debug("[AI_COMPLETION_PATCH_ERROR]", {
+        requestId: mode.kind === "request-linked" ? mode.workflowId : undefined,
+        endpoint:
+          mode.kind === "request-linked"
+            ? `/ai-request/${mode.workflowId}/status`
+            : isHistoricalMode
+              ? "/technician/previous-insemination"
+              : "/technician/walk-in-insemination",
+        responseStatus: error?.response?.status,
+        code: error?.response?.data?.code,
+        message: error?.response?.data?.message || error?.message,
+      });
+      if (isHistoricalMode) {
+        setPreviousRecordError(getPreviousAIErrorMessage(error));
+        setReviewSnapshot(null);
+      } else {
+        toast.error(getAIRecordingErrorMessage(error));
+      }
     } finally {
       if (!accepted) {
         submissionLockRef.current = false;
@@ -224,18 +298,23 @@ export default function RecordAIScreen() {
     }
   };
 
-  const title = mode.kind === "direct" ? "Record Direct AI Service" : "Record Insemination";
+  const title =
+    mode.kind === "direct"
+      ? isHistoricalMode
+        ? "Record Previous AI"
+        : "Record Direct AI Service"
+      : "Record Insemination";
   const blockingError =
-    mode.kind === "invalid"
-      ? mode.message
-      : requestError || contextError;
+    mode.kind === "invalid" ? mode.message : requestError || contextError;
 
   return (
     <ScreenLayout edges={[]}>
       <AppPageHeader title={title} onBack={handleBack} />
 
       {blockingError ? (
-        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
+        <View
+          style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}
+        >
           <AsyncState
             state="error"
             title="Unable to record this AI service"
@@ -265,10 +344,13 @@ export default function RecordAIScreen() {
                 color: colors.textPrimary,
                 fontFamily: "Outfit_700Bold",
                 fontSize: 14,
-
               }}
             >
-              {[mode.fallback.farmerName, mode.fallback.animalName, mode.fallback.earTag]
+              {[
+                mode.fallback.farmerName,
+                mode.fallback.animalName,
+                mode.fallback.earTag,
+              ]
                 .filter(Boolean)
                 .join(" · ") || "Loading request context"}
             </Text>
@@ -281,8 +363,13 @@ export default function RecordAIScreen() {
                   marginTop: 5,
                 }}
               >
-                Scheduled {new Date(mode.fallback.scheduleDate).toLocaleDateString("en-PH")}
-                {mode.fallback.visitPeriod ? ` · ${mode.fallback.visitPeriod}` : ""}
+                Scheduled{" "}
+                {new Date(mode.fallback.scheduleDate).toLocaleDateString(
+                  "en-PH",
+                )}
+                {mode.fallback.visitPeriod
+                  ? ` · ${mode.fallback.visitPeriod}`
+                  : ""}
               </Text>
             ) : null}
           </View>
@@ -298,8 +385,13 @@ export default function RecordAIScreen() {
           context={requestContext}
           values={values}
           saving={saving}
+          historicalTimeConfirmationRequired={
+            historicalTimeConfirmationRequired
+          }
           onValuesChange={updateValues}
-          onReview={() => openReview(requestContext.farmer, requestContext.animal)}
+          onReview={() =>
+            openReview(requestContext.farmer, requestContext.animal)
+          }
         />
       ) : mode.kind === "direct" ? (
         <ScrollView
@@ -307,10 +399,82 @@ export default function RecordAIScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <View
+            style={{
+              flexDirection: "row",
+              marginHorizontal: 16,
+              marginTop: 16,
+              marginBottom: 8,
+              padding: 4,
+              backgroundColor: colors.card,
+              borderRadius: 8,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => {
+                setIsHistoricalMode(false);
+                setPreviousRecordError(null);
+              }}
+              disabled={saving}
+              style={{
+                flex: 1,
+                paddingVertical: 8,
+                alignItems: "center",
+                borderRadius: 6,
+                backgroundColor: !isHistoricalMode
+                  ? colors.primary
+                  : "transparent",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 13,
+                  color: !isHistoricalMode ? "#FFFFFF" : colors.textSecondary,
+                }}
+              >
+                Current AI Service
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setIsHistoricalMode(true);
+                setPreviousRecordError(null);
+              }}
+              disabled={saving}
+              style={{
+                flex: 1,
+                paddingVertical: 8,
+                alignItems: "center",
+                borderRadius: 6,
+                backgroundColor: isHistoricalMode
+                  ? colors.primary
+                  : "transparent",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 13,
+                  color: isHistoricalMode ? "#FFFFFF" : colors.textSecondary,
+                }}
+              >
+                Previous AI Record
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <DirectAIRecordForm
             route={mode}
             values={values}
             saving={saving}
+            isHistoricalMode={isHistoricalMode}
+            entryMode={previousEntryMode}
+            submissionError={previousRecordError}
+            onEntryModeChange={(entryMode) => {
+              setPreviousEntryMode(entryMode);
+              setPreviousRecordError(null);
+            }}
             onValuesChange={updateValues}
             onReview={openReview}
           />
@@ -319,6 +483,8 @@ export default function RecordAIScreen() {
 
       <InseminationReviewModal
         visible={Boolean(reviewSnapshot)}
+        isHistoricalMode={isHistoricalMode}
+        entryMode={previousEntryMode}
         snapshot={reviewSnapshot}
         saving={saving}
         onGoBack={() => {

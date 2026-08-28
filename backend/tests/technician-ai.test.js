@@ -48,11 +48,14 @@ const baseInsemination = {
   farmerId: ids.farmer,
   animalId: ids.animal,
   status: "pending",
+  approvedBy: ids.technician,
+  technicianId: ids.technician,
   inseminationDate: null,
   technicianNote: "",
   attemptNumber: 3,
   previousAttemptId: "507f1f77bcf86cd799439007",
   attemptSeriesId: "507f1f77bcf86cd799439008",
+  createdAt: new Date("2026-07-01T00:00:00.000Z"),
 };
 
 const query = (value) => {
@@ -77,6 +80,7 @@ const installHarness = (overrides = {}) => {
     inseminationFindById: Insemination.findById,
     inseminationFindOneAndUpdate: Insemination.findOneAndUpdate,
     inseminationCreate: Insemination.create,
+    inseminationUpdateOne: Insemination.updateOne,
     taskFindById: Task.findById,
     taskFindOne: Task.findOne,
     taskFind: Task.find,
@@ -158,6 +162,11 @@ const installHarness = (overrides = {}) => {
     state.createdInseminations.push(created);
     return [created];
   };
+  Insemination.updateOne = async (filter, update, options) => {
+    if (state.insemination) Object.assign(state.insemination, update.$set);
+    return { matchedCount: state.insemination ? 1 : 0 };
+  };
+
 
   Task.findById = (id) => {
     return query(state.task && String(id) === String(state.task._id) ? state.task : null);
@@ -203,6 +212,7 @@ const installHarness = (overrides = {}) => {
       Insemination.findById = originals.inseminationFindById;
       Insemination.findOneAndUpdate = originals.inseminationFindOneAndUpdate;
       Insemination.create = originals.inseminationCreate;
+      Insemination.updateOne = originals.inseminationUpdateOne;
       Task.findById = originals.taskFindById;
       Task.findOne = originals.taskFindOne;
       Task.find = originals.taskFind;
@@ -222,13 +232,14 @@ test("Technician AI Service Suite", async (t) => {
       task: { ...baseTask, status: "Pending" },
       insemination: false,
     });
+    const serviceOccurredAt = new Date("2026-08-13T01:00:00.000Z");
 
     try {
       const result = await recordTechnicianAIService({
         taskId: ids.task,
         farmerId: ids.farmer,
         animalId: ids.animal,
-        inseminationDate: new Date(),
+        inseminationDate: serviceOccurredAt,
         sireBreed: "  Jersey  ",
         sireCode: "  JER-101  ",
         technicianNote: "  Calm animal\nNo complications.  ",
@@ -242,6 +253,16 @@ test("Technician AI Service Suite", async (t) => {
       assert.equal(harness.state.createdInseminations[0].sireBreed, "Jersey");
       assert.equal(harness.state.createdInseminations[0].sireCode, "JER-101");
       assert.equal(harness.state.createdInseminations[0].semenDosesUsed, 1);
+      assert.equal(
+        harness.state.createdInseminations[0].inseminationDate,
+        serviceOccurredAt,
+      );
+      assert.ok(
+        harness.state.createdInseminations[0].completedAt instanceof Date,
+      );
+      assert.ok(
+        harness.state.createdInseminations[0].completedAt > serviceOccurredAt,
+      );
       assert.equal(
         harness.state.createdInseminations[0].technicianNote,
         "Calm animal\nNo complications.",
@@ -258,7 +279,7 @@ test("Technician AI Service Suite", async (t) => {
   await t.test("completes request-linked AI task successfully", async () => {
     const harness = installHarness({
       task: { ...baseTask, status: "In Progress", metadata: { requestId: ids.request } },
-      insemination: { ...baseInsemination },
+      insemination: { ...baseInsemination, status: "in-progress" },
     });
 
     try {
@@ -279,6 +300,24 @@ test("Technician AI Service Suite", async (t) => {
 
       assert.equal(result.outcome, "existing_and_task_completed");
       assert.equal(harness.state.inseminationUpdates.length, 1);
+      assert.deepEqual(
+        harness.state.inseminationUpdates[0].filter.$and[1],
+        {
+          farmerId: ids.farmer,
+          animalId: ids.animal,
+          approvedBy: ids.technician,
+          technicianId: ids.technician,
+        },
+      );
+      assert.ok(
+        harness.state.inseminationUpdates[0].update.$set.completedAt instanceof
+          Date,
+      );
+      assert.equal(
+        result.insemination.completedAt,
+        harness.state.inseminationUpdates[0].update.$set.completedAt,
+      );
+      assert.equal(result.insemination.createdAt, baseInsemination.createdAt);
       assert.equal(
         harness.state.inseminationUpdates[0].update.$set.semenDosesUsed,
         2,
@@ -302,7 +341,7 @@ test("Technician AI Service Suite", async (t) => {
         baseInsemination.attemptSeriesId,
       );
       assert.equal(harness.state.createdInseminations.length, 0);
-      assert.equal(harness.state.taskUpdates.length, 1);
+      assert.equal(harness.state.taskUpdates.length, 2);
       assert.equal(harness.state.pdTasks.length, 2);
     } finally {
       harness.uninstall();
@@ -371,9 +410,15 @@ test("Technician AI Service Suite", async (t) => {
   });
 
   await t.test("handles duplicate retry with identical task/record replay", async () => {
+    const originalCompletedAt = new Date("2026-07-02T03:04:05.000Z");
     const harness = installHarness({
-      task: { ...baseTask, status: "Completed", relatedRecordType: "insemination", relatedRecordId: ids.request },
-      insemination: { ...baseInsemination, status: "done", _id: ids.request },
+      task: { ...baseTask, status: "Completed", technicianId: ids.technician, relatedRecordType: "insemination", relatedRecordId: ids.request },
+      insemination: {
+        ...baseInsemination,
+        status: "done",
+        _id: ids.request,
+        completedAt: originalCompletedAt,
+      },
     });
 
     try {
@@ -389,6 +434,8 @@ test("Technician AI Service Suite", async (t) => {
       });
 
       assert.equal(result.outcome, "existing_and_task_completed");
+      assert.equal(result.insemination.completedAt, originalCompletedAt);
+      assert.equal(harness.state.inseminationUpdates.length, 0);
       assert.equal(harness.state.createdInseminations.length, 0);
       assert.equal(harness.state.notifications.length, 0);
       assert.equal(harness.state.audits.length, 0);
@@ -399,7 +446,7 @@ test("Technician AI Service Suite", async (t) => {
 
   await t.test("handles duplicate retry conflict with different record", async () => {
     const harness = installHarness({
-      task: { ...baseTask, status: "Completed", relatedRecordType: "insemination", relatedRecordId: "other-insem" },
+      task: { ...baseTask, status: "Completed", technicianId: ids.technician, relatedRecordType: "insemination", relatedRecordId: "other-insem" },
       insemination: { ...baseInsemination, status: "done", _id: ids.request },
     });
 
@@ -537,6 +584,7 @@ test("Technician AI Service Suite", async (t) => {
     });
 
     try {
+      const clientSuppliedCompletedAt = new Date("2000-01-01T00:00:00.000Z");
       const result = await completeInsemination({
         id: ids.request,
         updateData: {
@@ -545,6 +593,7 @@ test("Technician AI Service Suite", async (t) => {
           sireBreed: "Jersey",
           sireCode: "JER-106",
           notes: "  Canonical boundary note  ",
+          completedAt: clientSuppliedCompletedAt,
         },
         technicianId: ids.technician,
         farmerId: ids.farmer,
@@ -553,6 +602,11 @@ test("Technician AI Service Suite", async (t) => {
       });
 
       assert.equal(result.technicianNote, "Canonical boundary note");
+      assert.ok(result.completedAt instanceof Date);
+      assert.notEqual(
+        result.completedAt.getTime(),
+        clientSuppliedCompletedAt.getTime(),
+      );
       assert.equal(
         Object.hasOwn(harness.state.inseminationUpdates[0].update.$set, "notes"),
         false,

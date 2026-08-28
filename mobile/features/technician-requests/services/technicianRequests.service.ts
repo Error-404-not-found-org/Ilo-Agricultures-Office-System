@@ -25,6 +25,7 @@ export const claimTechnicianRequest = async (
 export interface ClaimAndSchedulePayload {
   scheduledDate: string;
   visitPeriod: VisitPeriod;
+  samePeriodConfirmed?: boolean;
 }
 
 export const claimAndScheduleAIRequest = async (

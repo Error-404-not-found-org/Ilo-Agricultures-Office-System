@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -46,6 +46,7 @@ const WalkInHealthModal = ({
 }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const submittingRef = useRef(false);
 
   const [isExistingRecord, setIsExistingRecord] = useState(true);
   const [selectedFarmerId, setSelectedFarmerId] = useState("");
@@ -54,6 +55,7 @@ const WalkInHealthModal = ({
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -87,7 +89,13 @@ const WalkInHealthModal = ({
     return getIloiloBarangayOptions(selectedCity, selectedDistrict);
   }, [formData.address?.city, selectedDistrict]);
 
-  const { data: farmers = [] } = useQuery({
+  const {
+    data: farmers = [],
+    error: farmersError,
+    isError: isFarmersError,
+    isLoading: isLoadingFarmers,
+    refetch: refetchFarmers,
+  } = useQuery({
     queryKey: ["farmers", "list"],
     queryFn: async () => {
       const res = await axiosInstance.get("/user?role=farmer");
@@ -96,7 +104,13 @@ const WalkInHealthModal = ({
     enabled: isOpen,
   });
 
-  const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
+  const {
+    data: animals = [],
+    error: animalsError,
+    isError: isAnimalsError,
+    isLoading: isLoadingAnimals,
+    refetch: refetchAnimals,
+  } = useQuery({
     queryKey: ["farmer-animals", selectedFarmerId],
     queryFn: async () => {
       const res = await axiosInstance.get(
@@ -115,7 +129,12 @@ const WalkInHealthModal = ({
     };
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
-      if (existingOnly) Promise.resolve().then(() => setIsExistingRecord(true));
+      if (existingOnly) {
+        Promise.resolve().then(() => {
+          setIsExistingRecord(true);
+          setFormData((current) => ({ ...current, status: "resolved" }));
+        });
+      }
     }
     if (isOpen && prefillData) {
       Promise.resolve().then(() => {
@@ -139,6 +158,7 @@ const WalkInHealthModal = ({
         setSelectedAnimalId("");
         setIsBarangayDropdownOpen(false);
         setSelectedDistrict("");
+        setFieldErrors({});
         setFormData({
           firstName: "",
           lastName: "",
@@ -196,20 +216,47 @@ const WalkInHealthModal = ({
       const res = await axiosInstance.post("/health-request/walk-in", data);
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
+      submittingRef.current = false;
       toast.success(
         formData.status === "resolved"
           ? "Health record saved!"
           : "Visit scheduled successfully!",
       );
-      queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-      if (onSuccess) onSuccess();
+      const invalidations = [
+        queryClient.invalidateQueries({ queryKey: ["technician"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["technician", "health-requests-list"],
+        }),
+      ];
+      if (selectedFarmerId) {
+        invalidations.push(
+          queryClient.invalidateQueries({
+            queryKey: ["farmer-animals", selectedFarmerId],
+          }),
+        );
+      }
+      if (selectedAnimalId) {
+        invalidations.push(
+          queryClient.invalidateQueries({
+            queryKey: ["animal", selectedAnimalId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["animal-history", selectedAnimalId],
+          }),
+        );
+      }
+      await Promise.allSettled(invalidations);
+      if (onSuccess) onSuccess(result);
       onClose();
     },
     onError: (error) => {
+      submittingRef.current = false;
       toast.error(
         "Failed to process request: " +
-          (error.response?.data?.message || error.message),
+          (error?.response?.data?.message ||
+            error?.message ||
+            "Unable to save the health service."),
       );
     },
   });
@@ -217,14 +264,20 @@ const WalkInHealthModal = ({
   if (!isOpen) return null;
 
   const handleSubmit = () => {
+    if (submittingRef.current || mutation.isPending) return;
+    const nextErrors = {};
     let submissionData;
     if (isExistingRecord) {
-      if (!selectedFarmerId || !selectedAnimalId) {
-        return toast.error("Please select both a farmer and an animal.");
+      if (!selectedFarmerId) nextErrors.farmer = "Select a farmer.";
+      if (!selectedAnimalId) nextErrors.animal = "Select an animal.";
+      if (Object.keys(nextErrors).length > 0) {
+        setFieldErrors(nextErrors);
+        return;
       }
       const farmer = farmers.find((f) => f._id === selectedFarmerId);
       const animal = animals.find((a) => a._id === selectedAnimalId);
       submissionData = {
+        ...formData,
         farmerId: selectedFarmerId,
         animalId: selectedAnimalId,
         firstName: farmer.name.split(" ")[0],
@@ -239,7 +292,6 @@ const WalkInHealthModal = ({
           species: animal.species,
           breed: animal.breed,
         },
-        ...formData,
       };
     } else {
       if (!formData.address.city) {
@@ -275,8 +327,23 @@ const WalkInHealthModal = ({
       };
     }
 
+    submissionData.diagnosis = submissionData.diagnosis.trim();
+    submissionData.treatment = submissionData.treatment.trim();
+    submissionData.advice = submissionData.advice.trim();
+    submissionData.technicianNote = submissionData.technicianNote.trim();
+
     if (!submissionData.diagnosis) {
-      return toast.error("Please enter Findings/Symptoms.");
+      nextErrors.diagnosis = "Enter the findings or diagnosis.";
+    }
+
+    if (submissionData.withdrawalPeriodDays !== "") {
+      const withdrawalDays = Number(submissionData.withdrawalPeriodDays);
+      if (!Number.isSafeInteger(withdrawalDays) || withdrawalDays < 0) {
+        nextErrors.withdrawalPeriodDays =
+          "Withdrawal period must be a whole number of 0 days or more.";
+      } else {
+        submissionData.withdrawalPeriodDays = withdrawalDays;
+      }
     }
 
     if (submissionData.status === "in-progress") {
@@ -284,12 +351,18 @@ const WalkInHealthModal = ({
         `${submissionData.preferredDate}T${submissionData.preferredTime}:00`,
       );
       if (selectedDateTime < new Date()) {
-        return toast.error(
-          "Cannot schedule a visit for a date and time that has already passed.",
-        );
+        nextErrors.preferredDate =
+          "Choose a visit date and time that has not passed.";
       }
     }
 
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+
+    setFieldErrors({});
+    submittingRef.current = true;
     mutation.mutate(submissionData);
   };
 
@@ -304,33 +377,43 @@ const WalkInHealthModal = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
+      <div
+        className="modal modal-open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="record-health-title"
+      >
         {/* MODAL */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[86vh]"
+          className="modal-box relative flex max-h-[86vh] w-11/12 max-w-3xl flex-col overflow-hidden p-0"
         >
           {/* HEADER */}
           <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-5 py-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
+              <div className="flex size-11 items-center justify-center rounded-box bg-primary/10 text-primary">
                 <HeartPulse size={20} />
               </div>
               <div>
-                <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
+                <h3
+                  id="record-health-title"
+                  className="text-lg font-bold text-base-content"
+                >
                   Record Health Assistance
                 </h3>
-                <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
+                <p className="mt-1 text-sm text-base-content/65">
                   Select an existing farmer and animal, then document the visit
                 </p>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content cursor-pointer"
+              className="btn btn-ghost btn-sm btn-square"
+              aria-label="Close Record Health Assistance"
             >
               <X size={16} />
             </button>
@@ -339,43 +422,47 @@ const WalkInHealthModal = ({
           {/* SCROLLABLE CONTENT */}
           <div className="overflow-y-auto flex-1 custom-scrollbar px-5 pb-32 pt-5 space-y-5 bg-base-100">
             {/* TOGGLES */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
-              {!existingOnly && (
-                <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
+            {!existingOnly && (
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
+                <div className="join">
                   <button
+                    type="button"
                     onClick={() => setIsExistingRecord(true)}
-                    className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
+                    className={`btn btn-sm join-item ${isExistingRecord ? "btn-primary" : "btn-ghost"}`}
                   >
                     Existing Record
                   </button>
                   <button
+                    type="button"
                     onClick={() => setIsExistingRecord(false)}
-                    className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${!isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
+                    className={`btn btn-sm join-item ${!isExistingRecord ? "btn-primary" : "btn-ghost"}`}
                   >
                     Manual Entry
                   </button>
                 </div>
-              )}
 
-              <div className="flex gap-2">
+              <div className="join">
                 <button
+                  type="button"
                   onClick={() =>
                     setFormData({ ...formData, status: "resolved" })
                   }
-                  className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "resolved" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-transparent text-base-content/20"}`}
+                  className={`btn btn-sm join-item ${formData.status === "resolved" ? "btn-success" : "btn-ghost"}`}
                 >
                   Completed
                 </button>
                 <button
+                  type="button"
                   onClick={() =>
                     setFormData({ ...formData, status: "in-progress" })
                   }
-                  className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-transparent text-base-content/20"}`}
+                  className={`btn btn-sm join-item ${formData.status === "in-progress" ? "btn-info" : "btn-ghost"}`}
                 >
                   Schedule
                 </button>
               </div>
             </div>
+            )}
 
             {isExistingRecord ? (
               <section className={sectionClass}>
@@ -387,18 +474,27 @@ const WalkInHealthModal = ({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Farmer</label>
+                    <label className={labelClass} htmlFor="health-farmer-search">
+                      Farmer
+                    </label>
                     <div className="relative">
                       <Search
                         size={16}
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
                       />
                       <input
+                        id="health-farmer-search"
+                        aria-describedby={fieldErrors.farmer ? "health-farmer-error" : undefined}
                         value={searchFarmer}
                         onChange={(e) => {
                           setSearchFarmer(e.target.value);
                           setSelectedFarmerId("");
                           setSelectedAnimalId("");
+                          setFieldErrors((current) => ({
+                            ...current,
+                            farmer: null,
+                            animal: null,
+                          }));
                           setIsDropdownOpen(true);
                         }}
                         onFocus={() => setIsDropdownOpen(true)}
@@ -417,7 +513,41 @@ const WalkInHealthModal = ({
                             aria-label="Matching farmers"
                             className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl custom-scrollbar"
                           >
-                            {farmers.filter((f) =>
+                            {isLoadingFarmers ? (
+                              <div
+                                className="space-y-3 p-4"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                <div className="skeleton h-10 w-full" />
+                                <div className="skeleton h-10 w-full" />
+                                <span className="sr-only">
+                                  Loading registered farmers
+                                </span>
+                              </div>
+                            ) : isFarmersError ? (
+                              <div className="space-y-3 p-4">
+                                <div
+                                  role="alert"
+                                  className="alert alert-error alert-soft"
+                                >
+                                  <span className="text-sm">
+                                    {farmersError?.response?.data?.message ||
+                                      "Registered farmers could not be loaded."}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm w-full"
+                                  onMouseDown={(event) =>
+                                    event.preventDefault()
+                                  }
+                                  onClick={() => refetchFarmers()}
+                                >
+                                  Try again
+                                </button>
+                              </div>
+                            ) : farmers.filter((f) =>
                               (f.name || "")
                                 .toLowerCase()
                                 .includes(searchFarmer.toLowerCase()) ||
@@ -457,6 +587,11 @@ const WalkInHealthModal = ({
                                       setSelectedAnimalId("");
                                       setSearchFarmer(farmer.name);
                                       setIsDropdownOpen(false);
+                                      setFieldErrors((current) => ({
+                                        ...current,
+                                        farmer: null,
+                                        animal: null,
+                                      }));
                                     }}
                                     className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary cursor-pointer"
                                   >
@@ -485,14 +620,29 @@ const WalkInHealthModal = ({
                         )}
                       </AnimatePresence>
                     </div>
+                    {fieldErrors.farmer && (
+                      <p id="health-farmer-error" role="alert" className="text-sm text-error">
+                        {fieldErrors.farmer}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Animal</label>
+                    <label className={labelClass} htmlFor="health-animal">
+                      Animal
+                    </label>
                     <div className="relative">
                       <select
+                        id="health-animal"
+                        aria-describedby={fieldErrors.animal ? "health-animal-error" : undefined}
                         disabled={!selectedFarmerId || isLoadingAnimals}
                         value={selectedAnimalId}
-                        onChange={(e) => setSelectedAnimalId(e.target.value)}
+                        onChange={(e) => {
+                          setSelectedAnimalId(e.target.value);
+                          setFieldErrors((current) => ({
+                            ...current,
+                            animal: null,
+                          }));
+                        }}
                         className={`${selectClass} disabled:opacity-50 cursor-pointer`}
                       >
                         <option value="">
@@ -502,12 +652,43 @@ const WalkInHealthModal = ({
                         </option>
                         {animals.map((a) => (
                           <option key={a._id} value={a._id}>
-                            Tag #{a.earTag} ({a.breed}) —{" "}
+                            Tag #{a.earTag} ({a.breed}) -{" "}
                             {a.reproductiveStatus || "Normal"}
                           </option>
                         ))}
                       </select>
+                      {!isLoadingAnimals &&
+                        !isAnimalsError &&
+                        selectedFarmerId &&
+                        animals.length === 0 && (
+                          <p className="mt-2 text-sm text-base-content/65">
+                            This farmer has no registered animals.
+                          </p>
+                        )}
+                      {isAnimalsError && (
+                        <div className="mt-2 space-y-2">
+                          <div
+                            role="alert"
+                            className="alert alert-error alert-soft py-2 text-sm"
+                          >
+                            {animalsError?.response?.data?.message ||
+                              "Registered animals could not be loaded."}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm w-full"
+                            onClick={() => refetchAnimals()}
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      )}
                     </div>
+                    {fieldErrors.animal && (
+                      <p id="health-animal-error" role="alert" className="text-sm text-error">
+                        {fieldErrors.animal}
+                      </p>
+                    )}
                   </div>
                 </div>
               </section>
@@ -852,9 +1033,12 @@ const WalkInHealthModal = ({
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Service Type</label>
+                  <label className={labelClass} htmlFor="health-service-type">
+                    Service type
+                  </label>
                   <div className="relative">
                     <select
+                      id="health-service-type"
                       value={formData.requestType}
                       onChange={(e) =>
                         setFormData({
@@ -875,25 +1059,43 @@ const WalkInHealthModal = ({
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Visit date</label>
+                  <label className={labelClass} htmlFor="health-visit-date">
+                    {formData.status === "resolved" ? "Service date" : "Visit date"}
+                  </label>
                   <div className="relative">
                     <input
+                      id="health-visit-date"
                       type="date"
+                      aria-describedby={fieldErrors.preferredDate ? "health-date-error" : undefined}
                       value={formData.preferredDate}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          preferredDate: e.target.value,
-                        })
+                        {
+                          setFormData({
+                            ...formData,
+                            preferredDate: e.target.value,
+                          });
+                          setFieldErrors((current) => ({
+                            ...current,
+                            preferredDate: null,
+                          }));
+                        }
                       }
                       className={`${inputClass} cursor-pointer`}
                     />
                   </div>
+                  {fieldErrors.preferredDate && (
+                    <p id="health-date-error" role="alert" className="text-sm text-error">
+                      {fieldErrors.preferredDate}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Visit time</label>
+                  <label className={labelClass} htmlFor="health-visit-time">
+                    {formData.status === "resolved" ? "Service time" : "Visit time"}
+                  </label>
                   <div className="relative">
                     <input
+                      id="health-visit-time"
                       type="time"
                       value={formData.preferredTime}
                       onChange={(e) =>
@@ -913,16 +1115,18 @@ const WalkInHealthModal = ({
                 <div className="flex gap-4">
                   {["low", "medium", "high", "emergency"].map((u) => (
                     <button
+                      type="button"
                       key={u}
+                      aria-pressed={formData.urgency === u}
                       onClick={() => setFormData({ ...formData, urgency: u })}
-                      className={`flex-1 h-11 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                      className={`btn btn-sm flex-1 ${
                         formData.urgency === u
                           ? u === "high" || u === "emergency"
-                            ? "bg-rose-500/10 border-rose-500/30 text-rose-600"
+                            ? "btn-error"
                             : u === "medium"
-                              ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
-                              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
-                          : "border-base-300 text-base-content/40 hover:bg-base-200"
+                              ? "btn-warning"
+                              : "btn-success"
+                          : "btn-outline"
                       }`}
                     >
                       {u}
@@ -940,19 +1144,33 @@ const WalkInHealthModal = ({
                   Assessment and symptoms
                 </h4>
               </div>
-              <div className="relative">
+              <div className="space-y-1.5">
+                <label className={labelClass} htmlFor="health-diagnosis">
+                  Findings / diagnosis
+                </label>
                 <textarea
+                  id="health-diagnosis"
+                  aria-describedby={fieldErrors.diagnosis ? "health-diagnosis-error" : undefined}
                   value={formData.diagnosis}
-                  onChange={(e) =>
-                    setFormData({ ...formData, diagnosis: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, diagnosis: e.target.value });
+                    setFieldErrors((current) => ({
+                      ...current,
+                      diagnosis: null,
+                    }));
+                  }}
                   placeholder={
                     formData.status === "resolved"
-                      ? "Describe treatment given and recommendations..."
+                      ? "Record clinical findings and diagnosis"
                       : "Describe symptoms or reason for visit request..."
                   }
                   className={textareaClass}
                 />
+                {fieldErrors.diagnosis && (
+                  <p id="health-diagnosis-error" role="alert" className="text-sm text-error">
+                    {fieldErrors.diagnosis}
+                  </p>
+                )}
               </div>
             </section>
 
@@ -962,13 +1180,16 @@ const WalkInHealthModal = ({
                   <div className="flex items-center gap-2 mb-1">
                     <Stethoscope size={14} className="text-emerald-500" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Treatment and medicine
+                      Treatment details
                     </h4>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Treatment Action</label>
+                      <label className={labelClass} htmlFor="health-treatment">
+                        Treatment provided (optional)
+                      </label>
                       <input
+                        id="health-treatment"
                         type="text"
                         value={formData.treatment}
                         onChange={(e) =>
@@ -977,27 +1198,33 @@ const WalkInHealthModal = ({
                             treatment: e.target.value,
                           })
                         }
-                        placeholder="e.g. Wound cleaning, Injection..."
+                        placeholder="e.g. Wound cleaning or injection"
                         className={inputClass}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Medicine & Dosage</label>
+                      <label className={labelClass} htmlFor="health-advice">
+                        Care advice (optional)
+                      </label>
                       <input
+                        id="health-advice"
                         type="text"
                         value={formData.advice}
                         onChange={(e) =>
                           setFormData({ ...formData, advice: e.target.value })
                         }
-                        placeholder="e.g. Penicillin 10ml"
+                        placeholder="Instructions for the farmer"
                         className={inputClass}
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 border-t border-base-300 pt-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Follow-up date</label>
+                      <label className={labelClass} htmlFor="health-follow-up-date">
+                        Follow-up date (optional)
+                      </label>
                       <input
+                        id="health-follow-up-date"
                         type="date"
                         value={formData.followUpDate}
                         onChange={(e) =>
@@ -1010,23 +1237,35 @@ const WalkInHealthModal = ({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>
-                        Withdrawal period (days)
+                      <label className={labelClass} htmlFor="health-withdrawal-days">
+                        Withdrawal period in days (optional)
                       </label>
                       <input
+                        id="health-withdrawal-days"
                         type="number"
                         min="0"
+                        step="1"
                         inputMode="numeric"
+                        aria-describedby={fieldErrors.withdrawalPeriodDays ? "health-withdrawal-error" : undefined}
                         value={formData.withdrawalPeriodDays}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setFormData({
                             ...formData,
                             withdrawalPeriodDays: e.target.value,
-                          })
-                        }
+                          });
+                          setFieldErrors((current) => ({
+                            ...current,
+                            withdrawalPeriodDays: null,
+                          }));
+                        }}
                         placeholder="0"
                         className={inputClass}
                       />
+                      {fieldErrors.withdrawalPeriodDays && (
+                        <p id="health-withdrawal-error" role="alert" className="text-sm text-error">
+                          {fieldErrors.withdrawalPeriodDays}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1038,8 +1277,12 @@ const WalkInHealthModal = ({
                       Notes and follow-up
                     </h4>
                   </div>
-                  <div className="relative">
+                  <div className="space-y-1.5">
+                    <label className={labelClass} htmlFor="health-technician-notes">
+                      Technician notes (optional)
+                    </label>
                     <textarea
+                      id="health-technician-notes"
                       value={formData.technicianNote}
                       onChange={(e) =>
                         setFormData({
@@ -1047,7 +1290,7 @@ const WalkInHealthModal = ({
                           technicianNote: e.target.value,
                         })
                       }
-                      placeholder="Any other clinical signs noticed..."
+                      placeholder="Add relevant service observations"
                       className={textareaClass}
                     />
                   </div>
@@ -1059,28 +1302,33 @@ const WalkInHealthModal = ({
           {/* FOOTER */}
           <div className="bg-base-200/20 border-t border-base-300 px-6 py-4 flex justify-end gap-3">
             <button
+              type="button"
               onClick={onClose}
-              className="h-11 px-8 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
+              className="btn"
             >
               Cancel
             </button>
             <button
+              type="button"
               disabled={mutation.isPending}
               onClick={handleSubmit}
-              className={`h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-2 shadow-md cursor-pointer ${
-                formData.status === "resolved"
-                  ? "bg-[#074033] hover:bg-[#0d5948]"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
+              className="btn btn-primary min-w-44"
             >
-              {mutation.isPending
-                ? "Synchronizing Record..."
-                : formData.status === "resolved"
-                  ? "Save Health Assistance"
-                  : "Save Visit"}
+              {mutation.isPending && (
+                <span className="loading loading-spinner loading-sm" />
+              )}
+              {formData.status === "resolved"
+                ? "Save Health Assistance"
+                : "Save Visit"}
             </button>
           </div>
         </motion.div>
+        <button
+          type="button"
+          className="modal-backdrop"
+          aria-label="Close Record Health Assistance"
+          onClick={onClose}
+        />
       </div>
     </AnimatePresence>
   );

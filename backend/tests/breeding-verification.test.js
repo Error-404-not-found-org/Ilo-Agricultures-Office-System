@@ -50,6 +50,8 @@ function installVerificationStubs({ result, hasTask = true }) {
     animalId: "animal-1",
     inseminationDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000),
     status: "done",
+    technicianId: "tech-1",
+    approvedBy: "tech-1",
     verificationStatus: "pending",
     verificationTaskId: hasTask ? "task-1" : null,
     statusHistory: [],
@@ -64,8 +66,18 @@ function installVerificationStubs({ result, hasTask = true }) {
     reproductiveStatus: "Likely Pregnant",
     activityLogs: [],
   };
-  const task = { _id: "task-1", status: "Pending", notes: "" };
+  const task = {
+    _id: "task-1",
+    technicianId: "tech-1",
+    taskType: "PD",
+    status: "Pending",
+    notes: "",
+    metadata: {},
+  };
+  const followupTask = { _id: "task-2", taskType: "BreedingFollowUp", status: "Pending", notes: "" };
   let pregnancy = null;
+  let tasksCreated = 0;
+  let followUpTasksClosed = 0;
 
   replace(Insemination, "findOne", () => ({
     populate: () => Promise.resolve(insemination),
@@ -101,12 +113,43 @@ function installVerificationStubs({ result, hasTask = true }) {
     return animal;
   });
   replace(Task, "findOneAndUpdate", async (_query, update) => {
-    Object.assign(task, update.$set || {});
+    if (_query._id !== task._id) return null;
+    for (const [key, value] of Object.entries(update.$set || {})) {
+      if (key.includes(".")) {
+        const parts = key.split(".");
+        let obj = task;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!obj[parts[i]]) obj[parts[i]] = {};
+          obj = obj[parts[i]];
+        }
+        obj[parts[parts.length - 1]] = value;
+      } else {
+        task[key] = value;
+      }
+    }
     return task;
   });
+  replace(Task, "findOne", () => ({ session: async () => task }));
   replace(Task, "create", async ([data]) => {
+    tasksCreated++;
     Object.assign(task, data);
     return [task];
+  });
+  replace(Task, "find", (query) => {
+    return {
+      session: async () => {
+        if (query.taskType === "BreedingFollowUp") {
+          return [followupTask];
+        }
+        return [];
+      }
+    };
+  });
+  replace(Task, "updateOne", async (_query, update) => {
+    if (_query._id === "task-2" && update.$set?.status === "Cancelled") {
+      followUpTasksClosed++;
+    }
+    return { modifiedCount: 1 };
   });
   replace(User, "findById", async () => ({ _id: "farmer-1" }));
   replace(Notification, "create", async () => ({}));
@@ -121,6 +164,12 @@ function installVerificationStubs({ result, hasTask = true }) {
     get pregnancy() {
       return pregnancy;
     },
+    get tasksCreated() {
+      return tasksCreated;
+    },
+    get followUpTasksClosed() {
+      return followUpTasksClosed;
+    },
     restore() {
       for (const [, [target, key, original]] of originals) target[key] = original;
     },
@@ -131,6 +180,7 @@ function installVerificationStubs({ result, hasTask = true }) {
         verificationResult: result,
         checkMethod: result === "return_to_heat" ? "visual_observation" : "ultrasound",
         technicianNotes: "Field verification completed.",
+        taskId: "task-1",
         ...(result === "needs_recheck"
           ? { nextCheckDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() }
           : {}),
@@ -184,17 +234,58 @@ test("Breeding Verification: return to heat closes the attempt without inventing
   }
 });
 
-test("Breeding Verification: recheck stays pending and reschedules the task", async () => {
-  const state = installVerificationStubs({ result: "needs_recheck" });
+test("Breeding Verification: recheck stays pending and reschedules the task (explicit taskId)", async () => {
+  const state = installVerificationStubs({ result: "needs_recheck", hasTask: true });
   const res = createMockRes();
   try {
     await verifyFarmerBreedingObservation(state.req, res);
     assert.equal(res.statusVal, 200);
+    // AI attempt remains pending
     assert.equal(state.insemination.verificationStatus, "pending");
+    // Animal reproductive status remains unchanged
     assert.equal(state.animal.reproductiveStatus, "Likely Pregnant");
+    // Task is mutated to stay Pending with a new due date
+    assert.equal(state.task._id, "task-1");
     assert.equal(state.task.status, "Pending");
     assert.match(state.task.notes, /Recheck Required/);
+    assert.equal(state.task.metadata.workflowStage, "diagnostic_follow_up");
     assert.ok(state.task.dueDate instanceof Date);
+    assert.equal(state.task.dueDate.toISOString(), new Date(state.req.body.nextCheckDate).toISOString());
+    // No duplicate tasks created
+    assert.equal(state.tasksCreated, 0);
+    // Associated BreedingFollowUp is closed
+    assert.equal(state.followUpTasksClosed, 1);
+  } finally {
+    state.restore();
+  }
+});
+
+test("Breeding Verification: Missing verificationTaskId + valid explicit taskId reuses task and heals link", async () => {
+  const state = installVerificationStubs({ result: "needs_recheck", hasTask: false });
+  const res = createMockRes();
+  try {
+    await verifyFarmerBreedingObservation(state.req, res);
+    assert.equal(res.statusVal, 200);
+    assert.equal(state.task._id, "task-1");
+    assert.equal(state.task.status, "Pending");
+    assert.equal(state.task.metadata.workflowStage, "diagnostic_follow_up");
+    assert.equal(state.tasksCreated, 0);
+    assert.equal(state.followUpTasksClosed, 1);
+    // Heals the missing link
+    assert.equal(state.insemination.verificationTaskId, "task-1");
+  } finally {
+    state.restore();
+  }
+});
+
+test("Breeding Verification: needs_recheck without checkMethod throws INVALID_CHECK_METHOD", async () => {
+  const state = installVerificationStubs({ result: "needs_recheck" });
+  state.req.body.checkMethod = "";
+  const res = createMockRes();
+  try {
+    await verifyFarmerBreedingObservation(state.req, res);
+    assert.equal(res.statusVal, 400);
+    assert.equal(res.jsonVal.code, "INVALID_CHECK_METHOD");
   } finally {
     state.restore();
   }

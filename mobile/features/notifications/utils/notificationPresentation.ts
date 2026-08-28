@@ -1,6 +1,4 @@
-import {
-  formatAnimalReference,
-} from "../../farmer-dashboard/utils/farmerDashboard.transforms";
+import { formatAnimalReference } from "../../farmer-dashboard/utils/farmerDashboard.transforms";
 
 export type NotificationData = {
   _id?: string;
@@ -35,7 +33,10 @@ const stripSeedPrefix = (value: string) =>
     .replace(/\bMr\.\s+/g, "")
     .replace(/\buncompleted\b/gi, "not yet completed")
     .replace(/\bDay\s+(\d+)\s+post[- ]AI\b/gi, "$1 days after the AI service")
-    .replace(/\b(\d+)\+?\s+days?\s+post[- ]AI\b/gi, "$1 days after the AI service")
+    .replace(
+      /\b(\d+)\+?\s+days?\s+post[- ]AI\b/gi,
+      "$1 days after the AI service",
+    )
     .replace(/\bP\.?D\.?\b/g, "pregnancy diagnosis")
     .replace(/\bN\/?A\b/gi, "Not recorded")
     .replace(
@@ -67,21 +68,29 @@ const eventAliases: Record<string, string> = {
 
 export const getNotificationCategory = (item: NotificationData) => {
   const structured = String(
-    item.category || item.metadata?.category || item.metadata?.workflowStage || "",
+    item.category ||
+      item.metadata?.category ||
+      item.metadata?.workflowStage ||
+      "",
   ).toLowerCase();
-  if (structured.includes("pregnan") || structured.includes("continuation")) return "pregnancy";
+  if (structured.includes("pregnan") || structured.includes("continuation"))
+    return "pregnancy";
   if (structured.includes("calv")) return "calving";
   if (structured.includes("cancel")) return "cancellations";
-  if (structured.includes("reminder") || structured.includes("follow")) return "reminders";
+  if (structured.includes("reminder") || structured.includes("follow"))
+    return "reminders";
   if (structured.includes("health")) return "health";
-  if (structured.includes("ai") || structured.includes("observation")) return "ai";
+  if (structured.includes("ai") || structured.includes("observation"))
+    return "ai";
   if (item.type === "ai-request") return "ai";
   if (item.type === "health-request") return "health";
   return "system";
 };
 
 const eventKey = (item: NotificationData) => {
-  const raw = String(item.eventType || item.metadata?.eventType || "").toLowerCase();
+  const raw = String(
+    item.eventType || item.metadata?.eventType || "",
+  ).toLowerCase();
   return eventAliases[raw] || raw;
 };
 
@@ -99,7 +108,9 @@ export const presentNotification = (item: NotificationData) => {
   const animal = animalReference(item);
   const technician = item.metadata?.technicianName || "The technician";
   const attempt = item.metadata?.attemptNumber || "";
-  const outcome = item.metadata?.outcomeSummary || "The calving outcome was added to the animal record.";
+  const outcome =
+    item.metadata?.outcomeSummary ||
+    "The calving outcome was added to the animal record.";
   const service = String(item.metadata?.serviceType || item.type || "")
     .toLowerCase()
     .includes("health")
@@ -109,27 +120,35 @@ export const presentNotification = (item: NotificationData) => {
     item.metadata?.actorName || item.metadata?.farmerName || "The farmer",
   );
 
-const dateOnly = (value: unknown) => {
-  if (!value) return "the recorded date";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return stripSeedPrefix(String(value));
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-};
+  const dateOnly = (value: unknown) => {
+    if (!value) return "the recorded date";
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return stripSeedPrefix(String(value));
+    return new Intl.DateTimeFormat("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(date);
+  };
   const reason = stripSeedPrefix(item.metadata?.reason || "");
   const reasonText = reason ? ` Reason: ${reason}.` : "";
   const urgent = ["high", "emergency", "critical"].includes(
     String(item.metadata?.urgency || "").toLowerCase(),
   );
   const templates: Record<string, { title: string; body: string }> = {
-    service_request_submitted: {
-      title: `${urgent ? "Urgent health assistance" : service} request for ${animal}`,
-      body: item.metadata?.location
-        ? `${urgent ? "An urgent" : "A new"} request is available in ${stripSeedPrefix(item.metadata.location)}. Open it to review the details and claim the visit.`
-        : `${urgent ? "An urgent" : "A new"} request is available. Open it to review the details and claim the visit.`,
+ service_request_submitted: {
+  title: urgent
+    ? "Urgent health assistance request"
+    : `New ${service.toLowerCase()} request`,
+  body: item.metadata?.location
+    ? `${actor} submitted a request for animal ${animal} in ${stripSeedPrefix(
+        item.metadata.location,
+      )}. Open the request to review the details.`
+    : `${actor} submitted a request for animal ${animal}. Open the request to review the details.`,
+},
+    re_insemination_requested: {
+      title: `Re-insemination request for ${animal}`,
+      body: `${actor} requested another AI service after the previous attempt was confirmed unsuccessful. Open it to review the details and schedule the visit.`,
     },
     field_ai_recorded: {
       title: `AI service recorded for ${animal}`,
@@ -173,6 +192,10 @@ const dateOnly = (value: unknown) => {
       title: "Observation submitted",
       body: `Your observation for ${animal} was sent to the technician for review.`,
     },
+    farmer_observation_reported: {
+      title: `Breeding observation recorded for ${animal}`,
+      body: "The farmer observation was recorded. Follow the existing breeding schedule when professional follow-up becomes due.",
+    },
     technician_review_required: {
       title: "Observation needs review",
       body: `A farmer submitted a breeding observation for ${animal}.`,
@@ -184,6 +207,10 @@ const dateOnly = (value: unknown) => {
     pregnancy_not_confirmed: {
       title: `Pregnancy not confirmed for ${animal}`,
       body: "The latest check did not confirm pregnancy. Review the animal’s breeding record for next steps.",
+    },
+    return_to_heat_confirmed: {
+      title: "Return to heat confirmed",
+      body: `A technician confirmed that ${animal} returned to heat after insemination.`,
     },
     continuation_recheck_due: {
       title: "Pregnancy follow-up due",
@@ -222,41 +249,103 @@ const dateOnly = (value: unknown) => {
 const value = (item: NotificationData, key: string) =>
   item[key as keyof NotificationData] || item.metadata?.[key];
 
-export const getNotificationTarget = (item: NotificationData, role?: string) => {
+export const getNotificationTarget = (
+  item: NotificationData,
+  role?: string,
+) => {
   const taskId = value(item, "taskId");
   if (taskId && ["technician"].includes(String(role))) {
-    return { pathname: "/(technician)/task-details", params: { id: String(taskId) } };
+    return {
+      pathname: "/(technician)/task-details",
+      params: { id: String(taskId) },
+    };
   }
-  const requestId = value(item, "requestId") ||
+  const resolvedReturnToHeatRecordId =
+    eventKey(item) === "return_to_heat_confirmed"
+      ? value(item, "inseminationId")
+      : null;
+  const resolvedReturnToHeatAnimalId = value(item, "animalId");
+  if (
+    resolvedReturnToHeatRecordId &&
+    resolvedReturnToHeatAnimalId &&
+    role === "farmer"
+  ) {
+    return {
+      pathname: "/(farmer)/animal-record-detail",
+      params: {
+        animalId: String(resolvedReturnToHeatAnimalId),
+        sourceId: String(resolvedReturnToHeatRecordId),
+        sourceKind: "insemination",
+        recordId: String(resolvedReturnToHeatRecordId),
+        recordType: "insemination",
+      },
+    };
+  }
+  const requestId =
+    value(item, "requestId") ||
     (item.linkType === "request" ? item.relatedId : null) ||
-    (["ai-request", "health-request"].includes(String(item.type)) ? item.relatedId : null);
+    (!item.linkType &&
+    ["ai-request", "health-request"].includes(String(item.type))
+      ? item.relatedId
+      : null);
   if (requestId) {
-    const rawType = String(item.type || item.metadata?.type || "").toLowerCase();
+    const rawType = String(
+      item.type || item.metadata?.type || "",
+    ).toLowerCase();
     const type = ["health", "health-request"].includes(rawType)
       ? "health"
       : "ai";
     if (["technician"].includes(String(role))) {
-      return { pathname: "/(technician)/request-details", params: { id: String(requestId), type } };
+      return {
+        pathname: "/(technician)/request-details",
+        params: { id: String(requestId), type },
+      };
     }
     if (role === "farmer") {
       return {
-        pathname: type === "health" ? "/(farmer)/health-request-detail" : "/(farmer)/ai-request-detail",
+        pathname:
+          type === "health"
+            ? "/(farmer)/health-request-detail"
+            : "/(farmer)/ai-request-detail",
         params: { id: String(requestId) },
       };
     }
   }
   const pregnancyId = value(item, "pregnancyId");
-  const animalId = value(item, "animalId") || (item.linkType === "animal" ? item.relatedId : null);
+  const animalId =
+    value(item, "animalId") ||
+    (item.linkType === "animal" ? item.relatedId : null);
   if (pregnancyId && role === "farmer") {
-    return { pathname: "/(farmer)/pregnancy-tracker", params: { pregnancyId: String(pregnancyId), animalId: animalId ? String(animalId) : undefined } };
+    return {
+      pathname: "/(farmer)/pregnancy-tracker",
+      params: {
+        pregnancyId: String(pregnancyId),
+        animalId: animalId ? String(animalId) : undefined,
+      },
+    };
   }
-  const recordId = value(item, "recordId") || (item.linkType === "record" ? item.relatedId : null);
+  const recordId =
+    value(item, "recordId") ||
+    (item.linkType === "record" ? item.relatedId : null);
   if (recordId && role === "farmer") {
-    return { pathname: "/(farmer)/animal-record-detail", params: { id: String(recordId), animalId: animalId ? String(animalId) : undefined } };
+    return {
+      pathname: "/(farmer)/animal-record-detail",
+      params: {
+        id: String(recordId),
+        animalId: animalId ? String(animalId) : undefined,
+        sourceId: String(value(item, "sourceId") || recordId),
+        sourceKind: String(value(item, "sourceKind") || ""),
+        recordId: String(recordId),
+        recordType: String(value(item, "recordType") || ""),
+      },
+    };
   }
   if (animalId) {
     return {
-      pathname: role === "farmer" ? "/(farmer)/animal-details" : "/(technician)/animal-details",
+      pathname:
+        role === "farmer"
+          ? "/(farmer)/animal-details"
+          : "/(technician)/animal-details",
       params: { id: String(animalId) },
     };
   }

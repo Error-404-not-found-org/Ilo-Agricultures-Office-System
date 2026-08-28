@@ -23,6 +23,21 @@ const findByClerkId = (clerkId) =>
 const normalizeEmail = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : null;
 
+const hasRealClerkLink = (user) =>
+  Boolean(user?.clerkId) && !String(user.clerkId).startsWith("manual_");
+
+const claimFarmerProfile = async ({ user, clerkId, imageUrl }) => {
+  if (user.role !== "farmer") return false;
+  user.clerkId = clerkId;
+  user.isVerified = true;
+  user.profileClaimStatus = "claimed";
+  user.profileClaimedAt ||= new Date();
+  user.profileClaimedByClerkId = clerkId;
+  user.imageUrl = imageUrl || user.imageUrl;
+  await user.save();
+  return true;
+};
+
 /**
  * Resolve the application user before idempotency middleware runs.
  * Validates primary email, links accounts safely, and enforces role security.
@@ -40,6 +55,12 @@ export const resolveOrSyncUser = async (clerkId) => {
     }
     if (user.deletedAt || user.status === "deleted") {
       throw new AuthResolutionError("Account has been deactivated.", 403, "ACCOUNT_DELETED", false);
+    }
+    if (
+      user.role === "farmer" &&
+      (user.profileClaimStatus !== "claimed" || !user.profileClaimedAt)
+    ) {
+      await claimFarmerProfile({ user, clerkId, imageUrl: user.imageUrl });
     }
     return user;
   }
@@ -70,7 +91,9 @@ export const resolveOrSyncUser = async (clerkId) => {
   const imageUrl = clerkUser.imageUrl || "";
 
   // 3. Look for existing profile by email
-  user = await User.findOne({ email });
+  user = await User.findOne({
+    $or: [{ normalizedEmail: email }, { email }],
+  });
 
   if (user) {
     if (user.status === "suspended") {
@@ -80,7 +103,7 @@ export const resolveOrSyncUser = async (clerkId) => {
       throw new AuthResolutionError("Account has been deactivated.", 403, "ACCOUNT_DELETED", false);
     }
 
-    if (user.clerkId && user.clerkId !== clerkId) {
+    if (hasRealClerkLink(user) && user.clerkId !== clerkId) {
       throw new AuthResolutionError("This email is linked to another account.", 409, "IDENTITY_LINK_CONFLICT", false);
     }
 
@@ -97,6 +120,9 @@ export const resolveOrSyncUser = async (clerkId) => {
       user.profileClaimedByClerkId = clerkId;
       user.imageUrl = imageUrl || user.imageUrl;
       // Preserve role
+    } else if (user.role === "farmer") {
+      await claimFarmerProfile({ user, clerkId, imageUrl });
+      return user;
     } else {
       // Standard claiming / attaching Clerk ID
       user.clerkId = clerkId;
@@ -120,6 +146,9 @@ export const resolveOrSyncUser = async (clerkId) => {
       isVerified: true,
       role: "farmer", // Strict public registration
       status: "active",
+      profileClaimStatus: "claimed",
+      profileClaimedAt: new Date(),
+      profileClaimedByClerkId: clerkId,
     });
   } catch (error) {
     // Duplicate key recovery
@@ -127,14 +156,20 @@ export const resolveOrSyncUser = async (clerkId) => {
       user = await findByClerkId(clerkId);
       if (user) return user;
 
-      user = await User.findOne({ email });
+      user = await User.findOne({
+        $or: [{ normalizedEmail: email }, { email }],
+      });
       if (user) {
-        if (user.clerkId && user.clerkId !== clerkId) {
+        if (hasRealClerkLink(user) && user.clerkId !== clerkId) {
           throw new AuthResolutionError("This email is linked to another account.", 409, "IDENTITY_LINK_CONFLICT", false);
         }
-        user.clerkId = clerkId;
-        user.isVerified = true;
-        await user.save();
+        if (user.role === "farmer") {
+          await claimFarmerProfile({ user, clerkId, imageUrl });
+        } else {
+          user.clerkId = clerkId;
+          user.isVerified = true;
+          await user.save();
+        }
         return user;
       }
     }

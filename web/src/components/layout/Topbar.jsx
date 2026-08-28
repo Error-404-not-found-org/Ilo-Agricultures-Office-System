@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { Bell, Search, Check, Trash2, Info, Syringe, HeartPulse, Menu } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
+import {
+  Bell,
+  Search,
+  Check,
+  Trash2,
+  Info,
+  Syringe,
+  HeartPulse,
+  Menu,
+} from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -19,8 +29,11 @@ export default function Topbar({
   children,
 }) {
   const [showNotifications, setShowNotifications] = useState(false);
+  const { user } = useUser();
   const queryClient = useQueryClient();
   const { toggle } = useSidebar();
+  const isAdmin =
+    String(user?.publicMetadata?.role || "").toLowerCase() === "admin";
 
   // Fetch live notifications
   const { data: notifications = [] } = useQuery({
@@ -85,12 +98,12 @@ export default function Topbar({
   const getNotifIcon = (type) => {
     const t = type?.toLowerCase() || "";
     if (t.includes("ai") || t.includes("insemination")) {
-      return <Syringe size={14} className="text-emerald-600 dark:text-emerald-400" />;
+      return <Syringe size={14} className="text-primary" />;
     }
     if (t.includes("health") || t.includes("medical")) {
-      return <HeartPulse size={14} className="text-rose-600 dark:text-rose-400" />;
+      return <HeartPulse size={14} className="text-error" />;
     }
-    return <Info size={14} className="text-blue-600 dark:text-blue-400" />;
+    return <Info size={14} className="text-info" />;
   };
 
   return (
@@ -134,11 +147,12 @@ export default function Topbar({
           </div>
         )}
 
-        {/* Custom Extra Slots (e.g. filters, dropdowns) */}
-        {children}
+        {isAdmin && (
+          <ThemeToggle showTooltip tooltipPosition="bottom" />
+        )}
 
-        {/* Theme Toggle Button */}
-        <ThemeToggle />
+        {/* Custom Extra Slots (e.g. refresh, filters, dropdowns) */}
+        {children}
 
         {/* Notification Bell with Dropdown */}
         <div className="relative">
@@ -150,7 +164,7 @@ export default function Topbar({
           >
             <Bell size={16} />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 animate-pulse rounded-full bg-error" />
             )}
           </button>
 
@@ -164,7 +178,9 @@ export default function Topbar({
               <div className="dropdown-content absolute right-0 mt-3 w-[min(22rem,calc(100vw-2rem))] bg-base-100 border border-base-300 rounded-box shadow-xl z-30 overflow-hidden">
                 {/* Dropdown Header */}
                 <div className="flex items-center justify-between p-4 border-b border-base-300 bg-base-200">
-                  <h3 className="font-bold text-sm text-base-content">Notifications</h3>
+                  <h3 className="font-bold text-sm text-base-content">
+                    Notifications
+                  </h3>
                   <div className="flex gap-2">
                     {unreadCount > 0 && (
                       <button
@@ -203,9 +219,7 @@ export default function Topbar({
                         >
                           <div
                             className={`p-2 rounded-xl shrink-0 h-min ${
-                              !notif.isRead
-                                ? "bg-primary/10"
-                                : "bg-base-200"
+                              !notif.isRead ? "bg-primary/10" : "bg-base-200"
                             }`}
                           >
                             {getNotifIcon(notif.type)}
@@ -222,7 +236,7 @@ export default function Topbar({
                                 {notif.title}
                               </h4>
                               {!notif.isRead && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
                               )}
                             </div>
                             <p className="text-xs text-base-content/60 mt-1 leading-relaxed font-medium">

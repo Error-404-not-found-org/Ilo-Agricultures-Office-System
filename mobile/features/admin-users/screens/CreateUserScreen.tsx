@@ -12,7 +12,7 @@ import {
   FlatList,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { CheckCircle, Share2, X } from 'lucide-react-native';
+import { CheckCircle2, MapPin, Share2, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import SafeScreen from '@/components/safeScreen';
 import { useCreateUser } from '../hooks/useCreateUser';
@@ -22,6 +22,10 @@ import {
   ILOILO_CITY_NAME,
   ILOILO_MUNICIPALITY_OPTIONS,
 } from '@/constants/address';
+import {
+  CAPABILITIES_MAP,
+  OTON_MUNICIPALITY,
+} from '../utils/dispatchPayloadBuilders';
 
 const PRIMARY = '#1e3a5f';
 const ROLES = ['farmer', 'technician', 'admin'] as const;
@@ -57,6 +61,8 @@ export default function CreateUserScreen() {
     showRolePicker,
     setShowRolePicker,
     loading,
+    serviceCapabilities,
+    toggleServiceCapability,
     createdAccount,
     handleCreate,
     shareCredentials,
@@ -87,13 +93,21 @@ export default function CreateUserScreen() {
         <ScrollView className="flex-1 bg-gray-50 dark:bg-slate-950 px-6 pt-8" contentContainerStyle={{ paddingBottom: 60 }}>
           <View className="items-center mb-8">
             <View className="w-20 h-20 bg-green-100 dark:bg-emerald-950/50 rounded-full items-center justify-center mb-4">
-              <CheckCircle size={40} color="#16a34a" />
+              <CheckCircle2 size={40} color="#16a34a" />
             </View>
-            <Text className="text-2xl font-bold text-slate-800 dark:text-white mb-1">User Created!</Text>
-            <Text className="text-slate-500 dark:text-slate-400 text-center">
-              {createdAccount.invitationSent
-                ? 'An invitation was sent. The user will set their own password.'
-                : 'Offline farmer profile created. The farmer can claim it later.'}
+            <Text className="text-2xl font-bold text-slate-800 dark:text-white mb-2 text-center">
+              {createdAccount.role === 'technician'
+                ? 'Technician invitation sent'
+                : createdAccount.invitationSent
+                  ? 'User invitation sent'
+                  : 'Farmer profile created'}
+            </Text>
+            <Text className="text-[15px] leading-5 text-slate-500 dark:text-slate-400 text-center">
+              {createdAccount.role === 'technician'
+                ? 'The Technician will claim the invitation and set their password. Oton is saved as the initial Field Area; Receive Requests stays off until they are ready.'
+                : createdAccount.invitationSent
+                  ? 'The user will claim the invitation and set their own password.'
+                  : 'The farmer can claim this profile later using a verified phone number.'}
             </Text>
           </View>
 
@@ -124,25 +138,69 @@ export default function CreateUserScreen() {
             </View>
           </View>
 
+          {createdAccount.role === 'technician' && createdAccount.id ? (
+            <>
+              <View className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-4 mb-4">
+                <Text className="text-blue-900 dark:text-blue-200 font-bold text-[15px] mb-1">
+                  Initial dispatch setup saved
+                </Text>
+                <Text className="text-blue-800 dark:text-blue-300 text-[13px] leading-5">
+                  Field Area: Oton, Iloilo. {createdAccount.serviceCapabilities?.length || 0} service capabilities selected. Admin can revise these settings later.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() =>
+                  router.replace({
+                    pathname: '/(admin)/manage-dispatch' as any,
+                    params: { id: createdAccount.id },
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Review Technician dispatch settings"
+                className="min-h-12 py-4 rounded-xl items-center mb-3 flex-row justify-center gap-2"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                <MapPin size={19} color="white" />
+                <Text className="text-white font-bold text-base">Review Dispatch Settings</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+
           <TouchableOpacity
             onPress={shareCredentials}
-            className="py-4 rounded-2xl items-center mb-3 flex-row justify-center gap-2"
-            style={{ backgroundColor: PRIMARY }}
+            className={`min-h-12 py-4 rounded-xl items-center mb-3 flex-row justify-center gap-2 ${
+              createdAccount.role === 'technician'
+                ? 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700'
+                : ''
+            }`}
+            style={
+              createdAccount.role === 'technician'
+                ? undefined
+                : { backgroundColor: PRIMARY }
+            }
           >
-            <Share2 size={18} color="white" />
-            <Text className="text-white font-bold text-base">Share Setup Info</Text>
+            <Share2
+              size={18}
+              color={createdAccount.role === 'technician' ? PRIMARY : 'white'}
+            />
+            <Text
+              className="font-bold text-base"
+              style={{ color: createdAccount.role === 'technician' ? PRIMARY : 'white' }}
+            >
+              Share Setup Info
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleCreateAnother}
-            className="bg-white dark:bg-slate-900 py-4 rounded-2xl items-center mb-3 border border-slate-200 dark:border-slate-800"
+            className="bg-white dark:bg-slate-900 min-h-12 py-4 rounded-xl items-center mb-3 border border-slate-200 dark:border-slate-800"
           >
             <Text className="text-slate-700 dark:text-slate-200 font-bold text-base">Create Another User</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => router.back()}
-            className="bg-slate-100 dark:bg-slate-800 py-4 rounded-2xl items-center"
+            className="bg-slate-100 dark:bg-slate-800 min-h-12 py-4 rounded-xl items-center"
           >
             <Text className="text-slate-700 dark:text-slate-200 font-bold text-base">Done</Text>
           </TouchableOpacity>
@@ -249,24 +307,25 @@ export default function CreateUserScreen() {
               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-4 text-slate-800 dark:text-white font-medium"
               placeholder="09XXXXXXXXX"
               placeholderTextColor="#94a3b8"
+              maxLength={11}
               keyboardType="phone-pad"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
             />
           </View>
 
-          <View className="bg-white dark:bg-slate-900 rounded-[24px] p-4 border border-slate-100 dark:border-slate-800">
+          <View className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
             <Text className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">
-              {role === 'technician' ? 'Assigned Service Area' : 'Address'}
+              {role === 'technician' ? 'Contact Address' : 'Address'}
             </Text>
-            <Text className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+            <Text className="text-[13px] leading-5 text-slate-500 dark:text-slate-400 mb-4">
               {role === 'technician'
-                ? 'Used for workload views and municipality/barangay filtering.'
+                ? 'This contact address does not determine Field Area. Initial dispatch coverage is configured below.'
                 : 'Used for admin records and location-based summaries.'}
             </Text>
 
             <View className="mb-3">
-              <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Street / Purok</Text>
+              <Text className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Street / Purok</Text>
               <TextInput
                 className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3.5 text-slate-800 dark:text-white font-medium"
                 placeholder="Optional"
@@ -307,11 +366,71 @@ export default function CreateUserScreen() {
             />
           </View>
 
+          {role === 'technician' ? (
+            <View className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+              <Text className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">
+                Initial Dispatch Setup
+              </Text>
+              <Text className="text-[13px] leading-5 text-slate-500 dark:text-slate-400 mb-4">
+                Oton is the current service municipality. Select the services this Technician is qualified to handle; Admin can edit both later.
+              </Text>
+
+              <View className="min-h-12 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 flex-row items-center gap-3 mb-4">
+                <MapPin size={20} color="#2563EB" />
+                <View className="flex-1">
+                  <Text className="font-bold text-slate-800 dark:text-white">
+                    {OTON_MUNICIPALITY.municipalityName}, {OTON_MUNICIPALITY.provinceName}
+                  </Text>
+                  <Text className="text-xs text-slate-500 dark:text-slate-400">
+                    Initial Field Area
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="check-circle" size={21} color="#2563EB" />
+              </View>
+
+              <Text className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 mb-2">
+                Service capabilities
+              </Text>
+              <View className="gap-y-2">
+                {CAPABILITIES_MAP.map((capability) => {
+                  const selected = serviceCapabilities.includes(capability.id);
+                  return (
+                    <TouchableOpacity
+                      key={capability.id}
+                      onPress={() => toggleServiceCapability(capability.id)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                      accessibilityLabel={capability.label}
+                      className={`min-h-12 rounded-xl border px-3 py-3 flex-row items-center gap-3 ${
+                        selected
+                          ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/40'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <MaterialCommunityIcons
+                        name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                        size={22}
+                        color={selected ? '#2563EB' : '#64748b'}
+                      />
+                      <Text className="flex-1 font-semibold text-slate-700 dark:text-slate-200">
+                        {capability.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text className="text-xs leading-4 text-slate-500 dark:text-slate-400 mt-3">
+                Receive Requests remains off and availability remains off duty after registration.
+              </Text>
+            </View>
+          ) : null}
+
           <View className="rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 px-4 py-3">
             <Text className="text-blue-900 dark:text-blue-200 font-bold text-sm mb-1">
               Password setup
             </Text>
-            <Text className="text-blue-700 dark:text-blue-300 text-xs leading-5">
+            <Text className="text-blue-700 dark:text-blue-300 text-[13px] leading-5">
               Admins do not create or keep passwords. Users with email will receive a Clerk invite and set their own password. Farmer profiles without email can be claimed later through phone verification.
             </Text>
           </View>
@@ -320,7 +439,7 @@ export default function CreateUserScreen() {
           <TouchableOpacity
             onPress={handleCreate}
             disabled={loading}
-            className="py-4 rounded-2xl items-center mt-2"
+            className="min-h-12 py-4 rounded-xl items-center mt-2"
             style={{ backgroundColor: PRIMARY }}
           >
             {loading ? (
@@ -394,7 +513,7 @@ const AddressPickerButton = ({
   disabled?: boolean;
 }) => (
   <View className="mb-3">
-    <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{label}</Text>
+    <Text className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{label}</Text>
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}

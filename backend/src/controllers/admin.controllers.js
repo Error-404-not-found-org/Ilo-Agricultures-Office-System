@@ -7,6 +7,16 @@ import { Inventory } from "../models/inventory.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { createAuditLog } from "../services/audit.service.js";
+import {
+  evaluateTechnicianDispatchReadiness,
+} from "../domain/geographic/eligibilityEvaluator.js";
+import { assertTechnicianEligibleForNewRequest } from "../services/dispatch-eligibility.service.js";
+import {
+  isActiveAIRequestStatus,
+  isActiveHealthRequestStatus,
+} from "../domain/status-vocabulary.js";
+import { canonicalizeMunicipality } from "../domain/geographic/psgcRegistry.js";
+import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
 
 // Clerk Retry Helper - Retries once if Clerk temporarily fails
 const runWithClerkRetry = async (fn, context = "") => {
@@ -508,6 +518,7 @@ export const deleteUser = async (req, res) => {
 
     user.deletedAt = new Date();
     user.deactivatedBy = req.user._id;
+    user.pushToken = undefined;
     await user.save();
 
     logAdminAction("user deleted", req.user, user, {
@@ -535,42 +546,31 @@ export const deleteUser = async (req, res) => {
 
 export const deleteInsemination = async (req, res) => {
   try {
-    const { id } = req.params;
-    const insemination = await Insemination.findById(id);
-    if (!insemination) {
-      return res.status(404).send({ message: "Insemination record not found" });
-    }
-
-    const beforeState = { deletedAt: insemination.deletedAt };
-    insemination.deletedAt = new Date();
-    await insemination.save();
+    const archivedInsemination = await archiveInseminationAsAdmin({
+      id: req.params.id,
+      actor: req.user,
+    });
 
     logAdminAction(
       "delete_insemination",
       req.user,
       {
-        id: insemination._id,
-        name: `Insemination for animal ${insemination.animalId}`,
+        id: archivedInsemination._id,
+        name: `Insemination for animal ${archivedInsemination.animalId}`,
       },
-      { deletedAt: insemination.deletedAt },
+      { deletedAt: archivedInsemination.deletedAt },
     );
-    await createAuditLog({
-      entityType: "Insemination",
-      entityId: insemination._id,
-      action: "delete_insemination",
-      actorId: req.user._id,
-      before: beforeState,
-      after: { deletedAt: insemination.deletedAt },
-      metadata: {
-        actingAdmin: req.user.email || req.user.name,
-        timestamp: new Date().toISOString(),
-      },
-    });
 
     res
       .status(200)
       .send({ message: "Insemination record soft-deleted successfully" });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).send({
+        message: error.message,
+        code: error.code,
+      });
+    }
     return handleControllerError(res, error, "Error deleting insemination");
   }
 };
@@ -2165,12 +2165,27 @@ export const updateTechnicianDispatchProfile = async (req, res) => {
           .json({ message: "serviceMunicipalities must be an array." });
       }
 
-      const mappedMunicipalities = serviceMunicipalities.map((m) => ({
-        municipalityCode: m.municipalityCode,
-        municipalityName: m.municipalityName,
-        localityType: m.localityType || "municipality",
-        provinceCode: m.provinceCode,
-        provinceName: m.provinceName,
+      const invalidMunicipality = serviceMunicipalities.find(
+        (municipality) =>
+          !municipality ||
+          typeof municipality.municipalityCode !== "string" ||
+          !municipality.municipalityCode.trim() ||
+          typeof municipality.municipalityName !== "string" ||
+          !municipality.municipalityName.trim() ||
+          !["municipality", "city"].includes(
+            municipality.localityType || "municipality",
+          ) || !canonicalizeMunicipality(municipality),
+      );
+      if (invalidMunicipality) {
+        return res.status(400).json({
+          message:
+            "Each Field Area must include a municipality code, name, and valid locality type.",
+          code: "INVALID_SERVICE_MUNICIPALITY",
+        });
+      }
+
+      const mappedMunicipalities = serviceMunicipalities.map((municipality) => ({
+        ...canonicalizeMunicipality(municipality),
         source: "admin_assigned",
         assignedBy: req.user._id,
         assignedAt: new Date(),
@@ -2202,9 +2217,17 @@ export const updateTechnicianDispatchProfile = async (req, res) => {
         "PREGNANCY_DIAGNOSIS",
         "CALVING",
       ];
-      const filteredCapabilities = [...new Set(serviceCapabilities)].filter(
-        (c) => validCapabilities.includes(c),
+      const invalidCapabilities = serviceCapabilities.filter(
+        (capability) => !validCapabilities.includes(capability),
       );
+      if (invalidCapabilities.length) {
+        return res.status(400).json({
+          message: "One or more service capabilities are invalid.",
+          code: "INVALID_SERVICE_CAPABILITY",
+          invalidCapabilities,
+        });
+      }
+      const filteredCapabilities = [...new Set(serviceCapabilities)];
 
       technician.dispatchProfile.serviceCapabilities = filteredCapabilities;
     }
@@ -2218,11 +2241,163 @@ export const updateTechnicianDispatchProfile = async (req, res) => {
     res.status(200).json({
       message: "Dispatch profile updated successfully.",
       dispatchProfile: technician.dispatchProfile,
+      dispatchReadiness: evaluateTechnicianDispatchReadiness({ technician }),
     });
   } catch (error) {
     console.error("[Update Technician Dispatch Profile] Error:", error);
     res
       .status(500)
       .json({ message: "Failed to update technician dispatch profile." });
+  }
+};
+
+/**
+ * Reassign existing non-terminal field work without changing its lifecycle.
+ * POST /api/admin/requests/:type/:id/reassign
+ */
+export const reassignTechnicianRequest = async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const { technicianId } = req.body;
+    if (!["ai", "health"].includes(type)) {
+      return res.status(400).json({
+        message: "Only AI and Health requests can be reassigned here.",
+        code: "INVALID_REASSIGNMENT_TYPE",
+      });
+    }
+    if (!technicianId) {
+      return res.status(400).json({
+        message: "Choose a Technician before reassigning this request.",
+        code: "REASSIGNMENT_TECHNICIAN_REQUIRED",
+      });
+    }
+
+    const Model = type === "ai" ? Insemination : HealthRequest;
+    const request = await Model.findOne({ _id: id, deletedAt: null }).lean();
+    if (!request) {
+      return res.status(404).json({
+        message: "Request not found.",
+        code: "REQUEST_NOT_FOUND",
+      });
+    }
+    const isActive =
+      type === "ai"
+        ? isActiveAIRequestStatus(request.status)
+        : isActiveHealthRequestStatus(request.status);
+    if (!isActive) {
+      return res.status(409).json({
+        message: "Completed, cancelled, or rejected work cannot be reassigned.",
+        code: "TERMINAL_REQUEST_CANNOT_BE_REASSIGNED",
+      });
+    }
+
+    const currentOwner =
+      type === "ai"
+        ? request.approvedBy || request.technicianId
+        : request.handledBy || request.assignedTechnicianId;
+    if (!currentOwner) {
+      return res.status(409).json({
+        message:
+          "This request is still unassigned. It must be accepted through normal dispatch.",
+        code: "REQUEST_NOT_ASSIGNED",
+      });
+    }
+
+    const target = await User.findById(technicianId)
+      .select(
+        "name role status deletedAt isVerified profileClaimStatus dispatchProfile",
+      )
+      .lean();
+    assertTechnicianEligibleForNewRequest({
+      technician: target,
+      requestType: type === "ai" ? "AI" : "HEALTH",
+      dispatch: request.dispatch,
+    });
+
+    if (String(currentOwner) === String(target._id)) {
+      return res.status(200).json({
+        message: "This request is already assigned to that Technician.",
+        request,
+        idempotent: true,
+      });
+    }
+
+    const ownerGuard =
+      type === "ai"
+        ? {
+            $or: [
+              { approvedBy: currentOwner },
+              { technicianId: currentOwner },
+            ],
+          }
+        : {
+            $or: [
+              { handledBy: currentOwner },
+              { assignedTechnicianId: currentOwner },
+            ],
+          };
+    const ownerUpdate =
+      type === "ai"
+        ? {
+            approvedBy: target._id,
+            ...(request.technicianId ? { technicianId: target._id } : {}),
+          }
+        : {
+            handledBy: target._id,
+            assignedTechnicianId: target._id,
+          };
+    const updated = await Model.findOneAndUpdate(
+      {
+        _id: request._id,
+        deletedAt: null,
+        status: request.status,
+        ...ownerGuard,
+      },
+      {
+        $set: ownerUpdate,
+        $push: {
+          statusHistory: {
+            status: request.status,
+            note: `Reassigned by Admin to ${target.name}.`,
+            actorId: req.user._id,
+            createdAt: new Date(),
+          },
+        },
+      },
+      { returnDocument: "after", runValidators: true },
+    )
+      .populate("farmerId", "name address imageUrl phoneNumber")
+      .populate("animalId", "animalId earTag species breed imageUrl")
+      .populate(type === "ai" ? "approvedBy" : "handledBy", "name");
+
+    if (!updated) {
+      return res.status(409).json({
+        message:
+          "The request assignment or status changed. Refresh before reassigning.",
+        code: "REASSIGNMENT_CONCURRENT_UPDATE",
+      });
+    }
+
+    await createAuditLog({
+      entityType: type === "ai" ? "Insemination" : "HealthRequest",
+      entityId: updated._id,
+      action: "admin_reassigned_request",
+      actorId: req.user._id,
+      before: { technicianId: currentOwner, status: request.status },
+      after: { technicianId: target._id, status: updated.status },
+    });
+
+    return res.status(200).json({
+      message: `Request reassigned to ${target.name}.`,
+      request: updated,
+      idempotent: false,
+    });
+  } catch (error) {
+    console.error("[Admin Reassign Request] Error:", error);
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to reassign request.",
+      code: error.code || "REQUEST_REASSIGNMENT_FAILED",
+      ...(error.details || {}),
+    });
   }
 };

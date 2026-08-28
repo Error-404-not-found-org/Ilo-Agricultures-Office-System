@@ -43,9 +43,7 @@ type MyRequestsProps = {
   showBackButton?: boolean;
 };
 
-export default function MyRequests({
-  showBackButton = true,
-}: MyRequestsProps) {
+export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
@@ -57,10 +55,20 @@ export default function MyRequests({
   const [status, setStatus] = React.useState("all");
   const [allRequests, setAllRequests] = React.useState<any[]>([]);
   const [modalVisible, setModalVisible] = React.useState(false);
-  const [deleteInfo, setDeleteInfo] = React.useState<{ id: string; type: string; animalTag: string; isCancel: boolean; isScheduled: boolean } | null>(null);
+  const [deleteInfo, setDeleteInfo] = React.useState<{
+    id: string;
+    type: string;
+    animalTag: string;
+    isCancel: boolean;
+    isScheduled: boolean;
+  } | null>(null);
   const [reasonModalVisible, setReasonModalVisible] = React.useState(false);
   const [cancellationReason, setCancellationReason] = React.useState("");
-  const [pendingCancelInfo, setPendingCancelInfo] = React.useState<{ id: string; type: string; animalTag: string } | null>(null);
+  const [pendingCancelInfo, setPendingCancelInfo] = React.useState<{
+    id: string;
+    type: string;
+    animalTag: string;
+  } | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = React.useState(false);
 
   const {
@@ -162,7 +170,13 @@ export default function MyRequests({
     { label: "Pending Cancellation", value: "pending_cancellation" },
   ];
 
-  const handleDelete = (id: string, type: string, animalTag: string, isCancel: boolean, isScheduled: boolean) => {
+  const handleDelete = (
+    id: string,
+    type: string,
+    animalTag: string,
+    isCancel: boolean,
+    isScheduled: boolean,
+  ) => {
     setDeleteInfo({ id, type, animalTag, isCancel, isScheduled });
     if (isCancel && isScheduled) {
       // Scheduled cancellation requires a reason — show reason modal
@@ -179,12 +193,17 @@ export default function MyRequests({
     const { id, type, isCancel } = deleteInfo;
     if (isCancel) {
       // Direct cancel (pending/approved)
-      const endpoint = type === "ai" ? `/ai-request/${id}/cancel` : `/health-request/${id}/cancel`;
+      const endpoint =
+        type === "ai"
+          ? `/ai-request/${id}/cancel`
+          : `/health-request/${id}/cancel`;
       try {
         await api.patch(endpoint, {});
         toast.success("Request cancelled successfully");
         queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
-        queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+        queryClient.invalidateQueries({
+          queryKey: ["farmer", "health-requests"],
+        });
       } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to cancel request");
       }
@@ -202,7 +221,9 @@ export default function MyRequests({
         );
         toast.success("Request removed from your history.");
         queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
-        queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+        queryClient.invalidateQueries({
+          queryKey: ["farmer", "health-requests"],
+        });
       } catch (err: any) {
         toast.error(
           err.response?.data?.message ||
@@ -220,17 +241,26 @@ export default function MyRequests({
     }
     setIsSubmittingCancel(true);
     const { id, type } = pendingCancelInfo;
-    const endpoint = type === "ai" ? `/ai-request/${id}/cancel` : `/health-request/${id}/cancel`;
+    const endpoint =
+      type === "ai"
+        ? `/ai-request/${id}/cancel`
+        : `/health-request/${id}/cancel`;
     try {
       await api.patch(endpoint, { reason: cancellationReason.trim() });
-      toast.success("Cancellation request submitted. Awaiting technician review.");
+      toast.success(
+        "Cancellation request submitted. Awaiting technician review.",
+      );
       setReasonModalVisible(false);
       setCancellationReason("");
       setPendingCancelInfo(null);
       queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+      queryClient.invalidateQueries({
+        queryKey: ["farmer", "health-requests"],
+      });
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to submit cancellation request");
+      toast.error(
+        err.response?.data?.message || "Failed to submit cancellation request",
+      );
     } finally {
       setIsSubmittingCancel(false);
     }
@@ -318,19 +348,6 @@ export default function MyRequests({
           />
         }
       >
-        <View className="mb-5">
-          <Text
-            className="text-sm leading-5"
-            style={{
-              color: colors.textSecondary,
-              fontFamily: "Outfit_500Medium",
-            }}
-          >
-            Start a service request, check its current status, and review visit
-            updates from the assigned technician.
-          </Text>
-        </View>
-
         {/* Status Filter Bar */}
         <ScrollView
           horizontal
@@ -359,9 +376,9 @@ export default function MyRequests({
               }}
             >
               <Text
-                className="text-[12px] font-black uppercase tracking-widest"
+                className="text-[12px] font-outfit-semibold tracking-widest"
                 style={{
-                  color: status === f.value ? "#fff" : colors.textMuted,
+                  color: status === f.value ? "#fff" : colors.textSecondary,
                 }}
               >
                 {f.label}
@@ -369,53 +386,6 @@ export default function MyRequests({
             </TouchableOpacity>
           ))}
         </ScrollView>
-
-        {/* Quick Request Hub */}
-        <View className="mb-10 flex-row gap-4">
-          <TouchableOpacity
-            onPress={() => router.push("/(farmer)/request-ai")}
-            className="flex-1 p-5 rounded-[28px] border items-center shadow-sm"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          >
-            <View className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl items-center justify-center mb-3">
-              <Syringe size={24} color={isDark ? colors.primary : "#00643B"} />
-            </View>
-            <Text
-              className="text-[13px] font-black"
-              style={{ color: colors.textPrimary }}
-            >
-              AI Service Request
-            </Text>
-            <Text
-              className="text-[9px] font-bold mt-1 text-center"
-              style={{ color: colors.textMuted }}
-            >
-              Artificial Breeding
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => router.push("/(farmer)/report-sickness")}
-            className="flex-1 p-5 rounded-[28px] border items-center shadow-sm"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          >
-            <View className="w-12 h-12 bg-orange-50 dark:bg-orange-900/20 rounded-2xl items-center justify-center mb-3">
-              <Stethoscope size={24} color={isDark ? "#f97316" : "#9A3412"} />
-            </View>
-            <Text
-              className="text-[13px] font-black"
-              style={{ color: colors.textPrimary }}
-            >
-              Report Health Concern
-            </Text>
-            <Text
-              className="text-[9px] font-bold mt-1 text-center"
-              style={{ color: colors.textMuted }}
-            >
-              Health Assistance
-            </Text>
-          </TouchableOpacity>
-        </View>
 
         <Text
           className="text-sm font-black uppercase tracking-widest mb-4"
@@ -431,15 +401,20 @@ export default function MyRequests({
         ) : allRequests.length > 0 ? (
           allRequests.map((req: any) => {
             const isHealth = req.type === "health";
-            const isPendingCancellation = req.cancellationStatus === "requested";
+            const isPendingCancellation =
+              req.cancellationStatus === "requested";
             const displayedStatus = isPendingCancellation
               ? "pending_cancellation"
               : req.status;
             const statusStyle = getStatusColor(displayedStatus);
-            const canCancelDirectly = ["pending", "approved"].includes(req.status) && !isPendingCancellation;
-            const canRequestCancellation = req.status === "scheduled" && !isPendingCancellation;
+            const canCancelDirectly =
+              ["pending", "approved"].includes(req.status) &&
+              !isPendingCancellation;
+            const canRequestCancellation =
+              req.status === "scheduled" && !isPendingCancellation;
             const canRemove = ["rejected", "cancelled"].includes(req.status);
-            const canDelete = canCancelDirectly || canRequestCancellation || canRemove;
+            const canDelete =
+              canCancelDirectly || canRequestCancellation || canRemove;
             const scheduledVisit = formatVisitSchedule(
               req.scheduledDate,
               req.visitPeriod,
@@ -448,9 +423,8 @@ export default function MyRequests({
               req.preferredDate,
               null,
             );
-            const requestStatusLabel = getFarmerRequestListStatusLabel(
-              displayedStatus,
-            );
+            const requestStatusLabel =
+              getFarmerRequestListStatusLabel(displayedStatus);
             const animalImage = getRequestText(req.animalId?.imageUrl);
             const animalIdentity = getRequestText(
               req.animalId?.earTag || req.animalId?.animalId,
@@ -462,17 +436,28 @@ export default function MyRequests({
             const attemptNumber = Number.isFinite(req.attemptNumber)
               ? req.attemptNumber
               : null;
+            const isResolvedHealth =
+              isHealth &&
+              ["resolved", "done", "completed"].includes(req.status);
+            const healthRequestTitle =
+              isResolvedHealth && req.handlingMethod === "advice"
+                ? "Health Advice"
+                : isResolvedHealth && req.handlingMethod === "office_pickup"
+                  ? "Office Pickup"
+                  : "Health Request";
             const healthSymptoms = Array.isArray(req.symptoms)
               ? req.symptoms.map(getRequestText).filter(Boolean).join(", ")
               : getRequestText(req.symptoms || req.comment || req.reason);
             const farmerNotes = getRequestText(req.farmerNotes);
             const assignedTechnician = getRequestText(
-              req.approvedBy?.name ||
+              req.technicianDisplayName ||
                 req.handledBy?.name ||
+                req.approvedBy?.name ||
                 req.technicianId?.name,
             );
             // Filter for pending_cancellation tab
-            if (status === "pending_cancellation" && !isPendingCancellation) return null;
+            if (status === "pending_cancellation" && !isPendingCancellation)
+              return null;
             if (
               status === "in-progress" &&
               !["in-progress", "in_progress"].includes(req.status)
@@ -511,7 +496,7 @@ export default function MyRequests({
                         className="text-[15px] font-black"
                         style={{ color: colors.textPrimary }}
                       >
-                        {isHealth ? "Health Checkup" : "AI Insemination"}
+                        {isHealth ? healthRequestTitle : "AI Insemination"}
                       </Text>
                       <Text
                         className="text-[11px] font-bold"
@@ -536,96 +521,65 @@ export default function MyRequests({
                 </View>
 
                 {/* Animal Info */}
-                {hasAnimalSummary ? <View
-                  className="p-4 rounded-2xl flex-row items-center justify-between mb-4"
-                  style={{
-                    backgroundColor: isDark ? colors.background : "#f8fafc",
-                  }}
-                >
-                  <View className="flex-row items-center gap-3">
-                    <View
-                      className="w-10 h-10 rounded-xl items-center justify-center border"
-                      style={{
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                      }}
-                    >
-                      {animalImage ? (
-                        <Image
-                          source={{ uri: animalImage }}
-                          className="w-8 h-8 rounded-lg"
-                        />
-                      ) : isHealth ? (
-                        <Stethoscope size={18} color={colors.textMuted} />
-                      ) : (
-                        <Syringe size={18} color={colors.textMuted} />
-                      )}
+                {hasAnimalSummary ? (
+                  <View
+                    className="p-4 rounded-2xl flex-row items-center justify-between mb-4"
+                    style={{
+                      backgroundColor: isDark ? colors.background : "#f8fafc",
+                    }}
+                  >
+                    <View className="flex-row items-center gap-3">
+                      <View
+                        className="w-10 h-10 rounded-xl items-center justify-center border"
+                        style={{
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        {animalImage ? (
+                          <Image
+                            source={{ uri: animalImage }}
+                            className="w-8 h-8 rounded-lg"
+                          />
+                        ) : isHealth ? (
+                          <Stethoscope size={18} color={colors.textMuted} />
+                        ) : (
+                          <Syringe size={18} color={colors.textMuted} />
+                        )}
+                      </View>
+                      <View>
+                        <Text
+                          className="text-[13px] font-bold"
+                          style={{ color: colors.textPrimary }}
+                        >
+                          {animalIdentity}
+                        </Text>
+                        {animalBreed ? (
+                          <Text
+                            className="text-[10px]"
+                            style={{ color: colors.textMuted }}
+                          >
+                            {animalBreed}
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
-                    <View>
-                      <Text
-                        className="text-[13px] font-bold"
-                        style={{ color: colors.textPrimary }}
-                      >
-                        {animalIdentity}
-                      </Text>
-                      {animalBreed ? <Text
-                        className="text-[10px]"
-                        style={{ color: colors.textMuted }}
-                      >
-                        {animalBreed}
-                      </Text> : null}
-                    </View>
-                  </View>
-                  {!isHealth && attemptNumber !== null && (
-                    <View className="items-end">
-                      <Text
-                        className="text-[10px] font-bold uppercase"
-                        style={{ color: colors.textMuted }}
-                      >
-                        Attempt
-                      </Text>
-                      <Text
-                        className="text-[12px] font-black"
-                        style={{ color: colors.textPrimary }}
-                      >
-                        #{attemptNumber}
-                      </Text>
-                    </View>
-                  )}
-                </View> : null}
-
-                {/* Comment / Reason */}
-                {(isHealth ? healthSymptoms : getAdditionalNotesOnly(req.comment || req.reason)) ? (
-                  <View className="mb-4">
-                    <Text
-                      className="text-[10px] font-bold uppercase mb-1"
-                      style={{ color: colors.textMuted }}
-                    >
-                      {isHealth ? "Symptoms" : "Notes"}
-                    </Text>
-                    <Text
-                      className="text-[12px] italic"
-                      style={{ color: colors.textSecondary }}
-                    >
-                      &quot;{isHealth ? healthSymptoms : getAdditionalNotesOnly(req.comment || req.reason)}&quot;
-                    </Text>
-                  </View>
-                ) : null}
-
-                {isHealth && farmerNotes && farmerNotes !== healthSymptoms ? (
-                  <View className="mb-4">
-                    <Text
-                      className="text-[10px] font-bold uppercase mb-1"
-                      style={{ color: colors.textMuted }}
-                    >
-                      Farmer Notes
-                    </Text>
-                    <Text
-                      className="text-[12px]"
-                      style={{ color: colors.textSecondary }}
-                    >
-                      {farmerNotes}
-                    </Text>
+                    {!isHealth && attemptNumber !== null && (
+                      <View className="items-end">
+                        <Text
+                          className="text-[10px] font-bold uppercase"
+                          style={{ color: colors.textMuted }}
+                        >
+                          Attempt
+                        </Text>
+                        <Text
+                          className="text-[12px] font-black"
+                          style={{ color: colors.textPrimary }}
+                        >
+                          #{attemptNumber}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 ) : null}
 
@@ -656,18 +610,30 @@ export default function MyRequests({
                         const isPrimary = signId === "standing_heat";
                         const isBleeding = signId === "metestrus_bleeding";
 
-                        let badgeBg = isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5";
+                        let badgeBg = isDark
+                          ? "rgba(16, 185, 129, 0.15)"
+                          : "#ECFDF5";
                         let badgeText = isDark ? "#34d399" : "#065F46";
-                        let badgeBorder = isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5";
+                        let badgeBorder = isDark
+                          ? "rgba(16, 185, 129, 0.2)"
+                          : "#d1fae5";
 
                         if (isPrimary) {
-                          badgeBg = isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7";
+                          badgeBg = isDark
+                            ? "rgba(245, 158, 11, 0.15)"
+                            : "#FEF3C7";
                           badgeText = isDark ? "#fbbf24" : "#92400E";
-                          badgeBorder = isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7";
+                          badgeBorder = isDark
+                            ? "rgba(245, 158, 11, 0.2)"
+                            : "#FEF3C7";
                         } else if (isBleeding) {
-                          badgeBg = isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2";
+                          badgeBg = isDark
+                            ? "rgba(239, 68, 68, 0.15)"
+                            : "#FEF2F2";
                           badgeText = isDark ? "#f87171" : "#991B1B";
-                          badgeBorder = isDark ? "rgba(239, 68, 68, 0.2)" : "#fecaca";
+                          badgeBorder = isDark
+                            ? "rgba(239, 68, 68, 0.2)"
+                            : "#fecaca";
                         }
 
                         return (
@@ -739,8 +705,7 @@ export default function MyRequests({
                       className="text-[11px] font-medium"
                       style={{ color: colors.textSecondary }}
                     >
-                      Assigned to:{" "}
-                      {assignedTechnician}
+                      Assigned to: {assignedTechnician}
                     </Text>
                   </View>
                 ) : null}
@@ -750,8 +715,12 @@ export default function MyRequests({
                   <View
                     className="flex-row items-center gap-2 p-3 rounded-xl border mb-4"
                     style={{
-                      backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#FFFBEB",
-                      borderColor: isDark ? "rgba(245, 158, 11, 0.3)" : "#FEF3C7",
+                      backgroundColor: isDark
+                        ? "rgba(245, 158, 11, 0.1)"
+                        : "#FFFBEB",
+                      borderColor: isDark
+                        ? "rgba(245, 158, 11, 0.3)"
+                        : "#FEF3C7",
                     }}
                   >
                     <XCircle size={14} color={isDark ? "#fbbf24" : "#d97706"} />
@@ -812,7 +781,7 @@ export default function MyRequests({
                         className="text-[11px] font-black uppercase tracking-widest"
                         style={{ color: primaryColor }}
                       >
-                        View Request
+                        {isResolvedHealth ? "View Response" : "View Request"}
                       </Text>
                       <ChevronRight size={12} color={primaryColor} />
                     </TouchableOpacity>
@@ -831,26 +800,6 @@ export default function MyRequests({
                         style={{ color: primaryColor }}
                       >
                         View Request
-                      </Text>
-                      <ChevronRight size={12} color={primaryColor} />
-                    </TouchableOpacity>
-                  )}
-
-                  {isHealth && ["resolved", "done", "completed"].includes(req.status) && (
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(farmer)/health-report-preview",
-                          params: { id: req._id },
-                        })
-                      }
-                      className="flex-row items-center gap-1 ml-3"
-                    >
-                      <Text
-                        className="text-[11px] font-black uppercase tracking-widest"
-                        style={{ color: primaryColor }}
-                      >
-                        View Report
                       </Text>
                       <ChevronRight size={12} color={primaryColor} />
                     </TouchableOpacity>
@@ -887,7 +836,11 @@ export default function MyRequests({
                         className="text-[11px] font-black"
                         style={{ color: colors.error }}
                       >
-                        {canRequestCancellation ? "Request Cancellation" : canCancelDirectly ? "Cancel" : "Remove"}
+                        {canRequestCancellation
+                          ? "Request Cancellation"
+                          : canCancelDirectly
+                            ? "Cancel"
+                            : "Remove"}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -992,16 +945,25 @@ export default function MyRequests({
               <View
                 className="flex-row items-start gap-2 p-3 rounded-xl border mb-4"
                 style={{
-                  backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#FFFBEB",
+                  backgroundColor: isDark
+                    ? "rgba(245, 158, 11, 0.1)"
+                    : "#FFFBEB",
                   borderColor: isDark ? "rgba(245, 158, 11, 0.3)" : "#FEF3C7",
                 }}
               >
-                <AlertCircle size={14} color={isDark ? "#fbbf24" : "#d97706"} style={{ marginTop: 2 }} />
+                <AlertCircle
+                  size={14}
+                  color={isDark ? "#fbbf24" : "#d97706"}
+                  style={{ marginTop: 2 }}
+                />
                 <Text
                   className="text-[11px] font-bold flex-1"
                   style={{ color: isDark ? "#fde68a" : "#92400E" }}
                 >
-                  This visit is already scheduled. Your request will be sent to your assigned technician for review. Please contact your assigned technician or the Municipal Agriculture Office if urgent.
+                  This visit is already scheduled. Your request will be sent to
+                  your assigned technician for review. Please contact your
+                  assigned technician or the Municipal Agriculture Office if
+                  urgent.
                 </Text>
               </View>
 
@@ -1043,10 +1005,10 @@ export default function MyRequests({
                       : colors.error,
                 }}
               >
-                <Text
-                  className="text-[13px] font-black text-white"
-                >
-                  {isSubmittingCancel ? "Submitting..." : "Submit Cancellation Request"}
+                <Text className="text-[13px] font-black text-white">
+                  {isSubmittingCancel
+                    ? "Submitting..."
+                    : "Submit Cancellation Request"}
                 </Text>
               </TouchableOpacity>
             </View>

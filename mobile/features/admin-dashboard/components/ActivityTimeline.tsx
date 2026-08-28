@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { AdminRecentActivity } from "../services/adminDashboard.service";
+import { router } from "expo-router";
 
 interface ActivityTimelineProps {
   activities?: AdminRecentActivity[];
@@ -13,7 +14,11 @@ interface ActivityTimelineProps {
 
 const ACTIVITY_STYLE: Record<
   string,
-  { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; bg: string }
+  {
+    icon: keyof typeof MaterialCommunityIcons.glyphMap;
+    color: string;
+    bg: string;
+  }
 > = {
   pregnancy_confirmed: {
     icon: "heart-pulse",
@@ -69,13 +74,17 @@ function formatRelativeTime(dateString: string): string {
   if (isNaN(date.getTime())) return "";
 
   const now = new Date();
-  const diffInSeconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+  const diffInSeconds = Math.max(
+    0,
+    Math.floor((now.getTime() - date.getTime()) / 1000),
+  );
 
   if (diffInSeconds < 60) return "Just now";
   const diffInMinutes = Math.floor(diffInSeconds / 60);
   if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
   const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) return `${diffInHours} hr${diffInHours > 1 ? "s" : ""} ago`;
+  if (diffInHours < 24)
+    return `${diffInHours} hr${diffInHours > 1 ? "s" : ""} ago`;
   const diffInDays = Math.floor(diffInHours / 24);
   if (diffInDays === 1) return "Yesterday";
   if (diffInDays < 7) return `${diffInDays} days ago`;
@@ -90,12 +99,52 @@ export function ActivityTimeline({
   onRetry,
 }: ActivityTimelineProps) {
   const { colors } = useTheme();
+  const recentActivities = activities.slice(0, 5);
 
   return (
     <View style={{ paddingHorizontal: 24, marginBottom: 40 }}>
-      <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginBottom: 16 }}>
-        Recent Activities
-      </Text>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 16,
+            fontFamily: "Outfit_800ExtraBold",
+            color: colors.textPrimary,
+          }}
+        >
+          Recent Activities
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.push("/(admin)/audit-logs" as any)}
+          activeOpacity={0.7}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Outfit_600SemiBold",
+              color: colors.primary,
+            }}
+          >
+            View All
+          </Text>
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={16}
+            color={colors.primary}
+          />
+        </TouchableOpacity>
+      </View>
 
       {/* Loading Skeleton */}
       {isLoading ? (
@@ -105,13 +154,20 @@ export function ActivityTimeline({
               position: "absolute",
               left: 20,
               top: 10,
-              bottom: 10,
+              bottom: 40,
               width: 2,
               backgroundColor: colors.border,
             }}
           />
           {[1, 2, 3].map((key) => (
-            <View key={key} style={{ flexDirection: "row", marginBottom: 20, position: "relative" }}>
+            <View
+              key={key}
+              style={{
+                flexDirection: "row",
+                marginBottom: 20,
+                position: "relative",
+              }}
+            >
               <View
                 style={{
                   width: 40,
@@ -135,8 +191,24 @@ export function ActivityTimeline({
                   gap: 8,
                 }}
               >
-                <View style={{ height: 14, width: "50%", backgroundColor: colors.border, borderRadius: 4, opacity: 0.5 }} />
-                <View style={{ height: 10, width: "80%", backgroundColor: colors.border, borderRadius: 4, opacity: 0.3 }} />
+                <View
+                  style={{
+                    height: 14,
+                    width: "50%",
+                    backgroundColor: colors.border,
+                    borderRadius: 4,
+                    opacity: 0.5,
+                  }}
+                />
+                <View
+                  style={{
+                    height: 10,
+                    width: "80%",
+                    backgroundColor: colors.border,
+                    borderRadius: 4,
+                    opacity: 0.3,
+                  }}
+                />
               </View>
             </View>
           ))}
@@ -154,8 +226,19 @@ export function ActivityTimeline({
             gap: 10,
           }}
         >
-          <MaterialCommunityIcons name="alert-circle-outline" size={28} color="#ef4444" />
-          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, textAlign: "center" }}>
+          <MaterialCommunityIcons
+            name="alert-circle-outline"
+            size={28}
+            color="#ef4444"
+          />
+          <Text
+            style={{
+              fontSize: 13,
+              fontFamily: "Outfit_600SemiBold",
+              color: colors.textSecondary,
+              textAlign: "center",
+            }}
+          >
             Unable to load recent activities.
           </Text>
           {onRetry && (
@@ -169,7 +252,13 @@ export function ActivityTimeline({
                 borderRadius: 12,
               }}
             >
-              <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontFamily: "Outfit_700Bold",
+                  color: colors.textPrimary,
+                }}
+              >
                 Retry
               </Text>
             </TouchableOpacity>
@@ -188,35 +277,61 @@ export function ActivityTimeline({
             gap: 8,
           }}
         >
-          <MaterialCommunityIcons name="timeline-clock-outline" size={32} color={colors.textMuted} />
-          <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: colors.textPrimary, textAlign: "center" }}>
+          <MaterialCommunityIcons
+            name="timeline-clock-outline"
+            size={32}
+            color={colors.textMuted}
+          />
+          <Text
+            style={{
+              fontSize: 14,
+              fontFamily: "Outfit_700Bold",
+              color: colors.textPrimary,
+              textAlign: "center",
+            }}
+          >
             No recent activities
           </Text>
-          <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textMuted, textAlign: "center" }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontFamily: "Outfit_500Medium",
+              color: colors.textMuted,
+              textAlign: "center",
+            }}
+          >
             New livestock, service, and account activity will appear here.
           </Text>
         </View>
       ) : (
-        /* Real Data Timeline */
+        /* Real Data Timeline - Limited to 5 */
         <View style={{ position: "relative" }}>
-          {/* Vertical line */}
+          {/* Vertical line - stops before last item */}
           <View
             style={{
               position: "absolute",
               left: 20,
               top: 10,
-              bottom: 10,
+              bottom: 40,
               width: 2,
               backgroundColor: colors.border,
             }}
           />
 
-          {activities.map((item) => {
+          {recentActivities.map((item, index) => {
             const style = ACTIVITY_STYLE[item.type] || DEFAULT_STYLE;
             const timeAgo = formatRelativeTime(item.occurredAt);
+            const isLast = index === recentActivities.length - 1;
 
             return (
-              <View key={item.id} style={{ flexDirection: "row", marginBottom: 20, position: "relative" }}>
+              <View
+                key={item.id}
+                style={{
+                  flexDirection: "row",
+                  marginBottom: isLast ? 0 : 20,
+                  position: "relative",
+                }}
+              >
                 {/* Node */}
                 <View
                   style={{
@@ -231,7 +346,11 @@ export function ActivityTimeline({
                     borderColor: colors.card,
                   }}
                 >
-                  <MaterialCommunityIcons name={style.icon} size={18} color={style.color} />
+                  <MaterialCommunityIcons
+                    name={style.icon}
+                    size={18}
+                    color={style.color}
+                  />
                 </View>
 
                 {/* Card */}
@@ -246,20 +365,46 @@ export function ActivityTimeline({
                     padding: 14,
                   }}
                 >
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 8 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 4,
+                      gap: 8,
+                    }}
+                  >
                     <Text
                       numberOfLines={1}
-                      style={{ flex: 1, fontSize: 13, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}
+                      style={{
+                        flex: 1,
+                        fontSize: 13,
+                        fontFamily: "Outfit_700Bold",
+                        color: colors.textPrimary,
+                      }}
                     >
                       {item.title}
                     </Text>
                     {Boolean(timeAgo) && (
-                      <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textMuted }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: "Outfit_600SemiBold",
+                          color: colors.textMuted,
+                        }}
+                      >
                         {timeAgo}
                       </Text>
                     )}
                   </View>
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary, lineHeight: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: "Outfit_500Medium",
+                      color: colors.textSecondary,
+                      lineHeight: 18,
+                    }}
+                  >
                     {item.description}
                   </Text>
                 </View>

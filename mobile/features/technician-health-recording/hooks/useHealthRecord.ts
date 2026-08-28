@@ -14,7 +14,12 @@ export const useWalkInHealthMutation = () => {
 
   return useMutation({
     mutationFn: async (payload: any) => {
-      const res = await api.post("/health-request/walk-in", payload);
+      const { idempotencyKey, ...requestBody } = payload;
+      const res = await api.post("/health-request/walk-in", requestBody, {
+        headers: idempotencyKey
+          ? { "Idempotency-Key": idempotencyKey }
+          : undefined,
+      });
       return res.data;
     },
     onSuccess: (_result, variables: any) => {

@@ -120,7 +120,7 @@ describe("Dispatch Profile APIs", () => {
     assert.equal(response.body.message, "Invalid availability status.");
   });
 
-  it("missing or unchanged field when only the toggle is sent preserves availabilityStatus", async () => {
+  it("Receive Requests OFF also moves availability to off_duty", async () => {
     const { req, res, response } = mockReqRes(techUser._id, "technician", {
       acceptsNewRequests: false
     });
@@ -129,8 +129,36 @@ describe("Dispatch Profile APIs", () => {
 
     assert.equal(response.statusCode, 200);
     const dbUser = await User.findById(techUser._id).lean();
-    assert.equal(dbUser.dispatchProfile.availabilityStatus, "available", "Availability remains unchanged");
+    assert.equal(dbUser.dispatchProfile.availabilityStatus, "off_duty");
     assert.equal(dbUser.dispatchProfile.acceptsNewRequests, false);
+  });
+
+  it("Receive Requests ON also moves availability to available", async () => {
+    techUser.dispatchProfile.acceptsNewRequests = false;
+    techUser.dispatchProfile.availabilityStatus = "off_duty";
+    await techUser.save();
+    const { req, res, response } = mockReqRes(techUser._id, "technician", {
+      acceptsNewRequests: true,
+    });
+
+    await updateDispatchStatus(req, res);
+
+    assert.equal(response.statusCode, 200);
+    const dbUser = await User.findById(techUser._id).lean();
+    assert.equal(dbUser.dispatchProfile.acceptsNewRequests, true);
+    assert.equal(dbUser.dispatchProfile.availabilityStatus, "available");
+  });
+
+  it("rejects contradictory Receive Requests and availability payloads", async () => {
+    const { req, res, response } = mockReqRes(techUser._id, "technician", {
+      acceptsNewRequests: true,
+      availabilityStatus: "off_duty",
+    });
+
+    await updateDispatchStatus(req, res);
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.body.code, "DISPATCH_STATUS_CONFLICT");
   });
 
   it("Strict Boolean Validation: rejects non-boolean acceptsNewRequests", async () => {
@@ -157,7 +185,7 @@ describe("Dispatch Profile APIs", () => {
     const dbUser = await User.findById(legacyTechUser._id).lean();
     assert.ok(dbUser.dispatchProfile);
     assert.equal(dbUser.dispatchProfile.acceptsNewRequests, true);
-    assert.equal(dbUser.dispatchProfile.availabilityStatus, "off_duty", "Initialized to off_duty");
+    assert.equal(dbUser.dispatchProfile.availabilityStatus, "available");
     assert.ok(!dbUser.dispatchProfile.serviceCapabilities || dbUser.dispatchProfile.serviceCapabilities.length === 0);
     assert.ok(!dbUser.dispatchProfile.serviceMunicipalities || dbUser.dispatchProfile.serviceMunicipalities.length === 0);
   });

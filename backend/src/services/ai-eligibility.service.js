@@ -37,23 +37,30 @@ export const getStaticAnimalAIEligibility = (animal) => {
   return { eligible: true, code: "STATIC_CHECKS_PASSED" };
 };
 
-export const getAnimalAIEligibility = async ({ animal, at = new Date() }) => {
+export const getAnimalAIEligibility = async ({ animal, at = new Date(), session = null }) => {
   const staticEligibility = getStaticAnimalAIEligibility(animal);
   if (!staticEligibility.eligible) return staticEligibility;
 
+  let pregnancyQuery = Pregnancy.findOne({
+    animalId: animal._id,
+    deletedAt: null,
+    "pregnancyDiagnosis.result": "Pregnant",
+    cycleStatus: { $nin: ["completed", "lost"] },
+  });
+  let taskQuery = Task.find({
+    animalIds: animal._id,
+    taskType: { $in: ["AI", "PD", "Calving", "CD"] },
+    status: { $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS] },
+  });
+  if (session) {
+    pregnancyQuery = pregnancyQuery.session(session);
+    taskQuery = taskQuery.session(session);
+  }
+
   const [activeRequest, activePregnancy, tasks] = await Promise.all([
-    findActiveAIRequest(animal._id),
-    Pregnancy.findOne({
-      animalId: animal._id,
-      deletedAt: null,
-      "pregnancyDiagnosis.result": "Pregnant",
-      cycleStatus: { $nin: ["completed", "lost"] },
-    }).lean(),
-    Task.find({
-      animalIds: animal._id,
-      taskType: { $in: ["AI", "PD", "Calving", "CD"] },
-      status: { $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS] },
-    }).lean(),
+    findActiveAIRequest(animal._id, session),
+    pregnancyQuery.lean(),
+    taskQuery.lean(),
   ]);
 
   const lifecycle = getReproductionEligibility({

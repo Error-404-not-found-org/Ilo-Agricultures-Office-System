@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@clerk/clerk-expo";
 import { getTechnicianRequests } from "../services/technicianRequests.service";
@@ -77,44 +77,14 @@ export function useTechnicianRequests() {
         sortBy,
         municipality: municipality || undefined,
         barangay: barangay || undefined,
+        includeCounts: true,
       }),
     enabled: isEnabled,
     refetchInterval: 15000, // 15s polling
   });
 
-  const openCountFilters: OpenRequestFilter[] = [
-    "all",
-    "ai",
-    "health",
-    "pregnancy",
-  ];
-  const openCountQueries = useQueries({
-    queries: openCountFilters.map((countType) => ({
-      queryKey: ["technician", "requests", "open-count", countType],
-      queryFn: () =>
-        getTechnicianRequests(api, {
-          type: toRequestApiType(countType),
-          status: "active",
-          urgency: "all",
-          assignment: "unassigned",
-          search: "",
-          page: 1,
-          limit: 1,
-          sortBy: "newest",
-        }),
-      enabled: isEnabled,
-      refetchInterval: 15000,
-    })),
-  });
-  const openRequestCounts = Object.fromEntries(
-    openCountFilters.map((countType, index) => [
-      countType,
-      openCountQueries[index]?.data?.pagination?.total,
-    ]),
-  ) as Partial<Record<OpenRequestFilter, number>>;
-  const areOpenRequestCountsLoading = openCountQueries.some(
-    (countQuery) => countQuery.isLoading,
-  );
+  const openRequestCounts = data?.counts || {};
+  const areOpenRequestCountsLoading = isLoading;
 
   const handleRefresh = async () => {
     await refetch();

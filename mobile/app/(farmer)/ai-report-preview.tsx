@@ -95,7 +95,7 @@ export default function AIReportPreviewScreen() {
         estrus: d.estrus || d.estrusType,
         outcome: d.pregnancyStatus || d.outcome || d.status,
         status: d.status,
-        technician: d.technicianId?.name || d.approvedBy?.name || "",
+        technician: d.technicianDisplayName || "",
         technicianPhone: d.technicianId?.phoneNumber || d.approvedBy?.phoneNumber || "",
         technicianNote: d.technicianNote || d.notes || "",
         serviceDate: d.inseminationDate,

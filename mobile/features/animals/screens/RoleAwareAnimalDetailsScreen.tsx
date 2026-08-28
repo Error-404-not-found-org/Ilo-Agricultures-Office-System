@@ -26,6 +26,7 @@ import {
   VenusAndMars,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useUser } from "@clerk/clerk-expo";
 
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { StatusBadge } from "@/components/shared";
@@ -35,13 +36,30 @@ import { formatAddressLabel } from "@/constants/address";
 import { useAnimalRecords } from "@/features/animal-records/hooks/useAnimalTimeline";
 import { formatAnimalRecord } from "@/features/animal-records/utils/recordPresentation";
 import { AnimalProfileSkeleton } from "@/features/animals/components/skeletons/AnimalProfileSkeleton";
+import { FamilyLineage } from "@/features/animals/components/FamilyLineage";
 import { useAnimalDetailsQuery } from "@/features/animals/hooks/useAnimalDetails";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getBootstrapUserQueryKey } from "@/features/auth/hooks/useBootstrapUser";
+import {
+  getStableEntityId,
+  selectNextAnimalVisit,
+} from "@/features/animals/utils/nextVisitVisibility";
+import { useApi } from "@/lib/api";
+import { technicianKeys } from "@/lib/queryKeys";
+import { getTechnicianWorkQueue } from "@/features/technician/services/tasks.service";
 import { useTheme } from "@/lib/theme";
 import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
+  getBreedingObservationPresentation,
+  canOfferFarmerReInsemination,
   isBreedingObservationAwaitingReview,
 } from "@/features/breeding/utils/breedingObservationPresentation";
+import { getAIEligibility } from "@/lib/reproductionEligibility";
+import {
+  getPostpartumPresentation,
+  isHistoryOnlyInsemination,
+} from "@/features/breeding/utils/reproductiveCyclePresentation";
 import type {
   AIRequest,
   Animal,
@@ -81,7 +99,9 @@ type ServiceSummary = {
   status: string;
   activityDate?: string;
   scheduledDate?: string;
+  visitPeriod?: string;
   technician?: string;
+  ownerIds?: unknown[];
   location?: string;
 };
 
@@ -118,8 +138,6 @@ const ACTIVE_REQUEST_STATUSES = new Set([
   "in-progress",
   "in_progress",
 ]);
-
-const SCHEDULED_VISIT_STATUSES = new Set(["assigned", "approved", "scheduled"]);
 
 const formatDate = (value?: string, includeTime = false) => {
   if (!value) return "";
@@ -214,6 +232,7 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
       title: "AI Service",
       status,
       scheduledDate: item.scheduledDate,
+      visitPeriod: item.visitPeriod || undefined,
       activityDate:
         item.scheduledDate ||
         item.inseminationDate ||
@@ -221,6 +240,7 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
         item.createdAt,
       technician:
         getPersonName(item.technicianId) || getPersonName(item.approvedBy),
+      ownerIds: [item.technicianId, item.approvedBy],
       location,
     });
   });
@@ -237,11 +257,13 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
         title: getHealthTitle(item.requestType),
         status,
         scheduledDate: item.scheduledDate,
+        visitPeriod: item.visitPeriod || undefined,
         activityDate:
           item.scheduledDate || item.preferredDate || item.createdAt,
         technician:
           getPersonName(item.assignedTechnicianId) ||
           getPersonName(item.handledBy),
+        ownerIds: [item.assignedTechnicianId, item.handledBy],
         location,
       });
     },
@@ -383,13 +405,33 @@ function QuickFactsCard({ facts }: { facts: QuickFact[] }) {
 
 export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { user: clerkUser } = useUser();
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const { colors, isDark } = useTheme();
   const [showAllRecords, setShowAllRecords] = useState(false);
   const animalQuery = useAnimalDetailsQuery(id);
-  const recordsQuery = useAnimalRecords({ animalId: id, limit: 10 });
   const animal = animalQuery.data as AnimalDetailsData | undefined;
+  const api = useApi();
+  const bootstrapUser = queryClient.getQueryData<{
+    user?: { _id?: string };
+  }>(getBootstrapUserQueryKey(clerkUser?.id));
+  const currentTechnicianId = getStableEntityId(bootstrapUser?.user?._id);
+  const { data: workQueue } = useQuery({
+    queryKey: [...technicianKeys.workQueue(), "animal", id],
+    queryFn: () =>
+      getTechnicianWorkQueue(api, {
+        workState: "active",
+        type: "all",
+        search: animal?.earTag || animal?.animalId || "",
+        page: 1,
+        limit: 20,
+      }),
+    enabled: role === "technician" && Boolean(animal),
+  });
+
+  const recordsQuery = useAnimalRecords({ animalId: id, limit: 10 });
 
   const services = useMemo(() => getServices(animal), [animal]);
   const activeServices = useMemo(
@@ -401,23 +443,11 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   );
   const nextVisit = useMemo(
     () =>
-      activeServices
-        .filter((service) => {
-          if (
-            !service.scheduledDate ||
-            !SCHEDULED_VISIT_STATUSES.has(service.status.toLowerCase())
-          ) {
-            return false;
-          }
-          const scheduledAt = new Date(service.scheduledDate).getTime();
-          return Number.isFinite(scheduledAt) && scheduledAt > Date.now();
-        })
-        .sort(
-          (first, second) =>
-            new Date(first.scheduledDate || 0).getTime() -
-            new Date(second.scheduledDate || 0).getTime(),
-        )[0],
-    [activeServices],
+      selectNextAnimalVisit(activeServices, {
+        role,
+        currentTechnicianId,
+      }),
+    [activeServices, currentTechnicianId, role],
   );
   const activeRequest = useMemo(
     () =>
@@ -511,10 +541,24 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
     }))
     .filter((entry) => entry.value && Number.isFinite(entry.timestamp))
     .sort((first, second) => second.timestamp - first.timestamp);
-  const latestAi = validInseminations[0];
-  const latestObservation = validInseminations.find(
-    (entry) => entry.item.farmerOutcomeReport,
-  )?.item;
+  const latestAi = validInseminations.find(
+    ({ item }) => !isHistoryOnlyInsemination(item),
+  );
+  const latestHistoricalAi = validInseminations.find(({ item }) =>
+    isHistoryOnlyInsemination(item),
+  );
+  const postpartumPresentation = getPostpartumPresentation({
+    isCompletedCycle: animal.reproductiveStatus === "Post-partum",
+    nextAction: animal.nextAction,
+    nextActionAt: animal.nextActionAt,
+    calvingDate: animal.lastCalvingDate,
+    effectiveReproductiveStatus: animal.effectiveReproductiveStatus,
+  });
+
+  const latestObservation =
+    latestAi?.item?.farmerOutcomeReport && !latestAi?.item?.previousAttemptId
+      ? latestAi.item
+      : undefined;
   const canReportBreedingObservation =
     role === "farmer" &&
     Boolean(latestAi?.item?._id) &&
@@ -525,7 +569,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
       animal.reproductiveStatus || "",
     );
   const hasPregnancyTrackerData = Boolean(
-    latestAi?.value ||
+    validInseminations.length > 0 ||
     animal.lastInseminationDate ||
     animal.expectedCalvingDate ||
     animal.pregnancyConfirmedAt ||
@@ -533,7 +577,18 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
       animal.reproductiveStatus || "",
     ),
   );
-  const canOpenPregnancyTracker = role === "farmer" && hasPregnancyTrackerData;
+  const canOpenPregnancyTracker =
+    (role === "farmer" || role === "technician") && hasPregnancyTrackerData;
+
+  const isRecheck =
+    latestAi?.item?.verificationStatus === "pending" &&
+    latestAi?.item?.pregnancyFollowUpTask?.metadata?.workflowStage ===
+      "diagnostic_follow_up";
+
+  const aiEligibility = getAIEligibility({ animal });
+  const isReInsem = canOfferFarmerReInsemination(latestAi?.item, {
+    eligible: aiEligibility.isEligible,
+  });
 
   const quickFacts: QuickFact[] = [];
   if (gender) {
@@ -644,6 +699,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
         pathname: "/(farmer)/animal-record-detail",
         params: {
           animalId: id,
+          sourceId: String(record.sourceId || record._id || record.id || ""),
+          sourceKind: String(record.recordKind || ""),
           recordId: String(record.sourceId || record._id || record.id || ""),
           recordType: String(record.recordKind || record.type || ""),
         },
@@ -653,6 +710,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
         pathname: "/(technician)/record-details",
         params: {
           animalId: id,
+          sourceId: String(record.sourceId || record._id || record.id || ""),
+          sourceKind: String(record.recordKind || ""),
           recordId: String(record.sourceId || record._id || record.id || ""),
           recordType: String(record.recordKind || record.type || ""),
         },
@@ -881,7 +940,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                         lineHeight: 18,
                       }}
                     >
-                      Next Visit: {formatDate(nextVisit.scheduledDate, true)}
+                      Next Visit: {formatDate(nextVisit.scheduledDate)}
+                      {nextVisit.visitPeriod
+                        ? ` - ${titleCase(nextVisit.visitPeriod)}`
+                        : ""}
                     </Text>
                     <Text
                       numberOfLines={1}
@@ -893,9 +955,18 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                         marginTop: 2,
                       }}
                     >
-                      {[nextVisit.title, nextVisit.technician]
+                      {[
+                        nextVisit.title,
+                        role === "farmer"
+                          ? nextVisit.technician
+                            ? `with ${nextVisit.technician}`
+                            : ""
+                          : getOwner(animal)?.name
+                            ? `for ${getOwner(animal)?.name}`
+                            : "",
+                      ]
                         .filter(Boolean)
-                        .join(" with ")}
+                        .join(" ")}
                     </Text>
                   </View>
                   <ChevronRight size={18} color={colors.textMuted} />
@@ -905,110 +976,217 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
           ) : null}
         </View>
 
-        <View style={{ gap: SPACE.sm }}>
+        <View style={{ gap: SPACE.sm, marginTop: SPACE.xs }}>
           <SectionHeader
-            icon={
-              <MaterialCommunityIcons
-                name="cow"
-                size={18}
-                color={colors.primary}
-              />
-            }
+            icon={<Heart size={18} color={colors.primary} />}
             title="Reproductive Status"
           />
+          <View
+            style={{
+              overflow: "hidden",
+              borderRadius: 20,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View reproductive timeline for ${primaryIdentity}`}
+            accessibilityHint="Opens the reproductive timeline and pregnancy progress."
             disabled={!canOpenPregnancyTracker}
-            accessibilityRole={canOpenPregnancyTracker ? "button" : undefined}
-            accessibilityLabel={
-              canOpenPregnancyTracker
-                ? `View pregnancy tracker for ${primaryIdentity}`
-                : undefined
-            }
-            accessibilityHint={
-              canOpenPregnancyTracker
-                ? "Opens the reproductive timeline and pregnancy progress."
-                : undefined
-            }
-            onPress={
-              canOpenPregnancyTracker
-                ? () =>
-                    router.push({
-                      pathname: "/(farmer)/pregnancy-tracker",
-                      params: { id: animal._id },
-                    } as never)
-                : undefined
-            }
+            onPress={() => {
+              if (canOpenPregnancyTracker) {
+                router.push({
+                  pathname:
+                    role === "technician"
+                      ? "/(technician)/pregnancy-tracker"
+                      : "/(farmer)/pregnancy-tracker",
+                  params: { id: animal._id },
+                } as never);
+              }
+            }}
             style={({ pressed }) => ({
-              opacity: pressed && canOpenPregnancyTracker ? 0.78 : 1,
+              backgroundColor: pressed && canOpenPregnancyTracker
+                ? isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)"
+                : "transparent",
             })}
           >
             <View
               style={{
-                borderRadius: 16,
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
+                flexDirection: "row",
+                width: "100%",
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
               }}
             >
               <View
                 style={{
-                  flexDirection: "row",
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
                   alignItems: "center",
-                  width: "100%",
-                  gap: 12,
-                  paddingHorizontal: 16,
-                  paddingVertical: 14,
+                  justifyContent: "center",
+                  backgroundColor: isDark ? "rgba(0,100,59,0.15)" : "#E6F4EA",
                 }}
               >
-                <View
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: isDark ? "rgba(0,100,59,0.15)" : "#E6F4EA",
-                  }}
-                >
-                  <Heart size={20} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
+                <Heart size={22} color={isDark ? "#34D399" : "#00643B"} />
+              </View>
+              <View style={{ flex: 1, gap: 2, justifyContent: "center" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                   <Text
+                    textRole="bodyStrong"
+                    numberOfLines={1}
                     style={{
+                      flex: 1,
                       color: animal.reproductiveStatus
                         ? colors.primary
                         : colors.textSecondary,
-                      fontFamily: "Outfit_700Bold",
-                      fontSize: 15,
-                      lineHeight: 20,
                     }}
                   >
-                    {animal.reproductiveStatus ||
+                    {postpartumPresentation?.statusLabel ||
+                      animal.effectiveReproductiveStatus ||
+                      animal.reproductiveStatus ||
                       "No reproductive status recorded."}
                   </Text>
-                  {latestAi?.value ? (
-                    <Text
-                      style={{
-                        color: colors.textSecondary,
-                        fontFamily: "Outfit_500Medium",
-                        fontSize: 12,
-                        lineHeight: 16,
-                        marginTop: 2,
-                      }}
-                    >
-                      Last AI: {formatDate(latestAi.value)}
-                    </Text>
-                  ) : null}
+                  {canOpenPregnancyTracker && (
+                    <ChevronRight size={18} color={colors.textMuted} style={{ marginLeft: 8 }} />
+                  )}
                 </View>
-                {canOpenPregnancyTracker ? (
-                  <ChevronRight size={18} color={colors.textMuted} />
+                {latestAi?.value ? (
+                  <Text
+                    textRole="body"
+                    color="secondary"
+                  >
+                    Last AI: {formatDate(latestAi.value)}
+                  </Text>
                 ) : null}
+
+                {latestHistoricalAi?.value ? (
+                  <Text textRole="body" color="secondary">
+                    Historical AI: {formatDate(latestHistoricalAi.value)} · History only
+                  </Text>
+                ) : null}
+                {postpartumPresentation ? (
+                  <Text textRole="body" color="secondary">
+                    {postpartumPresentation.message}
+                    {postpartumPresentation.nextEligibleDate
+                      ? ` · Eligible after ${formatDate(postpartumPresentation.nextEligibleDate)}`
+                      : ""}
+                  </Text>
+                ) : null}
+
+                {/* Additional Technician Monitoring Text */}
+                {role === "technician" && canOpenPregnancyTracker && animal.reproductiveStatus === "Inseminated" && (
+                  <Text
+                    textRole="body"
+                    color="secondary"
+                  >
+                    Heat-return monitoring
+                  </Text>
+                )}
               </View>
             </View>
+
+            {role === "farmer" &&
+            canReportBreedingObservation &&
+            !latestObservation &&
+            latestAi?.item?._id ? (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: colors.border,
+                    marginBottom: 16,
+                  }}
+                />
+
+                {isRecheck ? (
+                  <>
+                    <Text
+                      textRole="title"
+                      style={{ marginBottom: 4 }}
+                    >
+                      Pregnancy Recheck Needed
+                    </Text>
+                    <Text
+                      textRole="body"
+                      color="secondary"
+                      style={{ marginBottom: 12 }}
+                    >
+                      Pregnancy could not be confirmed during the last check.
+                      {latestAi.item.pregnancyFollowUpTask?.dueDate
+                        ? ` Next check: ${formatDate(latestAi.item.pregnancyFollowUpTask.dueDate)}.`
+                        : ""}
+                    </Text>
+
+                    <Text
+                      textRole="bodyStrong"
+                      style={{ marginTop: 4, marginBottom: 4 }}
+                    >
+                      Noticed a change before the recheck?
+                    </Text>
+                    <Text
+                      textRole="body"
+                      color="secondary"
+                      style={{ marginBottom: 12 }}
+                    >
+                      If the animal returns to heat or you notice other breeding signs, send an update to the technician.
+                    </Text>
+
+                    <Button
+                      label="Report an Observation"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(farmer)/report-breeding-observation",
+                          params: {
+                            animalId: animal._id,
+                            requestId: latestAi!.item._id,
+                            defaultReport: "unsure",
+                          },
+                        } as never)
+                      }
+                      variant="outline"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text
+                      textRole="title"
+                      style={{ marginBottom: 4 }}
+                    >
+                      Heat-return monitoring
+                    </Text>
+                    <Text
+                      textRole="body"
+                      color="secondary"
+                      style={{ marginBottom: 12 }}
+                    >
+                      Have you noticed signs of heat?
+                    </Text>
+                    <Button
+                      label="Give Update"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(farmer)/report-breeding-observation",
+                          params: {
+                            animalId: animal._id,
+                            requestId: latestAi!.item._id,
+                            defaultReport: "unsure",
+                          },
+                        } as never)
+                      }
+                    />
+                  </>
+                )}
+              </View>
+            ) : null}
           </Pressable>
+          </View>
         </View>
 
-        {latestObservation || canReportBreedingObservation ? (
+        {latestObservation ? (
           <View style={{ gap: SPACE.sm }}>
             <SectionHeader
               icon={<MessageSquareText size={18} color={colors.primary} />}
@@ -1025,84 +1203,123 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
               }}
             >
               {latestObservation ? (
-                <>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "flex-start",
-                      gap: 12,
-                    }}
-                  >
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text
+                (() => {
+                  const presentation =
+                    getBreedingObservationPresentation(latestObservation);
+                  return (
+                    <>
+                      <View
                         style={{
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_700Bold",
-                          fontSize: 15,
-                          lineHeight: 20,
+                          flexDirection: "row",
+                          alignItems: "flex-start",
+                          gap: 12,
                         }}
                       >
-                        {getBreedingObservationLabel(
-                          latestObservation.farmerOutcomeReport,
-                        )}
-                      </Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text
+                            style={{
+                              color: colors.textPrimary,
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 15,
+                              lineHeight: 20,
+                            }}
+                          >
+                            {presentation.statusMessage}
+                          </Text>
+                          <Text
+                            style={{
+                              color: colors.textSecondary,
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 12,
+                              lineHeight: 16,
+                              marginTop: 2,
+                            }}
+                          >
+                            Farmer observation
+                            {latestObservation.farmerOutcomeReportedAt
+                              ? ` · ${formatDate(
+                                  latestObservation.farmerOutcomeReportedAt,
+                                )}`
+                              : ""}
+                          </Text>
+                        </View>
+                        {presentation.badgeLabel ? (
+                          <StatusBadge
+                            label={presentation.badgeLabel}
+                            variant={
+                              isBreedingObservationAwaitingReview(
+                                latestObservation.verificationStatus ||
+                                  latestObservation.outcomeVerificationStatus,
+                              )
+                                ? "warning"
+                                : "success"
+                            }
+                            compact
+                          />
+                        ) : null}
+                      </View>
+
+                      {latestObservation.farmerObservationSigns?.length ? (
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 12,
+                            lineHeight: 17,
+                          }}
+                        >
+                          {latestObservation.farmerObservationSigns
+                            .map(getBreedingObservationSignLabel)
+                            .join(" · ")}
+                        </Text>
+                      ) : null}
+
                       <Text
                         style={{
-                          color: colors.textSecondary,
+                          color: colors.textMuted,
                           fontFamily: "Outfit_500Medium",
                           fontSize: 12,
-                          lineHeight: 16,
-                          marginTop: 2,
+                          lineHeight: 17,
                         }}
                       >
-                        Farmer observation
-                        {latestObservation.farmerOutcomeReportedAt
-                          ? ` · ${formatDate(
-                              latestObservation.farmerOutcomeReportedAt,
-                            )}`
-                          : ""}
+                        {role === "farmer"
+                          ? presentation.farmerMessage
+                          : "Review the farmer observation before recording an official pregnancy diagnosis."}
                       </Text>
-                    </View>
-                    {isBreedingObservationAwaitingReview(
-                      latestObservation.verificationStatus ||
-                        latestObservation.outcomeVerificationStatus,
-                    ) ? (
-                      <StatusBadge
-                        label="Needs review"
-                        variant="warning"
-                        compact
-                      />
-                    ) : null}
-                  </View>
 
-                  {latestObservation.farmerObservationSigns?.length ? (
-                    <Text
-                      style={{
-                        color: colors.textSecondary,
-                        fontFamily: "Outfit_500Medium",
-                        fontSize: 12,
-                        lineHeight: 17,
-                      }}
-                    >
-                      {latestObservation.farmerObservationSigns
-                        .map(getBreedingObservationSignLabel)
-                        .join(" · ")}
-                    </Text>
-                  ) : null}
-
-                  <Text
-                    style={{
-                      color: colors.textMuted,
-                      fontFamily: "Outfit_500Medium",
-                      fontSize: 12,
-                      lineHeight: 17,
-                    }}
-                  >
-                    {role === "farmer"
-                      ? "This report is shared with the technician and does not confirm pregnancy."
-                      : "Review the farmer observation before recording an official pregnancy diagnosis."}
-                  </Text>
-                </>
+                      {role === "farmer" && (
+                        <View
+                          style={{ alignItems: "flex-start", marginTop: 8 }}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onPress={() =>
+                              router.push({
+                                pathname:
+                                  "/(farmer)/report-breeding-observation",
+                                params: {
+                                  animalId: animal._id,
+                                  requestId: latestObservation._id,
+                                },
+                              } as never)
+                            }
+                          >
+                            <Text
+                              style={{
+                                color: colors.primary,
+                                fontFamily: "Outfit_600SemiBold",
+                                fontSize: 13,
+                              }}
+                            >
+                              View Report
+                            </Text>
+                          </Button>
+                        </View>
+                      )}
+                    </>
+                  );
+                })()
               ) : (
                 <>
                   <Text
@@ -1136,7 +1353,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       pathname: "/(farmer)/report-breeding-observation",
                       params: {
                         animalId: animal._id,
-                        requestId: latestAi.item._id,
+                        requestId: latestAi!.item._id,
                         defaultReport:
                           latestObservation?.farmerOutcomeReport || "unsure",
                       },
@@ -1166,12 +1383,26 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
               ) : role === "technician" && latestObservation ? (
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(technician)/request-details",
-                      params: { id: latestObservation._id, type: "ai" },
-                    } as never)
-                  }
+                  onPress={() => {
+                    const activeFollowUpTaskId = workQueue?.data.find(
+                      (t: any) =>
+                        t.taskType === "BreedingFollowUp" &&
+                        (t.raw?.metadata?.inseminationId === latestObservation._id ||
+                          t.raw?.inseminationId === latestObservation._id || t.workflowId === latestObservation._id)
+                    )?.taskId;
+
+                    if (activeFollowUpTaskId) {
+                      router.push({
+                        pathname: "/(technician)/task-details",
+                        params: { id: activeFollowUpTaskId },
+                      } as never);
+                    } else {
+                      router.push({
+                        pathname: "/(technician)/request-details",
+                        params: { id: latestObservation._id, type: "ai" },
+                      } as never);
+                    }
+                  }}
                   style={({ pressed }) => ({
                     minHeight: 44,
                     borderRadius: 12,
@@ -1270,30 +1501,38 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                             {activeRequest.title}
                           </Text>
                           {activeRequest.activityDate ? (
-                            <Text
-                              numberOfLines={1}
-                              style={{
-                                color: colors.textSecondary,
-                                fontFamily: "Outfit_500Medium",
-                                fontSize: 12,
-                                lineHeight: 16,
-                              }}
-                            >
-                              📅 {formatDate(activeRequest.activityDate, true)}
-                            </Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Calendar size={14} color={colors.textSecondary} />
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  flex: 1,
+                                  color: colors.textSecondary,
+                                  fontFamily: "Outfit_500Medium",
+                                  fontSize: 12,
+                                  lineHeight: 16,
+                                }}
+                              >
+                                {formatDate(activeRequest.activityDate, true)}
+                              </Text>
+                            </View>
                           ) : null}
                           {activeRequest.location ? (
-                            <Text
-                              numberOfLines={1}
-                              style={{
-                                color: colors.textSecondary,
-                                fontFamily: "Outfit_500Medium",
-                                fontSize: 12,
-                                lineHeight: 16,
-                              }}
-                            >
-                              📍 {activeRequest.location}
-                            </Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <MapPin size={14} color={colors.textSecondary} />
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  flex: 1,
+                                  color: colors.textSecondary,
+                                  fontFamily: "Outfit_500Medium",
+                                  fontSize: 12,
+                                  lineHeight: 16,
+                                }}
+                              >
+                                {activeRequest.location}
+                              </Text>
+                            </View>
                           ) : null}
                           {role === "technician" && isUnclaimedActiveRequest ? (
                             <Text
@@ -1306,7 +1545,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                                 marginTop: 2,
                               }}
                             >
-                              ✋ Unclaimed — Tap to review & claim
+                              Tap to review & claim
                             </Text>
                           ) : null}
                         </View>
@@ -1667,6 +1906,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
           </View>
         </View>
 
+        <FamilyLineage animal={animal} role={role} />
+
         {role !== "farmer" && owner ? (
           <View style={{ gap: SPACE.sm }}>
             <SectionHeader
@@ -1700,7 +1941,14 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     backgroundColor: isDark ? "rgba(0,100,59,0.15)" : "#E6F4EA",
                   }}
                 >
-                  <UserRound size={20} color={colors.primary} />
+                  {owner.imageUrl ? (
+                    <Image
+                      source={{ uri: owner.imageUrl }}
+                      style={{ width: 44, height: 44, borderRadius: 22 }}
+                    />
+                  ) : (
+                    <UserRound size={20} color={colors.primary} />
+                  )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
@@ -1924,30 +2172,54 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                 </Text>
               </Button>
               <Button
-                onPress={() =>
+                onPress={() => {
+                  if (!aiEligibility.isEligible && !isReInsem) return;
                   router.push({
                     pathname: "/(farmer)/request-ai",
-                    params: { animalId: animal._id },
-                  } as never)
-                }
+                    params: {
+                      animalId: animal._id,
+                      ...(isReInsem
+                        ? {
+                            mode: "re-inseminate",
+                            requestId: latestAi!.item._id,
+                          }
+                        : {}),
+                    },
+                  } as never);
+                }}
+                disabled={!aiEligibility.isEligible && !isReInsem}
                 style={{
                   flex: 1,
                   borderRadius: 14,
                   minHeight: 46,
-                  backgroundColor: colors.primary,
+                  backgroundColor: (!aiEligibility.isEligible && !isReInsem) ? colors.border : colors.primary,
+                  opacity: (!aiEligibility.isEligible && !isReInsem) ? 0.7 : 1,
                 }}
               >
-                <Syringe size={16} color="#FFFFFF" />
-                <Text
-                  style={{
-                    color: "#FFFFFF",
-                    fontFamily: "Outfit_700Bold",
-                    fontSize: 13,
-                    marginLeft: 6,
-                  }}
-                >
-                  Request AI
-                </Text>
+                <Syringe size={16} color={(!aiEligibility.isEligible && !isReInsem) ? colors.textMuted : "#FFFFFF"} />
+                <View style={{ flexDirection: "column", marginLeft: 6 }}>
+                  <Text
+                    style={{
+                      color: (!aiEligibility.isEligible && !isReInsem) ? colors.textMuted : "#FFFFFF",
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 13,
+                    }}
+                  >
+                    {isReInsem ? "Request Another AI" : "Request AI"}
+                  </Text>
+                  {(!aiEligibility.isEligible && !isReInsem) && (
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontFamily: "Outfit_500Medium",
+                        fontSize: 9,
+                        marginTop: 2,
+                      }}
+                    >
+                      {aiEligibility.reason}
+                    </Text>
+                  )}
+                </View>
               </Button>
             </View>
           ) : role === "technician" ? (
@@ -2020,24 +2292,39 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     },
                   } as never)
                 }
+                disabled={!aiEligibility.isEligible}
                 style={{
                   width: "100%",
                   borderRadius: 14,
                   minHeight: 48,
-                  backgroundColor: colors.primary,
+                  backgroundColor: !aiEligibility.isEligible ? colors.border : colors.primary,
+                  opacity: !aiEligibility.isEligible ? 0.7 : 1,
                 }}
               >
-                <Syringe size={18} color="#FFFFFF" />
-                <Text
-                  style={{
-                    color: "#FFFFFF",
-                    fontFamily: "Outfit_700Bold",
-                    fontSize: 14,
-                    marginLeft: 6,
-                  }}
-                >
-                  + Record AI Service
-                </Text>
+                <Syringe size={18} color={!aiEligibility.isEligible ? colors.textMuted : "#FFFFFF"} />
+                <View style={{ flexDirection: "column", marginLeft: 6 }}>
+                  <Text
+                    style={{
+                      color: !aiEligibility.isEligible ? colors.textMuted : "#FFFFFF",
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 14,
+                    }}
+                  >
+                    + Record AI Service
+                  </Text>
+                  {!aiEligibility.isEligible && (
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontFamily: "Outfit_500Medium",
+                        fontSize: 9,
+                        marginTop: 2,
+                      }}
+                    >
+                      {aiEligibility.reason}
+                    </Text>
+                  )}
+                </View>
               </Button>
             </View>
           ) : null}

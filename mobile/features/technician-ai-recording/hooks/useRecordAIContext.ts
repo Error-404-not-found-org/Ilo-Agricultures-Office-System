@@ -80,10 +80,13 @@ const normalizeRequestContext = (
       error: "This AI request has already been completed. Open its record from My Work.",
     };
   }
-  if (!["scheduled", "in-progress", "in_progress"].includes(status)) {
+  if (!["in-progress", "in_progress"].includes(status)) {
     return {
       context: null,
-      error: "This AI request is not ready for service recording.",
+      error:
+        status === "scheduled"
+          ? "Start this scheduled AI service from My Work before recording it."
+          : "This AI request is not ready for service recording.",
     };
   }
 
@@ -125,6 +128,11 @@ const normalizeRequestContext = (
         request?.imageUrl,
         request?.evidencePhotos,
       ]),
+      requestKind:
+        request?.requestKind === "re_insemination" ||
+        isCanonicalWorkflowId(previousAttemptId)
+          ? "re_insemination"
+          : "initial_ai",
       attemptNumber:
         Number.isInteger(request?.attemptNumber) && request.attemptNumber > 0
           ? request.attemptNumber

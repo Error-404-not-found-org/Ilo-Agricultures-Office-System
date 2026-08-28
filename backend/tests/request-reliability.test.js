@@ -174,10 +174,12 @@ const createResponseRecorder = () => {
 
 test("Request reliability: AI cannot be scheduled without a visit date", async () => {
   const originalFindById = Insemination.findById;
-  Insemination.findById = async () => ({
-    _id: "507f1f77bcf86cd799439021",
-    status: "approved",
-    approvedBy: "507f1f77bcf86cd799439011",
+  Insemination.findById = () => ({
+    populate: async () => ({
+      _id: "507f1f77bcf86cd799439021",
+      status: "approved",
+      approvedBy: "507f1f77bcf86cd799439011",
+    }),
   });
   const recorder = createResponseRecorder();
 

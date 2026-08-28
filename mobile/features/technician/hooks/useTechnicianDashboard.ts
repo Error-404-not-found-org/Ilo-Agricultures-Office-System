@@ -11,7 +11,11 @@ import {
   declineTechnicianRequest,
   UpdateStatusPayload,
 } from "../services/technician.service";
-import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
+import {
+  executeOfflineMutation,
+  getOfflineMutationOwner,
+} from "@/hooks/useOfflineMutation";
+import { useUser } from "@clerk/clerk-expo";
 
 export const useTechnicianDashboardQuery = (enabled: boolean = true) => {
   const api = useApi();
@@ -118,9 +122,16 @@ interface UpdateRequestStatusArgs {
 export const useUpdateRequestStatusMutation = () => {
   const api = useApi();
   const queryClient = useQueryClient();
+  const { user } = useUser();
 
   return useMutation({
     mutationFn: async ({ type, requestId, payload, description }: UpdateRequestStatusArgs) => {
+      const { ownerUserId, ownerRole } = getOfflineMutationOwner(user?.id);
+      if (!ownerUserId) {
+        throw new Error(
+          "Cannot execute offline mutation without an authoritative user session",
+        );
+      }
       const endpoint =
         type === "health"
           ? `/health-request/${requestId}/status`
@@ -132,7 +143,11 @@ export const useUpdateRequestStatusMutation = () => {
           method: "PATCH",
           description: description || "Technician Action",
         },
-        payload
+        payload,
+        undefined,
+        undefined,
+        ownerUserId,
+        ownerRole,
       );
     },
     onSuccess: () => {
@@ -151,6 +166,7 @@ interface DeclineTechnicianRequestArgs {
 export const useDeclineTechnicianRequestMutation = () => {
   const api = useApi();
   const queryClient = useQueryClient();
+  const { user } = useUser();
 
   return useMutation({
     mutationFn: async ({
@@ -158,14 +174,24 @@ export const useDeclineTechnicianRequestMutation = () => {
       requestId,
       technicianNote,
     }: DeclineTechnicianRequestArgs) => {
+      const { ownerUserId, ownerRole } = getOfflineMutationOwner(user?.id);
+      if (!ownerUserId) {
+        throw new Error(
+          "Cannot execute offline mutation without an authoritative user session",
+        );
+      }
       return executeOfflineMutation(
         api,
         {
           url: `/technician/requests/${type}/${requestId}/decline`,
           method: "PATCH",
-          description: "Decline request for this technician",
+          description: "Skip request for this technician",
         },
-        { technicianNote: technicianNote || "Declined by technician." }
+        { technicianNote: technicianNote || "Skipped by technician." },
+        undefined,
+        undefined,
+        ownerUserId,
+        ownerRole,
       );
     },
     onSuccess: () => {

@@ -2,6 +2,79 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { AxiosInstance } from 'axios';
+
+const REGISTERED_PUSH_TOKEN_KEY = 'breedsmart_registered_push_token';
+const PUSH_DETACH_TIMEOUT_MS = 2000;
+let pendingPushTokenRegistration: Promise<unknown> | null = null;
+
+export async function rememberRegisteredPushToken(pushToken: string) {
+  await AsyncStorage.setItem(REGISTERED_PUSH_TOKEN_KEY, pushToken);
+}
+
+export async function getRememberedPushToken() {
+  return AsyncStorage.getItem(REGISTERED_PUSH_TOKEN_KEY);
+}
+
+export async function syncPushTokenForAuthenticatedUser(
+  api: AxiosInstance,
+  pushToken: string,
+) {
+  await rememberRegisteredPushToken(pushToken);
+  const registration = api.post(
+    '/user/push-token',
+    { pushToken },
+    { timeout: PUSH_DETACH_TIMEOUT_MS },
+  );
+  pendingPushTokenRegistration = registration;
+  try {
+    await registration;
+  } finally {
+    if (pendingPushTokenRegistration === registration) {
+      pendingPushTokenRegistration = null;
+    }
+  }
+}
+
+export async function detachPushTokenBestEffort(api: AxiosInstance) {
+  const currentPushToken = await AsyncStorage.getItem(REGISTERED_PUSH_TOKEN_KEY);
+  if (!currentPushToken) return;
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      api.post('/user/push-token', {
+        pushToken: null,
+        currentPushToken,
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Push-token cleanup timed out.')),
+          PUSH_DETACH_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    await AsyncStorage.removeItem(REGISTERED_PUSH_TOKEN_KEY);
+  } catch (error) {
+    console.warn('Push-token cleanup failed; continuing sign-out.', error);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+export async function signOutWithPushCleanup(
+  api: AxiosInstance,
+  signOut: () => Promise<unknown>,
+) {
+  try {
+    await pendingPushTokenRegistration;
+  } catch {
+    // Registration failure does not block the owner-scoped detach attempt.
+  }
+  await detachPushTokenBestEffort(api);
+  await signOut();
+}
 
 export async function registerForPushNotificationsAsync() {
   let token;

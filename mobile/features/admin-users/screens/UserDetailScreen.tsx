@@ -6,8 +6,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
-  FlatList,
-  Alert,
   Image,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -24,16 +22,53 @@ import {
   Edit2,
   AlertTriangle,
   Activity,
+  BriefcaseBusiness,
   CheckCircle,
-  FileText,
+  CircleAlert,
+  CircleCheck,
+  Inbox,
   UserMinus,
 } from "lucide-react-native";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useUserDetail } from "../hooks/useUserDetail";
 import { useTheme } from "@/lib/theme";
 import { AsyncState, StatusBadge, CustomDialog } from "@/components/shared";
+import {
+  getAccountStatePresentation,
+  getAvailabilityLabel,
+  getCapabilityLabels,
+  getDispatchReadinessPresentation,
+  getFieldAreaLabel,
+  getReceiveRequestsPresentation,
+} from "../utils/dispatchPresentation";
+import { getAdminRequestStatusLabel } from "@/features/admin-requests/utils/adminRequestPresentation";
 
 const PRIMARY = "#1e3a5f";
+
+function DetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View className="flex-row items-start gap-3">
+      {icon}
+      <View className="flex-1">
+        <Text className="text-xs font-outfit-medium" style={{ color: colors.textMuted }}>
+          {label}
+        </Text>
+        <Text className="text-[14px] font-outfit-semibold" style={{ color: colors.textPrimary }}>
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export default function UserDetailScreen() {
   const router = useRouter();
@@ -54,7 +89,6 @@ export default function UserDetailScreen() {
 
   const [activeTab, setActiveTab] = useState<"animals" | "history" | "sessions" | "activity">("animals");
   const [roleModalVisible, setRoleModalVisible] = useState(false);
-  const [techExpanded, setTechExpanded] = useState(false);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [resetDialogVisible, setResetDialogVisible] = useState(false);
   const [tempPassword, setTempPassword] = useState("");
@@ -93,6 +127,10 @@ export default function UserDetailScreen() {
   };
 
   const isSuspended = user.status === "suspended";
+  const accountState = getAccountStatePresentation(user);
+  const dispatchReadiness = getDispatchReadinessPresentation(user);
+  const receiveRequests = getReceiveRequestsPresentation(user.dispatchProfile);
+  const capabilities = getCapabilityLabels(user.dispatchProfile);
   const formattedAddress = user.address
     ? [
         user.address.street,
@@ -115,8 +153,10 @@ export default function UserDetailScreen() {
         className="px-6 pb-4 border-b flex-row items-center justify-between"
       >
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
           onPress={() => router.back()}
-          className="w-10 h-10 items-center justify-center rounded-full"
+          className="w-12 h-12 items-center justify-center rounded-full"
           style={{ backgroundColor: isDark ? colors.background : "#f8fafc" }}
         >
           <ArrowLeft size={20} color={PRIMARY} />
@@ -177,22 +217,17 @@ export default function UserDetailScreen() {
 
           <View className="flex-row items-center gap-2 mb-4">
             <StatusBadge label={roleLabels[user.role] || user.role} />
-            <StatusBadge
-              label={user.status || "active"}
-              variant={isSuspended ? "danger" : "success"}
-            />
-            {user.isVerified ? (
-              <StatusBadge label="Verified" variant="success" />
-            ) : (
-              <StatusBadge label="Unverified" variant="warning" />
-            )}
+            <StatusBadge label={accountState.label} variant={accountState.tone} />
           </View>
 
           {/* Quick Stats Grid */}
-          <View className="flex-row justify-between w-full border-t border-slate-100 dark:border-slate-700 pt-4 mt-2">
+          <Text className="w-full border-t border-slate-100 dark:border-slate-700 pt-4 mt-2 mb-3 text-base font-outfit-bold" style={{ color: colors.textPrimary }}>
+            Work Summary
+          </Text>
+          <View className="flex-row justify-between w-full">
             <View className="items-center flex-1">
               <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase tracking-wider mb-1">
-                Assigned
+                Animals
               </Text>
               <Text className="text-lg font-outfit-bold" style={{ color: colors.textPrimary }}>
                 {user.assignedAnimals?.length || 0}
@@ -201,7 +236,7 @@ export default function UserDetailScreen() {
             <View className="w-[1px] bg-slate-100 dark:bg-slate-700 h-8 self-center" />
             <View className="items-center flex-1">
               <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase tracking-wider mb-1">
-                Services
+                Service history
               </Text>
               <Text className="text-lg font-outfit-bold" style={{ color: colors.textPrimary }}>
                 {user.serviceHistory?.length || 0}
@@ -210,7 +245,7 @@ export default function UserDetailScreen() {
             <View className="w-[1px] bg-slate-100 dark:bg-slate-700 h-8 self-center" />
             <View className="items-center flex-1">
               <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase tracking-wider mb-1">
-                Actions
+                Admin activity
               </Text>
               <Text className="text-lg font-outfit-bold" style={{ color: colors.textPrimary }}>
                 {user.activityHistory?.length || 0}
@@ -221,7 +256,7 @@ export default function UserDetailScreen() {
 
         {/* Profile Details List */}
         <View className="bg-white dark:bg-slate-800 rounded-[28px] p-5 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
-          <Text className="text-xs font-outfit-bold text-slate-400 uppercase tracking-widest mb-4">
+          <Text className="text-lg font-outfit-bold mb-4" style={{ color: colors.textPrimary }}>
             Contact Information
           </Text>
 
@@ -249,7 +284,7 @@ export default function UserDetailScreen() {
             <View className="flex-row items-center gap-3">
               <MapPin size={18} color="#94a3b8" />
               <View className="flex-1">
-                <Text className="text-slate-400 text-xs font-outfit-medium">Home Address</Text>
+                <Text className="text-slate-400 text-xs font-outfit-medium">Contact Address</Text>
                 <Text className="text-[14px] font-outfit-semibold" style={{ color: colors.textPrimary }}>
                   {formattedAddress || "No address registered"}
                 </Text>
@@ -257,6 +292,60 @@ export default function UserDetailScreen() {
             </View>
           </View>
         </View>
+
+        <View className="bg-white dark:bg-slate-800 rounded-[28px] p-5 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
+          <Text className="text-lg font-outfit-bold mb-4" style={{ color: colors.textPrimary }}>
+            Account
+          </Text>
+          <View className="gap-y-4">
+            <DetailRow
+              icon={<Shield size={18} color="#2563eb" />}
+              label="Account state"
+              value={accountState.label}
+            />
+            <DetailRow
+              icon={user.isVerified ? <CircleCheck size={18} color="#16a34a" /> : <CircleAlert size={18} color="#d97706" />}
+              label="Verification"
+              value={user.isVerified ? "Verified" : "Verification pending"}
+            />
+            <DetailRow
+              icon={<Clock size={18} color="#64748b" />}
+              label="Last active"
+              value={user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "No activity recorded"}
+            />
+          </View>
+        </View>
+
+        {user.role === "technician" && (
+          <View className="bg-white dark:bg-slate-800 rounded-[28px] p-5 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
+            <View className="flex-row items-start gap-3 mb-4">
+              {dispatchReadiness.eligible ? <CircleCheck size={22} color="#16a34a" /> : <CircleAlert size={22} color="#d97706" />}
+              <View className="flex-1">
+                <Text className="text-lg font-outfit-bold" style={{ color: colors.textPrimary }}>Dispatch Readiness</Text>
+                <Text className="text-[14px] font-outfit-semibold mt-1" style={{ color: dispatchReadiness.eligible ? "#16a34a" : "#d97706" }}>
+                  {dispatchReadiness.title}
+                </Text>
+              </View>
+            </View>
+            {!dispatchReadiness.eligible && dispatchReadiness.blockers.map((blocker) => (
+              <Text key={blocker} className="text-[13px] font-outfit-medium mb-1" style={{ color: colors.textSecondary }}>• {blocker}</Text>
+            ))}
+            <View className="mt-4 gap-y-4">
+              <DetailRow icon={<MapPin size={18} color="#2563eb" />} label="Field Area" value={getFieldAreaLabel(user.dispatchProfile)} />
+              <DetailRow icon={<BriefcaseBusiness size={18} color="#2563eb" />} label="Capabilities" value={capabilities.length ? capabilities.join(", ") : "No capabilities assigned"} />
+              <DetailRow icon={<Inbox size={18} color="#2563eb" />} label="Receive Requests" value={receiveRequests.label} />
+              <DetailRow icon={<Activity size={18} color="#2563eb" />} label="Availability" value={getAvailabilityLabel(user.dispatchProfile)} />
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => router.push({ pathname: "/(admin)/manage-dispatch" as any, params: { id: user._id } })}
+              className="mt-5 min-h-12 rounded-xl border items-center justify-center"
+              style={{ borderColor: PRIMARY }}
+            >
+              <Text className="font-outfit-bold text-[15px]" style={{ color: PRIMARY }}>Manage Dispatch</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Tab Controls */}
         <View className="flex-row border-b border-slate-100 dark:border-slate-700 mb-4">
@@ -373,7 +462,7 @@ export default function UserDetailScreen() {
                     <Text className="font-bold text-[14px]" style={{ color: colors.textPrimary }}>
                       {service.type === "ai" ? "AI Insemination" : "Health Case"}
                     </Text>
-                    <StatusBadge label={service.status} />
+                    <StatusBadge label={getAdminRequestStatusLabel(service.status)} />
                   </View>
                   <View className="gap-y-1">
                     <Text className="text-slate-500 dark:text-slate-400 text-xs">
@@ -407,8 +496,8 @@ export default function UserDetailScreen() {
                   className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700"
                 >
                   <View className="flex-row justify-between items-center mb-2">
-                    <Text className="font-mono text-xs text-slate-500 truncate flex-1 mr-2">
-                      Session: {session.id}
+                    <Text className="text-[14px] font-outfit-bold flex-1 mr-2" style={{ color: colors.textPrimary }}>
+                      Login session
                     </Text>
                     <StatusBadge label={session.status} variant={session.status === "active" ? "success" : "neutral"} />
                   </View>
@@ -565,70 +654,6 @@ export default function UserDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Collapsible Technical Information Section */}
-        <View className="mb-6">
-          <TouchableOpacity
-            onPress={() => setTechExpanded(!techExpanded)}
-            activeOpacity={0.8}
-            className="bg-white dark:bg-slate-800 rounded-[24px] p-5 border border-slate-100 dark:border-slate-700 shadow-sm flex-row justify-between items-center"
-          >
-            <View className="flex-row items-center gap-3">
-              <MaterialCommunityIcons name="cog-outline" size={20} color="#64748b" />
-              <Text className="font-outfit-bold text-slate-800 dark:text-white text-[15px]">
-                Technical Information
-              </Text>
-            </View>
-            <MaterialCommunityIcons
-              name={techExpanded ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="#64748b"
-            />
-          </TouchableOpacity>
-
-          {techExpanded && (
-            <View className="bg-slate-50 dark:bg-slate-900/50 border-x border-b border-slate-100 dark:border-slate-800/80 rounded-b-[24px] p-5 -mt-3 pt-6 gap-y-4">
-              <View className="flex-row justify-between items-center">
-                <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase">Clerk ID</Text>
-                <Text className="text-[12px] font-mono text-slate-700 dark:text-slate-300 select-all">{user.clerkId || "N/A"}</Text>
-              </View>
-
-              <View className="flex-row justify-between items-center border-t border-slate-100 dark:border-slate-800/50 pt-3">
-                <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase">MongoDB ID</Text>
-                <Text className="text-[12px] font-mono text-slate-700 dark:text-slate-300 select-all">{user._id || "N/A"}</Text>
-              </View>
-
-              <View className="flex-row justify-between items-center border-t border-slate-100 dark:border-slate-800/50 pt-3">
-                <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase">Created At</Text>
-                <Text className="text-[12px] font-outfit-medium text-slate-700 dark:text-slate-300">
-                  {user.createdAt ? new Date(user.createdAt).toLocaleString() : "N/A"}
-                </Text>
-              </View>
-
-              <View className="flex-row justify-between items-center border-t border-slate-100 dark:border-slate-800/50 pt-3">
-                <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase">Updated At</Text>
-                <Text className="text-[12px] font-outfit-medium text-slate-700 dark:text-slate-300">
-                  {user.updatedAt ? new Date(user.updatedAt).toLocaleString() : "N/A"}
-                </Text>
-              </View>
-
-              <View className="flex-row justify-between items-center border-t border-slate-100 dark:border-slate-800/50 pt-3">
-                <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase">Last Sync</Text>
-                <Text className="text-[12px] font-outfit-medium text-slate-700 dark:text-slate-300">
-                  {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never"}
-                </Text>
-              </View>
-
-              {user.metadata && (
-                <View className="border-t border-slate-100 dark:border-slate-800/50 pt-3">
-                  <Text className="text-slate-400 dark:text-slate-500 text-xs font-outfit-semibold uppercase mb-2">Developer Metadata</Text>
-                  <Text className="text-[11px] font-mono bg-slate-100 dark:bg-slate-900 p-3 rounded-lg text-slate-600 dark:text-slate-400">
-                    {JSON.stringify(user.metadata, null, 2)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
       </ScrollView>
 
       {/* Change Role Modal */}

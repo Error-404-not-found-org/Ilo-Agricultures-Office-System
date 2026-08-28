@@ -1,5 +1,10 @@
 import type { AxiosInstance } from "axios";
-import type { ActivityFeedItem } from "../types/farmerReports.types";
+import type {
+  ActivityFeedItem,
+  OfficialRecordDetail,
+  OfficialRecordKind,
+} from "../types/farmerReports.types";
+import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 
 const getRecordText = (value: unknown): string | undefined => {
   if (value === null || value === undefined) return undefined;
@@ -55,12 +60,15 @@ export const mapHealthMedicalRecordDetails = (
   const details = source?.details || {};
   const withdrawalDays =
     details.withdrawalPeriodDays ?? source?.withdrawalPeriodDays;
+  const requestUrgency = linkedRequest.urgency || source?.urgency;
 
   return {
     status: "completed",
     requestType: formatHealthLabel(linkedRequest.requestType || source?.type),
     symptoms: getRecordText(linkedRequest.symptoms || source?.symptoms),
-    urgency: formatHealthLabel(linkedRequest.urgency || source?.urgency),
+    urgency: requestUrgency
+      ? getHealthUrgencyPresentation(requestUrgency).label
+      : undefined,
     farmerNotes: getRecordText(linkedRequest.farmerNotes),
     diagnosis: getRecordText(details.diagnosis || source?.diagnosis),
     treatment: getRecordText(details.treatment || source?.treatment),
@@ -106,6 +114,18 @@ export const getFarmerActivity = async (api: AxiosInstance) => {
   return response.data;
 };
 
+export const getFarmerOfficialRecordDetail = async (
+  api: AxiosInstance,
+  animalId: string,
+  sourceKind: OfficialRecordKind,
+  sourceId: string,
+) => {
+  const response = await api.get<{ data: OfficialRecordDetail }>(
+    `/animals/${animalId}/records/${sourceKind}/${sourceId}`,
+  );
+  return response.data.data;
+};
+
 export const getFarmerOfficialRecords = async (
   api: AxiosInstance,
   page = 1,
@@ -141,7 +161,9 @@ export const getFarmerOfficialRecords = async (
 
     return {
       id: String(record.id),
-      title: isHealthRecord ? "Health Assistance" : record.title,
+      sourceId: String(record.id),
+      sourceKind: record.recordKind,
+      title: isHealthRecord ? "Health Service Record" : record.title,
       description: record.summary,
       date: record.recordDate || record.enteredAt,
       type,

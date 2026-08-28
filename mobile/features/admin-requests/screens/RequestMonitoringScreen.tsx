@@ -6,22 +6,31 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { StatusBadge, SearchBar, SelectDropdown } from "@/components/shared";
+import { AsyncState, StatusBadge, SearchBar, SelectDropdown } from "@/components/shared";
 import { useRouter } from "expo-router";
+import { CalendarDays, MapPin, TriangleAlert, UserRound } from "lucide-react-native";
+import {
+  getAdminRequestLocation,
+  getAdminRequestSchedule,
+  getAdminRequestStatusLabel,
+  isMeaningfullyUrgent,
+} from "../utils/adminRequestPresentation";
 
 const PRIMARY = "#1e3a5f";
 const TABS = ["All", "AI Requests", "Health Requests", "Cancellations"];
 
 const STATUS_OPTIONS = [
   { label: "All Statuses", value: "all" },
-  { label: "Pending", value: "pending" },
-  { label: "Approved", value: "approved" },
+  { label: "Unassigned", value: "pending" },
+  { label: "Under Review", value: "triaged" },
+  { label: "Assigned", value: "assigned" },
   { label: "Scheduled", value: "scheduled" },
   { label: "In Progress", value: "in-progress" },
   { label: "Completed/Resolved", value: "done" },
@@ -30,10 +39,7 @@ const STATUS_OPTIONS = [
 
 const URGENCY_OPTIONS = [
   { label: "All Urgency", value: "all" },
-  { label: "Low", value: "low" },
-  { label: "Medium", value: "medium" },
-  { label: "High", value: "high" },
-  { label: "Emergency", value: "emergency" },
+  { label: "Needs urgent attention", value: "urgent" },
 ];
 
 export default function RequestMonitoringScreen() {
@@ -53,6 +59,7 @@ export default function RequestMonitoringScreen() {
     isLoading: isAiLoading,
     refetch: refetchAi,
     isRefetching: isRefetchingAi,
+    isError: isAiError,
   } = useQuery<any[]>({
     queryKey: ["admin-ai-requests"],
     queryFn: async () => {
@@ -73,6 +80,7 @@ export default function RequestMonitoringScreen() {
     isLoading: isHealthLoading,
     refetch: refetchHealth,
     isRefetching: isRefetchingHealth,
+    isError: isHealthError,
   } = useQuery<any[]>({
     queryKey: ["admin-health-requests"],
     queryFn: async () => {
@@ -90,6 +98,7 @@ export default function RequestMonitoringScreen() {
   const {
     data: technicians = [],
     isLoading: isTechsLoading,
+    refetch: refetchTechnicians,
   } = useQuery<any[]>({
     queryKey: ["admin-technicians-list"],
     queryFn: async () => {
@@ -100,10 +109,11 @@ export default function RequestMonitoringScreen() {
   });
 
   const isLoading = isAiLoading || isHealthLoading;
+  const isError = isAiError || isHealthError;
   const isRefreshing = isRefetchingAi || isRefetchingHealth;
 
   const handleRefresh = async () => {
-    await Promise.all([refetchAi(), refetchHealth()]);
+    await Promise.all([refetchAi(), refetchHealth(), refetchTechnicians()]);
   };
 
   // Convert technicians list to dropdown options
@@ -112,8 +122,11 @@ export default function RequestMonitoringScreen() {
       label: tech.name || "Technician",
       value: tech._id,
     }));
-    return [{ label: "All Technicians", value: "all" }, ...list];
-  }, [technicians]);
+    return [
+      { label: isTechsLoading ? "Loading Technicians…" : "All Technicians", value: "all" },
+      ...list,
+    ];
+  }, [isTechsLoading, technicians]);
 
   // Combine and normalize requests
   const combinedRequests = useMemo(() => {
@@ -131,6 +144,8 @@ export default function RequestMonitoringScreen() {
       createdAt: new Date(req.createdAt || req.inseminationDate || Date.now()),
       cancellationStatus: req.cancellationStatus || "none",
       cancellationReason: req.cancellationReason || "",
+      location: getAdminRequestLocation(req),
+      schedule: getAdminRequestSchedule(req),
     }));
 
     const healthList = healthRequests.map((req) => ({
@@ -147,6 +162,8 @@ export default function RequestMonitoringScreen() {
       createdAt: new Date(req.createdAt || Date.now()),
       cancellationStatus: req.cancellationStatus || "none",
       cancellationReason: req.cancellationReason || "",
+      location: getAdminRequestLocation(req),
+      schedule: getAdminRequestSchedule(req),
     }));
 
     return [...aiList, ...healthList].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -168,15 +185,19 @@ export default function RequestMonitoringScreen() {
     // Status Dropdown Filter (Note: Map UI done status to DB done / resolved)
     if (statusFilter !== "all") {
       if (statusFilter === "done") {
-        list = list.filter((r) => r.status === "done" || r.status === "resolved");
+        list = list.filter((r) => ["done", "completed", "resolved"].includes(r.status));
+      } else if (statusFilter === "assigned") {
+        list = list.filter((r) => r.status === "assigned" || r.status === "approved");
+      } else if (statusFilter === "in-progress") {
+        list = list.filter((r) => r.status === "in-progress" || r.status === "in_progress");
       } else {
         list = list.filter((r) => r.status === statusFilter);
       }
     }
 
     // Urgency Dropdown Filter
-    if (urgencyFilter !== "all") {
-      list = list.filter((r) => r.urgency === urgencyFilter);
+    if (urgencyFilter === "urgent") {
+      list = list.filter((r) => isMeaningfullyUrgent(r.urgency));
     }
 
     // Technician Dropdown Filter
@@ -213,7 +234,7 @@ export default function RequestMonitoringScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
@@ -225,7 +246,12 @@ export default function RequestMonitoringScreen() {
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search farmer name or ear tag..." />
 
         {/* Tab view */}
-        <View style={{ flexDirection: "row", gap: 8, marginVertical: 14 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8 }}
+          style={{ marginVertical: 14, flexGrow: 0 }}
+        >
           {TABS.map((tab, idx) => (
             <TouchableOpacity
               key={tab}
@@ -233,6 +259,8 @@ export default function RequestMonitoringScreen() {
               style={{
                 paddingVertical: 8,
                 paddingHorizontal: 12,
+                minHeight: 44,
+                justifyContent: "center",
                 borderRadius: 12,
                 backgroundColor: activeTab === idx ? PRIMARY : colors.card,
                 borderWidth: 1,
@@ -241,7 +269,7 @@ export default function RequestMonitoringScreen() {
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontFamily: "Outfit_700Bold",
                   color: activeTab === idx ? "#fff" : colors.textSecondary,
                 }}
@@ -250,29 +278,35 @@ export default function RequestMonitoringScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {/* Filters Row */}
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-          <SelectDropdown
-            label="Status"
-            options={STATUS_OPTIONS}
-            value={statusFilter}
-            onChange={setStatusFilter}
-          />
-          <SelectDropdown
-            label="Urgency"
-            options={URGENCY_OPTIONS}
-            value={urgencyFilter}
-            onChange={setUrgencyFilter}
-          />
-          <SelectDropdown
-            label="Technician"
-            options={techOptions}
-            value={techFilter}
-            onChange={setTechFilter}
-            searchable
-          />
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+          <View style={{ flexGrow: 1, flexBasis: "48%" }}>
+            <SelectDropdown
+              label="Status"
+              options={STATUS_OPTIONS}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
+          </View>
+          <View style={{ flexGrow: 1, flexBasis: "48%" }}>
+            <SelectDropdown
+              label="Urgency"
+              options={URGENCY_OPTIONS}
+              value={urgencyFilter}
+              onChange={setUrgencyFilter}
+            />
+          </View>
+          <View style={{ flexGrow: 1, flexBasis: "100%" }}>
+            <SelectDropdown
+              label="Technician"
+              options={techOptions}
+              value={techFilter}
+              onChange={setTechFilter}
+              searchable
+            />
+          </View>
         </View>
 
         {/* Request List */}
@@ -281,6 +315,14 @@ export default function RequestMonitoringScreen() {
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
               <ActivityIndicator size="large" color={PRIMARY} />
             </View>
+          ) : isError ? (
+            <AsyncState
+              state="error"
+              title="Requests unavailable"
+              message="Service requests could not be loaded. Check the connection and try again."
+              actionLabel="Retry"
+              onAction={handleRefresh}
+            />
           ) : (
             <FlatList
               data={filteredRequests}
@@ -296,7 +338,7 @@ export default function RequestMonitoringScreen() {
                 </View>
               }
               renderItem={({ item }) => {
-                const isUrgent = item.urgency === "high" || item.urgency === "emergency";
+                const isUrgent = isMeaningfullyUrgent(item.urgency);
                 const isCancellation = item.cancellationStatus === "requested";
 
                 return (
@@ -335,7 +377,7 @@ export default function RequestMonitoringScreen() {
                           {item.type === "ai" ? "Breeding/AI Request" : "Health Assistance"}
                         </Text>
                       </View>
-                      <StatusBadge label={item.status} />
+                      <StatusBadge label={getAdminRequestStatusLabel(item.status)} />
                     </View>
 
                     <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 4 }}>
@@ -345,11 +387,33 @@ export default function RequestMonitoringScreen() {
                       Animal Tag: {item.animalTag} ({item.animalBreed})
                     </Text>
 
+                    <View style={{ gap: 6, marginTop: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                        <MapPin size={15} color={colors.textMuted} />
+                        <Text style={{ flex: 1, fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{item.location}</Text>
+                      </View>
+                      {item.schedule ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <CalendarDays size={15} color={colors.textMuted} />
+                          <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{item.schedule}</Text>
+                        </View>
+                      ) : null}
+                      {isUrgent ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <TriangleAlert size={15} color="#dc2626" />
+                          <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#dc2626" }}>Needs urgent attention</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8, borderTopWidth: 0.5, borderTopColor: colors.border, paddingTop: 8 }}>
-                      <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
-                        Tech: {item.technicianName}
-                      </Text>
-                      <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                        <UserRound size={14} color={colors.textMuted} />
+                        <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                          {item.technicianName}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
                         {item.createdAt.toLocaleDateString()}
                       </Text>
                     </View>
@@ -367,7 +431,7 @@ export default function RequestMonitoringScreen() {
                         }}
                       >
                         <MaterialCommunityIcons name="alert" size={14} color="#d97706" />
-                        <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#d97706", flex: 1 }}>
+                        <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#d97706", flex: 1 }}>
                           Cancellation requested by farmer
                         </Text>
                       </View>

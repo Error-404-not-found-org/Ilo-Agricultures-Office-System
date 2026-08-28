@@ -99,7 +99,7 @@ export const updateSupportTicketStatus = async (req, res) => {
     const ticket = await SupportTicket.findByIdAndUpdate(
       req.params.id,
       { $set: { status } },
-      { new: true },
+      { returnDocument: "after" },
     ).populate("userId", "name role email phoneNumber");
 
     if (!ticket) {

@@ -4,12 +4,17 @@ import { CheckCircle2 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/Button";
 import { useTheme } from "@/lib/theme";
-import type { ReviewSnapshot } from "../types/technicianAIRecording.types";
+import type {
+  PreviousAIEntryMode,
+  ReviewSnapshot,
+} from "../types/technicianAIRecording.types";
 
 interface InseminationReviewModalProps {
   visible: boolean;
   snapshot: ReviewSnapshot | null;
   saving: boolean;
+  isHistoricalMode?: boolean;
+  entryMode?: PreviousAIEntryMode;
   onGoBack: () => void;
   onComplete: () => void;
 }
@@ -75,6 +80,8 @@ export function InseminationReviewModal({
   visible,
   snapshot,
   saving,
+  isHistoricalMode,
+  entryMode,
   onGoBack,
   onComplete,
 }: InseminationReviewModalProps) {
@@ -83,13 +90,7 @@ export function InseminationReviewModal({
 
   if (!snapshot) return null;
 
-  const animalLabel =
-    snapshot.animal.name ||
-    snapshot.animal.earTag ||
-    snapshot.animal.animalId ||
-    "Animal";
-  const animalReference =
-    snapshot.animal.earTag || snapshot.animal.animalId || "No ear tag";
+  const animalLabel = snapshot.animal.earTag || "Animal";
 
   return (
     <Modal
@@ -149,7 +150,11 @@ export function InseminationReviewModal({
                     fontSize: 20,
                   }}
                 >
-                  Review Insemination
+                  {isHistoricalMode
+                    ? entryMode === "history_only"
+                      ? "Add previous AI record?"
+                      : "Continue this breeding cycle?"
+                    : "Review Insemination"}
                 </Text>
                 <Text
                   style={{
@@ -160,27 +165,33 @@ export function InseminationReviewModal({
                     marginTop: 2,
                   }}
                 >
-                  Confirm these are the actual service details before saving.
+                  {isHistoricalMode
+                    ? entryMode === "history_only"
+                      ? "This insemination will be added to the animal's history and will not start a current breeding cycle."
+                      : "BreedSmart will continue this breeding cycle from " +
+                        formatDate(snapshot.details.inseminationDate) +
+                        "."
+                    : "Confirm these are the actual service details before saving."}
                 </Text>
               </View>
             </View>
 
             <View style={{ marginTop: 16 }}>
               <ReviewRow label="Farmer" value={snapshot.farmer.name} />
+              <ReviewRow label="Animal Ear Tag" value={animalLabel} />
               <ReviewRow
-                label="Animal"
-                value={`${animalLabel} · ${animalReference}`}
-              />
-              <ReviewRow
-                label="Actual Date"
+                label={isHistoricalMode ? "Service Date" : "Actual Date"}
                 value={formatDate(snapshot.details.inseminationDate)}
               />
               <ReviewRow
-                label="Actual Time"
+                label={isHistoricalMode ? "Service Time" : "Actual Time"}
                 value={formatTime(snapshot.details.time)}
               />
               <ReviewRow label="Estrus Type" value={snapshot.details.estrus} />
-              <ReviewRow label="Sire Breed" value={snapshot.details.sireBreed} />
+              <ReviewRow
+                label="Sire Breed"
+                value={snapshot.details.sireBreed}
+              />
               <ReviewRow label="Sire Code" value={snapshot.details.sireCode} />
               <ReviewRow
                 label="Semen Doses Used"
@@ -210,7 +221,13 @@ export function InseminationReviewModal({
               className="flex-1"
             />
             <Button
-              label="Complete Record"
+              label={
+                isHistoricalMode
+                  ? entryMode === "history_only"
+                    ? "Add to History"
+                    : "Continue Tracking"
+                  : "Complete Record"
+              }
               loading={saving}
               disabled={saving}
               onPress={onComplete}

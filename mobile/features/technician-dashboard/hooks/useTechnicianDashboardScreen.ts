@@ -26,8 +26,8 @@ export function useTechnicianDashboardScreen() {
     scope: "mine",
   });
   const workItems = useMemo(
-    () => normalizeTechnicianWorkItems(workQueueQuery.data || []),
-    [workQueueQuery.data],
+    () => normalizeTechnicianWorkItems(workQueueQuery.data?.data),
+    [workQueueQuery.data?.data],
   );
   const todayWorkItems = useMemo(
     () =>
@@ -82,6 +82,7 @@ export function useTechnicianDashboardScreen() {
       item.workType === "pregnancy_check" ||
       item.workType === "calving" ||
       item.workType === "task" ||
+      item.workType === "breeding_follow_up" ||
       item.type === "task" ||
       item.type === "breeding_verification"
     ) {

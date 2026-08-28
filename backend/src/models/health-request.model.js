@@ -1,6 +1,62 @@
 import mongoose from "mongoose";
 import { HEALTH_STATUS } from "../domain/livestock-workflow.js";
-import { isActiveHealthRequestStatus } from "../domain/status-vocabulary.js";
+import {
+  HEALTH_HANDLING_METHOD,
+  isActiveHealthRequestStatus,
+} from "../domain/status-vocabulary.js";
+import { CANONICAL_HEALTH_REQUEST_TYPE } from "../domain/health-request-vocabulary.js";
+import {
+  HEALTH_OBSERVED_SIGN,
+  HEALTH_REQUEST_DESCRIPTION_MAX_LENGTH,
+  HEALTH_REQUEST_DETAILS_VERSION,
+} from "../domain/health-request-input.js";
+
+const HealthRequestDetailsSchema = new mongoose.Schema(
+  {
+    version: {
+      type: Number,
+      enum: [HEALTH_REQUEST_DETAILS_VERSION],
+      required: true,
+    },
+    assistanceRequested: {
+      type: String,
+      enum: Object.values(CANONICAL_HEALTH_REQUEST_TYPE),
+      required: true,
+    },
+    observedSigns: {
+      type: [{ type: String, enum: Object.values(HEALTH_OBSERVED_SIGN) }],
+      default: [],
+    },
+    farmerDescription: {
+      type: String,
+      trim: true,
+      maxlength: HEALTH_REQUEST_DESCRIPTION_MAX_LENGTH,
+      default: "",
+    },
+  },
+  { _id: false },
+);
+
+const HealthRequestPickupResponseSchema = new mongoose.Schema(
+  {
+    item: { type: String, trim: true },
+    availabilityConfirmed: { type: Boolean },
+    instructions: { type: String, trim: true },
+    dosageOrUseInstructions: { type: String, trim: true },
+    withdrawalGuidance: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
+const HealthRequestTechnicianResponseSchema = new mongoose.Schema(
+  {
+    pickup: {
+      type: HealthRequestPickupResponseSchema,
+      default: undefined,
+    },
+  },
+  { _id: false },
+);
 
 const HealthRequestSchema = new mongoose.Schema(
   {
@@ -16,6 +72,15 @@ const HealthRequestSchema = new mongoose.Schema(
     },
     activeCaseKey: {
       type: String,
+      default: undefined,
+    },
+    // Durable identity for a Technician walk-in submission. This survives the
+    // short-lived HTTP idempotency cache so a stale retry can recover the
+    // already committed request instead of creating another service record.
+    sourceOperationKey: {
+      type: String,
+      trim: true,
+      select: false,
       default: undefined,
     },
     // What kind of request is this?
@@ -48,6 +113,19 @@ const HealthRequestSchema = new mongoose.Schema(
       default: [],
     },
     farmerNotes: { type: String, default: "" },
+    requestDetails: {
+      type: HealthRequestDetailsSchema,
+      default: undefined,
+    },
+    handlingMethod: {
+      type: String,
+      enum: Object.values(HEALTH_HANDLING_METHOD),
+      default: undefined,
+    },
+    technicianResponse: {
+      type: HealthRequestTechnicianResponseSchema,
+      default: undefined,
+    },
     preferredDate: {
       type: Date,
     },
@@ -164,6 +242,17 @@ HealthRequestSchema.index({ declinedByTechnicianIds: 1 });
 HealthRequestSchema.index(
   { activeCaseKey: 1 },
   { unique: true, sparse: true, name: "uniq_active_health_case_per_animal_type" },
+);
+HealthRequestSchema.index(
+  { handledBy: 1, sourceOperationKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      handledBy: { $type: "objectId" },
+      sourceOperationKey: { $type: "string" },
+    },
+    name: "uniq_walkin_health_operation_per_technician",
+  },
 );
 
 HealthRequestSchema.pre("validate", function setActiveCaseKey() {

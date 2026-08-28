@@ -41,6 +41,38 @@ export const useWalkInInseminationMutation = () => {
   );
 };
 
+export const usePreviousInseminationMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useOfflineMutation(
+    {
+      url: "/technician/previous-insemination",
+      method: "POST",
+      description: "Previous AI record",
+    },
+    {
+      onSuccess: (_result, variables: any) => {
+        queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.requests() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.records() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.tasks() });
+        queryClient.invalidateQueries({ queryKey: aiRequestKeys.all });
+        queryClient.invalidateQueries({ queryKey: animalKeys.all });
+        queryClient.invalidateQueries({ queryKey: animalRecordKeys.all });
+        queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+
+        // Clean up draft if one existed
+        if (variables?.animalId) {
+          queryClient.removeQueries({
+            queryKey: ["draft", "previous-insemination", variables.animalId],
+          });
+        }
+      }
+    },
+  );
+};
+
 export const useCompleteAIRequestMutation = (requestId: string) => {
   const queryClient = useQueryClient();
 
@@ -49,6 +81,7 @@ export const useCompleteAIRequestMutation = (requestId: string) => {
       url: `/ai-request/${requestId}/status`,
       method: "PATCH",
       description: "Complete AI Request",
+      reconcileOnTimeout: true,
     },
     {
       onSuccess: (_result, variables: any) => {
