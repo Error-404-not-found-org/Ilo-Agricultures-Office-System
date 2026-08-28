@@ -98,7 +98,7 @@ export const declineTechnicianRequest = async (
   api: AxiosInstance,
   type: "health" | "ai",
   requestId: string,
-  technicianNote = "Declined by technician.",
+  technicianNote = "Skipped by technician.",
 ) => {
   const response = await api.patch(
     `/technician/requests/${type}/${requestId}/decline`,

@@ -2245,19 +2245,45 @@ export const cancelAIRequest = async (req, res) => {
               "A reason is required to request cancellation of a scheduled visit.",
           });
         }
-        request.cancellationStatus = "requested";
-        request.cancellationReason = reason.trim();
-        request.cancellationResponseReason = "";
-        request.cancellationRespondedAt = undefined;
-        request.cancelledBy = actor._id;
-        request.cancellationRequestedAt = now;
-        request.statusHistory = request.statusHistory || [];
-        request.statusHistory.push({
-          status: "cancellation_requested",
-          note: reason.trim(),
-          actorId: actor._id,
-        });
-        await request.save();
+        request = await Insemination.findOneAndUpdate(
+          {
+            _id: id,
+            deletedAt: null,
+            farmerId: actor._id,
+            status: "scheduled",
+            cancellationStatus: { $nin: ["requested", "approved"] },
+          },
+          {
+            $set: {
+              cancellationStatus: "requested",
+              cancellationReason: reason.trim(),
+              cancellationResponseReason: "",
+              cancelledBy: actor._id,
+              cancellationRequestedAt: now,
+            },
+            $unset: { cancellationRespondedAt: 1 },
+            $push: {
+              statusHistory: {
+                status: "cancellation_requested",
+                note: reason.trim(),
+                actorId: actor._id,
+              },
+            },
+          },
+          { returnDocument: "after" },
+        )
+          .populate("farmerId", "name pushToken")
+          .populate("animalId", "earTag animalId")
+          .populate("approvedBy", "name pushToken")
+          .populate("technicianId", "name pushToken");
+
+        if (!request) {
+          return res.status(409).json({
+            message:
+              "Cancellation is already requested or this visit has changed. Refresh and try again.",
+            code: "AI_CANCELLATION_REQUEST_CONCURRENT_UPDATE",
+          });
+        }
 
         // Audit log
         await createAuditLog({

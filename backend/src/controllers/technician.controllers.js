@@ -493,6 +493,9 @@ export const getTechnicianDashboardData = async (req, res) => {
     inseminations.forEach((ins) => {
       const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
       const isMobileRequest = !ins.sireCode && ins.status === "pending";
+      const hasScheduledVisit = Boolean(ins.scheduledDate);
+      const hasCancellationRequest =
+        ins.cancellationStatus === "requested";
       const itemDisplayDate =
         ins.status === "done" || ins.status === "resolved"
           ? ins.inseminationDate ||
@@ -536,7 +539,11 @@ export const getTechnicianDashboardData = async (req, res) => {
         location: formatAddress(ins.farmerId?.address),
         ...farmLocationDetails,
         animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
-        displayStatus: isReadyToday ? "Ready Today" : ins.status,
+        displayStatus: hasCancellationRequest
+          ? "Cancellation requested"
+          : isReadyToday
+            ? "Ready Today"
+            : ins.status,
         task: isMobileRequest
           ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`
           : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
@@ -599,7 +606,11 @@ export const getTechnicianDashboardData = async (req, res) => {
         (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
         isOverdue
       ) {
-        if (ins.status !== "pending" && assignedToMeAI) {
+        if (
+          hasScheduledVisit &&
+          ins.status !== "pending" &&
+          assignedToMeAI
+        ) {
           agendaItems.push(item);
         }
       }
@@ -610,6 +621,9 @@ export const getTechnicianDashboardData = async (req, res) => {
       const farmLocationDetails = getFarmLocationDetails(
         healthRequest.farmerId,
       );
+      const hasScheduledVisit = Boolean(healthRequest.scheduledDate);
+      const hasCancellationRequest =
+        healthRequest.cancellationStatus === "requested";
       const itemDisplayDate =
         healthRequest.status === "resolved" || healthRequest.status === "done"
           ? healthRequest.scheduledDate ||
@@ -664,7 +678,11 @@ export const getTechnicianDashboardData = async (req, res) => {
           healthRequest.animalId?.earTag ||
           healthRequest.animalId?.animalId ||
           null,
-        displayStatus: isReadyToday ? "Ready Today" : healthRequest.status,
+        displayStatus: hasCancellationRequest
+          ? "Cancellation requested"
+          : isReadyToday
+            ? "Ready Today"
+            : healthRequest.status,
         task: `Health Check - ${healthRequest.animalId?.animalId || healthRequest.animalId?.earTag || "Unknown"}`,
         urgent: ["high", "emergency"].includes(healthRequest.urgency),
         overdue: isOverdue,
@@ -739,7 +757,11 @@ export const getTechnicianDashboardData = async (req, res) => {
         (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
         isOverdue
       ) {
-        if (healthRequest.status !== "pending" && assignedToMeHealth) {
+        if (
+          hasScheduledVisit &&
+          healthRequest.status !== "pending" &&
+          assignedToMeHealth
+        ) {
           agendaItems.push(item);
         }
       }
@@ -2988,92 +3010,84 @@ export const markCalvingAsSeen = async (req, res) => {
 export const declineTechnicianRequest = async (req, res) => {
   try {
     const { type, id } = req.params;
-    const note = req.body?.technicianNote || "Declined by technician.";
+    const note = req.body?.technicianNote || "Skipped by technician.";
+
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Only Technicians can skip available requests.",
+        code: "TECHNICIAN_SKIP_FORBIDDEN",
+      });
+    }
 
     if (!["ai", "health"].includes(type)) {
       return res.status(400).json({ message: "Invalid request type." });
     }
 
     const Model = type === "ai" ? Insemination : HealthRequest;
-    const assignedField = type === "ai" ? "approvedBy" : "handledBy";
     const request = await Model.findOne({ _id: id, deletedAt: null });
 
     if (!request) {
       return res.status(404).json({ message: "Request not found." });
     }
 
-    if (
-      ["done", "resolved", "completed", "rejected", "cancelled"].includes(
-        request.status,
-      )
-    ) {
-      return res.status(400).json({
-        message: `This request is already ${request.status} and cannot be declined.`,
-      });
-    }
+    assertTechnicianEligibleForNewRequest({
+      technician: req.user,
+      requestType: type === "ai" ? "AI" : "HEALTH",
+      dispatch: request.dispatch,
+    });
 
-    const assignedTo = request[assignedField];
-    const isAssignedToAnother =
-      assignedTo &&
-      assignedTo.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin";
+    const unassignedFilter =
+      type === "ai"
+        ? { approvedBy: null, technicianId: null }
+        : { handledBy: null, assignedTechnicianId: null };
 
-    if (isAssignedToAnother) {
-      const assignedTech = await User.findById(assignedTo)
-        .select("name")
-        .lean();
-      return res.status(403).json({
-        message: `This request is already assigned to ${assignedTech?.name || "another technician"}.`,
-      });
-    }
-
-    const update = {
-      $addToSet: { declinedByTechnicianIds: req.user._id },
-      $push: {
-        statusHistory: {
-          status: "declined_by_technician",
-          note,
-          actorId: req.user._id,
-          createdAt: new Date(),
+    const updated = await Model.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        status: "pending",
+        declinedByTechnicianIds: { $ne: req.user._id },
+        ...unassignedFilter,
+      },
+      {
+        $addToSet: { declinedByTechnicianIds: req.user._id },
+        $push: {
+          statusHistory: {
+            status: "skipped_by_technician",
+            note,
+            actorId: req.user._id,
+            createdAt: new Date(),
+          },
         },
       },
-    };
+      { returnDocument: "after" },
+    );
 
-    if (assignedTo && assignedTo.toString() === req.user._id.toString()) {
-      update.$unset = {
-        [assignedField]: "",
-        scheduledDate: "",
-      };
-      update.$set = {
-        status: "pending",
-        technicianNote: note,
-      };
-      if (type === "health") {
-        update.$unset.assignedTechnicianId = "";
-      }
+    if (!updated) {
+      const alreadySkipped = request.declinedByTechnicianIds?.some(
+        (technicianId) =>
+          technicianId?.toString() === req.user._id.toString(),
+      );
+      return res.status(409).json({
+        message: alreadySkipped
+          ? "You already skipped this request."
+          : "This request is no longer pending and unassigned. Refresh your available requests.",
+        code: alreadySkipped
+          ? "REQUEST_ALREADY_SKIPPED"
+          : "REQUEST_SKIP_CONCURRENT_UPDATE",
+      });
     }
-
-    const updated = await Model.findByIdAndUpdate(id, update, {
-      returnDocument: "after",
-    });
-
-    req.app.get("io").to("role:technician").emit("dashboardUpdate", {
-      type: "REQUEST_DECLINED_FOR_TECHNICIAN",
-      requestType: type,
-      requestId: id,
-      technicianId: req.user._id,
-    });
 
     res.status(200).json({
       message:
-        "Request hidden from your queue. Other technicians can still accept it.",
+        "Request skipped. It remains available to other eligible technicians.",
       data: updated,
     });
   } catch (error) {
     console.error("[declineTechnicianRequest ERROR]", error);
-    res.status(500).json({
-      message: "Failed to decline request for this technician.",
-      error: error.message,
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to skip request for this technician.",
+      code: error.code,
     });
   }
 };

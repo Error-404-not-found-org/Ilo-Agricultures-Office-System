@@ -207,4 +207,71 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     assert.equal(healthReq.raw, undefined);
     assert.equal(healthReq.farmerPhone, undefined);
   });
+
+  await t.test("Requests: a skip hides the request only from that Technician", async () => {
+    const skippedBy = ["tech-a"];
+    const request = {
+      _id: "ai-skipped-by-a",
+      status: "pending",
+      createdAt: new Date(),
+      declinedByTechnicianIds: skippedBy,
+      farmerId: { name: "Test Farmer", address: { city: "Oton" } },
+      animalId: { earTag: "T-SKIP" },
+      dispatch: { location: { municipalityCode: "063034000" } },
+    };
+    const technician = (id) => ({
+      _id: id,
+      role: "technician",
+      status: "active",
+      isVerified: true,
+      profileClaimStatus: "claimed",
+      dispatchProfile: {
+        acceptsNewRequests: true,
+        availabilityStatus: "available",
+        serviceCapabilities: ["AI"],
+        serviceMunicipalities: [{ municipalityCode: "063034000" }],
+      },
+    });
+
+    Insemination.find = (query) => {
+      const excludedTechnician = query.declinedByTechnicianIds?.$ne;
+      return queryResult(
+        skippedBy.includes(String(excludedTechnician)) ? [] : [request],
+      );
+    };
+    Insemination.countDocuments = (query) => {
+      const excludedTechnician = query.declinedByTechnicianIds?.$ne;
+      return Promise.resolve(
+        skippedBy.includes(String(excludedTechnician)) ? 0 : 1,
+      );
+    };
+    HealthRequest.find = () => queryResult([]);
+    HealthRequest.countDocuments = () => Promise.resolve(0);
+    Task.find = () => queryResult([]);
+    Task.countDocuments = () => Promise.resolve(0);
+
+    const techAResponse = mockResponse();
+    await getTechnicianRequests(
+      {
+        user: technician("tech-a"),
+        query: { assignment: "unassigned" },
+      },
+      techAResponse,
+    );
+    assert.equal(techAResponse.statusCode, 200);
+    assert.equal(techAResponse.body.requests.length, 0);
+
+    const techBResponse = mockResponse();
+    await getTechnicianRequests(
+      {
+        user: technician("tech-b"),
+        query: { assignment: "unassigned" },
+      },
+      techBResponse,
+    );
+    assert.equal(techBResponse.statusCode, 200);
+    assert.equal(techBResponse.body.requests.length, 1);
+    assert.equal(techBResponse.body.requests[0].id, request._id);
+    assert.equal(request.status, "pending");
+  });
 });

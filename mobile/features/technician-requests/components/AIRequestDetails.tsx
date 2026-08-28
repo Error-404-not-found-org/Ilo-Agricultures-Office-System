@@ -36,9 +36,11 @@ import { aiRequestKeys, technicianKeys } from "@/lib/queryKeys";
 import { useTheme } from "@/lib/theme";
 import {
   declineTechnicianRequest,
+  respondToCancellationRequest,
   updateRequestStatus,
 } from "@/features/technician/services/technician.service";
 import { claimAndScheduleAIRequest } from "../services/technicianRequests.service";
+import { CancellationReviewPanel } from "./CancellationReviewPanel";
 import { VisitScheduleSheet } from "./VisitScheduleSheet";
 import type { VisitPeriod } from "../types/technicianRequests.types";
 import {
@@ -161,6 +163,8 @@ export function AIRequestDetails({
   const [updating, setUpdating] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [earlyStartVisible, setEarlyStartVisible] = useState(false);
+  const [skipConfirmationVisible, setSkipConfirmationVisible] =
+    useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
   const submittingRef = useRef(false);
@@ -194,6 +198,10 @@ export function AIRequestDetails({
   const isInProgress = normalizedStatus === "in-progress";
   const isScheduled =
     normalizedStatus === "scheduled" && Boolean(request?.scheduledDate);
+  const cancellationRequested =
+    isScheduled &&
+    isOwned &&
+    cleanText(request?.cancellationStatus).toLowerCase() === "requested";
   const isClaimedUnscheduled =
     isOwned &&
     !request?.scheduledDate &&
@@ -495,10 +503,12 @@ export function AIRequestDetails({
         api,
         "ai",
         requestId,
-        "Declined by technician.",
+        "Skipped by technician.",
       );
       await invalidateWorkflow();
-      toast.success("Request removed from your available requests.");
+      toast.success("Request skipped", {
+        description: "It remains available to other eligible technicians.",
+      });
       onBack();
     } catch (error: any) {
       setActionNotice(
@@ -527,6 +537,40 @@ export function AIRequestDetails({
       setActionNotice(
         getErrorMessage(error, "The request could not be cancelled."),
       );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCancellationResponse = async (
+    approved: boolean,
+    responseReason: string,
+  ) => {
+    if (updating) return;
+    setUpdating(true);
+    setActionNotice(null);
+    try {
+      await respondToCancellationRequest(api, "ai", requestId, {
+        approved,
+        reason: responseReason,
+      });
+      await invalidateWorkflow();
+      await onRefresh();
+      toast.success(
+        approved
+          ? "Cancellation approved"
+          : "Cancellation request declined",
+        approved
+          ? undefined
+          : { description: "The request remains scheduled." },
+      );
+    } catch (error: any) {
+      const message = getErrorMessage(
+        error,
+        "The cancellation response could not be saved.",
+      );
+      setActionNotice(message);
+      throw error;
     } finally {
       setUpdating(false);
     }
@@ -867,7 +911,16 @@ export function AIRequestDetails({
           </View>
         ) : null}
 
-        {primaryLabel ? (
+        {cancellationRequested ? (
+          <CancellationReviewPanel
+            reason={request?.cancellationReason}
+            requestedAt={request?.cancellationRequestedAt}
+            busy={updating}
+            onRespond={handleCancellationResponse}
+          />
+        ) : null}
+
+        {primaryLabel && !cancellationRequested ? (
           <View style={cardStyle}>
             <TouchableOpacity
               accessibilityRole="button"
@@ -895,9 +948,9 @@ export function AIRequestDetails({
             {isAvailable ? (
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityLabel="Decline"
+                accessibilityLabel="Skip Request"
                 disabled={updating}
-                onPress={handleDecline}
+                onPress={() => setSkipConfirmationVisible(true)}
                 style={{
                   minHeight: 48,
                   alignItems: "center",
@@ -906,7 +959,7 @@ export function AIRequestDetails({
                 }}
               >
                 <Text textRole="bodyStrong" style={{ color: colors.error }}>
-                  Decline
+                  Skip Request
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -976,6 +1029,17 @@ export function AIRequestDetails({
         onConfirm={handleSchedule}
       />
 
+      <ConfirmationModal
+        visible={skipConfirmationVisible}
+        title="Skip this request?"
+        message="This request will be removed from your available requests. It can still be accepted by another eligible technician."
+        confirmText="Skip Request"
+        cancelText="Keep Request"
+        isDestructive={false}
+        onClose={() => setSkipConfirmationVisible(false)}
+        onCancel={() => setSkipConfirmationVisible(false)}
+        onConfirm={handleDecline}
+      />
       <ConfirmationModal
         visible={earlyStartVisible}
         title="Start service early?"

@@ -44,7 +44,10 @@ import {
   AgendaItem,
   deduplicateCalendarVisits,
   getCalendarAnimalIdentity,
+  getCalendarVisitDate,
+  getCalendarVisitPeriodLabel,
   getCalendarVisitTarget,
+  isCalendarCancellationRequested,
 } from "@/features/technician-dashboard/utils/calendarPresentation";
 
 type Props = {
@@ -53,20 +56,11 @@ type Props = {
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
-const itemDate = (item: AgendaItem) => {
-  const value =
-    item.displayDate ||
-    item.scheduledDate ||
-    item.preferredDate ||
-    item.raw?.scheduledDate ||
-    item.raw?.preferredDate;
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+const itemDate = getCalendarVisitDate;
 
 const isUrgentVisit = (item: AgendaItem) =>
   item.overdue === true ||
+  isCalendarCancellationRequested(item) ||
   item.urgency === "urgent" ||
   item.raw?.urgency === "urgent";
 
@@ -106,7 +100,8 @@ export default function TechnicianScheduleScreen({
       const today = new Date();
       setSelectedDate(today);
       setCurrentMonth(today);
-    }, []),
+      void refetch();
+    }, [refetch]),
   );
 
   const visits = useMemo(
@@ -468,9 +463,12 @@ function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
     >
       <View style={styles.visitTopRow}>
         <View style={styles.timeRow}>
-          <Clock3 size={16} color={urgent ? colors.warning : colors.primary} />
+          <CalendarDays
+            size={16}
+            color={urgent ? colors.warning : colors.primary}
+          />
           <Text style={[styles.visitTime, { color: colors.textPrimary }]}>
-            {date ? format(date, "h:mm a") : item.time || "Time not set"}
+            {date ? format(date, "MMM d, yyyy") : "Date not set"}
           </Text>
         </View>
         <View
@@ -501,6 +499,11 @@ function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
       <Text style={[styles.visitTitle, { color: colors.textPrimary }]}>
         {serviceName(item)}
       </Text>
+      <Metadata
+        icon={Clock3}
+        text={getCalendarVisitPeriodLabel(item)}
+        colors={colors}
+      />
       <Metadata icon={UserRound} text={farmer} colors={colors} />
       <Metadata icon={PawPrint} text={animal.compact} colors={colors} />
       <Metadata icon={MapPin} text={location} colors={colors} />

@@ -35,6 +35,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
 import { AppPageHeader } from "@/components/AppPageHeader";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import {
   ImageViewerModal,
   StatusBadge,
@@ -50,11 +51,13 @@ import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/h
 import {
   cancelTechnicianHealthRequest,
   declineTechnicianRequest,
+  respondToCancellationRequest,
   sendTechnicianHealthAdvice,
   sendTechnicianHealthOfficePickup,
   updateRequestStatus,
 } from "@/features/technician/services/technician.service";
 import { claimTechnicianRequest } from "@/features/technician-requests/services/technicianRequests.service";
+import { CancellationReviewPanel } from "@/features/technician-requests/components/CancellationReviewPanel";
 import type { VisitPeriod } from "@/features/technician-requests/types/technicianRequests.types";
 import {
   HealthVisitScheduleModal,
@@ -205,6 +208,8 @@ export function HealthRequestDetails({
     "advice" | "office_pickup" | null
   >(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [skipConfirmationVisible, setSkipConfirmationVisible] =
+    useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
   const [selectedHandlingMethod, setSelectedHandlingMethod] =
@@ -251,6 +256,10 @@ export function HealthRequestDetails({
   const isInProgress = normalizedStatus === "in-progress";
   const isScheduled =
     normalizedStatus === "scheduled" && Boolean(request?.scheduledDate);
+  const cancellationRequested =
+    isScheduled &&
+    isOwned &&
+    cleanText(request?.cancellationStatus).toLowerCase() === "requested";
   const isClaimedUnscheduled =
     isOwned &&
     !request?.scheduledDate &&
@@ -643,10 +652,12 @@ export function HealthRequestDetails({
         api,
         "health",
         requestId,
-        "Declined by technician.",
+        "Skipped by technician.",
       );
       await invalidateHealthWorkflow();
-      toast.success("Request removed from your available requests.");
+      toast.success("Request skipped", {
+        description: "It remains available to other eligible technicians.",
+      });
       onBack();
     } catch (error: any) {
       setActionNotice(
@@ -673,6 +684,40 @@ export function HealthRequestDetails({
       setActionNotice(
         getErrorMessage(error, "The request could not be cancelled."),
       );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCancellationResponse = async (
+    approved: boolean,
+    responseReason: string,
+  ) => {
+    if (updating) return;
+    setUpdating(true);
+    setActionNotice(null);
+    try {
+      await respondToCancellationRequest(api, "health", requestId, {
+        approved,
+        reason: responseReason,
+      });
+      await invalidateHealthWorkflow();
+      await onRefresh();
+      toast.success(
+        approved
+          ? "Cancellation approved"
+          : "Cancellation request declined",
+        approved
+          ? undefined
+          : { description: "The request remains scheduled." },
+      );
+    } catch (error: any) {
+      const message = getErrorMessage(
+        error,
+        "The cancellation response could not be saved.",
+      );
+      setActionNotice(message);
+      throw error;
     } finally {
       setUpdating(false);
     }
@@ -1150,7 +1195,16 @@ export function HealthRequestDetails({
           </View>
         ) : null}
 
-        {canChooseHandlingMethod || primaryLabel ? (
+        {cancellationRequested ? (
+          <CancellationReviewPanel
+            reason={request?.cancellationReason}
+            requestedAt={request?.cancellationRequestedAt}
+            busy={updating}
+            onRespond={handleCancellationResponse}
+          />
+        ) : null}
+
+        {!cancellationRequested && (canChooseHandlingMethod || primaryLabel) ? (
           <View style={cardStyle}>
             {canChooseHandlingMethod ? (
               <HealthHandlingMethodSelector
@@ -1193,9 +1247,9 @@ export function HealthRequestDetails({
             {isAvailable ? (
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityLabel="Decline"
+                accessibilityLabel="Skip Request"
                 disabled={updating}
-                onPress={handleDecline}
+                onPress={() => setSkipConfirmationVisible(true)}
                 style={{
                   minHeight: 48,
                   alignItems: "center",
@@ -1208,7 +1262,7 @@ export function HealthRequestDetails({
                 }}
               >
                 <Text textRole="bodyStrong" style={{ color: "#ffffff" }}>
-                  Decline
+                  Skip Request
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -1278,6 +1332,18 @@ export function HealthRequestDetails({
         }}
         onErrorClear={() => setScheduleError(null)}
         onConfirm={handleSchedule}
+      />
+
+      <ConfirmationModal
+        visible={skipConfirmationVisible}
+        title="Skip this request?"
+        message="This request will be removed from your available requests. It can still be accepted by another eligible technician."
+        confirmText="Skip Request"
+        cancelText="Keep Request"
+        isDestructive={false}
+        onClose={() => setSkipConfirmationVisible(false)}
+        onCancel={() => setSkipConfirmationVisible(false)}
+        onConfirm={handleDecline}
       />
 
       <ImageViewerModal

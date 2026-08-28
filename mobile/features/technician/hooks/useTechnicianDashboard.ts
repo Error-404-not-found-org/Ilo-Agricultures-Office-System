@@ -185,9 +185,9 @@ export const useDeclineTechnicianRequestMutation = () => {
         {
           url: `/technician/requests/${type}/${requestId}/decline`,
           method: "PATCH",
-          description: "Decline request for this technician",
+          description: "Skip request for this technician",
         },
-        { technicianNote: technicianNote || "Declined by technician." },
+        { technicianNote: technicianNote || "Skipped by technician." },
         undefined,
         undefined,
         ownerUserId,
