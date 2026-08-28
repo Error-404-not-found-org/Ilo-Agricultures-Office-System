@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import axiosInstance from "../../lib/axios";
@@ -36,14 +36,6 @@ const populatedResponses = {
       ],
     },
   },
-  "/admin/barangays/insights": [
-    {
-      barangay: "Poblacion East",
-      pendingHealthRequests: 2,
-      pendingAIRequests: 1,
-      incompleteRecordsCount: 1,
-    },
-  ],
   "/user?role=technician": [
     {
       _id: "technician-1",
@@ -177,9 +169,6 @@ describe("Admin Dashboard hierarchy", () => {
       screen.getByRole("link", { name: "View Workload" }),
     ).toHaveAttribute("href", "/admin/work-queue");
     expect(
-      screen.getByRole("link", { name: "View Barangays" }),
-    ).toHaveAttribute("href", "/admin/barangays");
-    expect(
       screen.getByRole("link", { name: "View Audit Logs" }),
     ).toHaveAttribute("href", "/admin/audit-logs");
 
@@ -188,28 +177,43 @@ describe("Admin Dashboard hierarchy", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps all responsive dashboard sections rendered", async () => {
+  it("keeps the approved compact sections in two responsive pairings", async () => {
     renderDashboard();
 
-    await screen.findByRole("heading", { name: "Needs Attention" });
+    const immediateWork = await screen.findByRole("region", {
+      name: "Immediate Admin work",
+    });
+    const operationalOverview = screen.getByRole("region", {
+      name: "Operational overview",
+    });
+
     expect(
-      screen.getByRole("heading", { name: "Pending Requests" }),
+      within(immediateWork).getByRole("heading", { name: "Needs Attention" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Technician Workload" }),
+      within(immediateWork).getByRole("heading", { name: "Pending Requests" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Barangays Needing Attention" }),
+      within(operationalOverview).getByRole("heading", {
+        name: "Recent Admin Activity",
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Recent Admin Activity" }),
+      within(operationalOverview).getByRole("heading", {
+        name: "Technician Workload",
+      }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Barangays Needing Attention" }),
+    ).not.toBeInTheDocument();
+    expect(axiosInstance.get).not.toHaveBeenCalledWith(
+      "/admin/barangays/insights",
+    );
   });
 
   it("renders calm empty states without technical copy", async () => {
     setResponses({
       "/admin/monitoring": { moowieInsights: { technicianWorkloads: [] } },
-      "/admin/barangays/insights": [],
       "/user?role=technician": [],
       "/technician/requests": { requests: [] },
       "/audit-logs": { logs: [] },
@@ -222,9 +226,6 @@ describe("Admin Dashboard hierarchy", () => {
     );
     expect(screen.getByText("No pending requests")).toBeInTheDocument();
     expect(screen.getByText("No workload information")).toBeInTheDocument();
-    expect(
-      screen.getByText("No barangays need attention"),
-    ).toBeInTheDocument();
     expect(screen.getByText("No recent activity")).toBeInTheDocument();
 
     document.querySelectorAll("[data-empty-state]").forEach((emptyState) => {
@@ -235,7 +236,7 @@ describe("Admin Dashboard hierarchy", () => {
 
   it("keeps healthy sections usable when one source fails", async () => {
     axiosInstance.get.mockImplementation(async (url) => {
-      if (url === "/admin/barangays/insights") {
+      if (url === "/audit-logs") {
         throw new Error("network unavailable");
       }
       return { data: populatedResponses[url] };
@@ -248,10 +249,10 @@ describe("Admin Dashboard hierarchy", () => {
       screen.getByRole("heading", { name: "Pending Requests" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Barangay information could not be loaded."),
+      screen.getByText("We could not load recent Admin activity."),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Recent Admin Activity" }),
+      screen.getByRole("heading", { name: "Technician Workload" }),
     ).toBeInTheDocument();
   });
 });

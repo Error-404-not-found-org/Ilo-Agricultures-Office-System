@@ -46,6 +46,8 @@ describe("Admin page responsibility composition", () => {
 
   it("keeps the Admin Dashboard navigation-only", () => {
     const dashboard = read("src/pages/admin/Dashboard.jsx");
+    const app = read("src/App.jsx");
+    const sidebar = read("src/components/layout/Sidebar.jsx");
 
     expect(dashboard).not.toContain("AssignTaskModal");
     expect(dashboard).not.toContain("reassignRequest");
@@ -54,7 +56,9 @@ describe("Admin page responsibility composition", () => {
     expect(dashboard).toContain("/admin/requests?requestId=");
     expect(dashboard).toContain("/admin/requests?status=all");
     expect(dashboard).toContain('to="/admin/work-queue"');
-    expect(dashboard).toContain('to="/admin/barangays"');
     expect(dashboard).toContain('to="/admin/audit-logs"');
+    expect(dashboard).not.toContain('to="/admin/barangays"');
+    expect(app).toContain('<Route path="barangays" element={<BarangayInsights />} />');
+    expect(sidebar).toContain('path: "/admin/barangays"');
   });
 });

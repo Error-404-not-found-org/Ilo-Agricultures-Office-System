@@ -63,9 +63,6 @@ const getQueueRequests = (value) => {
   return asArray(value);
 };
 
-const getBarangayName = (item) =>
-  item?.barangay || item?.name || item?._id || "Barangay not recorded";
-
 const numberValue = (value) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric.toLocaleString() : "Unavailable";
@@ -274,16 +271,9 @@ export default function Dashboard() {
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["admin", "dashboard-overview"],
     queryFn: async () => {
-      const [
-        monitoring,
-        barangays,
-        technicians,
-        technicianRequests,
-        auditLogs,
-      ] =
+      const [monitoring, technicians, technicianRequests, auditLogs] =
         await Promise.allSettled([
           axiosInstance.get("/admin/monitoring"),
-          axiosInstance.get("/admin/barangays/insights"),
           axiosInstance.get("/user?role=technician"),
           axiosInstance.get("/technician/requests", {
             params: { status: "pending", limit: 50 },
@@ -293,7 +283,6 @@ export default function Dashboard() {
 
       const sources = {
         monitoring: sourceResult("Technician workload", monitoring, {}),
-        barangays: sourceResult("Barangay information", barangays, []),
         technicians: sourceResult("Technician directory", technicians, []),
         technicianRequests: sourceResult(
           "Pending requests",
@@ -306,7 +295,6 @@ export default function Dashboard() {
       return {
         sources,
         monitoring: sources.monitoring.data,
-        barangays: asArray(sources.barangays.data),
         technicians: asArray(sources.technicians.data),
         requests: getQueueRequests(sources.technicianRequests.data).map(
           toDashboardRequest,
@@ -319,7 +307,6 @@ export default function Dashboard() {
 
   const sources = data?.sources || EMPTY_OBJECT;
   const monitoring = data?.monitoring || EMPTY_OBJECT;
-  const barangays = data?.barangays || EMPTY_ARRAY;
   const serviceRequests = data?.requests || EMPTY_ARRAY;
   const technicians = data?.technicians || EMPTY_ARRAY;
   const auditLogs = data?.auditLogs || EMPTY_ARRAY;
@@ -440,24 +427,6 @@ export default function Dashboard() {
       )
       .slice(0, 5);
   }, [isSourceOk, monitoring, technicians]);
-
-  const barangaysNeedingAttention = useMemo(
-    () =>
-      [...barangays]
-        .map((item) => ({
-          ...item,
-          attentionCount:
-            Number(item?.pendingHealthRequests || 0) +
-            Number(item?.pendingAIRequests || 0) +
-            Number(item?.incompleteRecordsCount || 0),
-        }))
-        .filter((item) => item.attentionCount > 0)
-        .sort(
-          (first, second) => second.attentionCount - first.attentionCount,
-        )
-        .slice(0, 5),
-    [barangays],
-  );
 
   const needsAttention = useMemo(
     () =>
@@ -581,32 +550,6 @@ export default function Dashboard() {
           <PartialDataPanel sources={failedSources} onRetry={handleRefresh} />
         )}
 
-        <Panel
-          id="needs-attention"
-          title="Needs Attention"
-          description="Requests and staffing that need Admin review"
-        >
-          {!isSourceOk("technicianRequests") &&
-            !isSourceOk("technicians") && (
-              <SectionError
-                message="We could not load the items that need attention."
-                onRetry={handleRefresh}
-              />
-            )}
-          {isLoading ? (
-            <SkeletonRows count={3} label="Loading attention items" />
-          ) : needsAttention.length ? (
-            <AttentionList items={needsAttention} />
-          ) : (
-            <EmptyState
-              title="All caught up"
-              description="No requests need assignment, no urgent cases are waiting, and Technician staffing is clear."
-              icon={CheckCircle2}
-              tone="success"
-            />
-          )}
-        </Panel>
-
         <section
           aria-label="Operational metrics"
           className="grid grid-cols-1 gap-3 lg:grid-cols-3"
@@ -620,28 +563,78 @@ export default function Dashboard() {
           ))}
         </section>
 
-        <Panel
-          id="pending-requests"
-          title="Pending Requests"
-          description="Highest-priority requests awaiting coordination"
-          actionLabel="View all Requests"
-          to="/admin/requests"
+        <section
+          aria-label="Immediate Admin work"
+          className="grid grid-cols-1 gap-5 lg:grid-cols-2"
         >
-          {!isSourceOk("technicianRequests") ? (
-            <SectionError
-              message="We could not load pending requests."
-              onRetry={handleRefresh}
-            />
-          ) : (
-            <PendingRequestList
-              requests={pendingRequests}
-              loading={isLoading}
-            />
-          )}
-        </Panel>
+          <Panel
+            id="needs-attention"
+            title="Needs Attention"
+            description="Requests and staffing that need Admin review"
+          >
+            {!isSourceOk("technicianRequests") &&
+              !isSourceOk("technicians") && (
+                <SectionError
+                  message="We could not load the items that need attention."
+                  onRetry={handleRefresh}
+                />
+              )}
+            {isLoading ? (
+              <SkeletonRows count={3} label="Loading attention items" />
+            ) : needsAttention.length ? (
+              <AttentionList items={needsAttention} />
+            ) : (
+              <EmptyState
+                title="All caught up"
+                description="No requests need assignment, no urgent cases are waiting, and Technician staffing is clear."
+                icon={CheckCircle2}
+                tone="success"
+              />
+            )}
+          </Panel>
 
-        {/* Technician operations and municipality coverage stay paired. */}
-        <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <Panel
+            id="pending-requests"
+            title="Pending Requests"
+            description="Highest-priority requests awaiting coordination"
+            actionLabel="View all Requests"
+            to="/admin/requests"
+          >
+            {!isSourceOk("technicianRequests") ? (
+              <SectionError
+                message="We could not load pending requests."
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <PendingRequestList
+                requests={pendingRequests}
+                loading={isLoading}
+              />
+            )}
+          </Panel>
+        </section>
+
+        <section
+          aria-label="Operational overview"
+          className="grid grid-cols-1 gap-5 lg:grid-cols-2"
+        >
+          <Panel
+            id="recent-admin-activity"
+            title="Recent Admin Activity"
+            description="Latest administrative and workflow changes"
+            actionLabel="View Audit Logs"
+            to="/admin/audit-logs"
+          >
+            {!isSourceOk("auditLogs") ? (
+              <SectionError
+                message="We could not load recent Admin activity."
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <AuditPreview logs={auditLogs} loading={isLoading} />
+            )}
+          </Panel>
+
           <Panel
             id="technician-workload"
             title="Technician Workload"
@@ -658,44 +651,7 @@ export default function Dashboard() {
               <TechnicianWorkloadList rows={workloadRows} loading={isLoading} />
             )}
           </Panel>
-
-          <Panel
-            id="barangays-needing-attention"
-            title="Barangays Needing Attention"
-            description="Barangays with pending services or incomplete records"
-            actionLabel="View Barangays"
-            to="/admin/barangays"
-          >
-            {!isSourceOk("barangays") ? (
-              <SectionError
-                message="Barangay information could not be loaded."
-                onRetry={handleRefresh}
-              />
-            ) : (
-              <BarangayAttentionList
-                barangays={barangaysNeedingAttention}
-                loading={isLoading}
-              />
-            )}
-          </Panel>
         </section>
-
-        <Panel
-          id="recent-admin-activity"
-          title="Recent Admin Activity"
-          description="Latest administrative and workflow changes"
-          actionLabel="View Audit Logs"
-          to="/admin/audit-logs"
-        >
-          {!isSourceOk("auditLogs") ? (
-            <SectionError
-              message="We could not load recent Admin activity."
-              onRetry={handleRefresh}
-            />
-          ) : (
-            <AuditPreview logs={auditLogs} loading={isLoading} />
-          )}
-        </Panel>
       </main>
     </div>
   );
@@ -974,47 +930,6 @@ const TechnicianWorkloadList = ({ rows, loading }) => {
           </div>
         </li>
       ))}
-    </ul>
-  );
-};
-
-const BarangayAttentionList = ({ barangays, loading }) => {
-  if (loading) {
-    return <SkeletonRows count={4} label="Loading Barangay information" />;
-  }
-  if (!barangays.length) {
-    return (
-      <EmptyState
-        title="No barangays need attention"
-        description="No pending service or registry issues are currently flagged by barangay."
-        icon={MapPin}
-        tone="success"
-      />
-    );
-  }
-
-  return (
-    <ul className="list divide-y divide-base-300">
-      {barangays.map((barangay) => {
-        const name = getBarangayName(barangay);
-        return (
-          <li key={name} className="list-row items-center px-0 py-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
-              <MapPin size={17} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-base-content">
-                {name}
-              </p>
-              <p className="mt-0.5 text-sm text-base-content/75">
-                {numberValue(barangay.attentionCount)} flagged item
-                {barangay.attentionCount === 1 ? "" : "s"}
-              </p>
-            </div>
-            <Badge status="warning">Needs review</Badge>
-          </li>
-        );
-      })}
     </ul>
   );
 };
