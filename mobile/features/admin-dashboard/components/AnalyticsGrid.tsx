@@ -8,9 +8,9 @@ interface AnalyticsGridProps {
 }
 
 export function AnalyticsGrid({ stats }: AnalyticsGridProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
-  const Card = ({
+  const Metric = ({
     title,
     value,
     icon,
@@ -23,49 +23,38 @@ export function AnalyticsGrid({ stats }: AnalyticsGridProps) {
     color: string;
     bg: string;
   }) => (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 20,
-        padding: 16,
-        width: "48%",
-        marginBottom: 12,
-        shadowColor: "#000",
-        shadowOpacity: isDark ? 0 : 0.02,
-        shadowRadius: 8,
-        elevation: isDark ? 0 : 2,
-      }}
-    >
+    <View style={{ flex: 1, alignItems: "center", paddingHorizontal: 4 }}>
       <View
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 12,
+          width: 36,
+          height: 36,
+          borderRadius: 10,
           backgroundColor: bg,
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 10,
+          marginBottom: 8,
         }}
       >
-        <MaterialCommunityIcons name={icon as any} size={22} color={color} />
+        <MaterialCommunityIcons name={icon as any} size={20} color={color} />
       </View>
       <Text
         style={{
-          fontSize: 22,
+          fontSize: 20,
           fontFamily: "Outfit_800ExtraBold",
           color: colors.textPrimary,
+          textAlign: "center",
         }}
       >
         {value}
       </Text>
       <Text
+        numberOfLines={2}
         style={{
           fontSize: 12,
           fontFamily: "Outfit_600SemiBold",
           color: colors.textSecondary,
           marginTop: 2,
+          textAlign: "center",
         }}
       >
         {title}
@@ -75,51 +64,50 @@ export function AnalyticsGrid({ stats }: AnalyticsGridProps) {
 
   return (
     <View style={{ paddingHorizontal: 24, marginTop: -10, marginBottom: 20 }}>
-      <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginBottom: 12 }}>
-        Analytics Summary
+      <Text
+        style={{
+          fontSize: 16,
+          fontFamily: "Outfit_800ExtraBold",
+          color: colors.textPrimary,
+          marginBottom: 12,
+        }}
+      >
+        Overview
       </Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-        <Card
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "stretch",
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 16,
+          paddingHorizontal: 8,
+          paddingVertical: 14,
+        }}
+      >
+        <Metric
           title="Total Farmers"
           value={stats?.farmers ?? "—"}
           icon="tractor"
           color="#16a34a"
-          bg={isDark ? "rgba(22, 163, 74, 0.15)" : "#d1fae5"}
+          bg="rgba(22, 163, 74, 0.12)"
         />
-        <Card
-          title="Total Techs"
+        <View style={{ width: 1, backgroundColor: colors.border }} />
+        <Metric
+          title="Total Technicians"
           value={stats?.technicians ?? "—"}
           icon="shield-account"
           color="#d97706"
-          bg={isDark ? "rgba(217, 119, 6, 0.15)" : "#fffbeb"}
+          bg="rgba(217, 119, 6, 0.12)"
         />
-        <Card
+        <View style={{ width: 1, backgroundColor: colors.border }} />
+        <Metric
           title="Total Animals"
           value={stats?.animals ?? "—"}
           icon="cow"
           color="#7c3aed"
-          bg={isDark ? "rgba(124, 58, 237, 0.15)" : "#f5f3ff"}
-        />
-        <Card
-          title="AI Records"
-          value={stats?.inseminations ?? "—"}
-          icon="needle"
-          color="#2563EB"
-          bg={isDark ? "rgba(37, 99, 235, 0.15)" : "#eff6ff"}
-        />
-        <Card
-          title="Pregnancies"
-          value={stats?.pregnancies ?? "—"}
-          icon="baby-face-outline"
-          color="#0891b2"
-          bg={isDark ? "rgba(8, 145, 178, 0.15)" : "#ecfeff"}
-        />
-        <Card
-          title="Health Requests"
-          value={stats?.healthRequests ?? "—"}
-          icon="medical-bag"
-          color="#ef4444"
-          bg={isDark ? "rgba(239, 68, 68, 0.15)" : "#fef2f2"}
+          bg="rgba(124, 58, 237, 0.12)"
         />
       </View>
     </View>
