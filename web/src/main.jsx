@@ -7,6 +7,7 @@ import { SocketProvider } from "./contexts/SocketContext.jsx";
 import "./index.css";
 import App from "./App.jsx";
 import AppToaster from "./components/ui/AppToaster.jsx";
+import { applyTheme, getStoredTheme } from "./lib/theme.js";
 import {
   clerkAppearance,
   clerkLocalization,
@@ -19,6 +20,9 @@ if (!PUBLISHABLE_KEY) {
 }
 
 const queryClient = new QueryClient();
+
+// Apply the persisted theme before React renders to prevent a stale-theme flash.
+applyTheme(getStoredTheme());
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

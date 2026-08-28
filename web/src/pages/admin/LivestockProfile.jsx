@@ -27,7 +27,6 @@ import {
   Eye,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import EditInseminationModal from "../../components/dialogs/EditInseminationModal";
 import AddMedicalRecordModal from "../../components/dialogs/AddMedicalRecordModal";
 import ActivityDetailsModal from "../../components/dialogs/ActivityDetailsModal";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
@@ -35,6 +34,7 @@ import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosis
 import RecordCalfDropModal from "../../components/dialogs/RecordCalvingModal";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
 import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
+import { WEB_ROLES, normalizeWebRole } from "../../constants/webRoles";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ function getOwnerLocation(address) {
       cleanLocationPart(value.city || value.municipality),
     ]
       .filter(Boolean)
-      .join(", ") || "Oton, Iloilo"
+      .join(", ") || "Not recorded"
   );
 }
 
@@ -106,9 +106,9 @@ function fmtDate(d) {
 }
 
 function formatAge(birthDate) {
-  if (!birthDate) return "3 years";
+  if (!birthDate) return "Not recorded";
   const birth = new Date(birthDate);
-  if (isNaN(birth.getTime())) return "3 years";
+  if (isNaN(birth.getTime())) return "Not recorded";
   const now = new Date();
   let diffMonths =
     (now.getFullYear() - birth.getFullYear()) * 12 +
@@ -127,13 +127,13 @@ function formatAge(birthDate) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export default function LivestockProfile() {
+export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isAdmin = normalizeWebRole(role) === WEB_ROLES.ADMIN;
 
   // Top level state hooks (all declared before any conditional returns)
-  const [selectedInsemination, setSelectedInsemination] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [isAddMedicalModalOpen, setIsAddMedicalModalOpen] = useState(false);
   const [medicalInitialType] = useState("Vaccination");
@@ -146,8 +146,6 @@ export default function LivestockProfile() {
   const [recordSearch, setRecordSearch] = useState("");
   const [recordTypeFilter, setRecordTypeFilter] = useState("All");
   const [currentTimestamp] = useState(() => Date.now());
-
-  const isAdminPath = window.location.pathname.startsWith("/admin");
 
   const { data: medicalHistory = [], isLoading: isLoadingMedical } = useQuery({
     queryKey: ["medical", id],
@@ -183,7 +181,7 @@ export default function LivestockProfile() {
         "Artificial insemination service",
       recordStatus: record.status || record.outcome || "Completed",
       recordedBy:
-        record.technicianId?.name || record.approvedBy?.name || "Juan D.",
+        record.technicianId?.name || record.approvedBy?.name || "Not recorded",
       dateEntered: record.createdAt,
       originId: record._id,
       originLabel: "AI service request",
@@ -200,7 +198,7 @@ export default function LivestockProfile() {
         record.note ||
         "Routine health service",
       recordStatus: "Completed",
-      recordedBy: record.technicianId?.name || "Ana P.",
+      recordedBy: record.technicianId?.name || "Not recorded",
       isHistoricalEntry: record.isHistoricalEntry,
       dateEntered: record.createdAt,
       originId: record.healthRequestId?._id || record.healthRequestId,
@@ -219,13 +217,13 @@ export default function LivestockProfile() {
             preg.diagnosisDate ||
             preg.createdAt,
           recordTitle: "Pregnancy Diagnosis",
-          recordSummary: `Pregnancy confirmed (${preg.pregnancyDiagnosis?.result || preg.result || preg.status || "Positive"})`,
+          recordSummary: `Pregnancy result: ${preg.pregnancyDiagnosis?.result || preg.result || preg.status || "Not recorded"}`,
           recordStatus:
             preg.pregnancyDiagnosis?.result ||
             preg.result ||
             preg.status ||
             "Completed",
-          recordedBy: preg.diagnosedBy || preg.technicianId?.name || "Ana P.",
+          recordedBy: preg.diagnosedBy || preg.technicianId?.name || "Not recorded",
           dateEntered: preg.createdAt,
         };
       });
@@ -235,10 +233,10 @@ export default function LivestockProfile() {
       recordKind: "Calving",
       recordDate: calving.date || calving.createdAt,
       recordTitle: "Calving Record",
-      recordSummary: `Calving ease: ${calving.calvingEase || "Normal"}. Calves: ${calving.calves?.length || calving.numberOfCalves || 1}`,
+      recordSummary: `Calving ease: ${calving.calvingEase || "Not recorded"}. Calves: ${calving.calves?.length ?? calving.numberOfCalves ?? "Not recorded"}`,
       recordStatus: "Completed",
       recordedBy:
-        calving.recordedBy || calving.technicianId?.name || "System",
+        calving.recordedBy || calving.technicianId?.name || "Not recorded",
       dateEntered: calving.createdAt,
     }));
 
@@ -277,12 +275,12 @@ export default function LivestockProfile() {
   const handleExportCSV = () => {
     if (!animal) return;
     const summaryRows = [
-      ["Animal tag", animal.earTag || animal.animalId || "OTN-0241"],
-      ["Species", animal.species || "Dairy Cattle"],
-      ["Breed", animal.breed || "Holstein Cross"],
-      ["Sex", animal.gender || "Female"],
-      ["Reproductive status", animal.reproductiveStatus || "Pregnant"],
-      ["Owner", animal.farmerId?.name || "Marites Dela Cruz"],
+      ["Animal tag", animal.earTag || animal.animalId || "Not recorded"],
+      ["Species", animal.species || "Not recorded"],
+      ["Breed", animal.breed || "Not recorded"],
+      ["Sex", animal.gender || "Not recorded"],
+      ["Reproductive status", animal.reproductiveStatus || "Not recorded"],
+      ["Owner", animal.farmerId?.name || "Not recorded"],
       ["Owner location", getOwnerLocation(animal.farmerId?.address)],
     ];
     const recordRows = combinedRecords.map((record) => [
@@ -395,7 +393,7 @@ export default function LivestockProfile() {
         (currentTimestamp - new Date(latestInsemination.inseminationDate).getTime()) /
           (1000 * 60 * 60 * 24),
       )
-    : 32;
+    : null;
 
   const displayedRecords =
     showAllRecords || recordSearch.trim().length > 0
@@ -417,7 +415,7 @@ export default function LivestockProfile() {
           </button>
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-base font-extrabold text-base-content truncate">
-              Animal #{animal.earTag || animal.animalId || "OTN-0241"}
+              Animal #{animal.earTag || animal.animalId || "Not recorded"}
             </h1>
           </div>
         </div>
@@ -460,7 +458,7 @@ export default function LivestockProfile() {
           <div className="w-full lg:w-72 h-52 lg:h-48 rounded-2xl overflow-hidden shrink-0 bg-base-200 relative border border-base-300">
             <AnimalImageFallback
               imageUrl={animal.imageUrl || animal.photoUrl}
-              tag={animal.earTag || animal.animalId || "OTN-0241"}
+              tag={animal.earTag || animal.animalId || "Not recorded"}
               className="w-full h-full object-cover"
               iconSize={48}
             />
@@ -471,11 +469,11 @@ export default function LivestockProfile() {
             {/* Title + StatusBadge */}
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-2xl font-black text-base-content tracking-tight">
-                {animal.name || animal.earTag || "Bella"}
+                {animal.name || animal.earTag || "Unnamed animal"}
               </h2>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-success/20 bg-success/15 text-xs font-extrabold text-success">
                 <CheckCircle2 size={14} />
-                {animal.reproductiveStatus || "Pregnant"}
+                {animal.reproductiveStatus || "Not recorded"}
               </span>
             </div>
 
@@ -489,7 +487,7 @@ export default function LivestockProfile() {
                 <div className="min-w-0">
                   <p className="text-xs text-base-content/60 font-medium">Ear Tag</p>
                   <p className="text-sm font-bold text-base-content truncate">
-                    {animal.earTag || animal.animalId || "OTN-0241"}
+                    {animal.earTag || animal.animalId || "Not recorded"}
                   </p>
                 </div>
               </div>
@@ -515,7 +513,7 @@ export default function LivestockProfile() {
                 <div className="min-w-0">
                   <p className="text-xs text-base-content/60 font-medium">Species</p>
                   <p className="text-sm font-bold text-base-content truncate">
-                    {animal.species || "Dairy Cattle"}
+                    {animal.species || "Not recorded"}
                   </p>
                 </div>
               </div>
@@ -528,7 +526,7 @@ export default function LivestockProfile() {
                 <div className="min-w-0">
                   <p className="text-xs text-base-content/60 font-medium">Owner</p>
                   <p className="text-sm font-bold text-base-content truncate">
-                    {animal.farmerId?.name || "Marites Dela Cruz"}
+                    {animal.farmerId?.name || "Not recorded"}
                   </p>
                 </div>
               </div>
@@ -541,7 +539,7 @@ export default function LivestockProfile() {
                 <div className="min-w-0">
                   <p className="text-xs text-base-content/60 font-medium">Breed</p>
                   <p className="text-sm font-bold text-base-content truncate">
-                    {animal.breed || "Holstein Cross"}
+                    {animal.breed || "Not recorded"}
                   </p>
                 </div>
               </div>
@@ -572,6 +570,8 @@ export default function LivestockProfile() {
               <Edit3 size={15} /> Edit Profile
             </button>
 
+            {!isAdmin && (
+              <>
             {/* Add Record Dropdown */}
             <div
               className={`dropdown dropdown-end w-full ${isAddRecordMenuOpen ? "dropdown-open" : ""}`}
@@ -641,6 +641,8 @@ export default function LivestockProfile() {
                 </ul>
               )}
             </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -658,35 +660,34 @@ export default function LivestockProfile() {
               <p className="text-lg font-black text-base-content truncate mt-0.5">
                 {latestInsemination
                   ? fmtDate(latestInsemination.inseminationDate)
-                  : "May 12, 2025"}
+                  : "Not recorded"}
               </p>
               <p className="text-xs font-medium text-base-content/60">
                 {daysAgoInsemination != null
                   ? `${daysAgoInsemination} days ago`
-                  : "32 days ago"}
+                  : "No AI service date recorded"}
               </p>
             </div>
           </div>
 
           {/* PregnancyCard with next page navigation arrow */}
           <div
-            onClick={() =>
-              navigate(
-                isAdminPath
-                  ? `/admin/pregnancy-tracker/${id}`
-                  : `/technician/pregnancy-tracker/${id}`,
-              )
-            }
-            className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center justify-between gap-4 cursor-pointer hover:border-primary/60 transition-all hover:shadow-md group"
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                navigate(
-                  isAdminPath
-                    ? `/admin/pregnancy-tracker/${id}`
-                    : `/technician/pregnancy-tracker/${id}`,
-                );
+            onClick={() => {
+              if (!isAdmin) navigate("/technician/ledger");
+            }}
+            className={`bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center justify-between gap-4 group ${
+              isAdmin
+                ? ""
+                : "cursor-pointer hover:border-primary/60 hover:shadow-md transition-all"
+            }`}
+            role={isAdmin ? undefined : "button"}
+            tabIndex={isAdmin ? undefined : 0}
+            onKeyDown={(event) => {
+              if (
+                !isAdmin &&
+                (event.key === "Enter" || event.key === " ")
+              ) {
+                navigate("/technician/ledger");
               }
             }}
           >
@@ -699,14 +700,12 @@ export default function LivestockProfile() {
                   Pregnancy Stage
                 </p>
                 <p className="text-lg font-black text-base-content truncate mt-0.5">
-                  {animal.reproductiveStatus === "Pregnant"
-                    ? "7.5 months"
-                    : "7.5 months"}
+                  {animal.reproductiveStatus || "Not recorded"}
                 </p>
                 <p className="text-xs font-medium text-base-content/60">
-                  {animal.reproductiveStatus === "Pregnant"
-                    ? "Late Pregnancy"
-                    : "Late Pregnancy"}
+                  {latestInsemination?.pregnancy?.targetCalvingDate
+                    ? `Expected ${fmtDate(latestInsemination.pregnancy.targetCalvingDate)}`
+                    : "Pregnancy stage not recorded"}
                 </p>
               </div>
             </div>
@@ -725,12 +724,14 @@ export default function LivestockProfile() {
                 Health Status
               </p>
               <p className="text-lg font-black text-base-content truncate mt-0.5">
-                {activeWithdrawalRecord ? "Under Withdrawal" : "Good"}
+                {activeWithdrawalRecord
+                  ? "Under Withdrawal"
+                  : animal.healthStatus || "Not recorded"}
               </p>
               <p className="text-xs font-medium text-base-content/60">
                 {activeWithdrawalRecord
                   ? `Active until ${fmtDate(activeWithdrawalRecord.details.withdrawalEndDate)}`
-                  : "Active & Normal"}
+                  : "No active withdrawal warning"}
               </p>
             </div>
           </div>
@@ -749,23 +750,21 @@ export default function LivestockProfile() {
               <div className="flex justify-between items-center py-1">
                 <span className="text-base-content/60 font-medium">Date of Birth</span>
                 <span className="font-bold text-base-content">
-                  {fmtDate(animal.dateOfBirth || animal.birthDate) || "May 10, 2022"}
+                  {fmtDate(animal.dateOfBirth || animal.birthDate)}
                 </span>
               </div>
 
               <div className="flex justify-between items-center py-1 border-t border-base-200">
                 <span className="text-base-content/60 font-medium">Color / Markings</span>
                 <span className="font-bold text-base-content">
-                  {animal.colorMarkings || animal.color || "Brown & White"}
+                  {animal.colorMarkings || animal.color || "Not recorded"}
                 </span>
               </div>
 
               <div className="flex justify-between items-center py-1 border-t border-base-200">
                 <span className="text-base-content/60 font-medium">Weight</span>
                 <span className="font-bold text-base-content">
-                  {animal.weight
-                    ? `${animal.weight} kg`
-                    : "420 kg"}
+                  {animal.weight ? `${animal.weight} kg` : "Not recorded"}
                 </span>
               </div>
 
@@ -774,7 +773,7 @@ export default function LivestockProfile() {
                 <span className="font-bold text-base-content">
                   {animal.milkProduction
                     ? `${animal.milkProduction} L / day`
-                    : "16.5 L / day"}
+                    : "Not recorded"}
                 </span>
               </div>
             </div>
@@ -791,7 +790,7 @@ export default function LivestockProfile() {
               <div className="flex justify-between items-center py-1">
                 <span className="text-base-content/60 font-medium">Name</span>
                 <span className="font-bold text-base-content">
-                  Registered owner — {animal.farmerId?.name || "Marites Dela Cruz"}
+                  {animal.farmerId?.name || "Not recorded"}
                 </span>
               </div>
 
@@ -800,7 +799,7 @@ export default function LivestockProfile() {
                 <span className="font-bold text-base-content font-mono">
                   {animal.farmerId?.phoneNumber ||
                     animal.farmerId?.phone ||
-                    "0917 123 4567"}
+                    "Not recorded"}
                 </span>
               </div>
 
@@ -846,7 +845,7 @@ export default function LivestockProfile() {
                   placeholder="Search records..."
                   value={recordSearch}
                   onChange={(e) => setRecordSearch(e.target.value)}
-                  className="input input-sm border border-base-300 bg-base-200/80 text-base-content placeholder:text-base-content/50 pl-9 rounded-xl text-xs w-full focus:outline-none focus:border-primary focus:bg-base-100 transition-all"
+                  className="input input-sm border border-base-300 bg-base-200/80 text-base-content placeholder:text-base-content/50 pl-9 rounded-xl text-xs w-full focus:outline-none focus:border-primary focus:bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all"
                 />
               </div>
 
@@ -854,7 +853,7 @@ export default function LivestockProfile() {
                 aria-label="Filter animal records by type"
                 value={recordTypeFilter}
                 onChange={(e) => setRecordTypeFilter(e.target.value)}
-                className="select select-sm border border-base-300 bg-base-200/80 text-base-content rounded-xl text-xs font-semibold focus:outline-none focus:border-primary"
+                className="select select-sm border border-base-300 bg-base-200/80 text-base-content rounded-xl text-xs font-semibold focus:outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <option value="All">All record types</option>
                 <option value="AI">AI records</option>
@@ -908,7 +907,7 @@ export default function LivestockProfile() {
                         </td>
 
                         <td className="py-3.5 px-4 font-semibold text-base-content/80 whitespace-nowrap">
-                          {record.recordedBy || "Ana P."}
+                          {record.recordedBy || "Not recorded"}
                         </td>
 
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
@@ -952,26 +951,25 @@ export default function LivestockProfile() {
         }}
       />
 
-      <EditInseminationModal
-        isOpen={!!selectedInsemination}
-        onClose={() => setSelectedInsemination(null)}
-        insemination={selectedInsemination}
-        animalId={id}
-      />
-
       <ActivityDetailsModal
         isOpen={!!selectedActivity}
         onClose={() => setSelectedActivity(null)}
         activity={selectedActivity}
         onOpenSource={(activity) => {
-          if (!activity?.originId || isAdminPath) return;
+          if (!activity?.originId) return;
+          const requestPath = isAdmin
+            ? "/admin/requests"
+            : "/technician/requests";
+          const status = isAdmin ? "all" : "completed";
           navigate(
-            `/technician/requests?requestId=${activity.originId}&status=completed`,
+            `${requestPath}?requestId=${encodeURIComponent(activity.originId)}&status=${status}`,
           );
         }}
       />
 
-      <AddMedicalRecordModal
+      {!isAdmin && (
+        <>
+          <AddMedicalRecordModal
         key={medicalInitialType}
         isOpen={isAddMedicalModalOpen}
         onClose={() => setIsAddMedicalModalOpen(false)}
@@ -1016,6 +1014,8 @@ export default function LivestockProfile() {
           queryClient.invalidateQueries({ queryKey: ["medical", id] });
         }}
       />
+        </>
+      )}
     </div>
   );
 }

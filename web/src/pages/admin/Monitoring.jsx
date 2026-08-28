@@ -9,36 +9,36 @@ const StatCard = ({ icon, label, value, note }) => (
   <div className={ui.panelPadded}>
     <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+        <p className="text-[10px] font-black uppercase tracking-widest text-base-content/50">
           {label}
         </p>
-        <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+        <p className="text-2xl font-black text-base-content mt-1">
           {value ?? "—"}
         </p>
       </div>
-      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
+      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
         {icon}
       </div>
     </div>
-    {note && <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">{note}</p>}
+    {note && <p className="text-xs text-base-content/60 mt-3">{note}</p>}
   </div>
 );
 
 const HealthLine = ({ label, value }) => (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-3">
-    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</span>
-    <span className="text-sm font-black text-slate-900 dark:text-white">{value}</span>
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-200 p-3">
+    <span className="text-xs font-bold text-base-content/60">{label}</span>
+    <span className="text-sm font-black text-base-content">{value}</span>
   </div>
 );
 
 const ProgressRow = ({ label, value }) => (
   <div>
     <div className="flex items-center justify-between gap-3 text-xs font-bold">
-      <span className="text-slate-600 dark:text-slate-300">{label}</span>
-      <span className="text-slate-900 dark:text-white">{value}%</span>
+      <span className="text-base-content/70">{label}</span>
+      <span className="text-base-content">{value}%</span>
     </div>
-    <div className="mt-2 h-2 rounded-full bg-slate-100 dark:bg-slate-900 overflow-hidden">
-      <div className="h-full rounded-full bg-[#00643b]" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+    <div className="mt-2 h-2 rounded-full bg-base-200 overflow-hidden">
+      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
     </div>
   </div>
 );
@@ -132,33 +132,33 @@ export default function AdminMonitoring() {
 
       <main className={ui.main}>
         {error && (
-          <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-2xl p-4 flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
+          <div role="alert" className="alert alert-error alert-soft">
+            <p className="text-sm font-semibold text-error">
               Failed to load monitoring data.
             </p>
-            <button onClick={() => refetch()} className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold">
+            <button onClick={() => refetch()} className="btn btn-error btn-sm">
               Retry
             </button>
           </div>
         )}
         {!error && failedSources.length > 0 && (
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 flex flex-wrap items-start justify-between gap-3">
+          <div role="status" className="alert alert-warning alert-soft sm:alert-horizontal">
             <div>
-              <p className="text-sm font-black text-amber-800 dark:text-amber-200">
+              <p className="text-sm font-black text-warning">
                 Some monitoring sections did not load.
               </p>
-              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+              <p className="text-xs text-warning mt-1">
                 Failed widgets are marked unavailable so they are not confused with real zero counts.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {failedSources.map((source) => (
-                  <span key={source.label} className="rounded-full border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-slate-950/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-200" title={source.error}>
+                  <span key={source.label} className="badge badge-warning badge-soft">
                     {source.label}
                   </span>
                 ))}
               </div>
             </div>
-            <button onClick={() => refetch()} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold">
+            <button onClick={() => refetch()} className="btn btn-warning btn-sm">
               Retry
             </button>
           </div>
@@ -175,8 +175,8 @@ export default function AdminMonitoring() {
           {/* Panel 1: System and Data Health */}
           <section className={`${ui.panelPadded} space-y-4`}>
             <div>
-              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">System and Data Diagnostics</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Database completeness, backup schedules and synchronization queue</p>
+              <h2 className="text-sm font-black text-base-content uppercase tracking-wider">System and Data Diagnostics</h2>
+              <p className="text-xs text-base-content/60 mt-1">Database completeness, backup schedules and synchronization queue</p>
             </div>
             
             <div className="space-y-4">
@@ -193,53 +193,53 @@ export default function AdminMonitoring() {
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Support Tickets Queue</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Farmer helpdesk and technician support cases status</p>
+                  <h2 className="text-sm font-black text-base-content uppercase tracking-wider">Support Tickets Queue</h2>
+                  <p className="text-xs text-base-content/60 mt-1">Farmer helpdesk and technician support cases status</p>
                 </div>
-                <Link to="/admin/support-tickets" className="inline-flex items-center gap-1 text-xs font-bold text-[#00643b] dark:text-emerald-300 hover:underline shrink-0">
+                <Link to="/admin/support-tickets" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline shrink-0">
                   Open Tickets
                   <ArrowRight size={13} />
                 </Link>
               </div>
 
               <div className="grid grid-cols-3 gap-3 pt-2">
-                <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
-                  <LifeBuoy size={16} className="text-amber-600 dark:text-amber-400" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-3">Pending</p>
-                  <p className="text-xl font-black text-slate-900 dark:text-white mt-1">{isLoading ? "..." : supportPending}</p>
+                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                  <LifeBuoy size={16} className="text-warning" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-base-content/50 mt-3">Pending</p>
+                  <p className="text-xl font-black text-base-content mt-1">{isLoading ? "..." : supportPending}</p>
                 </div>
-                <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
-                  <Activity size={16} className="text-blue-600 dark:text-blue-400" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-3">In Progress</p>
-                  <p className="text-xl font-black text-slate-900 dark:text-white mt-1">{isLoading ? "..." : supportProgress}</p>
+                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                  <Activity size={16} className="text-info" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-base-content/50 mt-3">In Progress</p>
+                  <p className="text-xl font-black text-base-content mt-1">{isLoading ? "..." : supportProgress}</p>
                 </div>
-                <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
-                  <BarChart3 size={16} className="text-emerald-600 dark:text-emerald-400" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-3">Resolved</p>
-                  <p className="text-xl font-black text-slate-900 dark:text-white mt-1">{isLoading ? "..." : supportResolved}</p>
+                <div className="rounded-xl border border-base-300 bg-base-200 p-4">
+                  <BarChart3 size={16} className="text-primary" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-base-content/50 mt-3">Resolved</p>
+                  <p className="text-xl font-black text-base-content mt-1">{isLoading ? "..." : supportResolved}</p>
                 </div>
               </div>
             </div>
           </section>
         </div>
 
-        <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
-            <Activity size={16} className="text-emerald-600 dark:text-emerald-400" />
-            <h2 className="text-sm font-black text-slate-900 dark:text-white">Operational Alerts</h2>
+        <section className="bg-base-100 border border-base-300 rounded-2xl overflow-hidden ">
+          <div className="px-5 py-4 border-b border-base-300 flex items-center gap-2">
+            <Activity size={16} className="text-primary" />
+            <h2 className="text-sm font-black text-base-content">Operational Alerts</h2>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {isLoading ? (
-              <p className="p-5 text-sm text-slate-400">Loading alerts...</p>
+              <p className="p-5 text-sm text-base-content/50">Loading alerts...</p>
             ) : alerts.length === 0 ? (
-              <p className="p-5 text-sm text-slate-400">No monitoring alerts right now.</p>
+              <p className="p-5 text-sm text-base-content/50">No monitoring alerts right now.</p>
             ) : (
               alerts.map((alert, index) => (
                 <div key={`${alert.category || "alert"}-${index}`} className="p-5">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  <p className="text-sm font-bold text-base-content">
                     {alert.title || alert.category || "Monitoring alert"}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <p className="text-xs text-base-content/60 mt-1">
                     {alert.message || alert.description || "Review this item in the related registry."}
                   </p>
                 </div>

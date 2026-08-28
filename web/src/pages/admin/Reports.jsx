@@ -267,7 +267,7 @@ export default function Reports() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Analytics & Exporter Hub"
         subtitle="Compile certified veterinary accomplishments, landscape print DA templates, and analyze metrics"
@@ -280,41 +280,41 @@ export default function Reports() {
         
         {/* Dynamic Metric Ribbon */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 ">
+            <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <Layers size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoadingStats ? "..." : stats?.successRate || "—"}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Breeding Accomplishments Rate
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-purple-600 bg-purple-50 dark:bg-purple-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 ">
+            <div className="p-2.5 rounded-xl shrink-0 text-base-content/70 bg-base-200">
               <ClipboardCheck size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoadingStats ? "..." : (stats?.inseminations || 0) + (stats?.pregnancies || 0) + (stats?.calvings || 0)}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Total Logs Compiled
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-blue-600 bg-blue-50 dark:bg-blue-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 ">
+            <div className="p-2.5 rounded-xl shrink-0 text-base-content/70 bg-base-200">
               <TrendingUp size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoadingStats ? "..." : stats?.successRate || "—"}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Pregnancy Diagnosis Accuracy
               </div>
             </div>
@@ -325,21 +325,21 @@ export default function Reports() {
           
           {/* LEFT SECTION: Report Compilers Controls */}
           <div className="md:col-span-2 space-y-6">
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-5">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 pb-3 border-b border-slate-100 dark:border-slate-900/60">
-                <Sparkles size={14} className="text-[#00643b]" />
+            <div className="card bg-base-100 border border-base-300 rounded-2xl p-5  space-y-5">
+              <h3 className="text-xs font-black text-base-content/50 uppercase tracking-widest flex items-center gap-1.5 pb-3 border-b border-base-300">
+                <Sparkles size={14} className="text-primary" />
                 Compile Government Accomplishment Forms
               </h3>
 
               <div className="space-y-4 text-xs">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">
+                  <label className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1">
                     Report Type Template
                   </label>
                   <select
                     value={reportType}
                     onChange={(e) => setReportType(e.target.value)}
-                    className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold select select-bordered"
+                    className="w-full bg-base-200 border border-base-300 rounded-xl px-4 py-2.5 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary font-bold select select-bordered"
                   >
                     <option value="da-unified">Department of Agriculture Unified Accomplishment</option>
                     <option value="insemination-registry">Veterinary AI Insemination Logs</option>
@@ -349,13 +349,13 @@ export default function Reports() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-1">
+                    <label className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1 flex items-center gap-1">
                       <MapPin size={10} /> Barangay Sector
                     </label>
                     <select
                       value={barangay}
                       onChange={(e) => setBarangay(e.target.value)}
-                      className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold select select-bordered"
+                      className="w-full bg-base-200 border border-base-300 rounded-xl px-4 py-2.5 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary font-bold select select-bordered"
                     >
                       <option value="all">All Barangays</option>
                       {dynamicBarangays.map((brgy) => (
@@ -367,32 +367,32 @@ export default function Reports() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-1">
+                    <label className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1 flex items-center gap-1">
                       <Calendar size={10} /> Compilation Month
                     </label>
                     <input
                       type="month"
                       value={compilationMonth}
                       onChange={(e) => setCompilationMonth(e.target.value)}
-                      className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2 outline-none font-bold input input-bordered text-xs"
+                      className="w-full bg-base-200 border border-base-300 rounded-xl px-4 py-2 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary font-bold input input-bordered text-xs"
                       required
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-900">
+              <div className="flex justify-end gap-2 pt-3 border-t border-base-300">
                 <button
                   onClick={() => handleGenerateReport("print")}
                   disabled={isCompiling}
-                  className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1 rounded-xl px-4 cursor-pointer"
+                  className="btn btn-sm btn-outline border-base-300 text-xs font-bold gap-1 rounded-xl px-4 cursor-pointer"
                 >
                   <Printer size={13} /> Print Official Form
                 </button>
                 <button
                   onClick={() => handleGenerateReport("csv")}
                   disabled={isCompiling}
-                  className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-black gap-1 rounded-xl px-4 cursor-pointer shadow-sm"
+                  className="btn btn-primary btn-sm"
                 >
                   <Download size={13} /> {isCompiling ? "Compiling..." : "Export CSV File"}
                 </button>
@@ -402,21 +402,21 @@ export default function Reports() {
 
           {/* RIGHT SECTION: Roster Guidelines */}
           <div className="space-y-6 text-xs">
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
-              <h4 className="text-[10px] font-black text-[#00643b] uppercase tracking-widest flex items-center gap-1">
+            <div className="card bg-base-100 border border-base-300 rounded-2xl p-5  space-y-3">
+              <h4 className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
                 <Award size={12} /> Standard Compliance
               </h4>
-              <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-relaxed text-[9px]">
+              <p className="text-base-content/50 font-bold uppercase tracking-wider leading-relaxed text-[9px]">
                 Complies with national standards under the Unified National Artificial Insemination Program guidelines.
               </p>
-              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-900/60 font-semibold text-slate-500">
+              <div className="space-y-2 pt-2 border-t border-base-300 font-semibold text-base-content/60">
                 <div className="flex justify-between">
                   <span>Authorizing Agency:</span>
-                  <span className="font-extrabold text-slate-700 dark:text-slate-300">DA - RFU VI</span>
+                  <span className="font-extrabold text-base-content/75">DA - RFU VI</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Province Sector:</span>
-                  <span className="font-extrabold text-slate-700 dark:text-slate-300">Iloilo - Oton</span>
+                  <span className="font-extrabold text-base-content/75">Iloilo - Oton</span>
                 </div>
               </div>
             </div>

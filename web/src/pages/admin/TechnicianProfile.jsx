@@ -16,6 +16,8 @@ import {
   ClipboardList,
   AlertCircle,
 } from "lucide-react";
+import { Badge } from "../../components/ui/uiClasses";
+import UserAvatar from "../../components/ui/UserAvatar";
 
 export default function TechnicianProfile() {
   const { id } = useParams();
@@ -103,7 +105,7 @@ export default function TechnicianProfile() {
           farmer: t.farmerId?.name || "N/A",
           animal: t.animalId?.earTag || "N/A",
           status: t.status || "pending",
-          color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+          color: "text-base-content/70 bg-base-200",
         })),
         ...assignedHealth.map((t) => ({
           id: t._id,
@@ -112,7 +114,7 @@ export default function TechnicianProfile() {
           farmer: t.farmerId?.name || "N/A",
           animal: t.animalId?.earTag || "N/A",
           status: t.status || "pending",
-          color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
+          color: "text-base-content/70 bg-base-200",
         })),
       ].sort((a, b) => new Date(b.date) - new Date(a.date));
     },
@@ -141,31 +143,116 @@ export default function TechnicianProfile() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-9 h-9 border-[3px] border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
-          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest animate-pulse">
-            Loading officer profile…
-          </p>
-        </div>
+      <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200">
+        <header className="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="skeleton w-8 h-8 rounded-lg" />
+            <div className="space-y-1.5">
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton h-2 w-24" />
+            </div>
+          </div>
+        </header>
+
+        <main className="p-6 max-w-7xl w-full mx-auto space-y-6 flex-1">
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
+            <aside className="space-y-4">
+              <div className="bg-base-100 border border-base-300 rounded-2xl p-5 space-y-5 shadow-sm">
+                <div className="flex flex-col items-center text-center space-y-3">
+                  <div className="skeleton w-20 h-20 rounded-2xl" />
+                  <div className="space-y-2 flex flex-col items-center">
+                    <div className="skeleton h-4 w-32" />
+                    <div className="skeleton h-3 w-24" />
+                  </div>
+                </div>
+                <div className="space-y-3 border-t border-base-300 pt-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="skeleton w-4 h-4 rounded-md shrink-0" />
+                      <div className="skeleton h-3 flex-1" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-base-100 border border-base-300 rounded-2xl p-5 space-y-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="skeleton h-4 w-28" />
+                  <div className="skeleton h-4 w-10 rounded" />
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <div className="skeleton h-2 w-16 mb-2" />
+                    <div className="skeleton h-4 w-full" />
+                  </div>
+                  <div className="border-t border-base-300 pt-3">
+                    <div className="skeleton h-2 w-24 mb-2" />
+                    <div className="flex gap-2">
+                      <div className="skeleton h-6 w-20 rounded-md" />
+                      <div className="skeleton h-6 w-16 rounded-md" />
+                    </div>
+                  </div>
+                  <div className="border-t border-base-300 pt-3">
+                    <div className="skeleton h-2 w-24 mb-2" />
+                    <div className="flex flex-wrap gap-2">
+                      <div className="skeleton h-6 w-16 rounded-md" />
+                      <div className="skeleton h-6 w-20 rounded-md" />
+                      <div className="skeleton h-6 w-24 rounded-md" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-sm">
+                    <div className="skeleton w-8 h-8 rounded-lg shrink-0" />
+                    <div className="space-y-2 flex-1">
+                      <div className="skeleton h-5 w-10" />
+                      <div className="skeleton h-2 w-16" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 overflow-hidden shadow-sm">
+                <div className="skeleton h-4 w-48 mb-6" />
+                <div className="space-y-4">
+                  <div className="skeleton h-8 w-full rounded-none border-b border-base-200 pb-2" />
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex justify-between items-center py-2">
+                      <div className="skeleton h-3 w-1/4" />
+                      <div className="skeleton h-3 w-1/5" />
+                      <div className="skeleton h-3 w-1/6" />
+                      <div className="skeleton h-3 w-1/6" />
+                      <div className="skeleton h-5 w-16 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
 
   if (error || !tech) {
     return (
-      <div className="flex-1 flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900 p-6">
+      <div className="flex-1 flex items-center justify-center h-screen bg-base-200 p-6">
         <div className="text-center space-y-4 max-w-sm">
-          <AlertCircle size={36} className="text-rose-400 mx-auto" />
-          <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">
+          <AlertCircle size={36} className="text-error mx-auto" />
+          <h2 className="text-base font-bold text-base-content">
             Officer Profile Not Found
           </h2>
-          <p className="text-sm text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-base-content/50">
             Could not retrieve details for this technical officer.
           </p>
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#00643b] hover:bg-[#004d2e] text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+            className="btn btn-sm"
           >
             <ChevronLeft size={14} /> Back to Roster
           </button>
@@ -174,31 +261,22 @@ export default function TechnicianProfile() {
     );
   }
 
-  const initials = tech.name
-    ? tech.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : "VO";
-
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       {/* Identity Top Header Banner */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-950/90 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-6 h-16 flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-base-100/90 backdrop-blur border-b border-base-300 px-6 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-base-200 text-base-content/70 hover:text-base-content/90 transition-colors cursor-pointer"
           >
             <ChevronLeft size={16} />
           </button>
           <div>
-            <h1 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+            <h1 className="text-sm font-bold text-base-content flex items-center gap-1.5">
               Officer: {tech.name}
             </h1>
-            <p className="text-[10px] text-slate-400 font-medium">
+            <p className="text-[10px] text-base-content/70 font-medium">
               Registered Roster ID · {tech._id}
             </p>
           </div>
@@ -210,85 +288,91 @@ export default function TechnicianProfile() {
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
           {/* LEFT SIDEBAR: Personal Details */}
           <aside className="space-y-4">
-            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden p-5 space-y-5">
+            <div className="bg-base-100 border border-base-300 rounded-2xl overflow-hidden p-5 space-y-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex flex-col items-center text-center space-y-3">
-                <div className="w-20 h-20 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] dark:text-emerald-400 flex items-center justify-center font-black text-2xl shadow-inner">
-                  {initials}
+                <div className="flex justify-center">
+                  <UserAvatar
+                    name={tech.name || "Technician"}
+                    imageUrl={tech.imageUrl || tech.profileImage}
+                    size={80}
+                    sizeClass="w-20 h-20"
+                    className="rounded-full shadow-inner text-2xl"
+                  />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-200">
+                  <h3 className="text-base font-extrabold text-base-content">
                     {tech.name}
                   </h3>
-                  <span className="inline-block text-[9px] font-black uppercase bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded-md text-slate-400 mt-1">
+                  <span className="inline-block text-[9px] font-black uppercase bg-base-200 px-2 py-0.5 rounded-md text-base-content/80 mt-1">
                     {tech.specialty || "Veterinary Officer"}
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-slate-100 dark:border-slate-900 pt-4 text-xs font-semibold text-slate-500">
+              <div className="space-y-3 border-t border-base-300 pt-4 text-xs font-semibold text-base-content/80">
                 <div className="flex items-center gap-3">
-                  <Phone size={14} className="text-slate-400 shrink-0" />
-                  <span className="font-mono text-slate-700 dark:text-slate-300">
+                  <Phone size={14} className="text-base-content/80 shrink-0" />
+                  <span className="font-mono text-base-content/90">
                     {tech.phoneNumber || "No contact"}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Mail size={14} className="text-slate-400 shrink-0" />
-                  <span className="truncate text-slate-700 dark:text-slate-300">
+                  <Mail size={14} className="text-base-content/80 shrink-0" />
+                  <span className="truncate text-base-content/90">
                     {tech.email || "No email"}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <MapPin size={14} className="text-slate-400 shrink-0" />
-                  <span className="text-slate-700 dark:text-slate-300">
+                  <MapPin size={14} className="text-base-content/80 shrink-0" />
+                  <span className="text-base-content/90">
                     {tech.address?.barangay || "Oton"}, Iloilo
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Briefcase size={14} className="text-slate-400 shrink-0" />
-                  <span className="text-slate-700 dark:text-slate-300">
+                  <Briefcase size={14} className="text-base-content/80 shrink-0" />
+                  <span className="text-base-content/90">
                     Attending Professional
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden p-5 space-y-5">
+            <div className="bg-base-100 border border-base-300 rounded-2xl overflow-hidden p-5 space-y-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black uppercase text-slate-400 flex items-center gap-1.5">
-                  <Activity size={14} className="text-[#00643b]" />
+                <h3 className="text-xs font-black uppercase text-base-content/80 flex items-center gap-1.5">
+                  <Activity size={14} className="text-primary" />
                   Dispatch Profile
                 </h3>
                 <button
                   onClick={openEditDispatch}
-                  className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 px-2 py-1 bg-emerald-50 dark:bg-emerald-950/30 rounded"
+                  className="text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/15 px-2 py-1 bg-primary/10 rounded"
                 >
                   Edit
                 </button>
               </div>
 
-              <div className="space-y-4 text-xs font-semibold text-slate-500">
+              <div className="space-y-4 text-xs font-semibold text-base-content/80">
                 <div>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                  <span className="block text-[9px] font-bold text-base-content/80 uppercase tracking-widest mb-1">
                     Status
                   </span>
                   <div className="flex items-center gap-2">
                     <div
-                      className={`w-2 h-2 rounded-full ${tech.dispatchProfile?.acceptsNewRequests ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`}
+                      className={`status ${tech.dispatchProfile?.acceptsNewRequests ? "status-success" : "status-neutral"}`}
                     />
-                    <span className="text-slate-700 dark:text-slate-300">
+                    <span className="text-base-content/90">
                       {tech.dispatchProfile?.acceptsNewRequests
                         ? "Accepting Requests"
                         : "Not Accepting Requests"}
                     </span>
-                    <span className="ml-auto text-slate-400">
+                    <span className="ml-auto text-base-content/80">
                       ({tech.dispatchProfile?.availabilityStatus || "off_duty"})
                     </span>
                   </div>
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-slate-900 pt-3">
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+                <div className="border-t border-base-300 pt-3">
+                  <span className="block text-[9px] font-bold text-base-content/80 uppercase tracking-widest mb-2 items-center justify-between">
                     Service Municipalities
                   </span>
 
@@ -296,21 +380,21 @@ export default function TechnicianProfile() {
                   (!tech.dispatchProfile?.serviceMunicipalities ||
                     tech.dispatchProfile?.serviceMunicipalities?.length ===
                       0) ? (
-                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3">
+                    <div role="status" className="alert alert-warning alert-soft items-start">
                       <div className="flex gap-2">
                         <AlertCircle
                           size={14}
-                          className="text-amber-500 shrink-0"
+                          className="text-warning shrink-0"
                         />
                         <div>
-                          <span className="block text-amber-800 dark:text-amber-300 text-xs font-bold mb-1">
+                          <span className="block text-warning text-xs font-bold mb-1">
                             Legacy Fallback Detected
                           </span>
-                          <span className="block text-[10px] text-amber-700/80 dark:text-amber-400/80 mb-2">
+                          <span className="block text-[10px] text-warning mb-2">
                             This technician relies on an unverified legacy home
                             address for dispatch.
                           </span>
-                          <span className="inline-flex items-center gap-1 bg-white dark:bg-black/20 text-amber-700 px-2 py-1 rounded text-[10px] font-bold border border-amber-200/50">
+                          <span className="inline-flex items-center gap-1 bg-base-100 text-warning px-2 py-1 rounded text-[10px] font-bold border border-warning/20">
                             {
                               tech.dispatchProfile.legacyCoverageFallback
                                 .municipalityName
@@ -327,14 +411,14 @@ export default function TechnicianProfile() {
                           (m, i) => (
                             <span
                               key={i}
-                              className="px-2 py-1 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-md border border-slate-200 dark:border-slate-800"
+                              className="px-2 py-1 bg-base-200 text-base-content/90 rounded-md border border-base-300"
                             >
                               {m.municipalityName}
                             </span>
                           ),
                         )
                       ) : (
-                        <span className="text-slate-400 italic">
+                        <span className="text-base-content/70 italic">
                           No official municipalities assigned
                         </span>
                       )}
@@ -342,8 +426,8 @@ export default function TechnicianProfile() {
                   )}
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-slate-900 pt-3">
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+                <div className="border-t border-base-300 pt-3">
+                  <span className="block text-[9px] font-bold text-base-content/80 uppercase tracking-widest mb-2 items-center justify-between">
                     Service Capabilities
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -351,13 +435,13 @@ export default function TechnicianProfile() {
                       tech.dispatchProfile.serviceCapabilities.map((c, i) => (
                         <span
                           key={i}
-                          className="px-2 py-1 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-200 dark:border-emerald-800/30 font-bold"
+                          className="px-2 py-1 bg-primary/10 text-primary rounded-md border border-primary/20 font-bold"
                         >
                           {c}
                         </span>
                       ))
                     ) : (
-                      <span className="text-slate-400 italic">
+                      <span className="text-base-content/70 italic">
                         No capabilities defined
                       </span>
                     )}
@@ -375,38 +459,42 @@ export default function TechnicianProfile() {
                 {
                   label: "AI Assignments",
                   val: stats.total,
-                  color: "text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20",
+                  color: "text-primary bg-primary/10",
+                  borderColor: "border-primary",
                   icon: <Layers size={14} />,
                 },
                 {
                   label: "Completed Tasks",
                   val: stats.completed,
-                  color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
+                  color: "text-success bg-success/10",
+                  borderColor: "border-success",
                   icon: <CheckCircle size={14} />,
                 },
                 {
                   label: "Pending Dispatches",
                   val: stats.pending,
-                  color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+                  color: "text-warning bg-warning/10",
+                  borderColor: "border-warning",
                   icon: <Clock size={14} />,
                 },
                 {
                   label: "Completion Rate",
                   val: stats.successRate,
-                  color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+                  color: "text-info bg-info/10",
+                  borderColor: "border-info",
                   icon: <Sparkles size={14} />,
                 },
               ].map((stat, idx) => (
                 <div
                   key={idx}
-                  className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex items-center gap-3 shadow-xs"
+                  className={`bg-base-100 border-0 border-l-4 ${stat.borderColor} p-4 rounded-xl flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow`}
                 >
                   <div className={`p-2 rounded-lg shrink-0 ${stat.color}`}>
                     {stat.icon}
                   </div>
                   <div>
                     <div className="text-lg font-black">{stat.val}</div>
-                    <div className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mt-0.5">
+                    <div className="text-[9px] font-bold uppercase text-base-content/80 tracking-wider mt-0.5">
                       {stat.label}
                     </div>
                   </div>
@@ -415,16 +503,16 @@ export default function TechnicianProfile() {
             </div>
 
             {/* Task Log Table */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs overflow-hidden">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
-                <ClipboardList size={14} className="text-[#00643b]" />
+            <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-xs font-black text-base-content/80 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+                <ClipboardList size={14} className="text-primary" />
                 Attending Service & Dispatch History
               </h3>
 
               <div className="overflow-x-auto">
                 <table className="table w-full border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
+                    <tr className="bg-base-200 border-b border-base-300 text-base-content/80 text-[11px] font-bold uppercase tracking-wider select-none">
                       <th className="p-3 pl-4">Service Type</th>
                       <th className="p-3">Client Farmer</th>
                       <th className="p-3">Cow Ear Tag</th>
@@ -432,12 +520,12 @@ export default function TechnicianProfile() {
                       <th className="p-3 pr-4 text-center">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                  <tbody className="divide-y divide-base-300 text-xs">
                     {tasks.length === 0 ? (
                       <tr>
                         <td
                           colSpan={5}
-                          className="text-center p-8 text-slate-400 dark:text-slate-500 font-medium"
+                          className="text-center p-8 text-base-content/80 font-medium"
                         >
                           No veterinary dispatch assignments logged.
                         </td>
@@ -446,7 +534,7 @@ export default function TechnicianProfile() {
                       tasks.map((task) => (
                         <tr
                           key={task.id}
-                          className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors"
+                          className="hover:bg-base-200/70 transition-colors"
                         >
                           <td className="p-3 pl-4 font-bold flex items-center gap-2">
                             <span
@@ -456,13 +544,13 @@ export default function TechnicianProfile() {
                             </span>
                             <span>{task.type}</span>
                           </td>
-                          <td className="p-3 font-semibold text-slate-800 dark:text-slate-200">
+                          <td className="p-3 font-semibold text-base-content">
                             {task.farmer}
                           </td>
-                          <td className="p-3 font-extrabold text-[#00643b] dark:text-[#10b981]">
+                          <td className="p-3 font-extrabold text-primary">
                             {task.animal}
                           </td>
-                          <td className="p-3 font-medium text-slate-500">
+                          <td className="p-3 font-medium text-base-content/90">
                             {new Date(task.date).toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric",
@@ -470,17 +558,9 @@ export default function TechnicianProfile() {
                             })}
                           </td>
                           <td className="p-3 pr-4 text-center">
-                            <span
-                              className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border ${
-                                ["done", "completed", "resolved"].includes(
-                                  task.status?.toLowerCase(),
-                                )
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
-                                  : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
-                              }`}
-                            >
+                            <Badge status={task.status}>
                               {task.status}
-                            </span>
+                            </Badge>
                           </td>
                         </tr>
                       ))
@@ -501,17 +581,17 @@ export default function TechnicianProfile() {
         >
           <form
             onSubmit={handleEditDispatchSubmit}
-            className="card w-full max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4"
+            className="card w-full max-w-md bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3">
-              <h3 className="text-sm font-black uppercase text-slate-400">
+            <div className="flex items-center justify-between border-b border-base-300 pb-3">
+              <h3 className="text-sm font-black uppercase text-base-content/80">
                 Edit Dispatch Profile
               </h3>
               <button
                 type="button"
                 onClick={() => setIsEditDispatchOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-400"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-base-200 text-base-content/70"
               >
                 ✕
               </button>
@@ -519,7 +599,7 @@ export default function TechnicianProfile() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-bold text-base-content/90 mb-2">
                   Service Capabilities
                 </label>
                 <div className="space-y-2">
@@ -527,7 +607,7 @@ export default function TechnicianProfile() {
                     (cap) => (
                       <label
                         key={cap}
-                        className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400"
+                        className="flex items-center gap-2 text-sm text-base-content/90"
                       >
                         <input
                           type="checkbox"
@@ -541,7 +621,7 @@ export default function TechnicianProfile() {
                               );
                             }
                           }}
-                          className="rounded border-slate-300 text-[#00643b] focus:ring-[#00643b]"
+                          className="rounded border-base-300 text-primary focus:ring-primary"
                         />
                         {cap.replace("_", " ")}
                       </label>
@@ -549,24 +629,24 @@ export default function TechnicianProfile() {
                   )}
                 </div>
               </div>
-              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+              <p className="text-xs text-warning font-medium">
                 Note: Editing municipalities requires manual PSGC updates. Use
                 the migration script or update via API for now.
               </p>
             </div>
 
-            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-900">
+            <div className="pt-4 flex items-center justify-end gap-3 border-t border-base-300">
               <button
                 type="button"
                 onClick={() => setIsEditDispatchOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                className="px-4 py-2 text-xs font-bold text-base-content/80 hover:text-base-content transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={dispatchMutation.isPending}
-                className="px-5 py-2.5 bg-[#00643b] hover:bg-[#004d2e] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-colors disabled:opacity-50"
+                className="btn btn-primary btn-sm"
               >
                 {dispatchMutation.isPending ? "Saving..." : "Save Changes"}
               </button>

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { SignedIn, SignedOut, useClerk, useAuth } from "@clerk/clerk-react";
 
 // Utilities
@@ -31,7 +31,11 @@ const BarangayInsights = lazy(() => import("./pages/admin/BarangayInsights"));
 const SupportTickets = lazy(() => import("./pages/admin/SupportTickets"));
 const AuditLogs = lazy(() => import("./pages/admin/AuditLogs"));
 const ArchivedRecords = lazy(() => import("./pages/admin/ArchivedRecords"));
-const PregnancyTracker = lazy(() => import("./pages/admin/PregnancyTracker"));
+const AdminPregnancyOversight = lazy(() =>
+  import("./pages/admin/AdminPregnancyOversight"),
+);
+const AdminWorkQueue = lazy(() => import("./pages/admin/AdminWorkQueue"));
+const AdminCalvings = lazy(() => import("./pages/admin/AdminCalvings"));
 
 // Technician Pages
 const TechnicianDashboard = lazy(
@@ -54,9 +58,6 @@ const TechMyProfile = lazy(() => import("./pages/technician/Profile"));
 const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
 const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
 const TechnicianSchedule = lazy(() => import("./pages/technician/Schedule"));
-const TechnicianRequestDetails = lazy(
-  () => import("./pages/technician/RequestDetails"),
-);
 const TechnicianRequests = lazy(() => import("./pages/technician/Requests"));
 const TechnicianWorkQueue = lazy(() => import("./pages/technician/WorkQueue"));
 const BreedingLedger = lazy(() => import("./pages/technician/BreedingLedger"));
@@ -75,6 +76,17 @@ const LoadingView = () => (
     </div>
   </div>
 );
+function LegacyTechnicianRequestDetailsRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  const requestId = params.get("requestId");
+  const target = requestId
+    ? `/technician/requests?requestId=${encodeURIComponent(requestId)}&status=all`
+    : "/technician/requests?status=all";
+
+  return <Navigate to={target} replace />;
+}
+
 
 function App() {
   const { signOut } = useClerk();
@@ -182,9 +194,18 @@ function App() {
               <Route path="technicians" element={<Technicians />} />
               <Route path="technicians/:id" element={<TechnicianProfile />} />
               <Route path="livestock" element={<Livestock />} />
-              <Route path="livestock/:id" element={<LivestockProfile />} />
-              <Route path="pregnancy-tracker/:id" element={<PregnancyTracker />} />
-              <Route path="pregnancy-tracker" element={<PregnancyTracker />} />
+              <Route
+                path="livestock/:id"
+                element={<LivestockProfile role="admin" />}
+              />
+              <Route
+                path="pregnancy-tracker/:id"
+                element={<AdminPregnancyOversight />}
+              />
+              <Route
+                path="pregnancy-tracker"
+                element={<AdminPregnancyOversight />}
+              />
               <Route path="inseminations" element={<Inseminations />} />
               <Route path="users" element={<Users />} />
               <Route path="settings" element={<AdminSettings />} />
@@ -194,9 +215,12 @@ function App() {
               <Route path="support-tickets" element={<SupportTickets />} />
               <Route path="audit-logs" element={<AuditLogs />} />
               <Route path="archived" element={<ArchivedRecords />} />
-              <Route path="requests" element={<TechnicianRequests />} />
-              <Route path="work-queue" element={<TechnicianWorkQueue />} />
-              <Route path="newborns" element={<Newborns />} />
+              <Route
+                path="requests"
+                element={<TechnicianRequests role="admin" />}
+              />
+              <Route path="work-queue" element={<AdminWorkQueue />} />
+              <Route path="newborns" element={<AdminCalvings />} />
             </Route>
 
             {/* Protected Technician Routes */}
@@ -219,9 +243,18 @@ function App() {
               <Route path="farmers" element={<FarmersDirectory />} />
               <Route path="farmers/:id" element={<FarmerProfile />} />
               <Route path="animals" element={<TechnicianAnimals />} />
-              <Route path="animals/:id" element={<LivestockProfile />} />
-              <Route path="pregnancy-tracker/:id" element={<PregnancyTracker />} />
-              <Route path="pregnancy-tracker" element={<PregnancyTracker />} />
+              <Route
+                path="animals/:id"
+                element={<LivestockProfile role="technician" />}
+              />
+              <Route
+                path="pregnancy-tracker/:id"
+                element={<Navigate to="/technician/ledger" replace />}
+              />
+              <Route
+                path="pregnancy-tracker"
+                element={<Navigate to="/technician/ledger" replace />}
+              />
               <Route
                 path="inseminations"
                 element={<TechnicianInseminations />}
@@ -237,9 +270,12 @@ function App() {
               <Route path="schedule" element={<TechnicianSchedule />} />
               <Route
                 path="schedule/details"
-                element={<TechnicianRequestDetails />}
+                element={<LegacyTechnicianRequestDetailsRedirect />}
               />
-              <Route path="requests" element={<TechnicianRequests />} />
+              <Route
+                path="requests"
+                element={<TechnicianRequests role="technician" />}
+              />
               <Route path="work-queue" element={<TechnicianWorkQueue />} />
               <Route path="moowie" element={<Moowie />} />
               <Route path="settings" element={<TechSettings />} />

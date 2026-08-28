@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -27,6 +27,15 @@ import { toast } from "sonner";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
 import { getClaimType } from "../../constants/technicianWorkflow";
+import {
+  invalidateAdminReassignmentQueries,
+  reassignRequest,
+} from "../../services/adminRequestsService";
+import AdminRequestActions from "./AdminRequestActions";
+import {
+  WEB_ROLES,
+  getRequestActionPolicy,
+} from "../../constants/webRoles";
 
 const inputClass = `input input-bordered w-full h-11 bg-base-100 text-sm font-medium text-base-content placeholder:text-base-content/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`;
 const selectClass = `select select-bordered w-full h-11 bg-base-100 text-sm font-medium text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`;
@@ -89,9 +98,11 @@ const RequestActionModal = ({
   onClose,
   task: taskData,
   onSuccess,
-  isAdmin,
+  role = WEB_ROLES.TECHNICIAN,
 }) => {
   const queryClient = useQueryClient();
+  const actionPolicy = getRequestActionPolicy(role);
+  const { isAdmin } = actionPolicy;
 
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -103,7 +114,7 @@ const RequestActionModal = ({
   const [sireCode, setSireCode] = useState("");
   const [estrus, setEstrus] = useState("Natural");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedTech, setSelectedTech] = useState("");
+  const technicianSelectRef = useRef(null);
 
   const serviceType = taskData?.type;
   const isHealth = serviceType === "health";
@@ -122,6 +133,9 @@ const RequestActionModal = ({
   const isArchived = ["rejected", "cancelled"].includes(
     taskData?.status?.toLowerCase(),
   );
+  const isCancellationRequested =
+    (taskData?.cancellationStatus || taskData?.raw?.cancellationStatus) ===
+    "requested";
 
   const { data: dbUser } = useQuery({
     queryKey: ["technician", "profile-me"],
@@ -129,7 +143,7 @@ const RequestActionModal = ({
       const res = await axiosInstance.get("/technician/profile");
       return res.data || {};
     },
-    enabled: isOpen && !isAdmin,
+    enabled: isOpen && actionPolicy.isTechnician,
   });
 
   const { data: technicians = [] } = useQuery({
@@ -138,7 +152,7 @@ const RequestActionModal = ({
       const res = await axiosInstance.get("/user?role=technician");
       return Array.isArray(res.data) ? res.data : res.data?.users || [];
     },
-    enabled: isOpen && !!isAdmin,
+    enabled: isOpen && actionPolicy.canReassign,
   });
 
   const { data: scheduleData } = useQuery({
@@ -177,7 +191,11 @@ const RequestActionModal = ({
           Boolean(request.scheduledDate || request.raw?.scheduledDate),
       );
     },
-    enabled: isOpen && isApproved && Boolean(scheduledDate) && !isAdmin,
+    enabled:
+      isOpen &&
+      isApproved &&
+      Boolean(scheduledDate) &&
+      actionPolicy.canSchedule,
   });
 
   const scheduleConflict = useMemo(() => {
@@ -264,9 +282,13 @@ const RequestActionModal = ({
     taskData?.raw?.approvedBy?.name ||
     taskData?.raw?.handledBy?.name ||
     (assignedTechId ? "another technician" : null);
+  const canAdminReassign =
+    Boolean(actionPolicy.canReassign && assignedTechId) &&
+    !isCompleted &&
+    !isArchived;
 
   const isAssignedToOther =
-    !isAdmin &&
+    actionPolicy.isTechnician &&
     assignedTechId &&
     dbUser?._id &&
     String(assignedTechId) !== String(dbUser._id);
@@ -276,7 +298,7 @@ const RequestActionModal = ({
     isCompleted ||
     isArchived ||
     isAssignedToOther ||
-    !!isAdmin ||
+    actionPolicy.readOnlyClinical ||
     isUnsupportedService;
 
   useEffect(() => {
@@ -333,15 +355,6 @@ const RequestActionModal = ({
       setSireCode(taskData.raw?.sireCode || "");
       setEstrus(taskData.raw?.estrus || "Natural");
 
-      const rawTechId =
-        taskData.raw?.approvedBy?._id ||
-        taskData.raw?.approvedBy ||
-        taskData.raw?.handledBy?._id ||
-        taskData.raw?.handledBy ||
-        "";
-      setSelectedTech(
-        typeof rawTechId === "object" ? rawTechId._id : rawTechId,
-      );
     }
   }, [taskData, isOpen]);
 
@@ -381,7 +394,7 @@ const RequestActionModal = ({
     ? humanizeValue(taskData.raw?.requestType, "Health Assistance")
     : taskData.serviceLabel || "Artificial Insemination";
   const submittedAt = taskData.createdAt || taskData.raw?.createdAt;
-  const isAvailablePreview = isPending && !isAdmin;
+  const isAvailablePreview = isPending && actionPolicy.isTechnician;
   const contactIsUnlocked = !isPending || Boolean(assignedTechId);
   const scheduledVisitValue =
     taskData.scheduledDate ||
@@ -403,9 +416,11 @@ const RequestActionModal = ({
     !Number.isNaN(comparedVisitDay.getTime()) &&
     comparedVisitDay > todayForVisit,
   );
-  const canRecordService = isInProgress && !isFutureVisit;
+  const canRecordService =
+    actionPolicy.canComplete && isInProgress && !isFutureVisit;
 
   const handleClaimTask = async () => {
+    if (!actionPolicy.canClaim) return;
     const claimType = getClaimType(taskData.queueType || taskData.type);
     if (!claimType) {
       toast.error("This request cannot be claimed from the service queue.");
@@ -436,6 +451,7 @@ const RequestActionModal = ({
   };
 
   const handleRejectTask = () => {
+    if (!actionPolicy.canCancelOwnRequest) return;
     if (isUnsupportedService) {
       toast.error(
         "Open this service from its official workflow detail screen.",
@@ -474,6 +490,7 @@ const RequestActionModal = ({
   };
 
   const handleAction = () => {
+    if (!actionPolicy.isTechnician) return;
     if (isUnsupportedService) {
       toast.error(
         "Open this service from its official workflow detail screen.",
@@ -560,57 +577,75 @@ const RequestActionModal = ({
     );
   };
 
-  const handleAdminAssign = () => {
+  const handleAdminAssign = async () => {
+    if (!actionPolicy.canReassign || !canAdminReassign) return;
     if (isUnsupportedService) {
       toast.error(
         "Open this service from its official workflow detail screen.",
       );
       return;
     }
+    const selectedTech = technicianSelectRef.current?.value || "";
     if (!selectedTech) {
       toast.error("Please select a technician first.");
       return;
     }
-    const endpoint = isHealth
-      ? `/health-request/${taskData.id}/status`
-      : `/ai-request/${taskData.id}/status`;
-
-    const body = isHealth
-      ? {
-          status: scheduledDate ? "scheduled" : "in-progress",
-          handledBy: selectedTech,
-          scheduledDate: combinedScheduledDate || undefined,
-          technicianNote: note || "Assigned by Administrator.",
-        }
-      : {
-          status: scheduledDate ? "scheduled" : "approved",
-          approvedBy: selectedTech,
-          scheduledDate: combinedScheduledDate || undefined,
-          technicianNote: note || "Assigned by Administrator.",
-        };
-
     setIsSubmitting(true);
-    toast.promise(axiosInstance.patch(endpoint, body), {
-      loading: "Saving assignment...",
-      success: () => {
-        setIsSubmitting(false);
-        queryClient.invalidateQueries({
-          queryKey: ["technician", "requests"],
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["admin", "dashboard-overview"],
-        });
-        if (onSuccess) onSuccess();
-        onClose();
-        return "Assignment successfully updated!";
-      },
-      error: (err) => {
-        setIsSubmitting(false);
-        return (
-          "Failed to assign: " + (err.response?.data?.message || err.message)
-        );
-      },
-    });
+    try {
+      await reassignRequest({
+        type: serviceType,
+        requestId: taskData.id || taskData.raw?._id,
+        technicianId: selectedTech,
+      });
+      await invalidateAdminReassignmentQueries(queryClient);
+      toast.success("Request successfully reassigned.");
+      if (onSuccess) onSuccess();
+      onClose();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to reassign request.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAdminCancellationResponse = async (approved) => {
+    if (
+      !actionPolicy.canReviewCancellation ||
+      !isCancellationRequested ||
+      isUnsupportedService
+    ) {
+      return;
+    }
+
+    const endpoint = isHealth
+      ? `/health-request/${taskData.id}/cancel-respond`
+      : `/ai-request/${taskData.id}/cancel-respond`;
+    setIsSubmitting(true);
+    try {
+      await axiosInstance.patch(endpoint, {
+        approved,
+        reason: note.trim() || undefined,
+      });
+      await invalidateAdminReassignmentQueries(queryClient);
+      toast.success(
+        approved
+          ? "Cancellation request approved."
+          : "Cancellation request declined.",
+      );
+      if (onSuccess) onSuccess();
+      onClose();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message ||
+          "Failed to respond to the cancellation request.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const visitDateVal =
@@ -685,13 +720,13 @@ const RequestActionModal = ({
             {/* SCROLLABLE BODY */}
             <div className="custom-scrollbar grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto overscroll-contain bg-base-100 px-4 py-5 sm:p-6 lg:grid-cols-2">
               {isAssignedToOther && (
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3 text-amber-600 dark:text-amber-400 lg:col-span-2">
+                <div className="alert alert-warning alert-soft items-start lg:col-span-2">
                   <Lock size={18} className="shrink-0 mt-0.5" />
                   <div>
                     <h5 className="text-sm font-bold leading-tight">
                       Assigned to another technician
                     </h5>
-                    <p className="mt-1 text-sm leading-relaxed text-amber-700/80 dark:text-amber-300/80">
+                    <p className="mt-1 text-sm leading-relaxed">
                       {assignedTechName || "Another technician"} is handling
                       this request. You can review the details, but service
                       actions are locked.
@@ -701,13 +736,13 @@ const RequestActionModal = ({
               )}
 
               {isOverdue && (
-                <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3 text-rose-600 dark:text-rose-400 animate-pulse lg:col-span-2">
+                <div className="alert alert-error alert-soft items-start lg:col-span-2">
                   <AlertTriangle size={18} className="shrink-0 mt-0.5" />
                   <div>
                     <h5 className="text-sm font-bold leading-tight">
                       Visit overdue
                     </h5>
-                    <p className="mt-1 text-sm leading-relaxed text-rose-700/80 dark:text-rose-300/80">
+                    <p className="mt-1 text-sm leading-relaxed">
                       This visit was scheduled for{" "}
                       {new Date(visitDateVal).toLocaleDateString()} and is still
                       open. Record the findings and complete the service.
@@ -919,83 +954,24 @@ const RequestActionModal = ({
                 </section>
               )}
 
-              {isAdmin && !isCompleted && !isArchived && (
-                <section className={`${sectionClass} lg:col-span-2`}>
-                  <div className="flex items-center gap-2">
-                    <User size={14} className="text-emerald-600" />
-                    <h4 className={sectionHeadingClass}>
-                      Assign technician
-                    </h4>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className={labelClass} htmlFor="assigned-technician">
-                        Technician
-                      </label>
-                      <select
-                        id="assigned-technician"
-                        value={selectedTech}
-                        onChange={(e) => setSelectedTech(e.target.value)}
-                        className={selectClass}
-                      >
-                        <option value="">Select technician</option>
-                        {technicians.map((t) => (
-                          <option key={t._id} value={t._id}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <label
-                          className={labelClass}
-                          htmlFor="request-scheduled-date"
-                        >
-                          Visit date
-                        </label>
-                        <input
-                          id="request-scheduled-date"
-                          name="request-scheduled-date"
-                          type="date"
-                          value={scheduledDate}
-                          onChange={(e) => setScheduledDate(e.target.value)}
-                          className={inputClass}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label
-                          className={labelClass}
-                          htmlFor="request-scheduled-time"
-                        >
-                          Visit time
-                        </label>
-                        <input
-                          id="request-scheduled-time"
-                          name="request-scheduled-time"
-                          type="time"
-                          value={scheduledTime}
-                          onChange={(e) => setScheduledTime(e.target.value)}
-                          className={inputClass}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className={labelClass} htmlFor="assignment-note">
-                        Assignment note <span className="font-normal">(optional)</span>
-                      </label>
-                      <textarea
-                        id="assignment-note"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder="Add instructions for the assigned technician"
-                        className={`${textareaClass} min-h-20`}
-                      />
-                    </div>
-                  </div>
-                </section>
+              {isAdmin && (
+                <AdminRequestActions
+                  showAssignment={!isCompleted && !isArchived}
+                  canReassign={canAdminReassign}
+                  requestKey={taskData.id || taskData.raw?._id}
+                  assignedTechnicianId={assignedTechId}
+                  technicians={technicians}
+                  technicianSelectRef={technicianSelectRef}
+                  cancellationRequested={isCancellationRequested}
+                  cancellationReason={
+                    taskData.raw?.cancellationReason ||
+                    taskData.cancellationReason
+                  }
+                  responseNote={note}
+                  onResponseNoteChange={setNote}
+                  isSubmitting={isSubmitting}
+                  onCancellationResponse={handleAdminCancellationResponse}
+                />
               )}
 
               {isFutureVisit && (
@@ -1023,7 +999,7 @@ const RequestActionModal = ({
                   className={`${sectionClass} ${!isHealth ? "lg:col-span-2" : ""}`}
                 >
                   <div className="flex items-center gap-2">
-                    <ClipboardPen size={14} className="text-emerald-600" />
+                    <ClipboardPen size={14} className="text-primary" />
                     <h4 className={sectionHeadingClass}>
                       {isHealth ? "Treatment details" : "Insemination details"}
                     </h4>
@@ -1123,12 +1099,12 @@ const RequestActionModal = ({
 
               {/* SECTION 3: SCHEDULE & OBSERVATIONS */}
               {!isAvailablePreview &&
-                (!isAdmin || isCompleted || isArchived) && (
+                (actionPolicy.isTechnician || isCompleted || isArchived) && (
                   <section
                     className={`${sectionClass} ${isHealth && !isInProgress && !isCompleted ? "lg:col-span-2" : ""}`}
                   >
                     <div className="flex items-center gap-2">
-                      <CalendarDays size={14} className="text-emerald-600" />
+                      <CalendarDays size={14} className="text-primary" />
                       <h4 className={sectionHeadingClass}>
                         {isApproved ? "Schedule visit" : "Visit details"}
                       </h4>
@@ -1277,7 +1253,7 @@ const RequestActionModal = ({
               {!isHealth && !isAvailablePreview && (
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2">
-                    <ClipboardPen size={14} className="text-emerald-600" />
+                    <ClipboardPen size={14} className="text-primary" />
                     <h4 className={sectionHeadingClass}>
                       Farmer observations
                     </h4>
@@ -1311,10 +1287,10 @@ const RequestActionModal = ({
                               key={signId}
                               className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all ${
                                 isPrimary
-                                  ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400"
+                                  ? "bg-warning/10 border-warning/20 text-warning"
                                   : isBleeding
-                                    ? "bg-rose-500/10 border-rose-500/20 text-rose-700 dark:text-rose-400"
-                                    : "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                                    ? "bg-error/10 border-error/20 text-error"
+                                    : "bg-success/10 border-success/20 text-success"
                               }`}
                             >
                               {label}
@@ -1362,7 +1338,7 @@ const RequestActionModal = ({
                     >
                       Close details
                     </button>
-                    {!isCompleted && !isArchived && (
+                    {canAdminReassign && (
                       <button
                         type="button"
                         onClick={handleAdminAssign}
@@ -1377,9 +1353,7 @@ const RequestActionModal = ({
                         ) : (
                           <>
                             <BadgeCheck size={14} />
-                            {assignedTechId
-                              ? "Update assignment"
-                              : "Assign and schedule"}
+                            Reassign Technician
                           </>
                         )}
                       </button>

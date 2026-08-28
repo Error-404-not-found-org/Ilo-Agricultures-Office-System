@@ -7,17 +7,7 @@ export const THEME_OPTIONS = [
   {
     value: "breedsmart-dark",
     label: "BreedSmart Dark",
-    description: "The recommended dark theme using BreedSmart green.",
-  },
-  {
-    value: "black",
-    label: "Black",
-    description: "Pure high-contrast dark surfaces.",
-  },
-  {
-    value: "dracula",
-    label: "Dracula",
-    description: "A softer dark palette with purple accents.",
+    description: "Forest-based dark surfaces with BreedSmart semantics.",
   },
 ];
 
@@ -25,14 +15,18 @@ const THEME_VALUES = new Set(THEME_OPTIONS.map((theme) => theme.value));
 
 export const normalizeTheme = (theme) => {
   if (theme === "emerald") return "breedsmart";
-  if (theme === "night") return "breedsmart-dark";
+  if (["night", "forest", "black", "dracula"].includes(theme)) {
+    return "breedsmart-dark";
+  }
+  if (theme === "lofi") return "breedsmart";
   return THEME_VALUES.has(theme) ? theme : "breedsmart";
 };
 
 export const getStoredTheme = () =>
   normalizeTheme(localStorage.getItem("theme"));
 
-export const isDarkTheme = (theme) => normalizeTheme(theme) !== "breedsmart";
+export const isDarkTheme = (theme) =>
+  normalizeTheme(theme) === "breedsmart-dark";
 
 export const applyTheme = (nextTheme) => {
   const theme = normalizeTheme(nextTheme);

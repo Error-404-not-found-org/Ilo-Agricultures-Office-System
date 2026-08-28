@@ -89,46 +89,46 @@ export default function Livestock() {
       <main className={ui.main}>
         {/* Dynamic Metric Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={ui.metricCard}>
-            <div className="p-2.5 rounded-xl shrink-0 text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20">
+          <div className={`${ui.metricCard} border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow`}>
+            <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <PawPrint size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.total}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
                 Total Animals Enrolled
               </div>
             </div>
           </div>
-          <div className={ui.metricCard}>
-            <div className="p-2.5 rounded-xl shrink-0 text-purple-600 bg-purple-50 dark:bg-purple-950/20">
+          <div className={`${ui.metricCard} border-0 border-l-4 border-success shadow-sm hover:shadow-md transition-shadow`}>
+            <div className="p-2.5 rounded-xl shrink-0 text-success bg-success/10">
               <Heart size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.pregnant}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
                 Pregnant on This Page
               </div>
             </div>
           </div>
-          <div className={ui.metricCard}>
-            <div className="p-2.5 rounded-xl shrink-0 text-blue-600 bg-blue-50 dark:bg-blue-950/20">
+          <div className={`${ui.metricCard} border-0 border-l-4 border-info shadow-sm hover:shadow-md transition-shadow`}>
+            <div className="p-2.5 rounded-xl shrink-0 text-info bg-info/10">
               <Activity size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.female}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
                 Females on This Page
               </div>
             </div>
           </div>
-          <div className={ui.metricCard}>
-            <div className="p-2.5 rounded-xl shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
+          <div className={`${ui.metricCard} border-0 border-l-4 border-warning shadow-sm hover:shadow-md transition-shadow`}>
+            <div className="p-2.5 rounded-xl shrink-0 text-warning bg-warning/10">
               <Baby size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.recent}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
                 New on This Page (30d)
               </div>
             </div>
@@ -140,7 +140,7 @@ export default function Livestock() {
           
           {/* Top Filters Ribbon */}
           <div className={ui.filterBar}>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+            <div className="flex items-center gap-1.5 text-xs text-base-content/80 font-bold uppercase tracking-wide px-1">
               <SlidersHorizontal size={13} />
               <span>Filters:</span>
             </div>
@@ -174,7 +174,7 @@ export default function Livestock() {
               <option value="inseminated">Inseminated</option>
               <option value="open">Open</option>
             </select>
-            <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/60">
+            <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/80">
               {isLoading ? "Fetching ledger..." : `${filteredAnimals.length} animal${filteredAnimals.length !== 1 ? "s" : ""} cataloged`}
             </span>
           </div>
@@ -214,9 +214,13 @@ export default function Livestock() {
                   </tr>
                 ) : (
                   paginatedAnimals.map((a) => (
-                    <tr key={a._id} className={ui.tableRow}>
-                      <td className="flex items-center gap-1.5 p-3.5 pl-5 font-bold text-base-content/70">
-                        <Tag size={12} className="shrink-0 text-base-content/50" />
+                    <tr
+                      key={a._id}
+                      className={`${ui.tableRow} hover:bg-base-300/60 transition-colors cursor-pointer`}
+                      onClick={() => navigate(`/admin/livestock/${a._id}`)}
+                    >
+                      <td className="flex items-center gap-1.5 p-3.5 pl-5 font-bold text-base-content/90">
+                        <Tag size={12} className="shrink-0 text-base-content/70" />
                         <TableNameLink
                           to={`/admin/livestock/${a._id}`}
                           ariaLabel={`Open livestock profile for animal ${a.earTag || "without an ear tag"}`}
@@ -224,10 +228,10 @@ export default function Livestock() {
                           #{a.earTag || "Not recorded"}
                         </TableNameLink>
                       </td>
-                      <td className="p-3.5 font-medium text-base-content/70">{a.species || "Not recorded"}</td>
+                      <td className="p-3.5 font-medium text-base-content/90">{a.species || "Not recorded"}</td>
                       <td className="p-3.5 font-bold text-base-content">{a.breed || "Not recorded"}</td>
-                      <td className="p-3.5 font-medium text-base-content/70">{a.color || "Not recorded"}</td>
-                      <td className="p-3.5 font-semibold text-base-content/70">{a.gender || "Not recorded"}</td>
+                      <td className="p-3.5 font-medium text-base-content/90">{a.color || "Not recorded"}</td>
+                      <td className="p-3.5 font-semibold text-base-content/90">{a.gender || "Not recorded"}</td>
                       <td className="p-3.5 font-bold text-primary">
                         {a.farmerId?.name || "Not recorded"}
                       </td>
@@ -257,7 +261,7 @@ export default function Livestock() {
           {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className="mt-3 flex items-center justify-between border-t border-base-300 pt-4">
-              <span className="text-[11px] font-medium text-base-content/60">
+              <span className="text-[11px] font-medium text-base-content/80">
                 Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredAnimals.length)} of {filteredAnimals.length} animals
               </span>
               <div className="join" aria-label="Livestock pagination">

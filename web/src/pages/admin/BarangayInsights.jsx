@@ -56,44 +56,44 @@ export default function BarangayInsights() {
   }, [data, search]);
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Barangay Insights"
         subtitle="Municipal livestock, farmer, and service visibility by barangay"
       />
 
-      <main className="p-6 space-y-5">
-        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        <div className="bg-base-100 border border-base-300 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <p className="text-[10px] font-black uppercase tracking-widest text-base-content/80">
               Barangay coverage
             </p>
-            <p className="text-2xl font-black text-slate-900 dark:text-white">
+            <p className="text-2xl font-black text-base-content">
               {isLoading ? "..." : barangays.length}
             </p>
           </div>
           <div className="relative w-full sm:w-72">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/80"
             />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search barangay..."
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 outline-none focus:border-emerald-600"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-base-300 bg-base-200 outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all shadow-sm"
             />
           </div>
         </div>
 
         {error && (
-          <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-2xl p-4 flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
+          <div role="alert" className="alert alert-error alert-soft rounded-2xl">
+            <p className="text-sm font-semibold text-error">
               Failed to load barangay insights.
             </p>
             <button
               onClick={() => refetch()}
-              className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold"
+              className="btn btn-error btn-sm"
             >
               Retry
             </button>
@@ -105,11 +105,11 @@ export default function BarangayInsights() {
             [...Array(6)].map((_, index) => (
               <div
                 key={index}
-                className="h-36 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 animate-pulse"
+                className="h-36 rounded-2xl bg-base-100 border border-base-300 animate-pulse"
               />
             ))
           ) : barangays.length === 0 ? (
-            <div className="md:col-span-2 xl:col-span-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center text-slate-400">
+            <div className="md:col-span-2 xl:col-span-3 bg-base-100 border border-base-300 rounded-2xl p-10 text-center text-base-content/80 font-medium">
               No barangay records match this view.
             </div>
           ) : (
@@ -119,18 +119,18 @@ export default function BarangayInsights() {
               return (
                 <div
                   key={name}
-                  className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm"
+                  className="bg-base-100 border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow rounded-2xl p-5"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-slate-900 dark:text-white">
+                      <p className="text-sm font-black text-base-content">
                         {name}
                       </p>
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-xs text-base-content/80 mt-1 font-semibold">
                         {getMunicipalityForBarangay(name)}
                       </p>
                     </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                       <MapPin size={18} />
                     </div>
                   </div>
@@ -150,7 +150,7 @@ export default function BarangayInsights() {
                   </div>
                   {Array.isArray(item.technicians) &&
                     item.technicians.length > 0 && (
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-4 flex items-center gap-1">
+                      <p className="text-[11px] font-bold text-base-content/80 mt-4 flex items-center gap-1">
                         <Users size={12} /> {item.technicians.length} assigned
                         technician{item.technicians.length === 1 ? "" : "s"}
                       </p>
@@ -166,11 +166,11 @@ export default function BarangayInsights() {
 }
 
 const Metric = ({ label, value }) => (
-  <div className="rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-100 dark:border-slate-800 p-3">
-    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+  <div className="rounded-xl bg-base-200 border border-base-300 p-3">
+    <p className="text-[10px] font-black uppercase tracking-widest text-base-content/80">
       {label}
     </p>
-    <p className="text-lg font-black text-slate-900 dark:text-white mt-1">
+    <p className="text-lg font-black text-base-content mt-1">
       {value}
     </p>
   </div>

@@ -14,25 +14,51 @@ import {
   CalendarDays,
   MapPin,
   FileText,
-  BarChart3,
   Settings as SettingsIcon,
   LogOut,
   BookOpen,
   MessageSquare,
-  Activity,
   ArchiveRestore,
   ListChecks,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useSidebar } from "../../contexts/SidebarContext";
 
+const sidebarIconMotion =
+  "shrink-0 transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:translate-x-0.5 group-focus-visible:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none";
+
+const SidebarNavIcon = ({ children }) => (
+  <span data-sidebar-icon aria-hidden="true" className={sidebarIconMotion}>
+    {children}
+  </span>
+);
+
 export default function Sidebar() {
   const location = useLocation();
   const { user } = useUser();
   const { signOut } = useClerk();
   const role = user?.publicMetadata?.role || "Field Officer";
+  const normalizedRole = String(role).toLowerCase();
+  const isAdmin = normalizedRole === "admin";
+  const adminNavFocus =
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  const adminActiveNav =
+    "bg-primary text-primary-content ring-1 ring-inset ring-primary-content/15 font-bold";
+  const adminInactiveNav =
+    "text-base-content/75 hover:bg-primary/10 hover:text-primary [&_[data-sidebar-icon]]:text-primary";
+  const displayName =
+    user?.fullName ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    "User";
+  const profileInitials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
   const { isOpen, close } = useSidebar();
 
   // Automatically close sidebar on route changes on mobile viewports
@@ -46,6 +72,7 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(
     () => localStorage.getItem("sidebar-collapsed") === "true",
   );
+  const [isServiceRecordsOpen, setIsServiceRecordsOpen] = useState(false);
 
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
@@ -108,6 +135,7 @@ export default function Sidebar() {
       });
       return res.data || {};
     },
+    enabled: normalizedRole !== "admin",
     refetchInterval: 1000 * 30,
   });
 
@@ -117,6 +145,7 @@ export default function Sidebar() {
       const res = await axiosInstance.get("/technician/calvings?limit=100");
       return res.data || {};
     },
+    enabled: normalizedRole !== "admin",
     refetchInterval: 1000 * 30,
   });
 
@@ -208,96 +237,111 @@ export default function Sidebar() {
       {
         path: "/admin/dashboard",
         icon: <LayoutDashboard size={16} />,
-        label: "Overview",
+        label: "Dashboard",
       },
-      { type: "label", label: "Pending Work" },
-      {
-        path: "/admin/requests",
-        icon: <ClipboardList size={16} />,
-        label: "Dispatch Tasks",
-        badge: livePendingCount > 0 ? String(livePendingCount) : null,
-      },
-      {
-        path: "/admin/monitoring",
-        icon: <Activity size={16} />,
-        label: "System Monitoring",
-      },
-      {
-        path: "/admin/support-tickets",
-        icon: <MessageSquare size={16} />,
-        label: "Support Tickets",
-      },
-      { type: "label", label: "Registries" },
-      {
-        path: "/admin/technicians",
-        icon: <Users size={16} />,
-        label: "Technicians Registry",
-      },
-      {
-        path: "/admin/livestock",
-        icon: <Tractor size={16} />,
-        label: "Livestock Registry",
-      },
+      { type: "label", label: "People" },
       {
         path: "/admin/users",
         icon: <Users size={16} />,
-        label: "User Accounts",
+        label: "Users",
+      },
+      {
+        path: "/admin/technicians",
+        icon: <Users size={16} />,
+        label: "Technicians",
+      },
+      { type: "label", label: "Livestock" },
+      {
+        path: "/admin/livestock",
+        icon: <Tractor size={16} />,
+        label: "Livestock",
+      },
+      {
+        path: "/admin/archived",
+        icon: <ArchiveRestore size={16} />,
+        label: "Archived",
+      },
+      { type: "label", label: "Operations" },
+      {
+        path: "/admin/requests",
+        icon: <ClipboardList size={16} />,
+        label: "Requests",
+      },
+      {
+        path: "/admin/work-queue",
+        icon: <ListChecks size={16} />,
+        label: "Workload",
+      },
+      {
+        type: "group",
+        label: "Service Records",
+        icon: <BookOpen size={16} />,
+        children: [
+          {
+            path: "/admin/inseminations",
+            icon: <Syringe size={16} />,
+            label: "Inseminations",
+          },
+          {
+            path: "/admin/pregnancy-tracker",
+            icon: <CalendarDays size={16} />,
+            label: "Pregnancy",
+          },
+          {
+            path: "/admin/newborns",
+            icon: <Tractor size={16} />,
+            label: "Calving",
+          },
+        ],
       },
       {
         path: "/admin/barangays",
         icon: <MapPin size={16} />,
-        label: "Barangay Insights",
-      },
-      { type: "label", label: "Service Records" },
-      {
-        path: "/admin/inseminations",
-        icon: <Syringe size={16} />,
-        label: "Inseminations Log",
+        label: "Barangays",
       },
       {
-        path: "/admin/newborns",
-        icon: <Tractor size={16} />,
-        label: "Newborns Log",
-        badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
+        path: "/admin/support-tickets",
+        icon: <MessageSquare size={16} />,
+        label: "Support",
       },
+      { type: "label", label: "Insights" },
       {
         path: "/admin/reports",
         icon: <FileText size={16} />,
-        label: "Analytics & Audits",
+        label: "Reports",
       },
       {
         path: "/admin/audit-logs",
         icon: <BookOpen size={16} />,
         label: "Audit Logs",
       },
-      {
-        path: "/admin/archived",
-        icon: <ArchiveRestore size={16} />,
-        label: "Archived Records",
-      },
-      { type: "label", label: "Account" },
+      { type: "label", label: "System" },
       {
         path: "/admin/settings",
         icon: <SettingsIcon size={16} />,
         label: "Settings",
       },
     ],
-    [livePendingCount, unseenCalvingsCount],
+    [],
   );
 
-  const rawRole = user?.publicMetadata?.role || "Field Officer";
-  const normalizedRole = String(rawRole).toLowerCase();
-
-  const GROUPS = normalizedRole === "admin" ? ADMIN_GROUPS : TECH_GROUPS;
+  const GROUPS = isAdmin ? ADMIN_GROUPS : TECH_GROUPS;
+  const isPathActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
+  const isServiceRecordsActive = ADMIN_GROUPS.find(
+    (item) => item.type === "group",
+  )?.children.some((item) => isPathActive(item.path));
+  const serviceRecordsExpanded =
+    isServiceRecordsActive || isServiceRecordsOpen;
 
   return (
     <>
       <aside
-        className={`relative bg-base-200 text-gray-800 dark:text-gray-200 flex flex-col h-screen border-r border-base-300 shadow-sm transition-all duration-300 ease-in-out lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
+        className={`relative text-base-content flex flex-col h-screen border-r border-base-300 transition-all duration-300 ease-in-out lg:translate-x-0 ${isAdmin ? "bg-base-100" : "bg-base-200"} ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
       >
         {/* Logo */}
         {isCollapsed ? (
-          <div className="flex flex-col items-center gap-3 py-6 border-b border-base-300/80 bg-base-100 group transition-all duration-300">
+          <div className={`flex flex-col items-center gap-3 border-b border-base-300/80 bg-base-100 group transition-all duration-300 ${isAdmin ? "py-5" : "py-6"}`}>
             <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
               <img
                 src="/logo.png"
@@ -314,7 +358,7 @@ export default function Sidebar() {
             </button>
           </div>
         ) : (
-          <div className="bg-base-200 flex items-center justify-between p-6 border-b border-base-300/80 group transition-all duration-300">
+          <div className={`flex items-center justify-between border-b border-base-300/80 p-6 group transition-all duration-300 ${isAdmin ? "bg-base-100" : "bg-base-200"}`}>
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
                 <img
@@ -327,8 +371,8 @@ export default function Sidebar() {
                 <span className="font-extrabold text-base tracking-tight leading-none text-base-content">
                   BreedSmart
                 </span>
-                <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-1">
-                  Tech Portal
+                <span className="text-[9px] font-bold text-primary uppercase tracking-widest mt-1">
+                  {isAdmin ? "Admin Portal" : "Tech Portal"}
                 </span>
               </div>
             </div>
@@ -343,7 +387,10 @@ export default function Sidebar() {
         )}
 
         {/* Nav */}
-        <nav className="flex flex-col flex-nowrap flex-1 overflow-y-auto px-4 py-6 custom-scrollbar space-y-2">
+        <nav
+          aria-label={`${isAdmin ? "Admin" : "Technician"} navigation`}
+          className={`flex min-h-0 flex-1 flex-col flex-nowrap overflow-y-auto overflow-x-hidden custom-scrollbar ${isAdmin ? "space-y-1 px-3 py-4" : "space-y-2 px-4 py-6"}`}
+        >
           {GROUPS.map((item, idx) => {
             // Section label
             if (item.type === "label") {
@@ -358,94 +405,253 @@ export default function Sidebar() {
               return (
                 <div
                   key={idx}
-                  className="text-xs font-semibold uppercase text-base-content/50 tracking-widest px-3 pt-6 pb-2.5 mt-4 first:mt-0 animate-in fade-in duration-300"
+                  className={`animate-in fade-in duration-300 ${isAdmin ? "mt-2 px-3 pb-1.5 pt-4 text-xs font-bold uppercase tracking-widest text-base-content/60 first:mt-0" : "mt-4 px-3 pb-2.5 pt-6 text-xs font-semibold uppercase tracking-widest text-base-content/50 first:mt-0"}`}
                 >
                   {item.label}
                 </div>
               );
             }
 
+            if (item.type === "group") {
+              const groupActive = item.children.some((child) =>
+                isPathActive(child.path),
+              );
+
+              if (isCollapsed) {
+                return (
+                  <div
+                    key={item.label}
+                    className="tooltip tooltip-right w-full"
+                    data-tip={item.label}
+                  >
+                    <button
+                      type="button"
+                      aria-label={`${item.label}${groupActive ? ", current section" : ""}`}
+                      aria-expanded="false"
+                      onClick={() => {
+                        setIsCollapsed(false);
+                        localStorage.setItem("sidebar-collapsed", "false");
+                        setIsServiceRecordsOpen(true);
+                      }}
+                      className={`group btn btn-ghost h-11 min-h-11 w-full justify-center rounded-xl p-0 ${adminNavFocus} ${
+                        groupActive
+                          ? adminActiveNav
+                          : adminInactiveNav
+                      }`}
+                    >
+                      <SidebarNavIcon>{item.icon}</SidebarNavIcon>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={item.label} className="space-y-1">
+                  <button
+                    type="button"
+                    aria-expanded={serviceRecordsExpanded}
+                    aria-controls="admin-service-records-menu"
+                    onClick={() =>
+                      setIsServiceRecordsOpen((current) => !current)
+                    }
+                    className={`group btn btn-ghost min-h-11 w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${adminNavFocus} ${
+                      groupActive
+                        ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20"
+                        : adminInactiveNav
+                    }`}
+                  >
+                    <SidebarNavIcon>{item.icon}</SidebarNavIcon>
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={`shrink-0 transition-transform ${
+                        serviceRecordsExpanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {serviceRecordsExpanded && (
+                    <div
+                      id="admin-service-records-menu"
+                      role="group"
+                      aria-label="Service Records"
+                      className="ml-5 space-y-1 border-l border-base-300/80 pl-2.5"
+                    >
+                      {item.children.map((child) => {
+                        const childActive = isPathActive(child.path);
+                        return (
+                          <Link
+                            key={child.path}
+                            to={child.path}
+                            aria-current={childActive ? "page" : undefined}
+                            className={`group flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${adminNavFocus} ${
+                              childActive
+                                ? adminActiveNav
+                                : adminInactiveNav
+                            }`}
+                          >
+                            <SidebarNavIcon>{child.icon}</SidebarNavIcon>
+                            <span className="truncate">{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             // Single link
-            const isActive = location.pathname.startsWith(item.path);
+            const isActive = isPathActive(item.path);
             return (
-              <Link
+              <div
                 key={item.path}
-                to={item.path}
-                title={isCollapsed ? item.label : undefined}
-                className={`flex items-center rounded-xl text-sm font-semibold transition-all duration-200 relative ${
-                  isCollapsed ? "justify-center p-3" : "gap-3 px-3 py-3"
-                } ${
-                  isActive
-                    ? "bg-primary text-primary-content shadow-md font-bold"
-                    : "text-base-content hover:bg-primary/10 hover:text-primary"
-                }`}
+                className={isCollapsed ? "tooltip tooltip-right w-full" : ""}
+                data-tip={isCollapsed ? item.label : undefined}
               >
-                <span
-                  className={
+                <Link
+                  to={item.path}
+                  aria-label={isCollapsed ? item.label : undefined}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`group flex items-center rounded-xl text-sm font-semibold transition-all duration-200 relative ${
+                    isAdmin
+                      ? isCollapsed
+                        ? "h-11 justify-center p-0"
+                        : "min-h-11 gap-3 px-3 py-2.5"
+                      : isCollapsed
+                        ? "justify-center p-3"
+                        : "gap-3 px-3 py-3"
+                  } ${
                     isActive
-                      ? "text-primary-content shrink-0"
-                      : "text-base-content group-hover:text-primary shrink-0"
-                  }
+                      ? isAdmin
+                        ? adminActiveNav
+                        : "bg-primary text-primary-content ring-1 ring-primary/30 font-bold"
+                      : isAdmin
+                        ? adminInactiveNav
+                        : "text-base-content/75 hover:bg-primary/10 hover:text-primary **:data-sidebar-icon:text-primary"
+                  } ${isAdmin ? adminNavFocus : ""}`}
                 >
-                  {item.icon}
-                </span>
-                {!isCollapsed && (
-                  <span className="flex-1 text-left truncate animate-in fade-in duration-300">
-                    {item.label}
-                  </span>
-                )}
-                {!isCollapsed && item.badge && (
-                  <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-4.5 text-center animate-pulse shrink-0">
-                    {item.badge}
-                  </span>
-                )}
-                {isCollapsed && item.badge && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                )}
-              </Link>
+                  <SidebarNavIcon>{item.icon}</SidebarNavIcon>
+                  {!isCollapsed && (
+                    <span className="flex-1 text-left truncate animate-in fade-in duration-300">
+                      {item.label}
+                    </span>
+                  )}
+                  {!isCollapsed && item.badge && (
+                    <span className="badge badge-error badge-sm shrink-0">
+                      {item.badge}
+                    </span>
+                  )}
+                  {isCollapsed && item.badge && (
+                    <span className="status status-error absolute right-1.5 top-1.5" />
+                  )}
+                </Link>
+              </div>
             );
           })}
         </nav>
 
         {/* Footer User Block Integration */}
         <div
-          className={`p-4 border-t border-base-300/80 bg-base-200 transition-all duration-300 ${isCollapsed ? "flex flex-col items-center gap-4" : ""}`}
+          className={`border-t transition-all duration-300 ${isAdmin ? "border-base-300 bg-base-200/70 p-3" : "border-base-300/80 bg-base-200 p-4"} ${isCollapsed ? `flex flex-col items-center ${isAdmin ? "gap-2" : "gap-3"}` : isAdmin ? "space-y-1" : ""}`}
         >
-          <div
-            className={`flex items-center rounded-xl transition-all duration-300 ${isCollapsed ? "justify-center p-0 hover:bg-transparent" : "justify-between p-2.5 hover:bg-base-200 mb-3"}`}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <UserButton
-                appearance={{
-                  elements: { userButtonAvatarImg: "w-9 h-9 rounded-md" },
-                }}
-              />
-              {!isCollapsed && (
-                <div className="flex flex-col min-w-0 animate-in fade-in duration-300">
-                  <span className="font-bold text-xs text-base-content truncate">
-                    {user?.fullName ?? "User"}
-                  </span>
-                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider">
-                    {role}
-                  </span>
-                </div>
-              )}
+          {isAdmin ? (
+            <div
+              className={isCollapsed ? "tooltip tooltip-right w-full" : ""}
+              data-tip={isCollapsed ? displayName : undefined}
+            >
+              <Link
+                to="/admin/settings"
+                aria-label="Open Admin profile"
+                className={`flex cursor-pointer items-center text-base-content/75 transition-colors hover:bg-base-100 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                  isCollapsed
+                    ? "mx-auto h-11 w-11 justify-center rounded-full p-1"
+                    : "w-full gap-3 rounded-xl p-2.5"
+                }`}
+              >
+                {user?.imageUrl ? (
+                  <div className="avatar shrink-0 rounded-full">
+                    <div className="h-9 w-9 overflow-hidden rounded-full ring-1 ring-base-300">
+                      <img
+                        src={user.imageUrl}
+                        alt=""
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="avatar avatar-placeholder shrink-0 rounded-full">
+                    <div className="h-9 w-9 overflow-hidden rounded-full bg-primary/10 text-primary ring-1 ring-base-300">
+                      <span className="text-xs font-bold">
+                        {profileInitials || "A"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {!isCollapsed && (
+                  <div className="flex min-w-0 flex-col animate-in fade-in duration-300">
+                    <span className="truncate text-xs font-bold text-base-content">
+                      {displayName}
+                    </span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-primary">
+                      {role}
+                    </span>
+                  </div>
+                )}
+              </Link>
             </div>
-          </div>
+          ) : (
+            <div
+              className={`flex items-center rounded-xl transition-all duration-300 ${isCollapsed ? "justify-center p-0 hover:bg-transparent" : "mb-3 justify-between p-2.5 hover:bg-base-200"}`}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <UserButton
+                  appearance={{
+                    elements: { userButtonAvatarImg: "w-9 h-9 rounded-md" },
+                  }}
+                />
+                {!isCollapsed && (
+                  <div className="flex min-w-0 flex-col animate-in fade-in duration-300">
+                    <span className="truncate text-xs font-bold text-base-content">
+                      {displayName}
+                    </span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-primary">
+                      {role}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {isCollapsed ? (
             <button
+              type="button"
               onClick={handleLogout}
-              className="flex items-center justify-center size-9 rounded-xl border border-base-300 hover:bg-red-500/5 text-red-500 transition-all cursor-pointer"
+              aria-label="Sign Out"
+              className={
+                isAdmin
+                  ? "group btn btn-ghost btn-square h-11 min-h-11 w-11 rounded-full text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+                  : "group btn btn-ghost btn-square btn-sm text-error hover:bg-error/10"
+              }
               title="Sign Out"
             >
-              <LogOut size={16} />
+              <SidebarNavIcon>
+                <LogOut size={16} />
+              </SidebarNavIcon>
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-base-300 hover:bg-red-500/5 text-base-content/60 hover:text-red-500 text-xs font-bold transition-all cursor-pointer"
+              className={
+                isAdmin
+                  ? "group btn btn-ghost min-h-11 w-full justify-start gap-3 px-3 text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+                  : "group btn btn-ghost btn-sm w-full text-error hover:bg-error/10"
+              }
             >
-              <LogOut size={13} />
+              <SidebarNavIcon>
+                <LogOut size={16} />
+              </SidebarNavIcon>
               Sign Out
             </button>
           )}
@@ -454,20 +660,20 @@ export default function Sidebar() {
 
       {/* Smooth Logout Overlay */}
       {isLoggingOut && (
-        <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-neutral/90 backdrop-blur-md animate-in fade-in duration-300">
           <div className="flex flex-col items-center gap-5">
             <div className="relative w-16 h-16">
-              <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <LogOut size={20} className="text-emerald-400" />
+                <LogOut size={20} className="text-primary" />
               </div>
             </div>
             <div className="text-center">
-              <p className="text-white font-black text-sm uppercase tracking-widest">
+              <p className="text-neutral-content font-black text-sm uppercase tracking-widest">
                 Signing Out
               </p>
-              <p className="text-slate-400 text-[11px] mt-1 font-medium">
+              <p className="text-neutral-content/65 text-[11px] mt-1 font-medium">
                 Clearing your session...
               </p>
             </div>
@@ -475,7 +681,7 @@ export default function Sidebar() {
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                  className="w-1.5 h-1.5 rounded-full bg-primary"
                   style={{
                     animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
                   }}

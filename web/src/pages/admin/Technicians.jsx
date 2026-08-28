@@ -14,8 +14,15 @@ import {
   TrendingUp,
   Award,
   X,
+  Search,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
+import UserAvatar from "../../components/ui/UserAvatar";
+import {
+  buildTechnicianInvitationPayload,
+  createTechnician,
+  TECHNICIAN_CAPABILITIES,
+} from "../../services/adminTechniciansService";
 
 export default function Technicians() {
   const navigate = useNavigate();
@@ -28,10 +35,13 @@ export default function Technicians() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Invite Form state
-  const [inviteName, setInviteName] = useState("");
+  const [inviteFirstName, setInviteFirstName] = useState("");
+  const [inviteLastName, setInviteLastName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePhone, setInvitePhone] = useState("");
-  const [inviteSpecialty, setInviteSpecialty] = useState("Bovine Reproduction");
+  const [inviteStreet, setInviteStreet] = useState("");
+  const [inviteBarangay, setInviteBarangay] = useState("");
+  const [inviteCapabilities, setInviteCapabilities] = useState([]);
 
   // ---- DYNAMIC DATA PIPELINE ----
   const { data: technicians = [], isLoading } = useQuery({
@@ -45,7 +55,7 @@ export default function Technicians() {
   // ---- DYNAMIC STATS RESOLVERS ----
   const stats = useMemo(() => {
     const total = technicians.length;
-    const active = technicians.filter(t => t.status !== "inactive").length;
+    const active = technicians.filter((t) => t.status !== "inactive").length;
     return {
       total,
       active,
@@ -55,102 +65,151 @@ export default function Technicians() {
 
   // ---- FILTERED DATA ----
   const filteredTechs = useMemo(() => {
-    return technicians.filter(t => {
+    return technicians.filter((t) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         (t.name || "").toLowerCase().includes(q) ||
         (t.email || "").toLowerCase().includes(q) ||
         (t.address?.barangay || "").toLowerCase().includes(q);
-      const matchesStatus = !statusFilter || (statusFilter === "active" ? t.status !== "inactive" : t.status === "inactive");
+      const matchesStatus =
+        !statusFilter ||
+        (statusFilter === "active"
+          ? t.status !== "inactive"
+          : t.status === "inactive");
       return matchesSearch && matchesStatus;
     });
   }, [technicians, searchQuery, statusFilter]);
 
   const handleInviteSubmit = async (e) => {
     e.preventDefault();
-    if (!inviteName || !inviteEmail || !invitePhone) {
+    if (
+      !inviteFirstName.trim() ||
+      !inviteLastName.trim() ||
+      !inviteEmail.trim() ||
+      !invitePhone
+    ) {
       toast.error("Please fill in all required fields.");
       return;
     }
+    if (!inviteBarangay.trim()) {
+      toast.error("Barangay is required for the Technician contact address.");
+      return;
+    }
     if (!/^09\d{9}$/.test(invitePhone)) {
-      toast.error("Phone number must be exactly 11 digits, start with 09, and contain no letters.");
+      toast.error(
+        "Phone number must be exactly 11 digits, start with 09, and contain no letters.",
+      );
       return;
     }
     setIsSubmitting(true);
-    const nameParts = inviteName.trim().split(" ");
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || "Officer";
     try {
-      await axiosInstance.post("/user/create-invited-user", {
-        firstName,
-        lastName,
+      const payload = buildTechnicianInvitationPayload({
+        firstName: inviteFirstName,
+        lastName: inviteLastName,
         email: inviteEmail,
         phoneNumber: invitePhone,
-        role: "technician",
-        specialty: inviteSpecialty,
+        street: inviteStreet,
+        barangay: inviteBarangay,
+        serviceCapabilities: inviteCapabilities,
       });
+      await createTechnician(payload);
       toast.success(`Invitation email sent successfully to ${inviteEmail}!`);
-      queryClient.invalidateQueries({ queryKey: ["admin", "technicians-list"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "technicians-list"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "dashboard-overview"],
+      });
       setIsInviteModalOpen(false);
-      setInviteName("");
+      setInviteFirstName("");
+      setInviteLastName("");
       setInviteEmail("");
       setInvitePhone("");
+      setInviteStreet("");
+      setInviteBarangay("");
+      setInviteCapabilities([]);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to invite technician.");
+      toast.error(
+        err.response?.data?.message || "Failed to invite technician.",
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const toggleInviteCapability = (capability) => {
+    setInviteCapabilities((current) =>
+      current.includes(capability)
+        ? current.filter((item) => item !== capability)
+        : [...current, capability],
+    );
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Field Technicians"
-        subtitle="Manage municipal veterinary officers, active assignments, and tactical dispatch telemetry"
-        searchPlaceholder="Search officers name, email..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => setSearchQuery(e.target.value)}
-      >
-        <button 
-          onClick={() => setIsInviteModalOpen(true)}
-          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 flex items-center transition-all cursor-pointer active:scale-95 shadow-md shadow-emerald-500/10"
-        >
-          <Plus size={13} /> Invite Officer
-        </button>
-      </Topbar>
+        title="Field Officers"
+        subtitle="Manage municipal veterinary officers."
+      />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        {/* Toolbar Section */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-96">
+            <Search
+              size={18}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/50"
+            />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search officers name, email, or barangay..."
+              className="w-full pl-11 pr-4 py-3 text-sm rounded-2xl border border-base-300 bg-base-100 outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-sm"
+            />
+          </div>
+          <button
+            onClick={() => setIsInviteModalOpen(true)}
+            className="btn btn-primary rounded-xl shadow-sm w-full sm:w-auto px-6 h-12"
+          >
+            <Plus size={18} /> Invite Field Officer
+          </button>
+        </div>
+
         {/* Dynamic Metric Ribbon */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20">
+          <div className="bg-base-100 border-0 border-l-4 border-primary p-4 rounded-xl flex items-center gap-3">
+            <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <Users size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">{isLoading ? "..." : stats.total}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-xl font-black">
+                {isLoading ? "..." : stats.total}
+              </div>
+              <div className="text-[10px] font-bold uppercase text-base-content/70 tracking-wider">
                 Total Registered Officers
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-purple-600 bg-purple-50 dark:bg-purple-950/20">
+          <div className="bg-base-100 border-0 border-l-4 border-success p-4 rounded-xl flex items-center gap-3">
+            <div className="p-2.5 rounded-xl shrink-0 text-success bg-success/10">
               <Award size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">{isLoading ? "..." : stats.active}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-xl font-black">
+                {isLoading ? "..." : stats.active}
+              </div>
+              <div className="text-[10px] font-bold uppercase text-base-content/70 tracking-wider">
                 Active in Field
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-blue-600 bg-blue-50 dark:bg-blue-950/20">
+          <div className="bg-base-100 border-0 border-l-4 border-info p-4 rounded-xl flex items-center gap-3">
+            <div className="p-2.5 rounded-xl shrink-0 text-info bg-info/10">
               <TrendingUp size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{stats.dispatchRate}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/70 tracking-wider">
                 Task Resolution Speed
               </div>
             </div>
@@ -158,14 +217,14 @@ export default function Technicians() {
         </div>
 
         {/* Filters and Datatable Platform wrapper */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+        <div className="card bg-base-100 border border-base-300 rounded-2xl p-5  flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex items-center gap-2 flex-wrap mb-4 bg-base-200 p-2.5 rounded-xl cursor-pointer">
+            <div className="flex items-center gap-1.5 text-xs text-base-content/90 font-bold uppercase tracking-wide px-1">
               <Shield size={13} />
               <span>Filters:</span>
             </div>
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-[#00643b] dark:focus:border-emerald-500 transition-all duration-200"
+              className="select select-bordered select-sm text-sm rounded-xl bg-base-100 border-base-300 text-base-content font-medium focus:border-primary transition-all duration-200"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -173,8 +232,10 @@ export default function Technicians() {
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
-            <span className="text-xs text-slate-400 font-semibold ml-auto">
-              {isLoading ? "Fetching roster..." : `${filteredTechs.length} officers enlisted`}
+            <span className="text-xs text-base-content/90 font-semibold ml-auto">
+              {isLoading
+                ? "Fetching roster..."
+                : `${filteredTechs.length} officers enlisted`}
             </span>
           </div>
 
@@ -183,76 +244,117 @@ export default function Technicians() {
             {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[...Array(6)].map((_, idx) => (
-                  <div key={idx} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 animate-pulse space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800" />
-                      <div className="space-y-2 flex-1">
-                        <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
-                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
+                  <div
+                    key={idx}
+                    className="bg-base-100 border border-base-300 shadow-sm p-5 rounded-2xl flex flex-col justify-between"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="skeleton w-12 h-12 rounded-full shrink-0" />
+                        <div className="space-y-2 flex-1">
+                          <div className="skeleton h-4 w-32" />
+                          <div className="skeleton h-3 w-20" />
+                        </div>
+                        <div className="skeleton h-5 w-14 rounded-full ml-auto" />
+                      </div>
+                      <div className="space-y-2.5 border-t border-base-300 pt-3">
+                        <div className="skeleton h-3 w-3/4" />
+                        <div className="skeleton h-3 w-2/3" />
+                        <div className="skeleton h-3 w-4/5" />
                       </div>
                     </div>
-                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-base-300">
+                      <div className="skeleton h-3 w-20" />
+                      <div className="skeleton h-4 w-4" />
+                    </div>
                   </div>
                 ))}
               </div>
             ) : filteredTechs.length === 0 ? (
-              <div className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium">
+              <div className="text-center p-12 text-base-content/90 font-medium">
                 No veterinary officers matching filters found.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredTechs.map((tech) => {
-                  const initials = tech.name
-                    ? tech.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
-                    : "VO";
                   return (
                     <div
                       key={tech._id}
                       onClick={() => navigate(`/admin/technicians/${tech._id}`)}
-                      className="group bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 hover:border-[#00643b] dark:hover:border-emerald-600 p-5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                      className="group bg-base-300 border border-base-300 shadow-sm hover:shadow-md hover:border-primary p-5 rounded-2xl transition-all cursor-pointer flex flex-col justify-between"
                     >
                       <div className="space-y-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] dark:text-emerald-400 flex items-center justify-center font-black text-sm">
-                            {initials}
-                          </div>
+                          <UserAvatar
+                            name={tech.name || "Technician"}
+                            imageUrl={tech.imageUrl || tech.profileImage}
+                            size={48}
+                            sizeClass="h-12 w-12"
+                            className="rounded-full"
+                          />
                           <div>
-                            <h4 className="font-extrabold text-slate-800 dark:text-slate-200 group-hover:text-[#00643b] dark:group-hover:text-emerald-400 transition-colors truncate max-w-[160px] flex items-center gap-1.5">
+                            <h4 className="font-extrabold text-base-content group-hover:text-primary  transition-colors truncate max-w-40 flex items-center gap-1.5">
                               <span>{tech.name}</span>
                               {!tech.clerkId && (
-                                <span className="inline-block text-[8px] font-black uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                                <span className="badge badge-warning badge-soft badge-xs">
                                   Invited
                                 </span>
                               )}
                             </h4>
-                            <span className="inline-block text-[9px] font-black uppercase bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded-md text-slate-400 mt-1">
+                            <span className="mt-1 inline-block rounded-md bg-base-200 px-2 py-0.5 text-xs font-bold text-base-content/90">
                               {tech.specialty || "Veterinary Officer"}
                             </span>
                           </div>
-                          <span className={`w-2.5 h-2.5 rounded-full ml-auto ${tech.status === "inactive" ? "bg-slate-300" : "bg-emerald-500"}`} />
+                          <span
+                            className={`badge badge-sm badge-soft ml-auto ${
+                              tech.status === "inactive"
+                                ? "badge-neutral"
+                                : "badge-success"
+                            }`}
+                          >
+                            {tech.status === "inactive" ? "Inactive" : "Active"}
+                          </span>
                         </div>
 
-                        <div className="space-y-2 border-t border-slate-100 dark:border-slate-900/60 pt-3 text-[11px] font-medium text-slate-500">
+                        <div className="space-y-2 border-t border-base-300 pt-3 text-xs font-medium text-base-content/90">
                           <div className="flex items-center gap-2">
-                            <Phone size={12} className="text-slate-400 shrink-0" />
-                            <span className="font-mono">{tech.phoneNumber || "No contact"}</span>
+                            <Phone
+                              size={13}
+                              className="text-base-content/80 shrink-0"
+                            />
+                            <span className="font-mono">
+                              {tech.phoneNumber || "No contact"}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Mail size={12} className="text-slate-400 shrink-0" />
-                            <span className="truncate">{tech.email || "No email"}</span>
+                            <Mail
+                              size={13}
+                              className="text-base-content/80 shrink-0"
+                            />
+                            <span className="truncate">
+                              {tech.email || "No email"}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <MapPin size={12} className="text-slate-400 shrink-0" />
-                            <span>{tech.address?.barangay || "Oton"}, Iloilo</span>
+                            <MapPin
+                              size={13}
+                              className="text-base-content/80 shrink-0"
+                            />
+                            <span>
+                              {tech.address?.barangay || "Oton"}, Iloilo
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-900/60">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          Roster Profile
+                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-base-300">
+                        <span className="text-[10px] font-bold text-base-content/90 uppercase tracking-wider">
+                          View Profile
                         </span>
-                        <ChevronRight size={14} className="text-slate-400 group-hover:text-[#00643b] transition-colors" />
+                        <ChevronRight
+                          size={14}
+                          className="text-base-content/80 group-hover:text-primary transition-colors"
+                        />
                       </div>
                     </div>
                   );
@@ -271,93 +373,150 @@ export default function Technicians() {
         >
           <form
             onSubmit={handleInviteSubmit}
-            className="card w-full max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4"
+            className="card max-h-[90vh] w-full max-w-lg overflow-y-auto bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3">
-              <h3 className="text-sm font-black uppercase text-slate-400">
+            <div className="flex items-center justify-between border-b border-base-300 pb-3">
+              <h3 className="text-sm font-black uppercase text-base-content/80">
                 Invite Field Officer
               </h3>
               <button
                 type="button"
                 onClick={() => setIsInviteModalOpen(false)}
-                className="btn btn-xs btn-ghost btn-circle text-slate-400 hover:text-rose-500"
+                aria-label="Close Technician invitation"
+                className="btn btn-xs btn-ghost btn-circle text-base-content/70 hover:text-error"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Officer Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Dr. Arthur Pendelton"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold"
-                  required
-                />
-              </div>
+            <div className="space-y-4 text-xs">
+              <fieldset className="fieldset rounded-xl border border-base-300 p-4">
+                <legend className="fieldset-legend text-xs font-black text-base-content/80 uppercase tracking-widest">
+                  Technician Information
+                </legend>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="fieldset">
+                    <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider">First name</span>
+                    <input
+                      className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                      value={inviteFirstName}
+                      onChange={(event) =>
+                        setInviteFirstName(event.target.value)
+                      }
+                      required
+                    />
+                  </label>
+                  <label className="fieldset">
+                    <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider">Last name</span>
+                    <input
+                      className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                      value={inviteLastName}
+                      onChange={(event) =>
+                        setInviteLastName(event.target.value)
+                      }
+                      required
+                    />
+                  </label>
+                </div>
+                <label className="fieldset">
+                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">Email address</span>
+                  <input
+                    type="email"
+                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    placeholder="technician@oton.gov.ph"
+                    value={inviteEmail}
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="fieldset">
+                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">Phone number</span>
+                  <input
+                    type="tel"
+                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    placeholder="09171234567"
+                    value={invitePhone}
+                    onChange={(event) => {
+                      const value = event.target.value.replace(/\D/g, "");
+                      if (value.length <= 11) setInvitePhone(value);
+                    }}
+                    required
+                  />
+                </label>
+              </fieldset>
 
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Email Address</label>
-                <input
-                  type="email"
-                  placeholder="e.g. arthur@ton.gov.ph"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold"
-                  required
-                />
-              </div>
+              <fieldset className="fieldset rounded-xl border border-base-300 p-4 mt-2">
+                <legend className="fieldset-legend text-xs font-black text-base-content/80 uppercase tracking-widest">Field Area</legend>
+                <div className="rounded-xl bg-base-200 px-4 py-2.5 font-semibold text-base-content/90 border border-base-300 shadow-inner">
+                  Oton, Iloilo
+                </div>
+                <label className="fieldset">
+                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">Barangay</span>
+                  <input
+                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    value={inviteBarangay}
+                    onChange={(event) => setInviteBarangay(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="fieldset">
+                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">
+                    Street or sitio{" "}
+                    <span className="font-normal opacity-70 ml-1">(optional)</span>
+                  </span>
+                  <input
+                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    value={inviteStreet}
+                    onChange={(event) => setInviteStreet(event.target.value)}
+                  />
+                </label>
+              </fieldset>
 
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Phone Number</label>
-                <input
-                  type="tel"
-                  placeholder="e.g. 09171234567"
-                  value={invitePhone}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, "");
-                    if (value.length <= 11) {
-                      setInvitePhone(value);
-                    }
-                  }}
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Clinical Specialty</label>
-                <select
-                  value={inviteSpecialty}
-                  onChange={(e) => setInviteSpecialty(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold select select-bordered"
-                >
-                  <option value="Bovine Reproduction">Bovine Reproduction</option>
-                  <option value="Artificial Insemination (AI)">Artificial Insemination (AI)</option>
-                  <option value="Epidemiology & Health Care">Epidemiology & Health Care</option>
-                  <option value="Caprine & Swine Lifecycle">Caprine & Swine Lifecycle</option>
-                </select>
-              </div>
+              <fieldset className="fieldset rounded-xl border border-base-300 p-4 mt-2">
+                <legend className="fieldset-legend text-xs font-black text-base-content/80 uppercase tracking-widest">Capabilities</legend>
+                <p className="label text-[11px] font-bold text-base-content/70">
+                  Select the services this Technician is qualified to receive.
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {TECHNICIAN_CAPABILITIES.map((capability) => (
+                    <label
+                      key={capability.id}
+                      className="flex min-h-12 items-center gap-3 rounded-xl border border-base-300 bg-base-200 px-4 py-2 hover:border-primary transition-all cursor-pointer shadow-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm checkbox-primary"
+                        checked={inviteCapabilities.includes(capability.id)}
+                        onChange={() => toggleInviteCapability(capability.id)}
+                      />
+                      <span className="font-semibold text-base-content">
+                        {capability.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-900">
+            <div className="flex justify-end gap-2 pt-3 border-t border-base-300">
               <button
                 type="button"
                 onClick={() => setIsInviteModalOpen(false)}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold"
+                className="btn btn-sm btn-outline border-base-300 rounded-xl text-xs font-bold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] text-white border-none rounded-xl text-xs font-black px-5"
+                className="btn btn-primary btn-sm"
               >
-                {isSubmitting ? <span className="loading loading-spinner loading-xs"></span> : "Send Invitation"}
+                {isSubmitting ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  "Send Invitation"
+                )}
               </button>
             </div>
           </form>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUser } from "@clerk/clerk-react";
 import {
   Bell,
   Search,
@@ -28,8 +29,11 @@ export default function Topbar({
   children,
 }) {
   const [showNotifications, setShowNotifications] = useState(false);
+  const { user } = useUser();
   const queryClient = useQueryClient();
   const { toggle } = useSidebar();
+  const isAdmin =
+    String(user?.publicMetadata?.role || "").toLowerCase() === "admin";
 
   // Fetch live notifications
   const { data: notifications = [] } = useQuery({
@@ -94,16 +98,12 @@ export default function Topbar({
   const getNotifIcon = (type) => {
     const t = type?.toLowerCase() || "";
     if (t.includes("ai") || t.includes("insemination")) {
-      return (
-        <Syringe size={14} className="text-emerald-600 dark:text-emerald-400" />
-      );
+      return <Syringe size={14} className="text-primary" />;
     }
     if (t.includes("health") || t.includes("medical")) {
-      return (
-        <HeartPulse size={14} className="text-rose-600 dark:text-rose-400" />
-      );
+      return <HeartPulse size={14} className="text-error" />;
     }
-    return <Info size={14} className="text-blue-600 dark:text-blue-400" />;
+    return <Info size={14} className="text-info" />;
   };
 
   return (
@@ -147,7 +147,11 @@ export default function Topbar({
           </div>
         )}
 
-        {/* Custom Extra Slots (e.g. filters, dropdowns) */}
+        {isAdmin && (
+          <ThemeToggle showTooltip tooltipPosition="bottom" />
+        )}
+
+        {/* Custom Extra Slots (e.g. refresh, filters, dropdowns) */}
         {children}
 
         {/* Notification Bell with Dropdown */}
@@ -160,7 +164,7 @@ export default function Topbar({
           >
             <Bell size={16} />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 animate-pulse rounded-full bg-error" />
             )}
           </button>
 
@@ -232,7 +236,7 @@ export default function Topbar({
                                 {notif.title}
                               </h4>
                               {!notif.isRead && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
                               )}
                             </div>
                             <p className="text-xs text-base-content/60 mt-1 leading-relaxed font-medium">

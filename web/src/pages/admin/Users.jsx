@@ -8,6 +8,7 @@ import {
   MapPin,
   UserCheck,
   SlidersHorizontal,
+  MoreVertical,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
@@ -109,10 +110,10 @@ export default function Users() {
   }, [users, searchQuery, municipalityFilter, barangayFilter]);
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Users Directory"
-        subtitle="Manage municipal stakeholders, farmer cooperatives, dispatch roster, and coordinators"
+        subtitle="Manage user accounts"
         searchPlaceholder={`Search ${activeTab}s name, contact...`}
         searchValue={searchQuery}
         onSearchChange={(e) => {
@@ -125,50 +126,49 @@ export default function Users() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div
             onClick={() => setActiveTab("farmer")}
-            className={`cursor-pointer p-4 rounded-xl border transition-all flex items-center gap-3 ${activeTab === "farmer" ? "bg-emerald-50 dark:bg-emerald-950/20 border-primary text-primary" : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"}`}
+            className={`cursor-pointer p-4 rounded-xl border-0 border-l-4 transition-all flex items-center gap-3 ${activeTab === "farmer" ? "bg-primary/10 border-primary text-primary" : "bg-base-100 border-base-300"}`}
           >
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
               <UsersIcon size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {activeTab === "farmer" ? users.length : "Farmers"}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Farmer Clients Directory
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
+                Farmers
               </div>
             </div>
           </div>
 
           <div
             onClick={() => setActiveTab("technician")}
-            className={`cursor-pointer p-4 rounded-xl border transition-all flex items-center gap-3 ${activeTab === "technician" ? "bg-emerald-50 dark:bg-emerald-950/20 border-primary text-primary" : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"}`}
+            className={`cursor-pointer p-4 rounded-xl border-0 border-l-4 transition-all flex items-center gap-3 ${activeTab === "technician" ? "bg-primary/10 border-primary text-primary" : "bg-base-100 border-base-300"}`}
           >
-            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
+            <div className="p-2.5 rounded-xl bg-base-200 text-base-content/70">
               <UserCheck size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {activeTab === "technician" ? users.length : "Technicians"}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Field Officers Dispatch
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
+                Field Officers
               </div>
             </div>
           </div>
-
           <div
             onClick={() => setActiveTab("admin")}
-            className={`cursor-pointer p-4 rounded-xl border transition-all flex items-center gap-3 ${activeTab === "admin" ? "bg-emerald-50 dark:bg-emerald-950/20 border-primary text-primary" : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"}`}
+            className={`cursor-pointer p-4 rounded-xl border-0 border-l-4 transition-all flex items-center gap-3 ${activeTab === "admin" ? "bg-primary/10 border-primary text-primary" : "bg-base-100 border-base-300"}`}
           >
-            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600">
+            <div className="p-2.5 rounded-xl bg-base-200 text-base-content/70">
               <Shield size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {activeTab === "admin" ? users.length : "Admins"}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 System Administrators
               </div>
             </div>
@@ -176,15 +176,15 @@ export default function Users() {
         </div>
 
         {/* Datatable Card Wrapper */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="card bg-base-100 border border-base-300 rounded-2xl p-5  flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top Filter Ribbon */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+          <div className="flex items-center gap-2 flex-wrap mb-4 bg-base-300/80 p-2.5 rounded-xl border dark:border-0 ">
+            <div className="flex items-center gap-1.5 text-xs text-base-content/90 font-bold uppercase tracking-wide px-1">
               <SlidersHorizontal size={13} />
               <span>Filters:</span>
             </div>
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-primary dark:focus:border-emerald-500 transition-all duration-200"
+              className="select select-bordered select-sm text-sm  border-0 rounded-xl bg-base-100 border-base-300 text-base-content focus:border-primary transition-all duration-200 font-medium"
               value={municipalityFilter}
               onChange={(e) => {
                 setMunicipalityFilter(e.target.value);
@@ -201,7 +201,7 @@ export default function Users() {
 
             {municipalityFilter && (
               <select
-                className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-primary dark:focus:border-emerald-500 transition-all duration-200 animate-fade-in"
+                className="select select-bordered select-sm text-sm rounded-xl bg-base-100 border-base-300 text-base-content focus:border-primary transition-all duration-200 animate-fade-in font-medium"
                 value={barangayFilter}
                 onChange={(e) => setBarangayFilter(e.target.value)}
               >
@@ -213,7 +213,7 @@ export default function Users() {
                 ))}
               </select>
             )}
-            <span className="text-xs text-slate-400 font-semibold ml-auto whitespace-nowrap px-1">
+            <span className="text-xs text-base-content/75 font-semibold ml-auto whitespace-nowrap px-1">
               {isLoading
                 ? "Fetching ledger..."
                 : `${filteredUsers.length} entries registered`}
@@ -224,12 +224,13 @@ export default function Users() {
           <div className="overflow-x-auto flex-1 overflow-y-auto">
             <table className="table w-full border-collapse">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
+                <tr className="bg-base-300 text-base-content text-[11px] rounded-lg font-bold uppercase tracking-wider select-none">
                   <th className="p-3.5 pl-5">Full Name</th>
                   <th className="p-3.5">Contact Number</th>
                   <th className="p-3.5">Email Address</th>
                   <th className="p-3.5">System Role</th>
                   <th className="p-3.5 pr-5 text-right">Barangay Sector</th>
+                  <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
@@ -238,8 +239,8 @@ export default function Users() {
                 ) : filteredUsers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
-                      className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium"
+                      colSpan={6}
+                      className="text-center p-12 text-base-content/75 font-medium"
                     >
                       No registered stakeholders matching filter criteria found.
                     </td>
@@ -249,7 +250,7 @@ export default function Users() {
                     return (
                       <tr
                         key={u._id}
-                        className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors"
+                        className="hover:bg-base-300/60 transition-colors cursor-pointer"
                       >
                         <td className="p-3.5 pl-5">
                           <div className="flex items-center gap-2.5">
@@ -259,38 +260,48 @@ export default function Users() {
                               size={32}
                               sizeClass="h-8 w-8"
                             />
-                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                            <span className="font-bold text-base-content">
                               {u.name}
                             </span>
                           </div>
                         </td>
-                        <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">
+                        <td className="p-3.5 font-mono text-base-content font-medium">
                           {u.phoneNumber || "No contact"}
                         </td>
-                        <td className="p-3.5 text-slate-500 font-medium">
+                        <td className="p-3.5 text-base-content/90 font-medium">
                           {u.email || "—"}
                         </td>
                         <td className="p-3.5">
                           <div className="flex items-center gap-1.5">
-                            <span className="badge badge-outline border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[9px] px-2.5 py-1">
+                            <span className="badge badge-outline border-base-300 text-base-content/90 font-bold uppercase tracking-wider text-[9px] px-2.5 py-1">
                               {u.role || activeTab}
                             </span>
                             {!u.clerkId && (
-                              <span className="badge bg-amber-500/10 text-amber-600 dark:text-amber-400 border-none font-bold uppercase tracking-wider text-[9px] px-2 py-1">
+                              <span className="badge badge-warning badge-soft badge-sm">
                                 Invited
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="p-3.5 pr-5 text-right font-semibold text-slate-500 flex items-center justify-end gap-1">
-                          <MapPin
-                            size={11}
-                            className="text-slate-400 shrink-0"
-                          />
-                          <span>
-                            {u.address?.barangay || "Oton"},{" "}
-                            {u.address?.city || "Oton"}, Iloilo
-                          </span>
+                        <td className="p-3.5 pr-5 text-right font-semibold text-base-content/90">
+                          <div className="flex items-center justify-end gap-1">
+                            <MapPin
+                              size={11}
+                              className="text-base-content/80 shrink-0"
+                            />
+                            <span>
+                              {u.address?.barangay || "Oton"},{" "}
+                              {u.address?.city || "Oton"}, Iloilo
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-3.5 pr-5 text-right">
+                          <button
+                            className="btn btn-ghost btn-sm btn-square text-base-content/90 hover:text-base-content hover:bg-base-300"
+                            aria-label="Actions"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
                         </td>
                       </tr>
                     );
