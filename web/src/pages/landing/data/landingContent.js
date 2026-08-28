@@ -1,4 +1,5 @@
 import {
+  APP_DOWNLOAD_PAGE_URL,
   APP_DOWNLOAD_URL,
   getDownloadQrUrl,
 } from "../../../config/appDistribution";
@@ -11,7 +12,7 @@ export const OTON_LOGO = OTON_LOGO_ASSET;
 export const MUNICIPAL_SEAL = "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
 export const MOCKUP_IMG = "https://res.cloudinary.com/donhulins/image/upload/v1780318231/mockup_1.png";
 export const APK_URL = APP_DOWNLOAD_URL;
-export const QR_URL = getDownloadQrUrl(APP_DOWNLOAD_URL);
+export const QR_URL = getDownloadQrUrl(APP_DOWNLOAD_PAGE_URL);
 
 export const NAV_LINKS = [
   { label: "Home", href: "#home" },
