@@ -28,12 +28,18 @@ import { useRecordAIContext } from "../hooks/useRecordAIContext";
 import type {
   AIRecordingValues,
   DirectInseminationPayload,
+  PreviousAIEntryMode,
   NormalizedInseminationDetails,
   RequestLinkedInseminationPayload,
   ReviewSnapshot,
   SelectedAnimal,
   SelectedFarmer,
 } from "../types/technicianAIRecording.types";
+import {
+  buildPreviousInseminationPayload,
+  getPreviousAIErrorMessage,
+  validatePreviousAIDate,
+} from "../utils/previousAI";
 
 const MY_WORK_PATH = "/(technician)/(tabs)/technician.requests?section=myWork";
 
@@ -61,6 +67,11 @@ export default function RecordAIScreen() {
   const walkInMutation = useWalkInInseminationMutation();
   const previousMutation = usePreviousInseminationMutation();
   const [isHistoricalMode, setIsHistoricalMode] = useState(false);
+  const [previousEntryMode, setPreviousEntryMode] =
+    useState<PreviousAIEntryMode>("history_only");
+  const [previousRecordError, setPreviousRecordError] = useState<string | null>(
+    null,
+  );
   const submissionLockRef = useRef(false);
   const initializedWorkflowRef = useRef<string | null>(null);
   const [values, setValues] = useState<AIRecordingValues>(initialValues);
@@ -71,7 +82,10 @@ export default function RecordAIScreen() {
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(
     null,
   );
-  const saving = requestMutation.isPending || walkInMutation.isPending || previousMutation.isPending;
+  const saving =
+    requestMutation.isPending ||
+    walkInMutation.isPending ||
+    previousMutation.isPending;
 
   useEffect(() => {
     if (
@@ -93,6 +107,7 @@ export default function RecordAIScreen() {
   }, [requestContext]);
 
   const updateValues = (next: Partial<AIRecordingValues>) => {
+    setPreviousRecordError(null);
     if (next.inseminationTime) {
       setHistoricalTimeConfirmationRequired(false);
     }
@@ -159,7 +174,20 @@ export default function RecordAIScreen() {
       return;
     }
 
-    if (mode.kind === "direct") {
+    if (isHistoricalMode) {
+      const dateError = validatePreviousAIDate(
+        values.inseminationDate,
+        animal.birthDate,
+        animal.species,
+        animal.breed,
+      );
+      if (dateError) {
+        setPreviousRecordError(dateError);
+        return;
+      }
+    }
+
+    if (mode.kind === "direct" && !isHistoricalMode) {
       const eligibility = getAIEligibility({ animal });
       if (!eligibility.isEligible) {
         toast.error(
@@ -214,7 +242,9 @@ export default function RecordAIScreen() {
       if (mode.kind === "request-linked") {
         result = await requestMutation.mutateAsync(payload);
       } else if (isHistoricalMode) {
-        result = await previousMutation.mutateAsync(payload);
+        result = await previousMutation.mutateAsync(
+          buildPreviousInseminationPayload(payload, previousEntryMode),
+        );
       } else {
         result = await walkInMutation.mutateAsync(payload);
       }
@@ -226,7 +256,11 @@ export default function RecordAIScreen() {
         toast.success(
           mode.kind === "request-linked"
             ? "Insemination completed successfully."
-            : "Direct AI record saved successfully.",
+            : isHistoricalMode
+              ? previousEntryMode === "history_only"
+                ? "Previous AI added to history."
+                : "Previous AI tracking started."
+              : "Direct AI record saved successfully.",
         );
       }
 
@@ -239,17 +273,24 @@ export default function RecordAIScreen() {
         }
       });
     } catch (error: any) {
-      console.error("[AI_COMPLETION_PATCH_ERROR]", {
+      if (__DEV__) console.debug("[AI_COMPLETION_PATCH_ERROR]", {
         requestId: mode.kind === "request-linked" ? mode.workflowId : undefined,
         endpoint:
           mode.kind === "request-linked"
             ? `/ai-request/${mode.workflowId}/status`
-            : isHistoricalMode ? "/technician/previous-insemination" : "/technician/walk-in-insemination",
+            : isHistoricalMode
+              ? "/technician/previous-insemination"
+              : "/technician/walk-in-insemination",
         responseStatus: error?.response?.status,
         code: error?.response?.data?.code,
         message: error?.response?.data?.message || error?.message,
       });
-      toast.error(getAIRecordingErrorMessage(error));
+      if (isHistoricalMode) {
+        setPreviousRecordError(getPreviousAIErrorMessage(error));
+        setReviewSnapshot(null);
+      } else {
+        toast.error(getAIRecordingErrorMessage(error));
+      }
     } finally {
       if (!accepted) {
         submissionLockRef.current = false;
@@ -258,7 +299,11 @@ export default function RecordAIScreen() {
   };
 
   const title =
-    mode.kind === "direct" ? (isHistoricalMode ? "Record Previous AI" : "Record Direct AI Service") : "Record Insemination";
+    mode.kind === "direct"
+      ? isHistoricalMode
+        ? "Record Previous AI"
+        : "Record Direct AI Service"
+      : "Record Insemination";
   const blockingError =
     mode.kind === "invalid" ? mode.message : requestError || contextError;
 
@@ -354,32 +399,68 @@ export default function RecordAIScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={{ flexDirection: "row", marginHorizontal: 16, marginTop: 16, marginBottom: 8, padding: 4, backgroundColor: colors.card, borderRadius: 8 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              marginHorizontal: 16,
+              marginTop: 16,
+              marginBottom: 8,
+              padding: 4,
+              backgroundColor: colors.card,
+              borderRadius: 8,
+            }}
+          >
             <TouchableOpacity
-              onPress={() => setIsHistoricalMode(false)}
+              onPress={() => {
+                setIsHistoricalMode(false);
+                setPreviousRecordError(null);
+              }}
               disabled={saving}
               style={{
                 flex: 1,
                 paddingVertical: 8,
                 alignItems: "center",
                 borderRadius: 6,
-                backgroundColor: !isHistoricalMode ? colors.primary : "transparent",
+                backgroundColor: !isHistoricalMode
+                  ? colors.primary
+                  : "transparent",
               }}
             >
-              <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: !isHistoricalMode ? "#FFFFFF" : colors.textSecondary }}>Current AI Service</Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 13,
+                  color: !isHistoricalMode ? "#FFFFFF" : colors.textSecondary,
+                }}
+              >
+                Current AI Service
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setIsHistoricalMode(true)}
+              onPress={() => {
+                setIsHistoricalMode(true);
+                setPreviousRecordError(null);
+              }}
               disabled={saving}
               style={{
                 flex: 1,
                 paddingVertical: 8,
                 alignItems: "center",
                 borderRadius: 6,
-                backgroundColor: isHistoricalMode ? colors.primary : "transparent",
+                backgroundColor: isHistoricalMode
+                  ? colors.primary
+                  : "transparent",
               }}
             >
-              <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: isHistoricalMode ? "#FFFFFF" : colors.textSecondary }}>Previous AI Record</Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 13,
+                  color: isHistoricalMode ? "#FFFFFF" : colors.textSecondary,
+                }}
+              >
+                Previous AI Record
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -388,6 +469,12 @@ export default function RecordAIScreen() {
             values={values}
             saving={saving}
             isHistoricalMode={isHistoricalMode}
+            entryMode={previousEntryMode}
+            submissionError={previousRecordError}
+            onEntryModeChange={(entryMode) => {
+              setPreviousEntryMode(entryMode);
+              setPreviousRecordError(null);
+            }}
             onValuesChange={updateValues}
             onReview={openReview}
           />
@@ -397,6 +484,7 @@ export default function RecordAIScreen() {
       <InseminationReviewModal
         visible={Boolean(reviewSnapshot)}
         isHistoricalMode={isHistoricalMode}
+        entryMode={previousEntryMode}
         snapshot={reviewSnapshot}
         saving={saving}
         onGoBack={() => {

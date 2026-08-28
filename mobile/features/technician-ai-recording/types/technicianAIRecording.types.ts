@@ -1,4 +1,5 @@
 export type EstrusType = "Natural" | "Synchronized" | "Induced";
+export type PreviousAIEntryMode = "history_only" | "continue_tracking";
 
 export interface AIRecordingValues {
   inseminationDate: Date;
@@ -38,6 +39,7 @@ export interface SelectedAnimal {
   gender?: string;
   sex?: string;
   reproductiveStatus?: string;
+  birthDate?: string;
   farmerId?: string | { _id?: string };
   [key: string]: any;
 }
@@ -111,4 +113,8 @@ export interface DirectInseminationPayload {
   animalId: string;
   animalDetails: null;
   inseminationDetails: NormalizedInseminationDetails & { status: "done" };
+}
+
+export interface PreviousInseminationPayload extends DirectInseminationPayload {
+  entryMode: PreviousAIEntryMode;
 }

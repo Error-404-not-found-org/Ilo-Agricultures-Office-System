@@ -38,6 +38,11 @@ import {
   getBreedingObservationLabel,
   isBreedingObservationAwaitingReview,
 } from "../utils/breedingObservationPresentation";
+import {
+  getHistoricalInseminationPresentation,
+  getPostpartumPresentation,
+  splitReproductiveAttempts,
+} from "../utils/reproductiveCyclePresentation";
 
 interface PregnancyTrackerScreenProps {
   id: string;
@@ -218,7 +223,11 @@ export function PregnancyTrackerScreen({
   }
 
   const animal = query.data;
-  const [latest, ...historicalAttempts] = animal.inseminations || [];
+  const { current: latest, history: historicalAttempts } =
+    splitReproductiveAttempts(
+      animal.inseminations || [],
+      animal.reproductiveStatus,
+    );
   const canReportObservation =
     !isTechnician &&
     Boolean(latest?._id) &&
@@ -238,8 +247,16 @@ export function PregnancyTrackerScreen({
   const associatedCalving = animal.calvings?.find(
     (c: any) =>
       c.pregnancyId === latestPregnancy?._id ||
-      c.pregnancyId?._id === latestPregnancy?._id
+      c.pregnancyId?._id === latestPregnancy?._id,
   );
+
+  const postpartumPresentation = getPostpartumPresentation({
+    isCompletedCycle,
+    nextAction: animal.nextAction,
+    nextActionAt: animal.nextActionAt,
+    effectiveReproductiveStatus: animal.effectiveReproductiveStatus,
+    calvingDate: associatedCalving?.date || animal.lastCalvingDate,
+  });
 
   const aiDateValue =
     latest?.inseminationDate ||
@@ -260,13 +277,14 @@ export function PregnancyTrackerScreen({
   const diffDays = expected
     ? differenceInCalendarDays(expected, new Date())
     : null;
-  const remainingDisplay = diffDays !== null
-    ? diffDays === 0
-      ? "Expected today"
-      : diffDays < 0
-        ? `${Math.abs(diffDays)} days overdue`
-        : `${diffDays} estimated days remaining`
-    : null;
+  const remainingDisplay =
+    diffDays !== null
+      ? diffDays === 0
+        ? "Expected today"
+        : diffDays < 0
+          ? `${Math.abs(diffDays)} days overdue`
+          : `${diffDays} estimated days remaining`
+      : null;
   const remaining = diffDays;
   const totalDays =
     aiDate && expected
@@ -284,7 +302,8 @@ export function PregnancyTrackerScreen({
     normSpecies === "Beef Cattle" ||
     normSpecies === "Dairy Cattle";
   const isEligibleForPregnancyReport = isCattle && elapsedDays >= 35;
-  const isConfirmedPregnant = activePregnancy?.pregnancyDiagnosis?.result === "Pregnant";
+  const isConfirmedPregnant =
+    activePregnancy?.pregnancyDiagnosis?.result === "Pregnant";
 
   const isTerminallyFailed = latest?.isSuccess === false;
   const isReturnToHeat =
@@ -443,7 +462,13 @@ export function PregnancyTrackerScreen({
               >
                 {animal.name || animal.earTag || animal.animalId}
               </Text>
-              <StatusBadge label={animal.reproductiveStatus || "Monitoring"} />
+              <StatusBadge
+                label={
+                  postpartumPresentation?.statusLabel ||
+                  animal.reproductiveStatus ||
+                  "Monitoring"
+                }
+              />
             </View>
             <Text
               numberOfLines={1}
@@ -462,7 +487,7 @@ export function PregnancyTrackerScreen({
         </View>
 
         {/* Gestation Progress Card */}
-        {isCompletedCycle ? (
+        {isCompletedCycle && postpartumPresentation ? (
           <View
             style={{
               marginHorizontal: 24,
@@ -474,52 +499,96 @@ export function PregnancyTrackerScreen({
               borderWidth: 1,
             }}
           >
-            <View>
-              <Text
-                style={{
-                  color: colors.textPrimary,
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 16,
-                }}
-              >
-                Post-partum
-              </Text>
+            <Text
+              style={{
+                color: colors.textPrimary,
+                fontFamily: "Outfit_700Bold",
+                fontSize: 16,
+              }}
+            >
+              {postpartumPresentation.title}
+            </Text>
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 13,
+                lineHeight: 19,
+                marginTop: 4,
+              }}
+            >
+              {postpartumPresentation.message}
+            </Text>
+            {postpartumPresentation.calvingDate ? (
+              <View style={{ marginTop: 16 }}>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Last calving date
+                </Text>
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 14,
+                    marginTop: 3,
+                  }}
+                >
+                  {format(
+                    new Date(postpartumPresentation.calvingDate),
+                    "MMM d, yyyy",
+                  )}
+                </Text>
+              </View>
+            ) : null}
+            {postpartumPresentation.nextEligibleDate ? (
+              <View style={{ marginTop: 14 }}>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Next eligible date
+                </Text>
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 14,
+                    marginTop: 3,
+                  }}
+                >
+                  {format(
+                    new Date(postpartumPresentation.nextEligibleDate),
+                    "MMM d, yyyy",
+                  )}
+                </Text>
+              </View>
+            ) : null}
+            {postpartumPresentation.availability ? (
               <Text
                 style={{
                   color: colors.textSecondary,
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 13,
-                  marginTop: 4,
-                }}
-              >
-                Calving recorded · {associatedCalving?.date ? format(new Date(associatedCalving.date), "MMM d, yyyy") : "N/A"}
-              </Text>
-            </View>
-            <View style={{ marginTop: 16 }}>
-              <Text
-                style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.5,
-                }}
-              >
-                Current status
-              </Text>
-              <Text
-                style={{
-                  color: colors.textPrimary,
                   fontFamily: "Outfit_600SemiBold",
-                  fontSize: 15,
-                  marginTop: 4,
+                  fontSize: 12,
+                  marginTop: 16,
                 }}
               >
-                Post-partum recovery
+                {postpartumPresentation.availability}
               </Text>
-            </View>
+            ) : null}
           </View>
-        ) : (animal.reproductiveStatus === "Pregnant" || activePregnancy) ? (
+        ) : animal.reproductiveStatus === "Pregnant" || activePregnancy ? (
           <View
             style={{
               marginHorizontal: 24,
@@ -637,17 +706,25 @@ export function PregnancyTrackerScreen({
               >
                 <Text
                   style={{
-                    color: diffDays !== null && diffDays < 0 ? colors.error : colors.textMuted,
+                    color:
+                      diffDays !== null && diffDays < 0
+                        ? colors.error
+                        : colors.textMuted,
                     fontFamily: "Outfit_800ExtraBold",
                     fontSize: 9,
                     letterSpacing: 0.5,
                   }}
                 >
-                  {diffDays !== null && diffDays < 0 ? "OVERDUE" : "DAYS REMAINING"}
+                  {diffDays !== null && diffDays < 0
+                    ? "OVERDUE"
+                    : "DAYS REMAINING"}
                 </Text>
                 <Text
                   style={{
-                    color: diffDays !== null && diffDays < 0 ? colors.error : colors.textPrimary,
+                    color:
+                      diffDays !== null && diffDays < 0
+                        ? colors.error
+                        : colors.textPrimary,
                     fontFamily: "Outfit_700Bold",
                     fontSize: 14,
                     marginTop: 4,
@@ -680,40 +757,110 @@ export function PregnancyTrackerScreen({
               </Text>
             </View>
             <View style={{ marginTop: 16 }}>
-              <View style={{ flexDirection: "row", marginBottom: 16, opacity: 0.7 }}>
+              <View
+                style={{ flexDirection: "row", marginBottom: 16, opacity: 0.7 }}
+              >
                 <View style={{ width: 24, alignItems: "center" }}>
                   <CheckCircle size={18} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_600SemiBold", fontSize: 15 }}>AI completed</Text>
-                  {aiDate && <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_400Regular", fontSize: 13, marginTop: 2 }}>{format(aiDate, "MMM d, yyyy")}</Text>}
+                  <Text
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 15,
+                    }}
+                  >
+                    AI completed
+                  </Text>
+                  {aiDate && (
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_400Regular",
+                        fontSize: 13,
+                        marginTop: 2,
+                      }}
+                    >
+                      {format(aiDate, "MMM d, yyyy")}
+                    </Text>
+                  )}
                 </View>
               </View>
               {latestPregnancy?.pregnancyDiagnosis?.date && (
-                <View style={{ flexDirection: "row", marginBottom: 16, opacity: 0.7 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    marginBottom: 16,
+                    opacity: 0.7,
+                  }}
+                >
                   <View style={{ width: 24, alignItems: "center" }}>
                     <CheckCircle size={18} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_600SemiBold", fontSize: 15 }}>Pregnancy confirmed</Text>
-                    <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_400Regular", fontSize: 13, marginTop: 2 }}>{format(new Date(latestPregnancy.pregnancyDiagnosis.date), "MMM d, yyyy")}</Text>
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 15,
+                      }}
+                    >
+                      Pregnancy confirmed
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_400Regular",
+                        fontSize: 13,
+                        marginTop: 2,
+                      }}
+                    >
+                      {format(
+                        new Date(latestPregnancy.pregnancyDiagnosis.date),
+                        "MMM d, yyyy",
+                      )}
+                    </Text>
                   </View>
                 </View>
               )}
               {associatedCalving?.date && (
-                <View style={{ flexDirection: "row", marginBottom: 16, opacity: 0.7 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    marginBottom: 16,
+                    opacity: 0.7,
+                  }}
+                >
                   <View style={{ width: 24, alignItems: "center" }}>
                     <CheckCircle size={18} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_600SemiBold", fontSize: 15 }}>Calving recorded</Text>
-                    <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_400Regular", fontSize: 13, marginTop: 2 }}>{format(new Date(associatedCalving.date), "MMM d, yyyy")}</Text>
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 15,
+                      }}
+                    >
+                      Calving recorded
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_400Regular",
+                        fontSize: 13,
+                        marginTop: 2,
+                      }}
+                    >
+                      {format(new Date(associatedCalving.date), "MMM d, yyyy")}
+                    </Text>
                   </View>
                 </View>
               )}
             </View>
           </View>
-        ) : (
+        ) : latest ? (
           <View style={{ marginHorizontal: 24, marginTop: 24 }}>
             <View
               style={{
@@ -722,232 +869,234 @@ export function PregnancyTrackerScreen({
                 justifyContent: "space-between",
               }}
             >
-            <Text
-              style={{
-                color: colors.textPrimary,
-                fontFamily: "Outfit_700Bold",
-                fontSize: 16,
-              }}
-            >
-              {animal.reproductiveStatus === "Pregnant" || activePregnancy
-                ? "Pregnancy Timeline"
-                : "Reproductive Timeline"}
-            </Text>
-            {latest?.attemptNumber ? (
               <Text
                 style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 13,
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 16,
                 }}
               >
-                Current Cycle · Attempt #{latest.attemptNumber}
+                {animal.reproductiveStatus === "Pregnant" || activePregnancy
+                  ? "Pregnancy Timeline"
+                  : "Reproductive Timeline"}
               </Text>
-            ) : null}
-          </View>
-          <View style={{ marginTop: 16 }}>
-            {milestones.map((milestone, index) => {
-              const complete =
-                index < currentIndex &&
-                !milestone.isSkipped &&
-                !milestone.isFailed &&
-                !milestone.isPendingEvidence;
-              const active =
-                index === currentIndex &&
-                !isTerminallyFailed &&
-                !milestone.isSkipped;
-              const isFailed = milestone.isFailed;
-              const isSkipped = milestone.isSkipped;
-              return (
-                <View
-                  key={milestone.label}
+              {latest?.attemptNumber ? (
+                <Text
                   style={{
-                    flexDirection: "row",
-                    minHeight: 80,
-                    opacity: isSkipped ? 0.5 : 1,
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 13,
                   }}
                 >
-                  <View style={{ width: 32, alignItems: "center" }}>
-                    <View
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 12,
-                        justifyContent: "center",
-                        alignItems: "center",
-                        borderWidth: 2,
-                        borderColor:
-                          complete || active || isFailed
-                            ? isFailed
-                              ? colors.error
-                              : isDark
-                                ? colors.primary
-                                : "#00643B"
-                            : colors.border,
-                        backgroundColor:
-                          complete || isFailed
-                            ? isFailed
-                              ? colors.error
-                              : isDark
-                                ? colors.primary
-                                : "#00643B"
-                            : colors.card,
-                      }}
-                    >
-                      {complete && !isFailed ? (
-                        <Check size={12} color="white" />
-                      ) : isFailed ? (
-                        <Text
-                          style={{
-                            color: "white",
-                            fontSize: 10,
-                            fontFamily: "Outfit_700Bold",
-                          }}
-                        >
-                          X
-                        </Text>
-                      ) : isSkipped ? (
-                        <Circle
-                          size={8}
-                          color={colors.textMuted}
-                          fill="transparent"
-                        />
-                      ) : (
-                        <Circle
-                          size={8}
-                          color={
-                            active
-                              ? isDark
-                                ? colors.primary
-                                : "#00643B"
-                              : colors.textMuted
-                          }
-                          fill={
-                            active
-                              ? isDark
-                                ? colors.primary
-                                : "#00643B"
-                              : "transparent"
-                          }
-                        />
-                      )}
-                    </View>
-                    {index < milestones.length - 1 ? (
+                  Current Cycle · Attempt #{latest.attemptNumber}
+                </Text>
+              ) : null}
+            </View>
+            <View style={{ marginTop: 16 }}>
+              {milestones.map((milestone, index) => {
+                const complete =
+                  index < currentIndex &&
+                  !milestone.isSkipped &&
+                  !milestone.isFailed &&
+                  !milestone.isPendingEvidence;
+                const active =
+                  index === currentIndex &&
+                  !isTerminallyFailed &&
+                  !milestone.isSkipped;
+                const isFailed = milestone.isFailed;
+                const isSkipped = milestone.isSkipped;
+                return (
+                  <View
+                    key={milestone.label}
+                    style={{
+                      flexDirection: "row",
+                      minHeight: 80,
+                      opacity: isSkipped ? 0.5 : 1,
+                    }}
+                  >
+                    <View style={{ width: 32, alignItems: "center" }}>
                       <View
                         style={{
-                          width: 2,
-                          flex: 1,
-                          backgroundColor: complete
-                            ? isDark
-                              ? colors.primary
-                              : "#00643B"
-                            : colors.border,
-                        }}
-                      />
-                    ) : null}
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12, paddingBottom: 20 }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: active
-                            ? isDark
-                              ? colors.primary
-                              : "#00643B"
-                            : isFailed
-                              ? colors.error
-                              : colors.textPrimary,
-                          fontFamily: "Outfit_600SemiBold",
-                          fontSize: 14,
+                          width: 24,
+                          height: 24,
+                          borderRadius: 12,
+                          justifyContent: "center",
+                          alignItems: "center",
+                          borderWidth: 2,
+                          borderColor:
+                            complete || active || isFailed
+                              ? isFailed
+                                ? colors.error
+                                : isDark
+                                  ? colors.primary
+                                  : "#00643B"
+                              : colors.border,
+                          backgroundColor:
+                            complete || isFailed
+                              ? isFailed
+                                ? colors.error
+                                : isDark
+                                  ? colors.primary
+                                  : "#00643B"
+                              : colors.card,
                         }}
                       >
-                        {milestone.label}
-                      </Text>
+                        {complete && !isFailed ? (
+                          <Check size={12} color="white" />
+                        ) : isFailed ? (
+                          <Text
+                            style={{
+                              color: "white",
+                              fontSize: 10,
+                              fontFamily: "Outfit_700Bold",
+                            }}
+                          >
+                            X
+                          </Text>
+                        ) : isSkipped ? (
+                          <Circle
+                            size={8}
+                            color={colors.textMuted}
+                            fill="transparent"
+                          />
+                        ) : (
+                          <Circle
+                            size={8}
+                            color={
+                              active
+                                ? isDark
+                                  ? colors.primary
+                                  : "#00643B"
+                                : colors.textMuted
+                            }
+                            fill={
+                              active
+                                ? isDark
+                                  ? colors.primary
+                                  : "#00643B"
+                                : "transparent"
+                            }
+                          />
+                        )}
+                      </View>
+                      {index < milestones.length - 1 ? (
+                        <View
+                          style={{
+                            width: 2,
+                            flex: 1,
+                            backgroundColor: complete
+                              ? isDark
+                                ? colors.primary
+                                : "#00643B"
+                              : colors.border,
+                          }}
+                        />
+                      ) : null}
+                    </View>
+                    <View
+                      style={{ flex: 1, marginLeft: 12, paddingBottom: 20 }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: active
+                              ? isDark
+                                ? colors.primary
+                                : "#00643B"
+                              : isFailed
+                                ? colors.error
+                                : colors.textPrimary,
+                            fontFamily: "Outfit_600SemiBold",
+                            fontSize: 14,
+                          }}
+                        >
+                          {milestone.label}
+                        </Text>
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 12,
+                          }}
+                        >
+                          {milestone.date
+                            ? format(milestone.date, "MMM d, yyyy")
+                            : "Pending"}
+                        </Text>
+                      </View>
                       <Text
                         style={{
                           color: colors.textSecondary,
                           fontFamily: "Outfit_500Medium",
                           fontSize: 12,
+                          marginTop: 4,
                         }}
                       >
-                        {milestone.date
-                          ? format(milestone.date, "MMM d, yyyy")
-                          : "Pending"}
+                        {milestone.detail}
                       </Text>
+                      {active ? (
+                        <View
+                          style={{
+                            backgroundColor: isDark
+                              ? "rgba(0,100,59,0.15)"
+                              : "#ecfdf5",
+                            alignSelf: "flex-start",
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                            marginTop: 6,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: isDark ? colors.primary : "#00643B",
+                              fontFamily: "Outfit_800ExtraBold",
+                              fontSize: 8,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Current Stage
+                          </Text>
+                        </View>
+                      ) : isTerminallyFailed && isFailed ? (
+                        <View
+                          style={{
+                            backgroundColor: isDark
+                              ? "rgba(220,38,38,0.15)"
+                              : "#FEE2E2",
+                            alignSelf: "flex-start",
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                            marginTop: 6,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: colors.error,
+                              fontFamily: "Outfit_800ExtraBold",
+                              fontSize: 8,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Attempt Failed
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
-                    <Text
-                      style={{
-                        color: colors.textSecondary,
-                        fontFamily: "Outfit_500Medium",
-                        fontSize: 12,
-                        marginTop: 4,
-                      }}
-                    >
-                      {milestone.detail}
-                    </Text>
-                    {active ? (
-                      <View
-                        style={{
-                          backgroundColor: isDark
-                            ? "rgba(0,100,59,0.15)"
-                            : "#ecfdf5",
-                          alignSelf: "flex-start",
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          borderRadius: 6,
-                          marginTop: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: isDark ? colors.primary : "#00643B",
-                            fontFamily: "Outfit_800ExtraBold",
-                            fontSize: 8,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Current Stage
-                        </Text>
-                      </View>
-                    ) : isTerminallyFailed && isFailed ? (
-                      <View
-                        style={{
-                          backgroundColor: isDark
-                            ? "rgba(220,38,38,0.15)"
-                            : "#FEE2E2",
-                          alignSelf: "flex-start",
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          borderRadius: 6,
-                          marginTop: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: colors.error,
-                            fontFamily: "Outfit_800ExtraBold",
-                            fontSize: 8,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Attempt Failed
-                        </Text>
-                      </View>
-                    ) : null}
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
-        </View>
-        )}
+        ) : null}
 
         {historicalAttempts && historicalAttempts.length > 0 && (
           <View style={{ marginHorizontal: 24, marginTop: 32 }}>
@@ -959,9 +1108,11 @@ export function PregnancyTrackerScreen({
                 marginBottom: 16,
               }}
             >
-              Previous Attempts
+              Past Reproductive History
             </Text>
             {historicalAttempts.map((attempt: any) => {
+              const presentation =
+                getHistoricalInseminationPresentation(attempt);
               const histDateValue =
                 attempt?.inseminationDate ||
                 attempt?.dateOfAI ||
@@ -969,16 +1120,6 @@ export function PregnancyTrackerScreen({
               const histDate = histDateValue ? new Date(histDateValue) : null;
 
               const isHistFailed = attempt.isSuccess === false;
-              let outcomeText = attempt.outcome || "Pending";
-              if (isHistFailed && outcomeText.includes("Failed")) {
-                const reason = outcomeText
-                  .replace("Failed", "")
-                  .replace(/[()]/g, "")
-                  .trim();
-                outcomeText = `Failed · ${reason || "Unsuccessful"}`;
-              } else if (attempt.isSuccess === true) {
-                outcomeText = "Successful";
-              }
 
               const routeDef = {
                 pathname: isTechnician
@@ -1016,7 +1157,7 @@ export function PregnancyTrackerScreen({
                         fontSize: 14,
                       }}
                     >
-                      Attempt #{attempt.attemptNumber || "?"}
+                      {presentation.title}
                     </Text>
                     {histDate ? (
                       <Text
@@ -1029,6 +1170,17 @@ export function PregnancyTrackerScreen({
                         {format(histDate, "MMM d, yyyy")}
                       </Text>
                     ) : null}
+                    {presentation.context ? (
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontFamily: "Outfit_600SemiBold",
+                          fontSize: 12,
+                        }}
+                      >
+                        {presentation.context}
+                      </Text>
+                    ) : null}
                     <Text
                       style={{
                         color: isHistFailed ? colors.error : colors.textMuted,
@@ -1037,7 +1189,7 @@ export function PregnancyTrackerScreen({
                         marginTop: 2,
                       }}
                     >
-                      {outcomeText}
+                      {presentation.outcome}
                     </Text>
                   </View>
                   <View

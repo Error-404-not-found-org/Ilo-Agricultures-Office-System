@@ -186,6 +186,7 @@ export interface Animal {
   birthDate?: string;
   owner?: string | Farmer;
   reproductiveStatus?: ReproductiveStatus;
+  effectiveReproductiveStatus?: ReproductiveStatus;
   pregnancyStatus?: ReproductiveStatus;
   lastInseminationDate?: string;
   expectedCalvingDate?: string;
@@ -239,6 +240,7 @@ export interface AIRequest extends ServiceRequest {
   cancellationReason?: string | null;
   cancellationResponseReason?: string | null;
   inseminationDate?: string;
+  entryMode?: "history_only" | "continue_tracking";
   isSuccess?: boolean | null;
   attemptNumber?: number;
   previousAttemptId?: string | AIRequest;

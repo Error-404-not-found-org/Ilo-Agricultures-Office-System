@@ -56,6 +56,10 @@ import {
   isBreedingObservationAwaitingReview,
 } from "@/features/breeding/utils/breedingObservationPresentation";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
+import {
+  getPostpartumPresentation,
+  isHistoryOnlyInsemination,
+} from "@/features/breeding/utils/reproductiveCyclePresentation";
 import type {
   AIRequest,
   Animal,
@@ -537,7 +541,19 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
     }))
     .filter((entry) => entry.value && Number.isFinite(entry.timestamp))
     .sort((first, second) => second.timestamp - first.timestamp);
-  const latestAi = validInseminations[0];
+  const latestAi = validInseminations.find(
+    ({ item }) => !isHistoryOnlyInsemination(item),
+  );
+  const latestHistoricalAi = validInseminations.find(({ item }) =>
+    isHistoryOnlyInsemination(item),
+  );
+  const postpartumPresentation = getPostpartumPresentation({
+    isCompletedCycle: animal.reproductiveStatus === "Post-partum",
+    nextAction: animal.nextAction,
+    nextActionAt: animal.nextActionAt,
+    calvingDate: animal.lastCalvingDate,
+    effectiveReproductiveStatus: animal.effectiveReproductiveStatus,
+  });
 
   const latestObservation =
     latestAi?.item?.farmerOutcomeReport && !latestAi?.item?.previousAttemptId
@@ -553,7 +569,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
       animal.reproductiveStatus || "",
     );
   const hasPregnancyTrackerData = Boolean(
-    latestAi?.value ||
+    validInseminations.length > 0 ||
     animal.lastInseminationDate ||
     animal.expectedCalvingDate ||
     animal.pregnancyConfirmedAt ||
@@ -1029,7 +1045,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                         : colors.textSecondary,
                     }}
                   >
-                    {animal.reproductiveStatus || "No reproductive status recorded."}
+                    {postpartumPresentation?.statusLabel ||
+                      animal.effectiveReproductiveStatus ||
+                      animal.reproductiveStatus ||
+                      "No reproductive status recorded."}
                   </Text>
                   {canOpenPregnancyTracker && (
                     <ChevronRight size={18} color={colors.textMuted} style={{ marginLeft: 8 }} />
@@ -1041,6 +1060,20 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     color="secondary"
                   >
                     Last AI: {formatDate(latestAi.value)}
+                  </Text>
+                ) : null}
+
+                {latestHistoricalAi?.value ? (
+                  <Text textRole="body" color="secondary">
+                    Historical AI: {formatDate(latestHistoricalAi.value)} · History only
+                  </Text>
+                ) : null}
+                {postpartumPresentation ? (
+                  <Text textRole="body" color="secondary">
+                    {postpartumPresentation.message}
+                    {postpartumPresentation.nextEligibleDate
+                      ? ` · Eligible after ${formatDate(postpartumPresentation.nextEligibleDate)}`
+                      : ""}
                   </Text>
                 ) : null}
 
@@ -1109,7 +1142,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                           pathname: "/(farmer)/report-breeding-observation",
                           params: {
                             animalId: animal._id,
-                            requestId: latestAi.item._id,
+                            requestId: latestAi!.item._id,
                             defaultReport: "unsure",
                           },
                         } as never)
@@ -1139,7 +1172,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                           pathname: "/(farmer)/report-breeding-observation",
                           params: {
                             animalId: animal._id,
-                            requestId: latestAi.item._id,
+                            requestId: latestAi!.item._id,
                             defaultReport: "unsure",
                           },
                         } as never)
@@ -1320,7 +1353,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       pathname: "/(farmer)/report-breeding-observation",
                       params: {
                         animalId: animal._id,
-                        requestId: latestAi.item._id,
+                        requestId: latestAi!.item._id,
                         defaultReport:
                           latestObservation?.farmerOutcomeReport || "unsure",
                       },
@@ -2148,7 +2181,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       ...(isReInsem
                         ? {
                             mode: "re-inseminate",
-                            requestId: latestAi.item._id,
+                            requestId: latestAi!.item._id,
                           }
                         : {}),
                     },

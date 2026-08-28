@@ -2,6 +2,11 @@ import {
   checkInseminationAgeEligibility,
   verifyPostpartumWindow,
 } from "./cattleCore";
+import {
+  getAuthoritativeReproductiveStatus,
+  isBackendPostpartumRecovery,
+  shouldUseLegacyPostpartumFallback,
+} from "./reproductionAuthority";
 
 export const PREGNANCY_DIAGNOSIS_MINIMUM_DAYS = 60;
 const ACTIVE_AI_STATUSES = new Set([
@@ -72,7 +77,7 @@ export function getAIEligibility({
   const age = checkInseminationAgeEligibility(animal.birthDate, animal.species || "Cattle");
   if (!age.isEligible) return { isEligible: false, code: age.code || "AGE_INELIGIBLE", reason: age.reason };
 
-  const status = String(animal.reproductiveStatus || "");
+  const status = getAuthoritativeReproductiveStatus(animal);
   if (status === "Pregnant") {
     return { isEligible: false, code: "ACTIVE_PREGNANCY", reason: "This animal is currently pregnant." };
   }
@@ -92,6 +97,14 @@ export function getAIEligibility({
   }
 
   const isRecheck = animal.inseminations?.[0]?.pregnancyFollowUpTask?.metadata?.workflowStage === "diagnostic_follow_up";
+
+  if (isBackendPostpartumRecovery(animal)) {
+    return {
+      isEligible: false,
+      code: "POSTPARTUM_RECOVERY",
+      reason: "This animal is still in postpartum recovery.",
+    };
+  }
 
   if (animal.nextAction) {
     if (animal.nextAction.phase === "PREGNANCY_CHECK_DUE" || animal.nextAction.phase === "PREGNANCY_MONITORING") {
@@ -119,7 +132,7 @@ export function getAIEligibility({
     };
   }
 
-  if (animal.lastCalvingDate) {
+  if (shouldUseLegacyPostpartumFallback(animal) && animal.lastCalvingDate) {
     const recovery = verifyPostpartumWindow(
       animal.lastCalvingDate,
       at,
