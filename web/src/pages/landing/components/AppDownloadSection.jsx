@@ -23,7 +23,7 @@ export default function AppDownloadSection() {
             Download BreedSmart for Android
           </h2>
           <p className="text-sm sm:text-base text-slate-600 font-medium leading-relaxed">
-            Install the Farmer app to register cattle, request services, and receive updates from Agricultural Technicians.
+            Install the official BreedSmart Android app for authorized Farmers and Technicians.
           </p>
         </div>
 
@@ -41,7 +41,7 @@ export default function AppDownloadSection() {
                   className="inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-[#074033] hover:bg-[#052E24] text-white text-base font-extrabold transition-all shadow-md hover:shadow-lg w-full sm:w-auto"
                 >
                   <Download size={20} />
-                  Download Farmer App
+                  Download BreedSmart
                 </a>
               ) : (
                 <p className="inline-flex rounded-2xl bg-amber-50 px-5 py-4 text-sm font-bold text-amber-900">
@@ -49,7 +49,7 @@ export default function AppDownloadSection() {
                 </p>
               )}
               <p className="text-xs font-semibold text-slate-500">
-                Installs via the official BreedSmart build destination on Expo.
+                Downloads the latest official BreedSmart Android release.
               </p>
             </div>
 
