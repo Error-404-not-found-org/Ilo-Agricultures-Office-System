@@ -22,6 +22,7 @@ const normalizedAdminFiles = [
   "src/components/dialogs/AdminRequestActions.jsx",
   "src/components/dialogs/ActivityDetailsModal.jsx",
   "src/components/dialogs/RequestActionModal.jsx",
+  "src/components/dialogs/TechnicianInviteDialog.jsx",
 ];
 
 const deprecatedPalettePattern =
@@ -49,9 +50,9 @@ describe("Admin semantic palette consistency", () => {
   );
 
   it("uses consistent primary button variants for principal Admin actions", () => {
-    expect(read("src/pages/admin/Technicians.jsx")).toContain(
-      'className="btn btn-primary btn-sm"',
-    );
+    expect(
+      read("src/components/dialogs/TechnicianInviteDialog.jsx"),
+    ).toContain('className="btn btn-primary btn-sm"');
     expect(read("src/pages/admin/Settings.jsx")).toContain(
       'className="btn btn-primary btn-sm"',
     );

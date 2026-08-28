@@ -46,6 +46,10 @@ describe("dead component cleanup", () => {
 
   it("keeps canonical Admin authority helpers in active use", () => {
     const technicians = readFileSync("src/pages/admin/Technicians.jsx", "utf8");
+    const invitationDialog = readFileSync(
+      "src/components/dialogs/TechnicianInviteDialog.jsx",
+      "utf8",
+    );
     const technicianService = readFileSync(
       "src/services/adminTechniciansService.js",
       "utf8",
@@ -55,7 +59,8 @@ describe("dead component cleanup", () => {
       "utf8",
     );
 
-    expect(technicians).toContain("createTechnician");
+    expect(technicians).toContain("TechnicianInviteDialog");
+    expect(invitationDialog).toContain("createTechnician");
     expect(technicianService).toContain('"/admin/technicians"');
     expect(requestService).toContain(
       "`/admin/requests/${requestType}/${encodeURIComponent(requestId)}/reassign`",

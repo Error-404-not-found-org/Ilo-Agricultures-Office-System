@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import axiosInstance from "../../lib/axios";
-import { useToast } from "../../contexts/ToastContext";
 import {
   Users,
   Plus,
@@ -13,35 +12,17 @@ import {
   ChevronRight,
   TrendingUp,
   Award,
-  X,
   Search,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
-import {
-  buildTechnicianInvitationPayload,
-  createTechnician,
-  TECHNICIAN_CAPABILITIES,
-} from "../../services/adminTechniciansService";
+import TechnicianInviteDialog from "../../components/dialogs/TechnicianInviteDialog";
 
 export default function Technicians() {
   const navigate = useNavigate();
-  const toast = useToast();
-  const queryClient = useQueryClient();
-
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Invite Form state
-  const [inviteFirstName, setInviteFirstName] = useState("");
-  const [inviteLastName, setInviteLastName] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [invitePhone, setInvitePhone] = useState("");
-  const [inviteStreet, setInviteStreet] = useState("");
-  const [inviteBarangay, setInviteBarangay] = useState("");
-  const [inviteCapabilities, setInviteCapabilities] = useState([]);
 
   // ---- DYNAMIC DATA PIPELINE ----
   const { data: technicians = [], isLoading } = useQuery({
@@ -79,71 +60,6 @@ export default function Technicians() {
       return matchesSearch && matchesStatus;
     });
   }, [technicians, searchQuery, statusFilter]);
-
-  const handleInviteSubmit = async (e) => {
-    e.preventDefault();
-    if (
-      !inviteFirstName.trim() ||
-      !inviteLastName.trim() ||
-      !inviteEmail.trim() ||
-      !invitePhone
-    ) {
-      toast.error("Please fill in all required fields.");
-      return;
-    }
-    if (!inviteBarangay.trim()) {
-      toast.error("Barangay is required for the Technician contact address.");
-      return;
-    }
-    if (!/^09\d{9}$/.test(invitePhone)) {
-      toast.error(
-        "Phone number must be exactly 11 digits, start with 09, and contain no letters.",
-      );
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const payload = buildTechnicianInvitationPayload({
-        firstName: inviteFirstName,
-        lastName: inviteLastName,
-        email: inviteEmail,
-        phoneNumber: invitePhone,
-        street: inviteStreet,
-        barangay: inviteBarangay,
-        serviceCapabilities: inviteCapabilities,
-      });
-      await createTechnician(payload);
-      toast.success(`Invitation email sent successfully to ${inviteEmail}!`);
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "technicians-list"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "dashboard-overview"],
-      });
-      setIsInviteModalOpen(false);
-      setInviteFirstName("");
-      setInviteLastName("");
-      setInviteEmail("");
-      setInvitePhone("");
-      setInviteStreet("");
-      setInviteBarangay("");
-      setInviteCapabilities([]);
-    } catch (err) {
-      toast.error(
-        err.response?.data?.message || "Failed to invite technician.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const toggleInviteCapability = (capability) => {
-    setInviteCapabilities((current) =>
-      current.includes(capability)
-        ? current.filter((item) => item !== capability)
-        : [...current, capability],
-    );
-  };
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
@@ -365,163 +281,11 @@ export default function Technicians() {
         </div>
       </main>
 
-      {/* ===== INVITE / ADD TECHNICIAN MODAL ===== */}
-      {isInviteModalOpen && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setIsInviteModalOpen(false)}
-        >
-          <form
-            onSubmit={handleInviteSubmit}
-            className="card max-h-[90vh] w-full max-w-lg overflow-y-auto bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-base-300 pb-3">
-              <h3 className="text-sm font-black uppercase text-base-content/80">
-                Invite Field Officer
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsInviteModalOpen(false)}
-                aria-label="Close Technician invitation"
-                className="btn btn-xs btn-ghost btn-circle text-base-content/70 hover:text-error"
-              >
-                <X size={16} />
-              </button>
-            </div>
+      <TechnicianInviteDialog
+        open={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+      />
 
-            <div className="space-y-4 text-xs">
-              <fieldset className="fieldset rounded-xl border border-base-300 p-4">
-                <legend className="fieldset-legend text-xs font-black text-base-content/80 uppercase tracking-widest">
-                  Technician Information
-                </legend>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="fieldset">
-                    <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider">First name</span>
-                    <input
-                      className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                      value={inviteFirstName}
-                      onChange={(event) =>
-                        setInviteFirstName(event.target.value)
-                      }
-                      required
-                    />
-                  </label>
-                  <label className="fieldset">
-                    <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider">Last name</span>
-                    <input
-                      className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                      value={inviteLastName}
-                      onChange={(event) =>
-                        setInviteLastName(event.target.value)
-                      }
-                      required
-                    />
-                  </label>
-                </div>
-                <label className="fieldset">
-                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">Email address</span>
-                  <input
-                    type="email"
-                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    placeholder="technician@oton.gov.ph"
-                    value={inviteEmail}
-                    onChange={(event) => setInviteEmail(event.target.value)}
-                    required
-                  />
-                </label>
-                <label className="fieldset">
-                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">Phone number</span>
-                  <input
-                    type="tel"
-                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    placeholder="09171234567"
-                    value={invitePhone}
-                    onChange={(event) => {
-                      const value = event.target.value.replace(/\D/g, "");
-                      if (value.length <= 11) setInvitePhone(value);
-                    }}
-                    required
-                  />
-                </label>
-              </fieldset>
-
-              <fieldset className="fieldset rounded-xl border border-base-300 p-4 mt-2">
-                <legend className="fieldset-legend text-xs font-black text-base-content/80 uppercase tracking-widest">Field Area</legend>
-                <div className="rounded-xl bg-base-200 px-4 py-2.5 font-semibold text-base-content/90 border border-base-300 shadow-inner">
-                  Oton, Iloilo
-                </div>
-                <label className="fieldset">
-                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">Barangay</span>
-                  <input
-                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    value={inviteBarangay}
-                    onChange={(event) => setInviteBarangay(event.target.value)}
-                    required
-                  />
-                </label>
-                <label className="fieldset">
-                  <span className="label text-[11px] font-bold text-base-content/70 uppercase tracking-wider mt-2">
-                    Street or sitio{" "}
-                    <span className="font-normal opacity-70 ml-1">(optional)</span>
-                  </span>
-                  <input
-                    className="input w-full bg-base-200 border-base-300 text-base-content font-medium focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    value={inviteStreet}
-                    onChange={(event) => setInviteStreet(event.target.value)}
-                  />
-                </label>
-              </fieldset>
-
-              <fieldset className="fieldset rounded-xl border border-base-300 p-4 mt-2">
-                <legend className="fieldset-legend text-xs font-black text-base-content/80 uppercase tracking-widest">Capabilities</legend>
-                <p className="label text-[11px] font-bold text-base-content/70">
-                  Select the services this Technician is qualified to receive.
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {TECHNICIAN_CAPABILITIES.map((capability) => (
-                    <label
-                      key={capability.id}
-                      className="flex min-h-12 items-center gap-3 rounded-xl border border-base-300 bg-base-200 px-4 py-2 hover:border-primary transition-all cursor-pointer shadow-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm checkbox-primary"
-                        checked={inviteCapabilities.includes(capability.id)}
-                        onChange={() => toggleInviteCapability(capability.id)}
-                      />
-                      <span className="font-semibold text-base-content">
-                        {capability.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-base-300">
-              <button
-                type="button"
-                onClick={() => setIsInviteModalOpen(false)}
-                className="btn btn-sm btn-outline border-base-300 rounded-xl text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn btn-primary btn-sm"
-              >
-                {isSubmitting ? (
-                  <span className="loading loading-spinner loading-xs"></span>
-                ) : (
-                  "Send Invitation"
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
