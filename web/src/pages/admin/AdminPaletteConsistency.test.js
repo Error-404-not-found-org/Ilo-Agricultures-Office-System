@@ -10,7 +10,6 @@ const normalizedAdminFiles = [
   "src/pages/admin/Dashboard.jsx",
   "src/pages/admin/Inseminations.jsx",
   "src/pages/admin/Livestock.jsx",
-  "src/pages/admin/Monitoring.jsx",
   "src/pages/admin/Reports.jsx",
   "src/pages/admin/Settings.jsx",
   "src/pages/admin/SupportTickets.jsx",
