@@ -39,7 +39,7 @@ const SidebarNavIcon = ({ children }) => (
 export default function Sidebar() {
   const location = useLocation();
   const { user } = useUser();
-  const { signOut } = useClerk();
+  const { signOut, openUserProfile } = useClerk();
   const role = user?.publicMetadata?.role || "Field Officer";
   const normalizedRole = String(role).toLowerCase();
   const isAdmin = normalizedRole === "admin";
@@ -555,10 +555,11 @@ export default function Sidebar() {
               className={isCollapsed ? "tooltip tooltip-right w-full" : ""}
               data-tip={isCollapsed ? displayName : undefined}
             >
-              <Link
-                to="/admin/settings"
+              <button
+                type="button"
+                onClick={() => openUserProfile()}
                 aria-label="Open Admin profile"
-                className={`flex cursor-pointer items-center text-base-content/75 transition-colors hover:bg-base-100 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                className={`btn btn-ghost flex h-auto min-h-0 cursor-pointer items-center border-0 text-base-content/75 transition-colors hover:bg-base-100 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   isCollapsed
                     ? "mx-auto h-11 w-11 justify-center rounded-full p-1"
                     : "w-full gap-3 rounded-xl p-2.5"
@@ -593,7 +594,7 @@ export default function Sidebar() {
                     </span>
                   </div>
                 )}
-              </Link>
+              </button>
             </div>
           ) : (
             <div
@@ -640,7 +641,7 @@ export default function Sidebar() {
               onClick={handleLogout}
               className={
                 isAdmin
-                  ? "group btn btn-ghost min-h-11 w-full justify-start gap-3 px-3 text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+                  ? "group btn btn-ghost min-h-11 w-full justify-center gap-3 px-3 text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
                   : "group btn btn-ghost btn-sm w-full text-error hover:bg-error/10"
               }
             >

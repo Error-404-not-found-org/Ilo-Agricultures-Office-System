@@ -2,6 +2,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const clerkMocks = vi.hoisted(() => ({
+  openUserProfile: vi.fn(),
+  signOut: vi.fn(),
+}));
+
 vi.mock("@clerk/clerk-react", () => ({
   UserButton: () => <div aria-label="Account avatar" />,
   useUser: () => ({
@@ -11,7 +16,7 @@ vi.mock("@clerk/clerk-react", () => ({
       publicMetadata: { role: "admin" },
     },
   }),
-  useClerk: () => ({ signOut: vi.fn() }),
+  useClerk: () => clerkMocks,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -47,6 +52,7 @@ function renderSidebar(path = "/admin/dashboard", { collapsed = false } = {}) {
 
 describe("Admin Sidebar navigation", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
   });
 
@@ -179,14 +185,13 @@ describe("Admin Sidebar navigation", () => {
     );
   });
 
-  it("uses the Clerk identity block as the only Admin profile link", () => {
+  it("opens Clerk account controls from the Admin identity block", () => {
     const expanded = renderSidebar();
 
-    const profile = screen.getByRole("link", { name: "Open Admin profile" });
-    expect(profile).toHaveAttribute(
-      "href",
-      "/admin/settings",
-    );
+    const profile = screen.getByRole("button", {
+      name: "Open Admin profile",
+    });
+    expect(profile).not.toHaveAttribute("href");
     expect(profile).toHaveTextContent("Admin User");
     expect(profile).toHaveTextContent("admin");
     const expandedAvatar = profile.querySelector(
@@ -202,16 +207,26 @@ describe("Admin Sidebar navigation", () => {
       screen.queryByRole("button", { name: "Switch to dark mode" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign Out" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Sign Out" })).toHaveClass(
+      "justify-center",
+    );
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/admin/settings",
+    );
+
+    fireEvent.click(profile);
+    expect(clerkMocks.openUserProfile).toHaveBeenCalledTimes(1);
 
     expanded.unmount();
     renderSidebar("/admin/inseminations", { collapsed: true });
 
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeVisible();
-    const collapsedProfile = screen.getByRole("link", {
+    const collapsedProfile = screen.getByRole("button", {
       name: "Open Admin profile",
     });
     expect(collapsedProfile).toBeVisible();
-    expect(collapsedProfile).toHaveAttribute("href", "/admin/settings");
+    expect(collapsedProfile).not.toHaveAttribute("href");
     const collapsedAvatar = collapsedProfile.querySelector(
       'img[src="https://example.test/admin-avatar.png"]',
     );
@@ -240,7 +255,7 @@ describe("Admin Sidebar navigation", () => {
   it("keeps the collapsed Admin profile and Sign Out controls accessible", () => {
     renderSidebar("/admin/dashboard", { collapsed: true });
 
-    const profile = screen.getByRole("link", {
+    const profile = screen.getByRole("button", {
       name: "Open Admin profile",
     });
     expect(profile).toBeVisible();
