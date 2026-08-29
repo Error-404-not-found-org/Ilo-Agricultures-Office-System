@@ -1,9 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Search, Users } from "lucide-react";
+import { MapPin, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 import { MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
+import {
+  formatBarangayMetric,
+  formatBarangayPercentage,
+  getBarangayStatusPresentation,
+  mapBarangayInsight,
+} from "./barangayInsightsPresentation";
 
 const getMunicipalityForBarangay = (brgyName) => {
   if (!brgyName) return "Oton, Iloilo";
@@ -42,16 +48,19 @@ export default function BarangayInsights() {
     queryKey: ["admin", "barangay-insights"],
     queryFn: async () => {
       const res = await axiosInstance.get("/admin/barangays/insights");
-      return res.data?.data || res.data || [];
+      if (!Array.isArray(res.data)) {
+        throw new Error("Invalid Barangay Insights response");
+      }
+      return res.data.map((item) =>
+        mapBarangayInsight(item, getMunicipalityForBarangay),
+      );
     },
   });
 
   const barangays = useMemo(() => {
-    const list = Array.isArray(data) ? data : data?.barangays || [];
+    const list = Array.isArray(data) ? data : [];
     return list.filter((item) =>
-      String(item.name || item.barangay || item._id || "")
-        .toLowerCase()
-        .includes(search.toLowerCase()),
+      item.name.toLowerCase().includes(search.toLowerCase()),
     );
   }, [data, search]);
 
@@ -81,6 +90,7 @@ export default function BarangayInsights() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search barangay..."
+              aria-label="Search barangays"
               className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-base-300 bg-base-200 outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all shadow-sm"
             />
           </div>
@@ -105,6 +115,7 @@ export default function BarangayInsights() {
             [...Array(6)].map((_, index) => (
               <div
                 key={index}
+                aria-label="Loading barangay insights"
                 className="h-36 rounded-2xl bg-base-100 border border-base-300 animate-pulse"
               />
             ))
@@ -114,48 +125,54 @@ export default function BarangayInsights() {
             </div>
           ) : (
             barangays.map((item) => {
-              const name =
-                item.name || item.barangay || item._id || "Unnamed barangay";
+              const status = getBarangayStatusPresentation(item.status);
               return (
-                <div
-                  key={name}
+                <article
+                  key={`${item.municipality}-${item.name}`}
+                  aria-label={`${item.name} barangay insight`}
                   className="bg-base-100 border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow rounded-2xl p-5"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-base-content">
-                        {name}
+                        {item.name}
                       </p>
                       <p className="text-xs text-base-content/80 mt-1 font-semibold">
-                        {getMunicipalityForBarangay(name)}
+                        {item.municipality}
                       </p>
                     </div>
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                      <MapPin size={18} />
+                    <div className="flex items-center gap-2">
+                      {status ? (
+                        <span
+                          className={`badge badge-soft badge-sm ${status.className}`}
+                        >
+                          {status.label}
+                        </span>
+                      ) : null}
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <MapPin size={18} aria-hidden="true" />
+                      </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-5">
+                  <div className="grid grid-cols-2 gap-2 mt-5">
                     <Metric
                       label="Farmers"
-                      value={item.farmers || item.farmerCount || 0}
+                      value={formatBarangayMetric(item.farmersCount)}
                     />
                     <Metric
                       label="Animals"
-                      value={item.animals || item.animalCount || 0}
+                      value={formatBarangayMetric(item.animalsCount)}
                     />
                     <Metric
-                      label="Cases"
-                      value={item.healthRequests || item.healthCount || 0}
+                      label="Pending health"
+                      value={formatBarangayMetric(item.pendingHealthRequests)}
+                    />
+                    <Metric
+                      label="AI success"
+                      value={formatBarangayPercentage(item.aiSuccessRate)}
                     />
                   </div>
-                  {Array.isArray(item.technicians) &&
-                    item.technicians.length > 0 && (
-                      <p className="text-[11px] font-bold text-base-content/80 mt-4 flex items-center gap-1">
-                        <Users size={12} /> {item.technicians.length} assigned
-                        technician{item.technicians.length === 1 ? "" : "s"}
-                      </p>
-                    )}
-                </div>
+                </article>
               );
             })
           )}
@@ -166,7 +183,10 @@ export default function BarangayInsights() {
 }
 
 const Metric = ({ label, value }) => (
-  <div className="rounded-xl bg-base-200 border border-base-300 p-3">
+  <div
+    aria-label={`${label}: ${value}`}
+    className="rounded-xl bg-base-200 border border-base-300 p-3"
+  >
     <p className="text-[10px] font-black uppercase tracking-widest text-base-content/80">
       {label}
     </p>
