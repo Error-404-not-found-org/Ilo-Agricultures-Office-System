@@ -28,12 +28,11 @@ import {
 } from '../utils/dispatchPayloadBuilders';
 
 const PRIMARY = '#1e3a5f';
-const ROLES = ['farmer', 'technician', 'admin'] as const;
+const ROLES = ['farmer', 'technician'] as const;
 
 const ROLE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   farmer: { label: 'Farmer', color: '#065f46', bg: '#D1FAE5' },
   technician: { label: 'Technician', color: '#1d4ed8', bg: '#DBEAFE' },
-  admin: { label: 'Administrator', color: '#92400e', bg: '#FEF3C7' },
 };
 
 export default function CreateUserScreen() {

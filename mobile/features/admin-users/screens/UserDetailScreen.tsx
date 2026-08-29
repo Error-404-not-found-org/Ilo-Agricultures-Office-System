@@ -42,6 +42,10 @@ import {
   getReceiveRequestsPresentation,
 } from "../utils/dispatchPresentation";
 import { getAdminRequestStatusLabel } from "@/features/admin-requests/utils/adminRequestPresentation";
+import {
+  isOperationalUser,
+  OPERATIONAL_USER_ROLES,
+} from "../utils/operationalUsers";
 
 const PRIMARY = "#1e3a5f";
 
@@ -120,8 +124,24 @@ export default function UserDetailScreen() {
     );
   }
 
+  if (!isOperationalUser(user)) {
+    return (
+      <ScreenLayout>
+        <View className="flex-1 px-6 justify-center">
+          <AsyncState
+            state="empty"
+            title="Account not manageable here"
+            message="Administrator and unsupported accounts are outside operational user management. Use your Admin Profile for your own account."
+            actionLabel="Back to Users"
+            onAction={() => router.replace("/(admin)/(tabs)/admin.users" as any)}
+            icon={<Shield size={24} color={PRIMARY} />}
+          />
+        </View>
+      </ScreenLayout>
+    );
+  }
+
   const roleLabels: Record<string, string> = {
-    admin: "Administrator",
     technician: "Technician",
     farmer: "Farmer",
   };
@@ -188,9 +208,7 @@ export default function UserDetailScreen() {
               className="w-20 h-20 rounded-full items-center justify-center mb-4"
               style={{
                 backgroundColor:
-                  user.role === "admin"
-                    ? "#FEF3C7"
-                    : user.role === "technician"
+                  user.role === "technician"
                     ? "#DBEAFE"
                     : "#D1FAE5",
               }}
@@ -199,9 +217,7 @@ export default function UserDetailScreen() {
                 className="text-3xl font-outfit-black"
                 style={{
                   color:
-                    user.role === "admin"
-                      ? "#92400e"
-                      : user.role === "technician"
+                    user.role === "technician"
                       ? "#1d4ed8"
                       : "#065f46",
                 }}
@@ -675,7 +691,7 @@ export default function UserDetailScreen() {
             </View>
 
             <View className="gap-y-3 pb-6">
-              {Object.keys(roleLabels).map((r) => (
+              {OPERATIONAL_USER_ROLES.map((r) => (
                 <TouchableOpacity
                   key={r}
                   onPress={() => {

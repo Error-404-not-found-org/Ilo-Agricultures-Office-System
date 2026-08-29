@@ -10,6 +10,14 @@ import {
   updateRole,
   deleteUser,
 } from "../services/adminUsers.service";
+import type {
+  OperationalUserRole,
+  UserItem,
+} from "../types/adminUsers.types";
+import {
+  isOperationalUser,
+  isOperationalUserRole,
+} from "../utils/operationalUsers";
 
 export const useUserDetail = (userId: string) => {
   const api = useApi();
@@ -21,7 +29,7 @@ export const useUserDetail = (userId: string) => {
     isLoading,
     isRefetching,
     refetch,
-  } = useQuery({
+  } = useQuery<UserItem | null>({
     queryKey: ["admin-user-detail", userId],
     enabled: !!userId,
     queryFn: async () => {
@@ -30,7 +38,14 @@ export const useUserDetail = (userId: string) => {
     },
   });
 
+  const canManageUser = () => {
+    if (isOperationalUser(user)) return true;
+    toast.error("This account is outside operational user management.");
+    return false;
+  };
+
   const handleSuspend = async () => {
+    if (!canManageUser()) return;
     setActionLoading(true);
     try {
       await suspendUser(api, userId);
@@ -46,6 +61,7 @@ export const useUserDetail = (userId: string) => {
   };
 
   const handleReactivate = async () => {
+    if (!canManageUser()) return;
     setActionLoading(true);
     try {
       await reactivateUser(api, userId);
@@ -61,6 +77,7 @@ export const useUserDetail = (userId: string) => {
   };
 
   const handleVerify = async () => {
+    if (!canManageUser()) return;
     setActionLoading(true);
     try {
       await verifyUser(api, userId);
@@ -76,6 +93,7 @@ export const useUserDetail = (userId: string) => {
   };
 
   const handleResetPassword = async (): Promise<string | null> => {
+    if (!canManageUser()) return null;
     setActionLoading(true);
     try {
       const res = await resetPassword(api, userId);
@@ -89,7 +107,8 @@ export const useUserDetail = (userId: string) => {
     }
   };
 
-  const handleUpdateRole = async (newRole: string) => {
+  const handleUpdateRole = async (newRole: OperationalUserRole) => {
+    if (!canManageUser() || !isOperationalUserRole(newRole)) return;
     setActionLoading(true);
     try {
       await updateRole(api, userId, newRole);
@@ -105,6 +124,7 @@ export const useUserDetail = (userId: string) => {
   };
 
   const handleDelete = async (onSuccess?: () => void) => {
+    if (!canManageUser()) return;
     setActionLoading(true);
     try {
       await deleteUser(api, userId);

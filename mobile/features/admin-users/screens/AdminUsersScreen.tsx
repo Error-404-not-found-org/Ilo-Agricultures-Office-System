@@ -37,6 +37,7 @@ import {
   getFieldAreaLabel,
   getReceiveRequestsPresentation,
 } from "../utils/dispatchPresentation";
+import { isOperationalUser } from "../utils/operationalUsers";
 
 const PRIMARY = "#1e3a5f";
 
@@ -44,7 +45,6 @@ const ROLE_COLORS: Record<
   string,
   { bg: string; text: string; accent: string }
 > = {
-  admin: { bg: "#FEF3C7", text: "#92400e", accent: "#d97706" },
   technician: { bg: "#DBEAFE", text: "#1d4ed8", accent: "#2563eb" },
   farmer: { bg: "#D1FAE5", text: "#065f46", accent: "#16a34a" },
 };
@@ -249,13 +249,6 @@ export default function AdminUsersScreen() {
           color="#2563eb"
           isActive={activeStatKey === "technician"}
           onPress={() => handleStatPress("technician")}
-        />
-        <StatChip
-          label="Admins"
-          count={userStats.admins}
-          color="#d97706"
-          isActive={activeStatKey === "admin"}
-          onPress={() => handleStatPress("admin")}
         />
         <StatChip
           label="Suspended"
@@ -543,7 +536,9 @@ const UserCard = React.memo(function UserCard({
   onLongPress: () => void;
 }) {
   const { colors, isDark } = useTheme();
-  const roleStyle = ROLE_COLORS[item.role] || ROLE_COLORS.farmer;
+  if (!isOperationalUser(item)) return null;
+
+  const roleStyle = ROLE_COLORS[item.role];
   const hasImage = !!item.imageUrl;
   const accountState = getAccountStatePresentation(item);
   const dispatchReadiness = getDispatchReadinessPresentation(item);
@@ -632,13 +627,7 @@ const UserCard = React.memo(function UserCard({
             }}
           >
             <StatusBadge
-              label={
-                item.role === "admin"
-                  ? "Administrator"
-                  : item.role === "technician"
-                    ? "Technician"
-                    : "Farmer"
-              }
+              label={item.role === "technician" ? "Technician" : "Farmer"}
             />
             <StatusBadge label={accountState.label} variant={accountState.tone} />
             {item.role === "technician" && (

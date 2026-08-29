@@ -1,8 +1,10 @@
+export type OperationalUserRole = 'farmer' | 'technician';
+
 export interface UserItem {
   _id: string;
   name?: string;
   email?: string;
-  role: 'farmer' | 'technician' | 'admin';
+  role: string;
   clerkId?: string;
   isVerified?: boolean;
   profileClaimStatus?: "none" | "unclaimed" | "claimed" | "blocked";
@@ -21,6 +23,10 @@ export interface UserItem {
     province?: string;
   };
   deletedAt?: string;
+  assignedAnimals?: any[];
+  serviceHistory?: any[];
+  loginHistory?: any[];
+  activityHistory?: any[];
   dispatchProfile?: {
     serviceMunicipalities?: {
       municipalityCode: string;

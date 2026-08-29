@@ -1,8 +1,10 @@
 import { AxiosInstance } from "axios";
+import type { OperationalUserRole } from "../types/adminUsers.types";
+import { filterOperationalUsers } from "../utils/operationalUsers";
 
 export const listUsers = async (api: AxiosInstance) => {
   const res = await api.get("/admin/list-users");
-  return Array.isArray(res.data) ? res.data : [];
+  return filterOperationalUsers(res.data);
 };
 
 export const deleteUser = async (api: AxiosInstance, id: string) => {
@@ -16,7 +18,7 @@ export const createUser = async (
     firstName: string;
     lastName: string;
     email: string;
-    role: string;
+    role: OperationalUserRole;
     phoneNumber?: string;
     address?: {
       street?: string;
@@ -79,14 +81,18 @@ export const resetPassword = async (api: AxiosInstance, id: string) => {
   return res.data;
 };
 
-export const updateRole = async (api: AxiosInstance, id: string, role: string) => {
+export const updateRole = async (
+  api: AxiosInstance,
+  id: string,
+  role: OperationalUserRole,
+) => {
   const res = await api.post("/admin/update-role", { id, role });
   return res.data;
 };
 
 export const getArchivedUsers = async (api: AxiosInstance) => {
   const res = await api.get("/user/archived");
-  return Array.isArray(res.data?.data) ? res.data.data : [];
+  return filterOperationalUsers(res.data?.data);
 };
 
 export const restoreUser = async (api: AxiosInstance, id: string) => {
