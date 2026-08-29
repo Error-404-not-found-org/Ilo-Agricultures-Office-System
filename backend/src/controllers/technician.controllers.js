@@ -58,7 +58,6 @@ import {
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import {
-  ACTIVE_AI_REQUEST_STATUSES,
   AI_STATUS,
   normalizeAIStatus,
 } from "../domain/status-vocabulary.js";
@@ -71,6 +70,11 @@ import {
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
 import { PREGNANCY_TASK_STAGE } from "../domain/pregnancy-task-workflow.js";
+import {
+  buildActiveAIWorkFilter,
+  buildActiveHealthWorkFilter,
+  buildActiveStandaloneTaskFilter,
+} from "../services/technician-workload-summary.service.js";
 
 const combineMongoFilters = (baseFilter, ...conditions) => {
   const { $and: baseAnd = [], ...base } = baseFilter;
@@ -4394,86 +4398,81 @@ export const getWorkQueue = async (req, res) => {
     todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
-    const aiStateQuery = {
-      status:
-        workState === "completed"
-          ? AI_STATUS.DONE
-          : { $in: ACTIVE_AI_REQUEST_STATUSES },
-      deletedAt: null,
-      ...(isAdmin
-        ? {}
-        : {
-            declinedByTechnicianIds: { $ne: authenticatedUserId },
-            $or: [
-              { approvedBy: authenticatedUserId },
-              { status: "done", technicianId: authenticatedUserId },
-            ],
-          }),
-    };
+    const aiStateQuery =
+      workState === "completed"
+        ? {
+            status: AI_STATUS.DONE,
+            deletedAt: null,
+            ...(isAdmin
+              ? {}
+              : {
+                  declinedByTechnicianIds: { $ne: authenticatedUserId },
+                  $or: [
+                    { approvedBy: authenticatedUserId },
+                    { status: AI_STATUS.DONE, technicianId: authenticatedUserId },
+                  ],
+                }),
+          }
+        : buildActiveAIWorkFilter({
+            technicianId: isAdmin ? null : authenticatedUserId,
+          });
 
-    const healthAssigneeField = "assignedTechnicianId";
-    const healthStateQuery = {
-      status:
-        workState === "completed"
-          ? { $in: ["resolved", "done"] }
-          : {
-              $in: [
-                "pending",
-                "triaged",
-                "assigned",
-                "approved",
-                "scheduled",
-                "in-progress",
-                "in_progress",
-              ],
-            },
-      deletedAt: null,
-      ...(isAdmin
-        ? {}
-        : {
-            declinedByTechnicianIds: { $ne: authenticatedUserId },
-            $or: [
-              { handledBy: authenticatedUserId },
-              { [healthAssigneeField]: authenticatedUserId },
-            ],
-          }),
-    };
+    const healthStateQuery =
+      workState === "completed"
+        ? {
+            status: { $in: ["resolved", "done"] },
+            deletedAt: null,
+            ...(isAdmin
+              ? {}
+              : {
+                  declinedByTechnicianIds: { $ne: authenticatedUserId },
+                  $or: [
+                    { handledBy: authenticatedUserId },
+                    { assignedTechnicianId: authenticatedUserId },
+                  ],
+                }),
+          }
+        : buildActiveHealthWorkFilter({
+            technicianId: isAdmin ? null : authenticatedUserId,
+          });
 
-    const taskStateQuery = {
-      status:
-        workState === "completed"
-          ? "Completed"
-          : { $in: ["Pending", "In Progress"] },
-      $and: [
-        {
-          $or: [
-            { taskType: { $nin: ["PD", "BreedingFollowUp"] } },
-            {
-              taskType: { $in: ["PD", "BreedingFollowUp"] },
-              $or: [
-                { status: "Pending", dueDate: { $ne: null, $lte: now } },
-                { status: "In Progress" },
-              ],
-            },
-          ],
-        },
-      ],
-      ...(isAdmin
-        ? {}
-        : {
-            technicianId: authenticatedUserId,
-          }),
-    };
-    const standaloneTaskQuery = combineMongoFilters(taskStateQuery, {
-      $nor: [
-        {
-          taskType: {
-            $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
-          },
-        },
-        { relatedRecordType: { $in: ["insemination", "health"] } },
-      ],
-    });
+    const taskStateQuery =
+      workState === "completed"
+        ? {
+            status: "Completed",
+            $and: [
+              {
+                $or: [
+                  { taskType: { $nin: ["PD", "BreedingFollowUp"] } },
+                  {
+                    taskType: { $in: ["PD", "BreedingFollowUp"] },
+                    $or: [
+                      { status: "Pending", dueDate: { $ne: null, $lte: now } },
+                      { status: "In Progress" },
+                    ],
+                  },
+                ],
+              },
+            ],
+            ...(isAdmin ? {} : { technicianId: authenticatedUserId }),
+          }
+        : null;
+    const standaloneTaskQuery =
+      workState === "completed"
+        ? combineMongoFilters(taskStateQuery, {
+            $nor: [
+              {
+                taskType: {
+                  $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
+                },
+              },
+              { relatedRecordType: { $in: ["insemination", "health"] } },
+            ],
+          })
+        : buildActiveStandaloneTaskFilter({
+            technicianId: isAdmin ? null : authenticatedUserId,
+            now,
+          });
 
     const searchText = String(search || "").trim();
     let farmerIds = [];

@@ -13,11 +13,14 @@ describe("Admin Monitoring route retirement source safety", () => {
     expect(existsSync("src/pages/admin/Monitoring.jsx")).toBe(false);
   });
 
-  it("preserves the Dashboard monitoring dependency for its later migration", () => {
+  it("detaches Dashboard workload from the broad monitoring endpoint", () => {
     const dashboard = read("src/pages/admin/Dashboard.jsx");
 
-    expect(dashboard).toContain('axiosInstance.get("/admin/monitoring")');
-    expect(dashboard).toContain("technicianWorkloads");
+    expect(dashboard).toContain(
+      'axiosInstance.get("/admin/technician-workload-summary")',
+    );
+    expect(dashboard).not.toContain('axiosInstance.get("/admin/monitoring")');
+    expect(dashboard).not.toContain("technicianWorkloads");
   });
 
   it("keeps the backend monitoring endpoint registered", () => {

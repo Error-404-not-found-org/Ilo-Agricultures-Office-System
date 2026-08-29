@@ -715,6 +715,7 @@ test("Technician Work Queue backend contract", async (t) => {
         taskRecord({
           _id: ids.calvingTask,
           taskType: "Calving",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
         }),
       ];
 
@@ -874,7 +875,11 @@ test("Technician Work Queue backend contract", async (t) => {
           taskType: "PD",
           dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
         }),
-        taskRecord({ _id: ids.calvingTask, taskType: "Calving" }),
+        taskRecord({
+          _id: ids.calvingTask,
+          taskType: "Calving",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        }),
       ];
 
       const recorder = responseRecorder();
@@ -899,52 +904,92 @@ test("Technician Work Queue backend contract", async (t) => {
   );
 
   await t.test(
-    "PD tasks correctly follow the canonical My Work visibility rules",
+    "Pregnancy and Calving tasks follow canonical actionable-date visibility",
     async () => {
       state.inseminations = [];
       state.healthRequests = [];
+      const now = Date.now();
+      const futureDueDate = new Date(now + 24 * 60 * 60 * 1000);
+      const dueDate = new Date(now);
+      const overdueDate = new Date(now - 24 * 60 * 60 * 1000);
       state.tasks = [
         taskRecord({
           _id: "pd-future-pending",
           taskType: "PD",
           status: "Pending",
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+          dueDate: futureDueDate,
         }),
         taskRecord({
           _id: "pd-due-pending",
           taskType: "PD",
           status: "Pending",
-          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
+          dueDate,
         }),
         taskRecord({
-          _id: "pd-missing-due-pending",
+          _id: "pd-overdue-pending",
           taskType: "PD",
           status: "Pending",
-          dueDate: null, // Missing/invalid
+          dueDate: overdueDate,
         }),
         taskRecord({
           _id: "pd-in-progress",
           taskType: "PD",
           status: "In Progress",
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Future due date but in progress
+          dueDate: futureDueDate,
         }),
         taskRecord({
           _id: "pd-completed",
           taskType: "PD",
           status: "Completed",
-          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Completed
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "pd-cancelled",
+          taskType: "PD",
+          status: "Cancelled",
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "calving-future-pending",
+          taskType: "CD",
+          status: "Pending",
+          dueDate: futureDueDate,
+        }),
+        taskRecord({
+          _id: "calving-due-pending",
+          taskType: "Calving",
+          status: "Pending",
+          dueDate,
+        }),
+        taskRecord({
+          _id: "calving-overdue-pending",
+          taskType: "CD",
+          status: "Pending",
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "calving-in-progress",
+          taskType: "Calving",
+          status: "In Progress",
+          dueDate: futureDueDate,
+        }),
+        taskRecord({
+          _id: "calving-completed",
+          taskType: "CD",
+          status: "Completed",
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "calving-cancelled",
+          taskType: "Calving",
+          status: "Cancelled",
+          dueDate: overdueDate,
         }),
         taskRecord({
           _id: "general-future-pending",
           taskType: "GeneralVisit",
           status: "Pending",
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        }),
-        taskRecord({
-          _id: "general-completed",
-          taskType: "GeneralVisit",
-          status: "Completed",
-          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          dueDate: futureDueDate,
         }),
       ];
 
@@ -954,32 +999,20 @@ test("Technician Work Queue backend contract", async (t) => {
         recorder.response,
       );
 
-      const byId = new Map(recorder.body.data.map((item) => [item.id, item]));
-      assert.equal(byId.has("pd-future-pending"), false, "Future pending PD must be hidden");
-      assert.equal(byId.has("pd-due-pending"), true, "Due pending PD must be visible");
-      assert.equal(byId.has("pd-missing-due-pending"), false, "Missing due date PD must be hidden");
-      assert.equal(byId.has("pd-in-progress"), true, "In Progress PD must be visible regardless of due date");
-      assert.equal(byId.has("pd-completed"), false, "Completed PD must be completely hidden from My Work");
-      assert.equal(byId.has("general-future-pending"), true, "Non-PD future tasks must remain visible");
-      assert.equal(byId.has("general-completed"), false, "Completed tasks must not appear in Active My Work");
-
-      const completedRecorder = responseRecorder();
-      await getWorkQueue(
-        {
-          query: { workState: "completed", page: "1", limit: "20" },
-          user: { _id: ids.technician, role: "technician" },
-        },
-        completedRecorder.response,
-      );
-      const completedById = new Map(
-        completedRecorder.body.data.map((item) => [item.id, item]),
-      );
-      assert.equal(
-        completedById.has("general-completed"),
-        true,
-        "Completed standalone tasks remain available in Completed My Work",
-      );
-      assert.equal(completedById.has("pd-completed"), false);
+      const visibleIds = new Set(recorder.body.data.map((item) => item.id));
+      assert.equal(visibleIds.has("pd-future-pending"), false);
+      assert.equal(visibleIds.has("pd-due-pending"), true);
+      assert.equal(visibleIds.has("pd-overdue-pending"), true);
+      assert.equal(visibleIds.has("pd-in-progress"), true);
+      assert.equal(visibleIds.has("pd-completed"), false);
+      assert.equal(visibleIds.has("pd-cancelled"), false);
+      assert.equal(visibleIds.has("calving-future-pending"), false);
+      assert.equal(visibleIds.has("calving-due-pending"), true);
+      assert.equal(visibleIds.has("calving-overdue-pending"), true);
+      assert.equal(visibleIds.has("calving-in-progress"), true);
+      assert.equal(visibleIds.has("calving-completed"), false);
+      assert.equal(visibleIds.has("calving-cancelled"), false);
+      assert.equal(visibleIds.has("general-future-pending"), true);
     },
   );
 

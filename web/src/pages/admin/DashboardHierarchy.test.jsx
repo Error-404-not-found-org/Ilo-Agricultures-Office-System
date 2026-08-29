@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -29,12 +30,15 @@ vi.mock("../../components/layout/Topbar", () => ({
 }));
 
 const populatedResponses = {
-  "/admin/monitoring": {
-    moowieInsights: {
-      technicianWorkloads: [
-        { name: "Technician One", activeRequests: 3 },
-      ],
-    },
+  "/admin/technician-workload-summary": {
+    technicians: [
+      {
+        technicianId: "technician-1",
+        name: "Technician One",
+        activeWorkloadTotal: 3,
+        counts: { ai: 1, health: 1, pregnancy: 1, calving: 0, tasks: 0 },
+      },
+    ],
   },
   "/user?role=technician": [
     {
@@ -232,7 +236,7 @@ describe("Admin Dashboard hierarchy", () => {
 
   it("renders calm empty states without technical copy", async () => {
     setResponses({
-      "/admin/monitoring": { moowieInsights: { technicianWorkloads: [] } },
+      "/admin/technician-workload-summary": { technicians: [] },
       "/user?role=technician": [],
       "/technician/requests": { requests: [] },
       "/audit-logs": { logs: [] },
@@ -273,5 +277,61 @@ describe("Admin Dashboard hierarchy", () => {
     expect(
       screen.getByRole("heading", { name: "Technician Workload" }),
     ).toBeInTheDocument();
+  });
+  it("uses the narrow workload endpoint and preserves the 45-second polling cadence", async () => {
+    renderDashboard();
+
+    await screen.findByRole("heading", { name: "Technician Workload" });
+    expect(axiosInstance.get).toHaveBeenCalledWith(
+      "/admin/technician-workload-summary",
+    );
+    expect(axiosInstance.get).not.toHaveBeenCalledWith("/admin/monitoring");
+
+    const source = readFileSync("src/pages/admin/Dashboard.jsx", "utf8");
+    expect(source).toContain("refetchInterval: 1000 * 45");
+    expect(source).not.toContain('axiosInstance.get("/admin/monitoring")');
+  });
+
+  it("maps duplicate Technician names by stable IDs", async () => {
+    setResponses({
+      ...populatedResponses,
+      "/admin/technician-workload-summary": {
+        technicians: [
+          {
+            technicianId: "technician-1",
+            name: "Same Name",
+            activeWorkloadTotal: 1,
+          },
+          {
+            technicianId: "technician-2",
+            name: "Same Name",
+            activeWorkloadTotal: 4,
+          },
+        ],
+      },
+      "/user?role=technician": [
+        {
+          _id: "technician-1",
+          name: "Same Name",
+          status: "active",
+          dispatchProfile: { acceptsNewRequests: true },
+        },
+        {
+          _id: "technician-2",
+          name: "Same Name",
+          status: "active",
+          dispatchProfile: { acceptsNewRequests: true },
+        },
+      ],
+    });
+
+    renderDashboard();
+
+    const workload = await screen.findByRole("region", {
+      name: "Technician Workload",
+    });
+    expect(await within(workload).findAllByText("Same Name")).toHaveLength(2);
+    expect(within(workload).getByText("1")).toBeInTheDocument();
+    expect(within(workload).getByText("4")).toBeInTheDocument();
   });
 });

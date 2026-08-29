@@ -34,6 +34,7 @@ import {
   reassignTechnicianRequest,
 } from "../controllers/admin.controllers.js";
 import { getMunicipalCensusData } from "../controllers/report.controllers.js";
+import { getTechnicianWorkloadSummary } from "../controllers/admin-workload.controllers.js";
 
 const router = Router();
 
@@ -58,6 +59,7 @@ router.post("/update-role", updateRole);
 router.get("/stats", getDashboardStats);
 router.get("/analytics", getAdminAnalytics);
 router.get("/monitoring", getSystemMonitoringData);
+router.get("/technician-workload-summary", getTechnicianWorkloadSummary);
 router.get("/chart-data", getChartData);
 router.get("/inseminations", getAllInseminations);
 router.get("/re-inseminations", getAllReInseminations);

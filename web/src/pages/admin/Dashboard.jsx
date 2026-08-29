@@ -271,9 +271,9 @@ export default function Dashboard() {
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["admin", "dashboard-overview"],
     queryFn: async () => {
-      const [monitoring, technicians, technicianRequests, auditLogs] =
+      const [workloadSummary, technicians, technicianRequests, auditLogs] =
         await Promise.allSettled([
-          axiosInstance.get("/admin/monitoring"),
+          axiosInstance.get("/admin/technician-workload-summary"),
           axiosInstance.get("/user?role=technician"),
           axiosInstance.get("/technician/requests", {
             params: { status: "pending", limit: 50 },
@@ -282,7 +282,11 @@ export default function Dashboard() {
         ]);
 
       const sources = {
-        monitoring: sourceResult("Technician workload", monitoring, {}),
+        workloadSummary: sourceResult(
+          "Technician workload",
+          workloadSummary,
+          {},
+        ),
         technicians: sourceResult("Technician directory", technicians, []),
         technicianRequests: sourceResult(
           "Pending requests",
@@ -294,7 +298,7 @@ export default function Dashboard() {
 
       return {
         sources,
-        monitoring: sources.monitoring.data,
+        workloadSummary: asArray(sources.workloadSummary.data?.technicians),
         technicians: asArray(sources.technicians.data),
         requests: getQueueRequests(sources.technicianRequests.data).map(
           toDashboardRequest,
@@ -306,7 +310,7 @@ export default function Dashboard() {
   });
 
   const sources = data?.sources || EMPTY_OBJECT;
-  const monitoring = data?.monitoring || EMPTY_OBJECT;
+  const workloadSummary = data?.workloadSummary || EMPTY_ARRAY;
   const serviceRequests = data?.requests || EMPTY_ARRAY;
   const technicians = data?.technicians || EMPTY_ARRAY;
   const auditLogs = data?.auditLogs || EMPTY_ARRAY;
@@ -370,19 +374,14 @@ export default function Dashboard() {
   );
 
   const workloadRows = useMemo(() => {
-    const workloads = Array.isArray(
-      monitoring?.moowieInsights?.technicianWorkloads,
-    )
-      ? monitoring.moowieInsights.technicianWorkloads
-      : [];
-    const workloadByName = new Map(
-      workloads.map((item) => [String(item?.name || "").toLowerCase(), item]),
+    const workloadByTechnicianId = new Map(
+      workloadSummary.map((item) => [String(item?.technicianId || ""), item]),
     );
 
     const rows = technicians.length
       ? technicians.map((technician) => {
-          const workload = workloadByName.get(
-            String(technician?.name || "").toLowerCase(),
+          const workload = workloadByTechnicianId.get(
+            String(technician?._id || ""),
           );
           const status = String(technician?.status || "active").toLowerCase();
           const dispatchProfile = technician?.dispatchProfile || {};
@@ -406,17 +405,17 @@ export default function Dashboard() {
             name: technician?.name || "Technician not recorded",
             imageUrl: technician?.imageUrl || technician?.profileImage || null,
             operationalState,
-            activeRequests: isSourceOk("monitoring")
-              ? Number(workload?.activeRequests || 0)
+            activeRequests: isSourceOk("workloadSummary")
+              ? Number(workload?.activeWorkloadTotal || 0)
               : null,
           };
         })
-      : workloads.map((item) => ({
-          id: item?.name,
+      : workloadSummary.map((item) => ({
+          id: item?.technicianId,
           name: item?.name || "Technician not recorded",
           imageUrl: null,
           operationalState: "Status not available",
-          activeRequests: Number(item?.activeRequests || 0),
+          activeRequests: Number(item?.activeWorkloadTotal || 0),
         }));
 
     return rows
@@ -426,7 +425,7 @@ export default function Dashboard() {
           Number(first.activeRequests || 0),
       )
       .slice(0, 5);
-  }, [isSourceOk, monitoring, technicians]);
+  }, [isSourceOk, technicians, workloadSummary]);
 
   const needsAttention = useMemo(
     () =>
@@ -642,7 +641,7 @@ export default function Dashboard() {
             actionLabel="View Workload"
             to="/admin/work-queue"
           >
-            {!isSourceOk("monitoring") && !isSourceOk("technicians") ? (
+            {!isSourceOk("workloadSummary") && !isSourceOk("technicians") ? (
               <SectionError
                 message="We could not load Technician workload."
                 onRetry={handleRefresh}
