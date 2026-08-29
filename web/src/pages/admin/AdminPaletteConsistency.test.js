@@ -14,7 +14,6 @@ const normalizedAdminFiles = [
   "src/pages/admin/Settings.jsx",
   "src/pages/admin/SupportTickets.jsx",
   "src/pages/admin/TechnicianProfile.jsx",
-  "src/pages/admin/Technicians.jsx",
   "src/pages/admin/Users.jsx",
   "src/components/layout/Sidebar.jsx",
   "src/components/layout/Topbar.jsx",
@@ -62,14 +61,17 @@ describe("Admin semantic palette consistency", () => {
     );
   });
 
-  it("keeps the Technician roster readable and restores profile avatars", () => {
-    const technicians = read("src/pages/admin/Technicians.jsx");
+  it("keeps canonical Technician directories and profile avatars wired", () => {
+    const users = read("src/pages/admin/Users.jsx");
+    const cards = read("src/components/admin/users/UserDirectoryCards.jsx");
+    const table = read("src/components/admin/users/UserDirectoryTable.jsx");
 
-    expect(technicians).toContain('import UserAvatar from "../../components/ui/UserAvatar"');
-    expect(technicians).toContain("<UserAvatar");
-    expect(technicians).toContain("tech.imageUrl || tech.profileImage");
-    expect(technicians).toContain('className="rounded-full"');
-    expect(technicians).toContain("text-base-content/90");
+    expect(users).toContain("UserDirectoryCards");
+    expect(users).toContain("UserDirectoryTable");
+    expect(cards).toContain("UserAvatar");
+    expect(table).toContain("UserAvatar");
+    expect(cards).toContain("/admin/technicians/");
+    expect(table).toContain("/admin/technicians/");
   });
 
   it("preserves the Dashboard and Sidebar structures", () => {

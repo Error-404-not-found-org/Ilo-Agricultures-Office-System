@@ -39,12 +39,12 @@ describe("Admin authority migration source safety", () => {
   });
 
   it("uses canonical Technician creation from the active Web registration form", () => {
-    const technicians = read("src/pages/admin/Technicians.jsx");
+    const users = read("src/pages/admin/Users.jsx");
     const invitationDialog = read(
       "src/components/dialogs/TechnicianInviteDialog.jsx",
     );
 
-    expect(technicians).toContain("TechnicianInviteDialog");
+    expect(users).toContain("TechnicianInviteDialog");
     expect(invitationDialog).toContain("createTechnician(payload)");
     expect(invitationDialog).toContain("serviceCapabilities: capabilities");
     expect(invitationDialog).not.toContain("/user/create-invited-user");

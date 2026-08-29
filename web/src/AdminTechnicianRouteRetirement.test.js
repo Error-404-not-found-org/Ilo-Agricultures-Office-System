@@ -32,10 +32,8 @@ describe("Admin Technician roster retirement source safety", () => {
     expect(dashboard).not.toContain('to: "/admin/technicians"');
   });
 
-  it("retains the legacy roster component for separately reviewable cleanup", () => {
-    expect(existsSync("src/pages/admin/Technicians.jsx")).toBe(true);
-    expect(read("src/pages/admin/TechniciansPhase3B.test.jsx")).toContain(
-      'import Technicians from "./Technicians"',
-    );
+  it("keeps the retired roster implementation absent", () => {
+    expect(existsSync("src/pages/admin/Technicians.jsx")).toBe(false);
+    expect(existsSync("src/pages/admin/TechniciansPhase3B.test.jsx")).toBe(false);
   });
 });

@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const removedFiles = [
+  "src/pages/admin/Technicians.jsx",
+  "src/pages/admin/TechniciansPhase3B.test.jsx",
   "src/pages/admin/PregnancyTracker.jsx",
   "src/pages/technician/RequestDetails.jsx",
   "src/components/layout/ProtectedFarmerRoute.jsx",
@@ -45,7 +47,7 @@ describe("dead component cleanup", () => {
   });
 
   it("keeps canonical Admin authority helpers in active use", () => {
-    const technicians = readFileSync("src/pages/admin/Technicians.jsx", "utf8");
+    const users = readFileSync("src/pages/admin/Users.jsx", "utf8");
     const invitationDialog = readFileSync(
       "src/components/dialogs/TechnicianInviteDialog.jsx",
       "utf8",
@@ -59,7 +61,7 @@ describe("dead component cleanup", () => {
       "utf8",
     );
 
-    expect(technicians).toContain("TechnicianInviteDialog");
+    expect(users).toContain("TechnicianInviteDialog");
     expect(invitationDialog).toContain("createTechnician");
     expect(technicianService).toContain('"/admin/technicians"');
     expect(requestService).toContain(
