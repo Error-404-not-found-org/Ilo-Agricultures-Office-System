@@ -61,14 +61,38 @@ describe("Admin Sidebar navigation", () => {
       "/admin/dashboard",
       "/admin/users",
       "/admin/livestock",
-      "/admin/archived",
       "/admin/requests",
+      "/admin/support-tickets",
       "/admin/work-queue",
       "/admin/barangays",
-      "/admin/support-tickets",
       "/admin/reports",
+      "/admin/archived",
       "/admin/audit-logs",
       "/admin/settings",
+    ]);
+
+    expect(
+      Array.from(navigation.children).map((item) =>
+        item.textContent.replace(/\s+/g, " ").trim(),
+      ),
+    ).toEqual([
+      "Dashboard",
+      "People",
+      "Users",
+      "Livestock",
+      "Livestock",
+      "Operations",
+      "Requests",
+      "Support",
+      "Service Records",
+      "Insights",
+      "Workload",
+      "Barangays",
+      "Reports",
+      "System",
+      "Archived Records",
+      "Audit Logs",
+      "Settings",
     ]);
 
     expect(screen.getByText("Admin Portal")).toBeInTheDocument();
@@ -79,7 +103,7 @@ describe("Admin Sidebar navigation", () => {
       within(navigation).queryByRole("link", { name: "Technicians" }),
     ).not.toBeInTheDocument();
     expect(navigation).toHaveTextContent("Livestock");
-    expect(navigation).toHaveTextContent("Archived");
+    expect(navigation).toHaveTextContent("Archived Records");
     expect(navigation).toHaveTextContent("Operations");
     expect(navigation).toHaveTextContent("Requests");
     expect(navigation).toHaveTextContent("Workload");
@@ -90,6 +114,19 @@ describe("Admin Sidebar navigation", () => {
     expect(navigation).toHaveTextContent("Audit Logs");
     expect(navigation).toHaveTextContent("System");
     expect(navigation).toHaveTextContent("Settings");
+  });
+
+  it("preserves regrouped Admin destination routes", () => {
+    renderSidebar();
+
+    expect(screen.getByRole("link", { name: "Archived Records" }))
+      .toHaveAttribute("href", "/admin/archived");
+    expect(screen.getByRole("link", { name: "Workload" }))
+      .toHaveAttribute("href", "/admin/work-queue");
+    expect(screen.getByRole("link", { name: "Barangays" }))
+      .toHaveAttribute("href", "/admin/barangays");
+    expect(screen.getByRole("link", { name: "Audit Logs" }))
+      .toHaveAttribute("href", "/admin/audit-logs");
   });
 
   it("groups Inseminations, Pregnancy, and Calving under Service Records", () => {

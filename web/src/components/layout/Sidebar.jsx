@@ -251,11 +251,6 @@ export default function Sidebar() {
         icon: <Tractor size={16} />,
         label: "Livestock",
       },
-      {
-        path: "/admin/archived",
-        icon: <ArchiveRestore size={16} />,
-        label: "Archived",
-      },
       { type: "label", label: "Operations" },
       {
         path: "/admin/requests",
@@ -263,9 +258,9 @@ export default function Sidebar() {
         label: "Requests",
       },
       {
-        path: "/admin/work-queue",
-        icon: <ListChecks size={16} />,
-        label: "Workload",
+        path: "/admin/support-tickets",
+        icon: <MessageSquare size={16} />,
+        label: "Support",
       },
       {
         type: "group",
@@ -289,28 +284,33 @@ export default function Sidebar() {
           },
         ],
       },
+      { type: "label", label: "Insights" },
+      {
+        path: "/admin/work-queue",
+        icon: <ListChecks size={16} />,
+        label: "Workload",
+      },
       {
         path: "/admin/barangays",
         icon: <MapPin size={16} />,
         label: "Barangays",
       },
       {
-        path: "/admin/support-tickets",
-        icon: <MessageSquare size={16} />,
-        label: "Support",
-      },
-      { type: "label", label: "Insights" },
-      {
         path: "/admin/reports",
         icon: <FileText size={16} />,
         label: "Reports",
+      },
+      { type: "label", label: "System" },
+      {
+        path: "/admin/archived",
+        icon: <ArchiveRestore size={16} />,
+        label: "Archived Records",
       },
       {
         path: "/admin/audit-logs",
         icon: <BookOpen size={16} />,
         label: "Audit Logs",
       },
-      { type: "label", label: "System" },
       {
         path: "/admin/settings",
         icon: <SettingsIcon size={16} />,
