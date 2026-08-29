@@ -177,6 +177,25 @@ describe("Admin Dashboard hierarchy", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("routes inactive Technician review to canonical Technician Users mode", async () => {
+    setResponses({
+      ...populatedResponses,
+      "/user?role=technician": [
+        {
+          ...populatedResponses["/user?role=technician"][0],
+          status: "inactive",
+        },
+      ],
+    });
+    renderDashboard();
+
+    expect(
+      await screen.findByRole("link", {
+        name: "Review: Technician is inactive",
+      }),
+    ).toHaveAttribute("href", "/admin/users?role=technician");
+  });
+
   it("keeps the approved compact sections in two responsive pairings", async () => {
     renderDashboard();
 

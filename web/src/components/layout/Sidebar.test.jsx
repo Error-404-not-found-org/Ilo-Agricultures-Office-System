@@ -60,7 +60,6 @@ describe("Admin Sidebar navigation", () => {
     expect(primaryLinks.map((link) => link.getAttribute("href"))).toEqual([
       "/admin/dashboard",
       "/admin/users",
-      "/admin/technicians",
       "/admin/livestock",
       "/admin/archived",
       "/admin/requests",
@@ -76,7 +75,9 @@ describe("Admin Sidebar navigation", () => {
     expect(primaryLinks[0]).toHaveTextContent("Dashboard");
     expect(navigation).toHaveTextContent("People");
     expect(navigation).toHaveTextContent("Users");
-    expect(navigation).toHaveTextContent("Technicians");
+    expect(
+      within(navigation).queryByRole("link", { name: "Technicians" }),
+    ).not.toBeInTheDocument();
     expect(navigation).toHaveTextContent("Livestock");
     expect(navigation).toHaveTextContent("Archived");
     expect(navigation).toHaveTextContent("Operations");

@@ -460,7 +460,7 @@ export default function Dashboard() {
           pluralTitle: "Technicians are inactive",
           count: unavailableTechnicians.length,
           description: "Check staffing and dispatch availability.",
-          to: "/admin/technicians",
+          to: "/admin/users?role=technician",
           tone: "neutral",
         },
       ].filter((item) => item && item.count > 0),

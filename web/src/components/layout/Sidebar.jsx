@@ -245,11 +245,6 @@ export default function Sidebar() {
         icon: <Users size={16} />,
         label: "Users",
       },
-      {
-        path: "/admin/technicians",
-        icon: <Users size={16} />,
-        label: "Technicians",
-      },
       { type: "label", label: "Livestock" },
       {
         path: "/admin/livestock",
