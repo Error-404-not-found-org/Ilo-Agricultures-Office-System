@@ -15,6 +15,8 @@ import {
   assertUserAccess,
   assertAdmin,
   assertTechnicianOrAdmin,
+  assertOperationallyManageableUser,
+  assertOperationalUserRole,
 } from "../policies/user.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { sendOtpSms, verifyOtpSms } from "../services/sms.service.js";
@@ -781,6 +783,8 @@ export const createInvitedUser = async (req, res) => {
     const requesterRole = req.user?.role;
     const targetRole = role || "farmer";
 
+    assertOperationalUserRole(targetRole);
+
     if (requesterRole === "technician" && targetRole !== "farmer") {
       return res
         .status(403)
@@ -1275,6 +1279,8 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    assertOperationallyManageableUser(user);
+
     // Attempt to suspend/deactivate Clerk user
     if (user.clerkId) {
       try {
@@ -1300,6 +1306,7 @@ export const deleteUser = async (req, res) => {
       .json({
         message:
           error.message || "Internal server error while deactivating user.",
+        code: error.code,
       });
   }
 };
@@ -1927,8 +1934,11 @@ export const updateUser = async (req, res) => {
     res.status(200).json({ message: "User updated successfully", user });
   } catch (error) {
     console.error("Error updating user:", error);
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
+    if (error.status || error.statusCode) {
+      return res.status(error.status || error.statusCode).json({
+        message: error.message,
+        code: error.code,
+      });
     }
     if (error.name === "ValidationError") {
       const isBarangayError =
@@ -2408,6 +2418,8 @@ export const restoreUser = async (req, res) => {
       return res.status(400).json({ message: "User is not deactivated" });
     }
 
+    assertOperationallyManageableUser(user);
+
     // Unban User in Clerk
     if (user.clerkId) {
       try {
@@ -2425,9 +2437,10 @@ export const restoreUser = async (req, res) => {
     res.status(200).json({ message: "User successfully restored", data: user });
   } catch (error) {
     console.error("[restoreUser ERROR]", error);
-    res
-      .status(500)
-      .json({ message: "Failed to restore user", error: error.message });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to restore user",
+      code: error.code,
+    });
   }
 };
 

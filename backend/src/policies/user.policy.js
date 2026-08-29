@@ -1,5 +1,38 @@
 import { AppError } from "../utils/app-error.js";
 
+const OPERATIONALLY_MANAGEABLE_USER_ROLES = new Set([
+  "farmer",
+  "technician",
+]);
+
+const operationalTargetError = () =>
+  new AppError(
+    "Admin accounts cannot be managed through operational user-management actions.",
+    {
+      status: 403,
+      code: "OPERATIONAL_USER_TARGET_FORBIDDEN",
+    },
+  );
+
+export const assertOperationallyManageableUser = (targetUser) => {
+  if (!targetUser) {
+    throw new AppError("User not found", {
+      status: 404,
+      code: "USER_NOT_FOUND",
+    });
+  }
+
+  if (!OPERATIONALLY_MANAGEABLE_USER_ROLES.has(targetUser.role)) {
+    throw operationalTargetError();
+  }
+};
+
+export const assertOperationalUserRole = (role) => {
+  if (!OPERATIONALLY_MANAGEABLE_USER_ROLES.has(role)) {
+    throw operationalTargetError();
+  }
+};
+
 export const assertCanReadUser = (requester, targetUser) => {
   if (!targetUser) {
     throw new AppError("User not found", { status: 404, code: "USER_NOT_FOUND" });
@@ -28,8 +61,9 @@ export const assertCanUpdateUser = (requester, targetUser, updates = {}) => {
     throw new AppError("User not found", { status: 404, code: "USER_NOT_FOUND" });
   }
 
-  // Admins can update any user and modify any field
+  // Operational Admin management is limited to Farmer and Technician targets.
   if (requester.role === "admin") {
+    assertOperationallyManageableUser(targetUser);
     return;
   }
 

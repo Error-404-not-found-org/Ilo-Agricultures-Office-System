@@ -17,6 +17,10 @@ import {
 } from "../domain/status-vocabulary.js";
 import { canonicalizeMunicipality } from "../domain/geographic/psgcRegistry.js";
 import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
+import {
+  assertOperationallyManageableUser,
+  assertOperationalUserRole,
+} from "../policies/user.policy.js";
 
 // Clerk Retry Helper - Retries once if Clerk temporarily fails
 const runWithClerkRetry = async (fn, context = "") => {
@@ -67,6 +71,13 @@ const logAdminAction = (action, admin, target, details = {}) => {
 // Standardized Error Handler for API Errors
 const handleControllerError = (res, error, contextMessage) => {
   console.error(`[API ERROR] ${contextMessage}:`, error);
+
+  if (error.status) {
+    return res.status(error.status).json({
+      message: error.message,
+      code: error.code,
+    });
+  }
 
   if (error.name === "ValidationError") {
     return res.status(400).json({
@@ -470,32 +481,12 @@ export const deleteUser = async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).send({ message: "User ID required" });
 
-    // Self-protection check: admin cannot delete themselves
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .send({ message: "You cannot delete your own account." });
-    }
-
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Last Admin check: cannot delete the last active administrator
-    if (user.role === "admin") {
-      const activeAdminCount = await User.countDocuments({
-        role: "admin",
-        status: { $ne: "suspended" },
-        deletedAt: null,
-      });
-      if (activeAdminCount <= 1) {
-        return res.status(400).send({
-          message:
-            "Operation blocked: This is the last active admin account in the system.",
-        });
-      }
-    }
+    assertOperationallyManageableUser(user);
 
     const beforeState = { deletedAt: user.deletedAt };
 
@@ -742,32 +733,12 @@ export const suspendUser = async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).send({ message: "User ID required" });
 
-    // Self-protection check: admin cannot suspend themselves
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .send({ message: "You cannot suspend your own account." });
-    }
-
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Last Admin check: cannot suspend the last active administrator
-    if (user.role === "admin") {
-      const activeAdminCount = await User.countDocuments({
-        role: "admin",
-        status: { $ne: "suspended" },
-        deletedAt: null,
-      });
-      if (activeAdminCount <= 1) {
-        return res.status(400).send({
-          message:
-            "Operation blocked: This is the last active admin account in the system.",
-        });
-      }
-    }
+    assertOperationallyManageableUser(user);
 
     const beforeState = { status: user.status };
 
@@ -823,6 +794,8 @@ export const reactivateUser = async (req, res) => {
       return res.status(404).send({ message: "User not found" });
     }
 
+    assertOperationallyManageableUser(user);
+
     const beforeState = { status: user.status };
 
     // Clerk Synchronization Safety
@@ -876,6 +849,8 @@ export const verifyUser = async (req, res) => {
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
+
+    assertOperationallyManageableUser(user);
 
     const beforeState = { isVerified: user.isVerified };
 
@@ -939,6 +914,8 @@ export const resetPassword = async (req, res) => {
       return res.status(404).send({ message: "User not found" });
     }
 
+    assertOperationallyManageableUser(user);
+
     const tempPassword = `Temp${Math.floor(100000 + Math.random() * 900000)}!`;
 
     if (user.clerkId) {
@@ -999,37 +976,14 @@ export const updateRole = async (req, res) => {
     if (!id || !role)
       return res.status(400).send({ message: "User ID and role are required" });
 
-    const validRoles = ["admin", "technician", "farmer"];
-    if (!validRoles.includes(role)) {
-      return res.status(400).send({ message: "Invalid role specified" });
-    }
-
-    // Self-protection check: admin cannot change their own role
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .send({ message: "You cannot change your own account role." });
-    }
+    assertOperationalUserRole(role);
 
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Last Admin check: cannot demote the last active administrator
-    if (user.role === "admin" && role !== "admin") {
-      const activeAdminCount = await User.countDocuments({
-        role: "admin",
-        status: { $ne: "suspended" },
-        deletedAt: null,
-      });
-      if (activeAdminCount <= 1) {
-        return res.status(400).send({
-          message:
-            "Operation blocked: This is the last active admin account in the system.",
-        });
-      }
-    }
+    assertOperationallyManageableUser(user);
 
     const beforeState = { role: user.role };
 
