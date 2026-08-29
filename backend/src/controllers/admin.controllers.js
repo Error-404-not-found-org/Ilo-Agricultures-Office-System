@@ -672,17 +672,23 @@ export const syncUserMetadata = async (req, res) => {
   }
 };
 
+// Single-process pilot guard: avoids concurrent full-export materialization.
+// Multi-instance coordination is intentionally outside the current scope.
+let isSystemDataExportInProgress = false;
+
 // GET /api/admin/backup — Export database snapshot
 export const exportDatabaseBackup = async (req, res) => {
-  const { Config } = await import("../models/config.model.js");
-  try {
-    // Set backup status to started
-    await Config.findOneAndUpdate(
-      { key: "backup_status" },
-      { value: "started" },
-      { upsert: true },
-    );
+  if (isSystemDataExportInProgress) {
+    return res.status(409).json({
+      message:
+        "A system data export is already in progress. Please try again shortly.",
+      code: "SYSTEM_DATA_EXPORT_IN_PROGRESS",
+      retryable: true,
+    });
+  }
 
+  isSystemDataExportInProgress = true;
+  try {
     logAdminAction("backup_started", req.user, null, {
       message: "Database backup started",
     });
@@ -731,20 +737,6 @@ export const exportDatabaseBackup = async (req, res) => {
         .select(SYSTEM_DATA_EXPORT_PROJECTIONS.healthRequests)
         .lean(),
     ]);
-
-    // Update the last backup timestamp in the config DB
-    await Config.findOneAndUpdate(
-      { key: "last_backup_time" },
-      { value: new Date() },
-      { upsert: true },
-    );
-
-    // Update backup status to completed
-    await Config.findOneAndUpdate(
-      { key: "backup_status" },
-      { value: "completed" },
-      { upsert: true },
-    );
 
     logAdminAction("backup_completed", req.user, null, {
       message: "Database backup completed successfully",
@@ -798,36 +790,38 @@ export const exportDatabaseBackup = async (req, res) => {
     const fileName = `BreedSmart_Backup_${new Date().toISOString().split("T")[0]}.json`;
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+    res.setHeader("Cache-Control", "private, no-store");
 
     res.status(200).send(JSON.stringify(backupData, null, 2));
   } catch (error) {
     console.error("[exportDatabaseBackup ERROR]", error.message);
 
-    // Update backup status to failed
-    await Config.findOneAndUpdate(
-      { key: "backup_status" },
-      { value: "failed" },
-      { upsert: true },
-    );
-
     logAdminAction("backup_failed", req.user, null, {
       failureCategory: "export_failed",
     });
-    await createAuditLog({
-      entityType: "System",
-      entityId: req.user._id,
-      action: "backup_failed",
-      actorId: req.user._id,
-      metadata: {
-        failureCategory: "export_failed",
-        timestamp: new Date().toISOString(),
-      },
-    });
+    try {
+      await createAuditLog({
+        entityType: "System",
+        entityId: req.user._id,
+        action: "backup_failed",
+        actorId: req.user._id,
+        metadata: {
+          failureCategory: "export_failed",
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch {
+      console.error(
+        "[System Data Export] Failed to record sanitized failure audit.",
+      );
+    }
 
     return res.status(500).json({
       message: "Failed to generate system data export.",
       code: "SYSTEM_DATA_EXPORT_FAILED",
     });
+  } finally {
+    isSystemDataExportInProgress = false;
   }
 };
 

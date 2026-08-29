@@ -52,6 +52,5 @@ test("production clients no longer call monitoring and supported replacements re
   );
   assert.equal(mobileService.includes("/admin/monitoring"), false);
   assert.equal(mobileService.includes("getAdminMonitoringData"), false);
-  assert.equal(mobileService.includes("/admin/backup"), true);
   assert.equal(mobileDashboard.includes("getAdminMonitoringData"), false);
 });

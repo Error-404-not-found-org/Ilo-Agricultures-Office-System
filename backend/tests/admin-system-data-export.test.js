@@ -19,6 +19,7 @@ import {
   AdminOnly,
   protectedRoute,
 } from "../src/middleware/auth.middleware.js";
+import { systemDataExportLimiter } from "../src/middleware/rateLimit.middleware.js";
 
 const ADMIN_ID = "507f1f77bcf86cd799439011";
 
@@ -33,6 +34,9 @@ const responseRecorder = () => {
     setHeader(name, value) {
       state.headers[name] = value;
       return response;
+    },
+    getHeader(name) {
+      return state.headers[name];
     },
     status(code) {
       state.statusCode = code;
@@ -131,7 +135,10 @@ test("System Data Export: route remains protected by protectedRoute + AdminOnly"
     "utf8",
   );
   assert.match(routeSource, /router\.use\(protectedRoute, AdminOnly\)/);
-  assert.match(routeSource, /router\.get\("\/backup", exportDatabaseBackup\)/);
+  assert.match(
+    routeSource,
+    /router\.get\("\/backup", systemDataExportLimiter, exportDatabaseBackup\)/,
+  );
 });
 
 test("System Data Export: unauthenticated, Farmer, and Technician requests are rejected before export work", async () => {
@@ -474,16 +481,12 @@ test("System Data Export: Admin receives the privacy-hardened versioned contract
   ]);
 
   assert.deepEqual(auditActions, ["backup_started", "backup_completed"]);
-  assert.deepEqual(
-    configUpdates.map((entry) => [entry.filter.key, entry.update.value]),
-    [
-      ["backup_status", "started"],
-      ["last_backup_time", configUpdates[1].update.value],
-      ["backup_status", "completed"],
-    ],
-  );
-  assert.ok(configUpdates[1].update.value instanceof Date);
+  assert.deepEqual(configUpdates, []);
   assert.equal(authorization.state.headers["Content-Type"], "application/json");
+  assert.equal(
+    authorization.state.headers["Cache-Control"],
+    "private, no-store",
+  );
   assert.match(
     authorization.state.headers["Content-Disposition"],
     /^attachment; filename=BreedSmart_Backup_\d{4}-\d{2}-\d{2}\.json$/,
@@ -565,7 +568,7 @@ test("System Data Export: failure is audited without exposing internal exception
     code: "SYSTEM_DATA_EXPORT_FAILED",
   });
   assert.equal(JSON.stringify(recorder.state.jsonBody).includes(secretError), false);
-  assert.deepEqual(configStates, ["started", "failed"]);
+  assert.deepEqual(configStates, []);
   assert.deepEqual(
     auditEntries.map((entry) => entry.action),
     ["backup_started", "backup_failed"],
@@ -576,4 +579,181 @@ test("System Data Export: failure is audited without exposing internal exception
   assert.equal(failureAudit.metadata.failureCategory, "export_failed");
   assert.equal(JSON.stringify(failureAudit).includes(secretError), false);
   assert.equal(Object.hasOwn(failureAudit.metadata, "error"), false);
+  assert.equal(recorder.state.sendBody, null);
+});
+
+const mockEmptyExportFinds = ({ mock, userLean, onFind = () => {} }) => {
+  for (const model of [
+    User,
+    Animal,
+    Insemination,
+    Pregnancy,
+    Calving,
+    MedicalRecord,
+    HealthRequest,
+  ]) {
+    mock.method(model, "find", () => {
+      onFind(model.modelName);
+      const query = {
+        select() {
+          return query;
+        },
+        lean:
+          model === User
+            ? userLean
+            : async () => [],
+      };
+      return query;
+    });
+  }
+};
+
+const exportRequest = (userId = ADMIN_ID) => ({
+  user: {
+    _id: userId,
+    role: "admin",
+    name: "Admin One",
+    email: "admin@example.test",
+  },
+});
+
+test("System Data Export: process lock rejects concurrent work and releases after success", async (t) => {
+  t.mock.method(console, "log", () => {});
+  let resolveUserRead;
+  const pendingUserRead = new Promise((resolve) => {
+    resolveUserRead = resolve;
+  });
+  let collectionReads = 0;
+  mockEmptyExportFinds({
+    mock: t.mock,
+    userLean: () => pendingUserRead,
+    onFind: () => {
+      collectionReads += 1;
+    },
+  });
+
+  const auditActions = [];
+  t.mock.method(AuditLog, "create", async (entry) => {
+    auditActions.push(entry.action);
+    return entry;
+  });
+
+  const first = responseRecorder();
+  const firstExport = exportDatabaseBackup(exportRequest(), first.response);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(collectionReads, 7);
+  assert.deepEqual(auditActions, ["backup_started"]);
+
+  const concurrent = responseRecorder();
+  await exportDatabaseBackup(exportRequest(), concurrent.response);
+  assert.equal(concurrent.state.statusCode, 409);
+  assert.deepEqual(concurrent.state.jsonBody, {
+    message:
+      "A system data export is already in progress. Please try again shortly.",
+    code: "SYSTEM_DATA_EXPORT_IN_PROGRESS",
+    retryable: true,
+  });
+  assert.equal(collectionReads, 7);
+  assert.deepEqual(auditActions, ["backup_started"]);
+
+  resolveUserRead([]);
+  await firstExport;
+  assert.equal(first.state.statusCode, 200);
+
+  const later = responseRecorder();
+  await exportDatabaseBackup(exportRequest(), later.response);
+  assert.equal(later.state.statusCode, 200);
+  assert.equal(collectionReads, 14);
+  assert.deepEqual(auditActions, [
+    "backup_started",
+    "backup_completed",
+    "backup_started",
+    "backup_completed",
+  ]);
+});
+
+test("System Data Export: failed failure-audit stays sanitized and releases the lock", async (t) => {
+  t.mock.method(console, "log", () => {});
+  t.mock.method(console, "error", () => {});
+  let failRead = true;
+  mockEmptyExportFinds({
+    mock: t.mock,
+    userLean: async () => {
+      if (failRead) {
+        throw new Error("database.internal.example leaked failure");
+      }
+      return [];
+    },
+  });
+
+  const auditActions = [];
+  t.mock.method(AuditLog, "create", async (entry) => {
+    auditActions.push(entry.action);
+    if (entry.action === "backup_failed") {
+      throw new Error("audit.internal.example leaked failure");
+    }
+    return entry;
+  });
+
+  const failed = responseRecorder();
+  await exportDatabaseBackup(exportRequest(), failed.response);
+  assert.equal(failed.state.statusCode, 500);
+  assert.deepEqual(failed.state.jsonBody, {
+    message: "Failed to generate system data export.",
+    code: "SYSTEM_DATA_EXPORT_FAILED",
+  });
+  assert.equal(
+    JSON.stringify(failed.state).includes("internal.example"),
+    false,
+  );
+
+  failRead = false;
+  const recovered = responseRecorder();
+  await exportDatabaseBackup(exportRequest(), recovered.response);
+  assert.equal(recovered.state.statusCode, 200);
+  assert.deepEqual(auditActions, [
+    "backup_started",
+    "backup_failed",
+    "backup_started",
+    "backup_completed",
+  ]);
+});
+
+const runExportLimiter = async (userId) => {
+  const recorder = responseRecorder();
+  let allowed = false;
+  await systemDataExportLimiter(
+    {
+      user: { _id: userId },
+      headers: {},
+      ip: "127.0.0.1",
+      socket: { remoteAddress: "127.0.0.1" },
+    },
+    recorder.response,
+    () => {
+      allowed = true;
+    },
+  );
+  return { ...recorder, allowed };
+};
+
+test("System Data Export: limiter allows three attempts per Admin and isolates quotas", async () => {
+  const firstAdminId = "507f1f77bcf86cd799439021";
+  const secondAdminId = "507f1f77bcf86cd799439022";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const result = await runExportLimiter(firstAdminId);
+    assert.equal(result.allowed, true, `attempt ${attempt} should be allowed`);
+  }
+
+  const limited = await runExportLimiter(firstAdminId);
+  assert.equal(limited.allowed, false);
+  assert.equal(limited.state.statusCode, 429);
+  assert.equal(
+    limited.state.sendBody.code,
+    "SYSTEM_DATA_EXPORT_RATE_LIMITED",
+  );
+
+  const otherAdmin = await runExportLimiter(secondAdminId);
+  assert.equal(otherAdmin.allowed, true);
 });

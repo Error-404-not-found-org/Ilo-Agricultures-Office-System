@@ -34,6 +34,7 @@ import {
 } from "../controllers/admin.controllers.js";
 import { getMunicipalCensusData } from "../controllers/report.controllers.js";
 import { getTechnicianWorkloadSummary } from "../controllers/admin-workload.controllers.js";
+import { systemDataExportLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
@@ -65,7 +66,7 @@ router.get("/pregnancy-checks", getAllPregnancyChecks);
 router.get("/calvings", getAllCalvings);
 router.delete("/delete-insemination/:id", deleteInsemination);
 router.get("/reports-data", getMunicipalCensusData);
-router.get("/backup", exportDatabaseBackup);
+router.get("/backup", systemDataExportLimiter, exportDatabaseBackup);
 
 router.get("/barangays/insights", getBarangaysInsightsList);
 router.get("/barangays/insights/:barangayName", getBarangayInsightsDetails);

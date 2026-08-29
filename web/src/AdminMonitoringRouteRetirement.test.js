@@ -33,6 +33,8 @@ describe("Admin Monitoring route retirement source safety", () => {
     expect(routes).toContain(
       'router.get("/technician-workload-summary", getTechnicianWorkloadSummary)',
     );
-    expect(routes).toContain('router.get("/backup", exportDatabaseBackup)');
+    expect(routes).toContain(
+      'router.get("/backup", systemDataExportLimiter, exportDatabaseBackup)',
+    );
   });
 });

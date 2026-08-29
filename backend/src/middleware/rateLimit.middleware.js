@@ -51,3 +51,19 @@ export const otpLimiter = rateLimit({
     retryable: true,
   },
 });
+
+// System Data Export is an authenticated Admin-only route. The default
+// MemoryStore is intentionally process-local for the single-process pilot
+// deployment; use the stable Mongo User ID instead of the request IP.
+export const systemDataExportLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 3,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.user._id),
+  message: {
+    message: "Too many system data export attempts. Please try again later.",
+    code: "SYSTEM_DATA_EXPORT_RATE_LIMITED",
+    retryable: true,
+  },
+});
