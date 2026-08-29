@@ -5,6 +5,7 @@ import { Calving } from "../models/calving.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Inventory } from "../models/inventory.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { MedicalRecord } from "../models/medical-record.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { createAuditLog } from "../services/audit.service.js";
 import {
@@ -21,6 +22,69 @@ import {
   assertOperationallyManageableUser,
   assertOperationalUserRole,
 } from "../policies/user.policy.js";
+
+export const SYSTEM_DATA_EXPORT_PROJECTIONS = Object.freeze({
+  users: Object.freeze({
+    _id: 1, name: 1, role: 1, isVerified: 1, status: 1, createdAt: 1, updatedAt: 1,
+  }),
+  animals: Object.freeze({
+    _id: 1, farmerId: 1, animalId: 1, earTag: 1, brand: 1, species: 1,
+    birthDate: 1, breed: 1, color: 1, gender: 1, reproductiveStatus: 1,
+    lastInseminationDate: 1, expectedCalvingDate: 1, lastCalvingDate: 1,
+    lastPregnancyLossDate: 1, parity: 1, sireDetails: 1, bcsHistory: 1,
+    geneticLineage: 1, isVerified: 1, motherId: 1, barangay: 1,
+    createdAt: 1, updatedAt: 1,
+  }),
+  inseminations: Object.freeze({
+    _id: 1, farmerId: 1, animalId: 1, inseminationDate: 1, estrus: 1,
+    sireBreed: 1, sireCode: 1, semenDosesUsed: 1, status: 1, technicianId: 1,
+    approvedBy: 1, entryMode: 1, attemptNumber: 1, previousAttemptId: 1,
+    attemptSeriesId: 1, preferredDate: 1, scheduledDate: 1, scheduledAt: 1,
+    visitPeriod: 1, serviceStartedAt: 1, earlyStartMinutes: 1, isSuccess: 1,
+    outcome: 1, pregnancyId: 1, breedingCycleStatus: 1,
+    breedingCycleCompletedAt: 1, outcomeVerificationStatus: 1,
+    outcomeConfirmationSource: 1, outcomeConfirmedBy: 1, outcomeConfirmedAt: 1,
+    failureReason: 1, heatSigns: 1, farmerOutcomeReport: 1, observationSource: 1,
+    observationRecordedBy: 1, farmerOutcomeReportedAt: 1,
+    farmerObservationSigns: 1, farmerPregnancyReport: 1,
+    farmerPregnancyReportedAt: 1, pregnancyReportVerificationStatus: 1,
+    verificationRequested: 1, verificationStatus: 1, cancellationStatus: 1,
+    cancellationReason: 1, cancellationResponseReason: 1, cancelledBy: 1,
+    cancellationRequestedAt: 1, cancellationRespondedAt: 1,
+    createdAt: 1, updatedAt: 1,
+  }),
+  pregnancies: Object.freeze({
+    _id: 1, animalId: 1, farmerId: 1, inseminationId: 1,
+    pregnancyDiagnosis: 1, targetCalvingDate: 1, cycleStatus: 1,
+    "confirmation.methodCode": 1, "confirmation.stage": 1,
+    "confirmation.confirmedAt": 1, "confirmation.confirmedBy": 1,
+    "confirmation.recheckRequired": 1, "confirmation.recheckDueAt": 1,
+    recheckStatus: 1, completedAt: 1, createdAt: 1, updatedAt: 1,
+  }),
+  calvings: Object.freeze({
+    _id: 1, animalId: 1, farmerId: 1, pregnancyId: 1, inseminationId: 1,
+    date: 1, numberOfCalves: 1, totalDelivered: 1, calves: 1,
+    nonLivingCalves: 1, livingCalfCount: 1, stillbornCount: 1, outcome: 1,
+    calvingEase: 1, technicianId: 1, isSeen: 1, createdAt: 1, updatedAt: 1,
+  }),
+  medicalRecords: Object.freeze({
+    _id: 1, animalId: 1, farmerId: 1, technicianId: 1, healthRequestId: 1,
+    type: 1, date: 1, isHistoricalEntry: 1, lateEntryReason: 1,
+    performedByName: 1, entrySource: 1, details: 1, note: 1, followUpDate: 1,
+    createdAt: 1, updatedAt: 1,
+  }),
+  healthRequests: Object.freeze({
+    _id: 1, farmerId: 1, animalId: 1, requestType: 1, symptoms: 1, urgency: 1,
+    farmerNotes: 1, requestDetails: 1, handlingMethod: 1, technicianResponse: 1,
+    preferredDate: 1, scheduledDate: 1, visitPeriod: 1, serviceStartedAt: 1,
+    status: 1, handledBy: 1, assignedTechnicianId: 1, diagnosis: 1, findings: 1,
+    treatment: 1, medicineGiven: 1, dosage: 1, withdrawalPeriodDays: 1,
+    withdrawalEndDate: 1, followUpDate: 1, resolutionNotes: 1, resolvedAt: 1,
+    advice: 1, cancellationStatus: 1, cancellationReason: 1,
+    cancellationResponseReason: 1, cancelledBy: 1, cancellationRequestedAt: 1,
+    cancellationRespondedAt: 1, createdAt: 1, updatedAt: 1,
+  }),
+});
 
 // Clerk Retry Helper - Retries once if Clerk temporarily fails
 const runWithClerkRetry = async (fn, context = "") => {
@@ -639,16 +703,33 @@ export const exportDatabaseBackup = async (req, res) => {
       inseminations,
       pregnancies,
       calvings,
+      medicalRecords,
       healthRequests,
-      configs,
     ] = await Promise.all([
-      User.find({}).lean(),
-      Animal.find({}).lean(),
-      Insemination.find({}).lean(),
-      Pregnancy.find({}).lean(),
-      Calving.find({}).lean(),
-      HealthRequest.find({}).lean(),
-      Config.find({}).lean(),
+      User.find({
+        role: { $in: ["farmer", "technician"] },
+        deletedAt: null,
+      })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.users)
+        .lean(),
+      Animal.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.animals)
+        .lean(),
+      Insemination.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.inseminations)
+        .lean(),
+      Pregnancy.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.pregnancies)
+        .lean(),
+      Calving.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.calvings)
+        .lean(),
+      MedicalRecord.find({})
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.medicalRecords)
+        .lean(),
+      HealthRequest.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.healthRequests)
+        .lean(),
     ]);
 
     // Update the last backup timestamp in the config DB
@@ -679,16 +760,39 @@ export const exportDatabaseBackup = async (req, res) => {
       },
     });
 
+    const collections = {
+      users: users.length,
+      animals: animals.length,
+      inseminations: inseminations.length,
+      pregnancies: pregnancies.length,
+      calvings: calvings.length,
+      medicalRecords: medicalRecords.length,
+      healthRequests: healthRequests.length,
+    };
     const backupData = {
-      version: "1.0.0",
-      exportedAt: new Date().toISOString(),
-      users,
-      animals,
-      inseminations,
-      pregnancies,
-      calvings,
-      healthRequests,
-      configs,
+      metadata: {
+        format: "breedsmart-admin-data-export",
+        formatVersion: 1,
+        generatedAt: new Date().toISOString(),
+        generatedBy: {
+          userId: String(req.user._id),
+        },
+        scope: "livestock-and-official-records",
+        privacyProfile: "admin-export-v1",
+        consistency: "non-transactional",
+        includesArchived: false,
+        includesAttachments: false,
+        collections,
+      },
+      data: {
+        users,
+        animals,
+        inseminations,
+        pregnancies,
+        calvings,
+        medicalRecords,
+        healthRequests,
+      },
     };
 
     const fileName = `BreedSmart_Backup_${new Date().toISOString().split("T")[0]}.json`;
@@ -719,11 +823,10 @@ export const exportDatabaseBackup = async (req, res) => {
       },
     });
 
-    return handleControllerError(
-      res,
-      error,
-      "Failed compiling system database backup",
-    );
+    return res.status(500).json({
+      message: "Failed to generate system data export.",
+      code: "SYSTEM_DATA_EXPORT_FAILED",
+    });
   }
 };
 
