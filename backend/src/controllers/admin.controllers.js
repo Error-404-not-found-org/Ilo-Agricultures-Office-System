@@ -810,15 +810,16 @@ export const exportDatabaseBackup = async (req, res) => {
       { upsert: true },
     );
 
-    logAdminAction("backup_failed", req.user, null, { error: error.message });
+    logAdminAction("backup_failed", req.user, null, {
+      failureCategory: "export_failed",
+    });
     await createAuditLog({
       entityType: "System",
       entityId: req.user._id,
       action: "backup_failed",
       actorId: req.user._id,
       metadata: {
-        error: error.message,
-        actingAdmin: req.user.email || req.user.name,
+        failureCategory: "export_failed",
         timestamp: new Date().toISOString(),
       },
     });

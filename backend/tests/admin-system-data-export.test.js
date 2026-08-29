@@ -536,13 +536,13 @@ test("System Data Export: failure is audited without exposing internal exception
   }
 
   const configStates = [];
-  const auditActions = [];
+  const auditEntries = [];
   t.mock.method(Config, "findOneAndUpdate", async (filter, update) => {
     configStates.push(update.value);
     return { ...filter, ...update };
   });
   t.mock.method(AuditLog, "create", async (entry) => {
-    auditActions.push(entry.action);
+    auditEntries.push(entry);
     return entry;
   });
 
@@ -566,5 +566,14 @@ test("System Data Export: failure is audited without exposing internal exception
   });
   assert.equal(JSON.stringify(recorder.state.jsonBody).includes(secretError), false);
   assert.deepEqual(configStates, ["started", "failed"]);
-  assert.deepEqual(auditActions, ["backup_started", "backup_failed"]);
+  assert.deepEqual(
+    auditEntries.map((entry) => entry.action),
+    ["backup_started", "backup_failed"],
+  );
+  const failureAudit = auditEntries.find(
+    (entry) => entry.action === "backup_failed",
+  );
+  assert.equal(failureAudit.metadata.failureCategory, "export_failed");
+  assert.equal(JSON.stringify(failureAudit).includes(secretError), false);
+  assert.equal(Object.hasOwn(failureAudit.metadata, "error"), false);
 });
