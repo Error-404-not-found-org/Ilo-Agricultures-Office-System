@@ -5,7 +5,6 @@ import { protectedRoute, AdminOnly } from "../middleware/auth.middleware.js";
 import {
   getDashboardStats,
   getAdminAnalytics,
-  getSystemMonitoringData,
   getRecentActivities,
 } from "../controllers/admin.controllers.js";
 import {
@@ -58,7 +57,6 @@ router.post("/reset-password", resetPassword);
 router.post("/update-role", updateRole);
 router.get("/stats", getDashboardStats);
 router.get("/analytics", getAdminAnalytics);
-router.get("/monitoring", getSystemMonitoringData);
 router.get("/technician-workload-summary", getTechnicianWorkloadSummary);
 router.get("/chart-data", getChartData);
 router.get("/inseminations", getAllInseminations);

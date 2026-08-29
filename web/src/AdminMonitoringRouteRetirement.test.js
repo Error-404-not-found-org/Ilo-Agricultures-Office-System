@@ -23,13 +23,16 @@ describe("Admin Monitoring route retirement source safety", () => {
     expect(dashboard).not.toContain("technicianWorkloads");
   });
 
-  it("keeps the backend monitoring endpoint registered", () => {
+  it("removes the broad backend endpoint while preserving its canonical replacements", () => {
     const routes = read("../backend/src/routes/admin.routes.js");
     const controller = read("../backend/src/controllers/admin.controllers.js");
 
-    expect(routes).toContain('router.get("/monitoring", getSystemMonitoringData)');
-    expect(controller).toContain(
-      "export const getSystemMonitoringData = async (req, res) =>",
+    expect(routes).not.toContain('router.get("/monitoring"');
+    expect(routes).not.toContain("getSystemMonitoringData");
+    expect(controller).not.toContain("getSystemMonitoringData");
+    expect(routes).toContain(
+      'router.get("/technician-workload-summary", getTechnicianWorkloadSummary)',
     );
+    expect(routes).toContain('router.get("/backup", exportDatabaseBackup)');
   });
 });

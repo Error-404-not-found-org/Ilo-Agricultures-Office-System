@@ -1,108 +1,57 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { User } from "../src/models/user.model.js";
-import { Animal } from "../src/models/animal.model.js";
-import { Insemination } from "../src/models/insemination.model.js";
-import { Pregnancy } from "../src/models/pregnancy.model.js";
-import { Calving } from "../src/models/calving.model.js";
-import { HealthRequest } from "../src/models/health-request.model.js";
-import { Config } from "../src/models/config.model.js";
-import { getSystemMonitoringData } from "../src/controllers/admin.controllers.js";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
 
-test("Admin Monitoring: getSystemMonitoringData returns correct structure and mock data counts", async () => {
-    // Save original methods
-    const origUserCount = User.countDocuments;
-    const origUserFind = User.find;
-    const origAnimalCount = Animal.countDocuments;
-    const origAnimalAgg = Animal.aggregate;
-    const origInseminationCount = Insemination.countDocuments;
-    const origInseminationDistinct = Insemination.distinct;
-    const origInseminationAgg = Insemination.aggregate;
-    const origPregnancyCount = Pregnancy.countDocuments;
-    const origCalvingCount = Calving.countDocuments;
-    const origHealthRequestCount = HealthRequest.countDocuments;
-    const origHealthRequestAgg = HealthRequest.aggregate;
-    const origHealthRequestDistinct = HealthRequest.distinct;
-    const origConfigFindOne = Config.findOne;
+import adminRouter from "../src/routes/admin.routes.js";
 
-    // Stubbing User
-    User.countDocuments = async (query) => {
-        if (query && query.lastLogin) return 2; // online users
-        return 10; // total active users
-    };
-    User.find = () => ({
-        lean: () => [{ _id: "farmer1", name: "Farmer Bob", role: "farmer" }]
-    });
+const readSource = (relativePath) =>
+  readFile(new URL(relativePath, import.meta.url), "utf8");
 
-    // Stubbing Animal
-    Animal.countDocuments = async () => 1; // missing animal data count
-    Animal.aggregate = async () => [
-        { _id: "TAG-1234", count: 2, animals: [] }
-    ]; // duplicate ear tags list
+test("legacy Admin monitoring route is retired while supported Admin routes remain", async () => {
+  const registeredPaths = adminRouter.stack
+    .filter((layer) => layer.route)
+    .map((layer) => layer.route.path);
+  const routes = await readSource("../src/routes/admin.routes.js");
 
-    // Stubbing Insemination
-    Insemination.countDocuments = async () => 5;
-    Insemination.distinct = async () => ["farmer1"];
-    Insemination.aggregate = async () => [{ _id: "tech-1", count: 1 }];
+  assert.equal(registeredPaths.includes("/monitoring"), false);
+  assert.equal(routes.includes("getSystemMonitoringData"), false);
+  assert.equal(registeredPaths.includes("/technician-workload-summary"), true);
+  assert.equal(registeredPaths.includes("/backup"), true);
+});
 
-    // Stubbing Pregnancy
-    Pregnancy.countDocuments = async () => 3;
+test("synthetic monitoring controller contract is removed", async () => {
+  const controller = await readSource("../src/controllers/admin.controllers.js");
 
-    // Stubbing Calving
-    Calving.countDocuments = async () => 2;
+  for (const retiredMarker of [
+    "getSystemMonitoringData",
+    "systemHealth:",
+    "registryMonitor:",
+    "backupMonitor:",
+    "moowieInsights:",
+    "Simulated Failed Sync Alert",
+  ]) {
+    assert.equal(controller.includes(retiredMarker), false, retiredMarker);
+  }
+});
 
-    // Stubbing HealthRequest
-    HealthRequest.countDocuments = async () => 4;
-    HealthRequest.distinct = async () => ["farmer1"];
-    HealthRequest.aggregate = async () => [
-        { _id: "San Isidro", count: 5, criticalCount: 2 }
-    ];
+test("production clients no longer call monitoring and supported replacements remain", async () => {
+  const [dashboard, mobileService, mobileDashboard] = await Promise.all([
+    readSource("../../web/src/pages/admin/Dashboard.jsx"),
+    readSource(
+      "../../mobile/features/admin-dashboard/services/adminDashboard.service.ts",
+    ),
+    readSource(
+      "../../mobile/features/admin-dashboard/hooks/useAdminDashboard.ts",
+    ),
+  ]);
 
-    // Stubbing Config
-    Config.findOne = async () => ({ value: new Date() });
-
-    let statusVal = null;
-    let jsonVal = null;
-
-    const req = {};
-    const res = {
-        status(code) {
-            statusVal = code;
-            return {
-                json(data) {
-                    jsonVal = data;
-                }
-            };
-        }
-    };
-
-    try {
-        await getSystemMonitoringData(req, res);
-        
-        assert.equal(statusVal, 200);
-        assert.ok(jsonVal);
-        assert.equal(jsonVal.systemHealth.onlineDevices, 2);
-        assert.equal(jsonVal.systemHealth.offlineDevices, 8); // 10 - 2
-        assert.equal(jsonVal.registryMonitor.duplicateEarTags, 1);
-        assert.equal(jsonVal.registryMonitor.missingAnimalData, 1);
-        assert.equal(jsonVal.moowieInsights.pregnancySuccessRate, 100); // 3 / 3
-        assert.equal(jsonVal.moowieInsights.aiSuccessRate, 100);
-        assert.ok(Array.isArray(jsonVal.alerts));
-        assert.equal(jsonVal.alerts[0].category, "Registry");
-    } finally {
-        // Restore original methods
-        User.countDocuments = origUserCount;
-        User.find = origUserFind;
-        Animal.countDocuments = origAnimalCount;
-        Animal.aggregate = origAnimalAgg;
-        Insemination.countDocuments = origInseminationCount;
-        Insemination.distinct = origInseminationDistinct;
-        Insemination.aggregate = origInseminationAgg;
-        Pregnancy.countDocuments = origPregnancyCount;
-        Calving.countDocuments = origCalvingCount;
-        HealthRequest.countDocuments = origHealthRequestCount;
-        HealthRequest.aggregate = origHealthRequestAgg;
-        HealthRequest.distinct = origHealthRequestDistinct;
-        Config.findOne = origConfigFindOne;
-    }
+  assert.equal(dashboard.includes("/admin/monitoring"), false);
+  assert.equal(
+    dashboard.includes("/admin/technician-workload-summary"),
+    true,
+  );
+  assert.equal(mobileService.includes("/admin/monitoring"), false);
+  assert.equal(mobileService.includes("getAdminMonitoringData"), false);
+  assert.equal(mobileService.includes("/admin/backup"), true);
+  assert.equal(mobileDashboard.includes("getAdminMonitoringData"), false);
 });
