@@ -887,10 +887,15 @@ export const resolveHealthRequest = ({
     await AuditLog.create([{
       action: "RESOLVE_HEALTH_REQUEST",
       actorId: technicianId,
-      actorType: "Technician",
       entityId: request._id,
       entityType: "HealthRequest",
-      details: { status: "resolved", taskId: task ? task._id : undefined },
+      metadata: {
+        status: "resolved",
+        taskId: task ? task._id : undefined,
+        healthRequestId: request._id,
+        animalId: request.animalId,
+        farmerId: request.farmerId,
+      },
       createdAt: new Date(),
     }], { session });
 
@@ -935,10 +940,14 @@ export const createResolvedWalkInHealth = ({ requestData, medicalRecord, taskId 
     await AuditLog.create([{
       action: "CREATE_WALKIN_HEALTH",
       actorId: medicalRecord.technicianId,
-      actorType: "Technician",
       entityId: request._id,
       entityType: "HealthRequest",
-      details: { medicalRecordId: record._id },
+      metadata: {
+        medicalRecordId: record._id,
+        healthRequestId: request._id,
+        animalId: request.animalId,
+        farmerId: request.farmerId,
+      },
       createdAt: new Date(),
     }], { session });
 
@@ -1450,10 +1459,12 @@ export const recordTechnicianAIService = async ({
         actorId,
         entityType: "Insemination",
         entityId: insemination._id,
-        details: {
+        metadata: {
           taskId,
           requestId,
+          inseminationId: insemination._id,
           animalId,
+          farmerId,
           attemptNumber: insemination.attemptNumber,
         },
       },
