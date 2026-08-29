@@ -29,7 +29,6 @@ export default function AdminLayout() {
       <Stack.Screen name="notifications" />
       <Stack.Screen name="support-tickets" />
       <Stack.Screen name="audit-logs" />
-      <Stack.Screen name="system-settings" />
     </Stack>
   );
 }
