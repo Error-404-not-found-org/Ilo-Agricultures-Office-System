@@ -17,6 +17,7 @@ import {
   assertTechnicianOrAdmin,
   assertOperationallyManageableUser,
   assertOperationalUserRole,
+  getOperationalUserRoleFilter,
 } from "../policies/user.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { sendOtpSms, verifyOtpSms } from "../services/sms.service.js";
@@ -1099,7 +1100,7 @@ export const getUsers = async (req, res) => {
       }
       query.role = "farmer";
     } else {
-      if (role) query.role = role;
+      query.role = getOperationalUserRoleFilter(role);
     }
 
     // Search by name or email
@@ -1264,7 +1265,10 @@ export const getUsers = async (req, res) => {
     res.status(200).json(responseData);
   } catch (error) {
     console.error("Error fetching users:", error);
-    res.status(500).json({ message: "Failed to fetch users" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch users",
+      code: error.code,
+    });
   }
 };
 
@@ -1315,12 +1319,15 @@ export const deleteUser = async (req, res) => {
 export const listAllUsersForAdmin = async (req, res) => {
   try {
     const { role } = req.query;
-    const query = role ? { role } : {};
+    const query = { role: getOperationalUserRoleFilter(role) };
     const users = await User.find(query).select("-__v -pushToken").lean();
     res.status(200).json(users);
   } catch (error) {
     console.error("Error listing users for admin:", error);
-    res.status(500).json({ message: "Failed to list users" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to list users",
+      code: error.code,
+    });
   }
 };
 
@@ -1328,8 +1335,11 @@ export const getArchivedUsers = async (req, res) => {
   try {
     assertAdmin(req.user);
     const { role } = req.query;
-    const query = { deletedAt: { $ne: null } };
-    if (role && role !== "all") query.role = role;
+    const requestedRole = role === "all" ? undefined : role;
+    const query = {
+      deletedAt: { $ne: null },
+      role: getOperationalUserRoleFilter(requestedRole),
+    };
 
     const users = await User.find(query)
       .select("-__v -pushToken")
@@ -1341,7 +1351,10 @@ export const getArchivedUsers = async (req, res) => {
     console.error("[getArchivedUsers ERROR]", error);
     res
       .status(error.status || 500)
-      .json({ message: error.message || "Failed to fetch archived users." });
+      .json({
+        message: error.message || "Failed to fetch archived users.",
+        code: error.code,
+      });
   }
 };
 

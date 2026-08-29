@@ -1,9 +1,11 @@
 import { AppError } from "../utils/app-error.js";
 
-const OPERATIONALLY_MANAGEABLE_USER_ROLES = new Set([
+const OPERATIONAL_USER_ROLES = Object.freeze([
   "farmer",
   "technician",
 ]);
+
+const OPERATIONALLY_MANAGEABLE_USER_ROLES = new Set(OPERATIONAL_USER_ROLES);
 
 const operationalTargetError = () =>
   new AppError(
@@ -31,6 +33,18 @@ export const assertOperationalUserRole = (role) => {
   if (!OPERATIONALLY_MANAGEABLE_USER_ROLES.has(role)) {
     throw operationalTargetError();
   }
+};
+
+export const getOperationalUserRoleFilter = (requestedRole) => {
+  if (
+    requestedRole === undefined ||
+    requestedRole === null
+  ) {
+    return { $in: [...OPERATIONAL_USER_ROLES] };
+  }
+
+  assertOperationalUserRole(requestedRole);
+  return requestedRole;
 };
 
 export const assertCanReadUser = (requester, targetUser) => {
