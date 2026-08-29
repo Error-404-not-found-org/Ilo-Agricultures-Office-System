@@ -1,8 +1,5 @@
 import { useState } from "react";
-import {
-  SignOutButton,
-  useUser,
-} from "@clerk/clerk-react";
+import { SignOutButton, useUser } from "@clerk/clerk-react";
 import { Menu, X, ArrowRight } from "lucide-react";
 import StaffSignInButton from "../../../components/auth/StaffSignInButton";
 import { BRAND_LOGO, NAV_LINKS } from "../data/landingContent";
@@ -57,20 +54,7 @@ export default function PublicNavbar() {
 
         {/* Right Side Actions */}
         <div className="hidden sm:flex items-center gap-3">
-          {isSignedIn && isStaffRole ? (
-            <a
-              href={
-                user?.publicMetadata?.role === "admin"
-                  ? "/admin/dashboard"
-                  : "/technician/dashboard"
-              }
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#074033] hover:bg-[#052E24] text-white text-xs sm:text-sm font-bold transition-all shadow-xs focus:outline-none focus:ring-2 focus:ring-[#074033]"
-            >
-              Go to Portal <ArrowRight size={14} />
-            </a>
-          ) : (
-            <StaffSignInButton size="sm" />
-          )}
+          <StaffSignInButton size="sm" />
 
           <a
             href="/download-app"
@@ -78,14 +62,6 @@ export default function PublicNavbar() {
           >
             Download App
           </a>
-
-          {isSignedIn && (
-            <SignOutButton>
-              <button className="text-xs font-medium text-slate-500 hover:text-slate-800 underline cursor-pointer ml-1">
-                Sign Out
-              </button>
-            </SignOutButton>
-          )}
         </div>
 
         {/* Mobile Hamburger Menu Button */}
