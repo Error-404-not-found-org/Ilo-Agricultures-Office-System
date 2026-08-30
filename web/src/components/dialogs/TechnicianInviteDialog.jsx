@@ -7,6 +7,7 @@ import {
   createTechnician,
   TECHNICIAN_CAPABILITIES,
 } from "../../services/adminTechniciansService";
+import { MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
 
 const EMPTY_FORM = Object.freeze({
   firstName: "",
@@ -107,15 +108,15 @@ export default function TechnicianInviteDialog({ open, onClose }) {
     >
       <form
         onSubmit={handleSubmit}
-        className="modal-box max-h-[90vh] max-w-lg space-y-4 overflow-y-auto border border-base-300"
+        className="modal-box bg-base-100 text-base-content max-h-[90vh] max-w-2xl space-y-4 overflow-y-auto border border-base-300"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-base-300 pb-3">
           <div>
-            <h2 id="invite-technician-title" className="text-base font-bold">
+            <h2 id="invite-technician-title" className="text-lg font-extrabold text-base-content">
               Invite Technician
             </h2>
-            <p className="mt-1 text-xs text-base-content/70">
+            <p className="mt-1 text-xs font-medium text-base-content/80">
               Create a municipal Field Officer account and assign service capabilities.
             </p>
           </div>
@@ -130,7 +131,7 @@ export default function TechnicianInviteDialog({ open, onClose }) {
         </div>
 
         <fieldset className="fieldset rounded-box border border-base-300 p-4">
-          <legend className="fieldset-legend">Technician information</legend>
+          <legend className="fieldset-legend text-sm font-bold text-base-content">Technician information</legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="fieldset">
               <span className="label font-semibold">First name</span>
@@ -152,66 +153,77 @@ export default function TechnicianInviteDialog({ open, onClose }) {
                 required
               />
             </label>
+            <label className="fieldset">
+              <span className="label font-semibold">Email address</span>
+              <input
+                type="email"
+                className="input w-full"
+                placeholder="technician@oton.gov.ph"
+                value={form.email}
+                onChange={(event) => updateField("email", event.target.value)}
+                autoComplete="email"
+                required
+              />
+            </label>
+            <label className="fieldset">
+              <span className="label font-semibold">Phone number</span>
+              <input
+                type="tel"
+                className="input w-full"
+                placeholder="09171234567"
+                value={form.phoneNumber}
+                onChange={(event) => {
+                  const value = event.target.value.replace(/\D/g, "");
+                  if (value.length <= 11) updateField("phoneNumber", value);
+                }}
+                autoComplete="tel"
+                inputMode="numeric"
+                required
+              />
+            </label>
           </div>
-          <label className="fieldset">
-            <span className="label font-semibold">Email address</span>
-            <input
-              type="email"
-              className="input w-full"
-              placeholder="technician@oton.gov.ph"
-              value={form.email}
-              onChange={(event) => updateField("email", event.target.value)}
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label className="fieldset">
-            <span className="label font-semibold">Phone number</span>
-            <input
-              type="tel"
-              className="input w-full"
-              placeholder="09171234567"
-              value={form.phoneNumber}
-              onChange={(event) => {
-                const value = event.target.value.replace(/\D/g, "");
-                if (value.length <= 11) updateField("phoneNumber", value);
-              }}
-              autoComplete="tel"
-              inputMode="numeric"
-              required
-            />
-          </label>
         </fieldset>
 
         <fieldset className="fieldset rounded-box border border-base-300 p-4">
-          <legend className="fieldset-legend">Field area</legend>
+          <legend className="fieldset-legend text-sm font-bold text-base-content">Field area</legend>
           <p className="rounded-field bg-base-200 px-4 py-2.5 font-semibold">
             Oton, Iloilo
           </p>
-          <label className="fieldset">
-            <span className="label font-semibold">Barangay</span>
-            <input
-              className="input w-full"
-              value={form.barangay}
-              onChange={(event) => updateField("barangay", event.target.value)}
-              required
-            />
-          </label>
-          <label className="fieldset">
-            <span className="label font-semibold">
-              Street or sitio <span className="font-normal">(optional)</span>
-            </span>
-            <input
-              className="input w-full"
-              value={form.street}
-              onChange={(event) => updateField("street", event.target.value)}
-            />
-          </label>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="fieldset">
+              <span className="label font-semibold">Barangay</span>
+              <select
+                className="select w-full"
+                value={form.barangay}
+                onChange={(event) => updateField("barangay", event.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Select barangay
+                </option>
+                {MUNICIPALITY_BARANGAYS["Oton"]?.map((brgy) => (
+                  <option key={brgy} value={brgy}>
+                    {brgy}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="fieldset">
+              <span className="label font-semibold">
+                Street or sitio <span className="font-normal">(optional)</span>
+              </span>
+              <input
+                className="input w-full"
+                value={form.street}
+                onChange={(event) => updateField("street", event.target.value)}
+              />
+            </label>
+          </div>
         </fieldset>
 
         <fieldset className="fieldset rounded-box border border-base-300 p-4">
-          <legend className="fieldset-legend">Capabilities</legend>
-          <p className="label">
+          <legend className="fieldset-legend text-sm font-bold text-base-content">Capabilities</legend>
+          <p className="label font-medium text-base-content/80">
             Select the services this Technician is qualified to receive.
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
