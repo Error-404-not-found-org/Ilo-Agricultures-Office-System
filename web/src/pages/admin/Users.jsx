@@ -156,7 +156,9 @@ export default function Users() {
           if (!normalizedSearch) return true;
 
           return [user.name, user.email, user.phoneNumber].some((value) =>
-            String(value || "").toLowerCase().includes(normalizedSearch),
+            String(value || "")
+              .toLowerCase()
+              .includes(normalizedSearch),
           );
         });
         const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -301,9 +303,9 @@ export default function Users() {
 
   const hasFilters = Boolean(
     searchQuery ||
-      statusFilter !== "all" ||
-      municipalityFilter ||
-      barangayFilter,
+    statusFilter !== "all" ||
+    municipalityFilter ||
+    barangayFilter,
   );
   const roleLabel = titleCaseRole(activeRole);
   const startItem = total === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
@@ -314,10 +316,7 @@ export default function Users() {
 
   return (
     <div className={ui.page}>
-      <Topbar
-        title="Users"
-        subtitle="Manage Farmer and Technician accounts"
-      />
+      <Topbar title="Users" subtitle="Manage Farmer and Technician accounts" />
 
       <main className={ui.main}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -363,7 +362,7 @@ export default function Users() {
                     type="button"
                     className={
                       "btn btn-sm join-item gap-1.5 " +
-                      (isActive ? "btn-active" : "btn-ghost")
+                      (isActive ? "btn-primary btn-soft" : "btn-ghost")
                     }
                     aria-pressed={isActive}
                     onClick={() => switchView(value)}
@@ -374,37 +373,18 @@ export default function Users() {
                 );
               })}
             </div>
-
+            <button
+              type="button"
+              className="btn btn-primary btn-sm ml-2 md:ml-0"
+              onClick={() => setIsAddUserRoleOpen(true)}
+            >
+              <Plus size={15} aria-hidden="true" />
+              Add User
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="input input-sm w-full flex-1 sm:max-w-md">
-            <Search
-              size={15}
-              className="text-base-content/55"
-              aria-hidden="true"
-            />
-            <input
-              type="search"
-              aria-label="Search users"
-              placeholder={`Search ${activeRole}s by name, phone, or email...`}
-              value={searchQuery}
-              onChange={(event) => {
-                setSearchQuery(event.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm sm:ml-auto"
-            onClick={() => setIsAddUserRoleOpen(true)}
-          >
-            <Plus size={15} aria-hidden="true" />
-            Add User
-          </button>
-        </div>
+
 
         <section
           className={
@@ -419,7 +399,25 @@ export default function Users() {
           </h2>
 
           <div className={ui.filterBar}>
-            <div className="flex items-center gap-1.5 px-1 text-xs font-bold text-base-content/80">
+            <label className="input input-sm w-full xl:w-72 flex items-center gap-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary bg-base-200/50">
+              <Search
+                size={16}
+                className="text-base-content/60 shrink-0"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                aria-label="Search users"
+                placeholder={`Search ${activeRole}s by name, phone, or email...`}
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setCurrentPage(1);
+                }}
+                className="grow min-w-0 text-base placeholder:text-base-content/60"
+              />
+            </label>
+            <div className="flex items-center gap-1.5 px-1 text-xs font-bold text-base-content/80 xl:ml-4">
               <SlidersHorizontal size={13} aria-hidden="true" />
               <span>Filters</span>
             </div>

@@ -23,9 +23,10 @@ const getTitleForPath = (path) => {
   // Admin Routes
   if (path.startsWith('/admin/dashboard')) return 'Admin Dashboard | Iloilo Agri';
   if (path === '/admin/technicians') return 'User Management | Admin';
-  if (path.startsWith('/admin/technicians/')) return 'Technician Profile | Admin';
+  if (path.startsWith('/admin/technicians/')) return 'User Details | Admin';
   if (path.startsWith('/admin/livestock')) return 'Livestock | Admin';
   if (path.startsWith('/admin/inseminations')) return 'AI Records | Admin';
+  if (/^\/admin\/users\/[^/]+$/.test(path)) return 'User Details | Admin';
   if (path.startsWith('/admin/users')) return 'User Management | Admin';
   if (path.startsWith('/admin/settings')) return 'Settings | Admin';
   if (path.startsWith('/admin/reports')) return 'Reports | Admin';

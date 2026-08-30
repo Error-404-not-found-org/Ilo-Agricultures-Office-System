@@ -18,7 +18,7 @@ const TechnicianWelcome = lazy(() => import("./pages/TechnicianWelcome"));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
-const TechnicianProfile = lazy(() => import("./pages/admin/TechnicianProfile"));
+const UserDetails = lazy(() => import("./pages/admin/UserDetails"));
 const Livestock = lazy(() => import("./pages/admin/Livestock"));
 const LivestockProfile = lazy(() => import("./pages/admin/LivestockProfile"));
 const Inseminations = lazy(() => import("./pages/admin/Inseminations"));
@@ -195,7 +195,8 @@ function App() {
                   <Navigate to="/admin/users?role=technician" replace />
                 }
               />
-              <Route path="technicians/:id" element={<TechnicianProfile />} />
+              <Route path="users/:id" element={<UserDetails />} />
+              <Route path="technicians/:id" element={<UserDetails />} />
               <Route path="livestock" element={<Livestock />} />
               <Route
                 path="livestock/:id"

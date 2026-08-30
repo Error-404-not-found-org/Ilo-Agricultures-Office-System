@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { Mail, MapPin, Phone } from "lucide-react";
 import UserAvatar from "../../ui/UserAvatar";
 import { Badge, ui } from "../../ui/uiClasses";
@@ -9,6 +8,7 @@ import {
   municipalityLabel,
   requestAcceptanceLabel,
 } from "./userDirectoryPresentation";
+import UserActionsMenu from "./UserActionsMenu";
 
 function ContactItem({ icon: Icon, children }) {
   return (
@@ -18,28 +18,41 @@ function ContactItem({ icon: Icon, children }) {
         className="mt-0.5 shrink-0 text-base-content/60"
         aria-hidden="true"
       />
-      <span className="min-w-0 break-words">{children || "Not recorded"}</span>
+      <span className="min-w-0 wrap-break-word">
+        {children || "Not recorded"}
+      </span>
     </div>
   );
 }
 
-function FarmerCard({ farmer }) {
+function FarmerCard({ farmer, onUserAction, isActionPending }) {
   return (
     <article
-      className="card card-sm card-border bg-base-100"
+      className="card card-sm card-border bg-base-100 shadow-md transition-shadow dark:shadow-none"
       data-testid="farmer-directory-card"
     >
-      <div className="card-body gap-3 p-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <UserAvatar
+      <div className="card-body gap-3 p-4 border-2 border-base-300/75 rounded-xl">
+        <div className="flex min-w-0 items-start gap-3">
+          <UserAvatar 
             name={farmer.name}
             imageUrl={farmer.imageUrl || farmer.profileImage}
             size={40}
             sizeClass="h-10 w-10"
           />
-          <h3 className="card-title min-w-0 text-base font-bold text-base-content">
-            <span className="truncate">{farmer.name || "Not recorded"}</span>
-          </h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="card-title min-w-0 text-base font-bold text-base-content">
+              <span className="truncate">{farmer.name || "Not recorded"}</span>
+            </h3>
+            <Badge status={farmer.status || "active"} className="mt-1">
+              {formatOperationalLabel(farmer.status || "active")}
+            </Badge>
+          </div>
+          <UserActionsMenu
+            user={farmer}
+            detailsTo={"/admin/users/" + farmer._id}
+            onAction={onUserAction}
+            isPending={isActionPending}
+          />
         </div>
 
         <div className="space-y-2">
@@ -54,15 +67,15 @@ function FarmerCard({ farmer }) {
   );
 }
 
-function TechnicianCard({ technician }) {
+function TechnicianCard({ technician, onUserAction, isActionPending }) {
   const dispatchProfile = technician.dispatchProfile || {};
 
   return (
     <article
-      className="card card-sm card-border bg-base-100"
+      className="card card-sm card-border bg-base-100 shadow-md transition-shadow dark:shadow-none"
       data-testid="technician-directory-card"
     >
-      <div className="card-body gap-3 p-4">
+      <div className="card-body gap-3 p-4 border-2 border-base-300/75 rounded-xl">
         <div className="flex min-w-0 items-start gap-3">
           <UserAvatar
             name={technician.name}
@@ -78,6 +91,12 @@ function TechnicianCard({ technician }) {
               {formatOperationalLabel(technician.status)}
             </Badge>
           </div>
+          <UserActionsMenu
+            user={technician}
+            detailsTo={"/admin/users/" + technician._id}
+            onAction={onUserAction}
+            isPending={isActionPending}
+          />
         </div>
 
         <div className="space-y-2">
@@ -107,19 +126,6 @@ function TechnicianCard({ technician }) {
               municipalityLabel,
             )}
           </div>
-        </div>
-
-        <div className="card-actions justify-end">
-          <Link
-            to={"/admin/technicians/" + technician._id}
-            className="btn btn-sm"
-            aria-label={
-              "View profile for " +
-              (technician.name || "unnamed Technician")
-            }
-          >
-            View Profile
-          </Link>
         </div>
       </div>
     </article>
@@ -158,6 +164,8 @@ export default function UserDirectoryCards({
   isError,
   hasFilters,
   onRetry,
+  onUserAction,
+  pendingUserId,
 }) {
   if (isLoading) {
     return (
@@ -198,14 +206,24 @@ export default function UserDirectoryCards({
 
   return (
     <div
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 pb-8"
       aria-label={`${roleLabel} cards`}
     >
       {users.map((user) =>
         activeRole === "technician" ? (
-          <TechnicianCard key={user._id} technician={user} />
+          <TechnicianCard
+            key={user._id}
+            technician={user}
+            onUserAction={onUserAction}
+            isActionPending={pendingUserId === user._id}
+          />
         ) : (
-          <FarmerCard key={user._id} farmer={user} />
+          <FarmerCard
+            key={user._id}
+            farmer={user}
+            onUserAction={onUserAction}
+            isActionPending={pendingUserId === user._id}
+          />
         ),
       )}
     </div>

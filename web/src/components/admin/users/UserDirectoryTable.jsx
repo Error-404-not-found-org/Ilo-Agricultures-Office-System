@@ -1,8 +1,10 @@
+import { Link } from "react-router-dom";
 import { MapPin } from "lucide-react";
 import { TableRowSkeleton } from "../../ui/Skeleton";
 import UserAvatar from "../../ui/UserAvatar";
 import { Badge, ui } from "../../ui/uiClasses";
 import TableNameLink from "../../ui/TableNameLink";
+import UserActionsMenu from "./UserActionsMenu";
 import {
   compactDirectoryList,
   formatDirectoryLocation,
@@ -11,21 +13,25 @@ import {
   requestAcceptanceLabel,
 } from "./userDirectoryPresentation";
 
-function FarmerRow({ user }) {
+function FarmerRow({ user, onUserAction, isActionPending }) {
   return (
     <tr className={ui.tableRow}>
       <td className="p-3.5 pl-5">
-        <div className="flex items-center gap-2.5">
+        <Link
+          to={"/admin/users/" + user._id}
+          className="group flex items-center gap-2.5"
+          aria-label={"Open Farmer profile for " + (user.name || "unnamed Farmer")}
+        >
           <UserAvatar
             name={user.name}
             imageUrl={user.imageUrl || user.profileImage}
             size={32}
             sizeClass="h-8 w-8"
           />
-          <span className="font-bold text-base-content">
+          <span className="font-bold text-base-content transition-colors group-hover:text-primary group-hover:underline">
             {user.name || "Not recorded"}
           </span>
-        </div>
+        </Link>
       </td>
       <td className="p-3.5 font-mono font-medium text-base-content">
         {user.phoneNumber || "Not recorded"}
@@ -34,9 +40,9 @@ function FarmerRow({ user }) {
         {user.email || "Not recorded"}
       </td>
       <td className="p-3.5">
-        <span className="badge badge-outline badge-sm font-semibold capitalize">
-          {user.role}
-        </span>
+        <Badge status={user.status || "active"}>
+          {formatOperationalLabel(user.status || "active")}
+        </Badge>
       </td>
       <td className="p-3.5 pr-5 text-right font-semibold text-base-content/90">
         <span className="inline-flex items-start justify-end gap-1.5">
@@ -48,33 +54,39 @@ function FarmerRow({ user }) {
           {formatDirectoryLocation(user)}
         </span>
       </td>
+      <td className="p-3.5 pr-5 text-right">
+        <UserActionsMenu
+          user={user}
+          detailsTo={"/admin/users/" + user._id}
+          onAction={onUserAction}
+          isPending={isActionPending}
+        />
+      </td>
     </tr>
   );
 }
 
-function TechnicianRow({ technician }) {
+function TechnicianRow({ technician, onUserAction, isActionPending }) {
   const dispatchProfile = technician.dispatchProfile || {};
 
   return (
     <tr className={ui.tableRow}>
       <td className="p-3.5 pl-5">
-        <div className="flex items-center gap-2.5">
+        <Link
+          to={"/admin/users/" + technician._id}
+          className="group flex items-center gap-2.5"
+          aria-label={"Open Technician profile for " + (technician.name || "unnamed Technician")}
+        >
           <UserAvatar
             name={technician.name}
             imageUrl={technician.imageUrl || technician.profileImage}
             size={36}
             sizeClass="h-9 w-9"
           />
-          <TableNameLink
-            to={"/admin/technicians/" + technician._id}
-            ariaLabel={
-              "Open Technician profile for " +
-              (technician.name || "unnamed Technician")
-            }
-          >
+          <span className="font-bold text-base-content transition-colors group-hover:text-primary group-hover:underline">
             {technician.name || "Not recorded"}
-          </TableNameLink>
-        </div>
+          </span>
+        </Link>
       </td>
       <td className="p-3.5">
         <div className="space-y-0.5">
@@ -123,6 +135,14 @@ function TechnicianRow({ technician }) {
           </div>
         </div>
       </td>
+      <td className="p-3.5 pr-5 text-right">
+        <UserActionsMenu
+          user={technician}
+          detailsTo={"/admin/users/" + technician._id}
+          onAction={onUserAction}
+          isPending={isActionPending}
+        />
+      </td>
     </tr>
   );
 }
@@ -135,6 +155,8 @@ export default function UserDirectoryTable({
   isError,
   hasFilters,
   onRetry,
+  onUserAction,
+  pendingUserId,
 }) {
   return (
     <div className="flex-1 overflow-x-auto overflow-y-auto">
@@ -147,14 +169,16 @@ export default function UserDirectoryTable({
               <th className="p-3.5">Location</th>
               <th className="p-3.5">Status</th>
               <th className="p-3.5 pr-5">Dispatch coverage</th>
+              <th className="p-3.5 pr-5 text-right">Actions</th>
             </tr>
           ) : (
             <tr className={ui.tableHead}>
               <th className="p-3.5 pl-5">Full name</th>
               <th className="p-3.5">Contact number</th>
               <th className="p-3.5">Email address</th>
-              <th className="p-3.5">Role</th>
+              <th className="p-3.5">Status</th>
               <th className="p-3.5 pr-5 text-right">Location</th>
+              <th className="p-3.5 pr-5 text-right">Actions</th>
             </tr>
           )}
         </thead>
@@ -165,7 +189,7 @@ export default function UserDirectoryTable({
             ))
           ) : isError ? (
             <tr>
-              <td colSpan={5} className="p-6">
+              <td colSpan={6} className="p-6">
                 <div
                   role="alert"
                   className="alert alert-error alert-soft sm:alert-horizontal"
@@ -179,7 +203,7 @@ export default function UserDirectoryTable({
             </tr>
           ) : users.length === 0 ? (
             <tr>
-              <td colSpan={5} className="p-6">
+              <td colSpan={6} className="p-6">
                 <div className={ui.empty}>
                   {hasFilters
                     ? `No ${activeRole}s match the current search or filters.`
@@ -190,9 +214,19 @@ export default function UserDirectoryTable({
           ) : (
             users.map((user) =>
               activeRole === "technician" ? (
-                <TechnicianRow key={user._id} technician={user} />
+                <TechnicianRow
+                  key={user._id}
+                  technician={user}
+                  onUserAction={onUserAction}
+                  isActionPending={pendingUserId === user._id}
+                />
               ) : (
-                <FarmerRow key={user._id} user={user} />
+                <FarmerRow
+                  key={user._id}
+                  user={user}
+                  onUserAction={onUserAction}
+                  isActionPending={pendingUserId === user._id}
+                />
               ),
             )
           )}

@@ -221,8 +221,7 @@ const RegisterFarmerModal = ({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { const city = event.target.value; setFormData({ ...formData, city, barangay: "" }); setSelectedDistrict(""); }} />
             {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { setSelectedDistrict(event.target.value); setFormData({ ...formData, barangay: "" }); }} />}
-            <Input id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} list="farmer-barangay-options" autoComplete="address-level3" placeholder="Type or select a barangay" />
-            <datalist id="farmer-barangay-options">{targetBarangays.map((barangay) => <option key={barangay} value={toTitleCase(barangay)} />)}</datalist>
+            <Select id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} options={targetBarangays.map((barangay) => ({ value: toTitleCase(barangay), label: toTitleCase(barangay) }))} placeholder="Select a barangay" />
           </div>
         </fieldset>
       </form>
