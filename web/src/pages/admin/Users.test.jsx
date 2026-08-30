@@ -7,16 +7,10 @@ import Users from "./Users";
 
 vi.mock("../../lib/axios", () => ({ default: { get: vi.fn() } }));
 vi.mock("../../components/layout/Topbar", () => ({
-  default: ({ title, subtitle, searchPlaceholder, searchValue, onSearchChange }) => (
+  default: ({ title, subtitle }) => (
     <header>
       <h1>{title}</h1>
       <p>{subtitle}</p>
-      <input
-        aria-label="Search users"
-        placeholder={searchPlaceholder}
-        value={searchValue}
-        onChange={onSearchChange}
-      />
     </header>
   ),
 }));
@@ -130,6 +124,26 @@ describe("Admin Users directory foundation", () => {
     });
   });
 
+  it("opens Add User and routes each supported role to its existing workflow", async () => {
+    renderUsers();
+    await screen.findByText("Maria Farmer");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add User" }));
+    expect(screen.getByRole("heading", { name: "Add User" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Admin/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^FarmerCreate/ }));
+    expect(screen.getByRole("heading", { name: "Add New Farmer" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add User" }));
+    fireEvent.click(screen.getByRole("button", { name: /^TechnicianSend/ }));
+    expect(screen.getByRole("heading", { name: "Invite Technician" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("role=technician");
+    });
+  });
+
   it("isolates role/page query keys and resets pagination when roles change", async () => {
     axiosInstance.get.mockImplementation(async (_url, config) => {
       const { role, page } = config.params;
@@ -166,6 +180,7 @@ describe("Admin Users directory foundation", () => {
       "farmer",
       2,
       "",
+      "all",
       "",
       "",
     ]);
@@ -175,6 +190,7 @@ describe("Admin Users directory foundation", () => {
       "technician",
       1,
       "",
+      "all",
       "",
       "",
     ]);
@@ -199,7 +215,7 @@ describe("Admin Users directory foundation", () => {
       );
     });
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search users" }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search users" }), {
       target: { value: "Maria" },
     });
     await waitFor(() => {
@@ -242,7 +258,7 @@ describe("Admin Users directory foundation", () => {
     });
   });
 
-  it("shows truthful missing data and has no inert action control", async () => {
+  it("shows truthful missing data and an operational action menu", async () => {
     axiosInstance.get.mockResolvedValue(
       pagedResponse([
         {
@@ -259,8 +275,20 @@ describe("Admin Users directory foundation", () => {
     expect(row).not.toBeNull();
     expect(within(row).getAllByText("Not recorded")).toHaveLength(3);
     expect(within(row).queryByText(/Oton/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Actions" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", {
+        name: "Actions for No Location Farmer",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("menuitem", {
+        name: "View Details",
+        hidden: true,
+      }),
+    ).toHaveAttribute("href", "/admin/users/farmer-missing-data");
+    expect(
+      screen.getByRole("columnheader", { name: "Actions" }),
+    ).toBeInTheDocument();
   });
 
   it("filters unexpected Admin records out of the operational table", async () => {

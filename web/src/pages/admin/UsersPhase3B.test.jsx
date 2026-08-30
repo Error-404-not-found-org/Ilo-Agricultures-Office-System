@@ -7,13 +7,7 @@ import Users from "./Users";
 
 vi.mock("../../lib/axios", () => ({ default: { get: vi.fn() } }));
 vi.mock("../../components/layout/Topbar", () => ({
-  default: ({ searchValue, onSearchChange }) => (
-    <input
-      aria-label="Search users"
-      value={searchValue}
-      onChange={onSearchChange}
-    />
-  ),
+  default: () => null,
 }));
 vi.mock("../../components/ui/UserAvatar", () => ({
   default: ({ name }) => <span aria-label={(name || "User") + " avatar"} />,
@@ -112,22 +106,19 @@ describe("Admin Users Technician roster capabilities", () => {
     });
   });
 
-  it("shows the shared invitation entry only in Technician mode", async () => {
+  it("opens the shared Technician invitation from Add User", async () => {
     renderUsers();
 
     await screen.findByText("Ana Active");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Invite Technician" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Add User" }));
+    fireEvent.click(screen.getByRole("button", { name: /^TechnicianSend/ }));
     expect(
       screen.getByRole("dialog", { name: "Invite Technician dialog" }),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Farmers" }));
     expect(await screen.findByText("Maria Farmer")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Invite Technician" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add User" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -138,12 +129,12 @@ describe("Admin Users Technician roster capabilities", () => {
       await screen.findByRole("link", {
         name: "Open Technician profile for Ana Active",
       }),
-    ).toHaveAttribute("href", "/admin/technicians/tech-active");
+    ).toHaveAttribute("href", "/admin/users/tech-active");
     expect(
       screen.getByRole("link", {
         name: "Open Technician profile for Leo Leave",
       }),
-    ).toHaveAttribute("href", "/admin/technicians/tech-leave");
+    ).toHaveAttribute("href", "/admin/users/tech-leave");
   });
 
   it("renders canonical Technician statuses without collapsing them to Active", async () => {
@@ -194,7 +185,16 @@ describe("Admin Users Technician roster capabilities", () => {
         .getQueryCache()
         .getAll()
         .map((query) => query.queryKey),
-    ).toContainEqual(["admin", "users", "technician", 1, "", "", ""]);
+    ).toContainEqual([
+      "admin",
+      "users",
+      "technician",
+      1,
+      "",
+      "all",
+      "",
+      "",
+    ]);
   });
 
   it("keeps Farmer columns and controls free of Technician-only content", async () => {
@@ -208,8 +208,6 @@ describe("Admin Users Technician roster capabilities", () => {
     expect(
       screen.queryByRole("columnheader", { name: "Dispatch coverage" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Invite Technician" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add User" })).toBeInTheDocument();
   });
 });

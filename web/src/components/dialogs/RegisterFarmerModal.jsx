@@ -28,6 +28,8 @@ const RegisterFarmerModal = ({
   onClose,
   onSuccess,
   farmer = null,
+  createEndpoint = "/technician/register-farmer",
+  createRole,
 }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -73,8 +75,9 @@ const RegisterFarmerModal = ({
         const res = await axiosInstance.patch(`/user/${farmer.id || farmer._id}/technician-update`, payload);
         return res.data;
       } else {
-        const res = await axiosInstance.post("/technician/register-farmer", {
+        const res = await axiosInstance.post(createEndpoint, {
           ...data,
+          ...(createRole ? { role: createRole } : {}),
           address: {
             barangay: finalBarangay,
             city: data.city,

@@ -7,13 +7,7 @@ import Users from "./Users";
 
 vi.mock("../../lib/axios", () => ({ default: { get: vi.fn() } }));
 vi.mock("../../components/layout/Topbar", () => ({
-  default: ({ searchValue, onSearchChange }) => (
-    <input
-      aria-label="Search users"
-      value={searchValue}
-      onChange={onSearchChange}
-    />
-  ),
+  default: () => null,
 }));
 vi.mock("../../components/ui/UserAvatar", () => ({
   default: ({ name }) => <span aria-label={(name || "User") + " avatar"} />,
@@ -153,8 +147,13 @@ describe("Admin Users Table and Cards presentation", () => {
     expect(within(card).getByText("maria@example.com")).toBeInTheDocument();
     expect(within(card).getByText("Poblacion South, Oton, Iloilo")).toBeInTheDocument();
     expect(within(card).queryByText(/Availability:/)).not.toBeInTheDocument();
-    expect(within(card).queryByRole("link", { name: /View profile/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Invite Technician" })).not.toBeInTheDocument();
+    expect(
+      within(card).getByRole("menuitem", {
+        name: "View Details",
+        hidden: true,
+      }),
+    ).toHaveAttribute("href", "/admin/users/farmer-1");
+    expect(screen.getByRole("button", { name: "Add User" })).toBeInTheDocument();
   });
 
   it("renders Technician card metadata and the existing profile route", async () => {
@@ -169,18 +168,22 @@ describe("Admin Users Table and Cards presentation", () => {
     expect(within(card).getByText("Capabilities: AI, HEALTH +1")).toBeInTheDocument();
     expect(within(card).getByText("Service area: Oton, Tigbauan +1")).toBeInTheDocument();
     expect(
-      within(card).getByRole("link", { name: "View profile for Tomas Technician" }),
-    ).toHaveAttribute("href", "/admin/technicians/technician-1");
+      within(card).getByRole("menuitem", {
+        name: "View Details",
+        hidden: true,
+      }),
+    ).toHaveAttribute("href", "/admin/users/technician-1");
     expect(within(card).queryByText("Maria Farmer")).not.toBeInTheDocument();
   });
 
   it.each(["table", "cards"])(
-    "keeps Technician invitation available in %s mode",
+    "keeps Technician invitation available through Add User in %s mode",
     async (view) => {
       renderUsers(`/admin/users?role=technician&view=${view}`);
 
       await screen.findByText("Tomas Technician");
-      fireEvent.click(screen.getByRole("button", { name: "Invite Technician" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add User" }));
+      fireEvent.click(screen.getByRole("button", { name: /^TechnicianSend/ }));
       expect(
         screen.getByRole("dialog", { name: "Invite Technician dialog" }),
       ).toBeInTheDocument();
@@ -197,7 +200,7 @@ describe("Admin Users Table and Cards presentation", () => {
     const { queryClient } = renderUsers("/admin/users?role=farmer&view=table");
 
     await screen.findByText("Maria Page 1");
-    fireEvent.change(screen.getByRole("textbox", { name: "Search users" }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search users" }), {
       target: { value: "Maria" },
     });
     fireEvent.change(
@@ -225,7 +228,7 @@ describe("Admin Users Table and Cards presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cards" }));
 
     expect(await screen.findByLabelText("Farmer cards")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Search users" })).toHaveValue("Maria");
+    expect(screen.getByRole("searchbox", { name: "Search users" })).toHaveValue("Maria");
     expect(
       screen.getByRole("combobox", { name: "Filter farmers by municipality" }),
     ).toHaveValue("Oton");
@@ -249,7 +252,7 @@ describe("Admin Users Table and Cards presentation", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/admin/users?role=farmer&view=cards&source=management",
     );
-    expect(screen.queryByRole("button", { name: "Invite Technician" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add User" })).toBeInTheDocument();
   });
 
   it("uses cards on narrow Web viewports instead of rendering the wide table", async () => {
