@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   getAdminAnimalRegistrySummary,
@@ -7,19 +8,19 @@ import {
 } from "../services/adminAnimals.service.ts";
 
 const screen = readFileSync(
-  new URL("../screens/AdminAnimalsScreen.tsx", import.meta.url),
+  fileURLToPath(new URL("../screens/AdminAnimalsScreen.tsx", import.meta.url)),
   "utf8",
 );
 const hook = readFileSync(
-  new URL("../hooks/useAdminAnimals.ts", import.meta.url),
+  fileURLToPath(new URL("../hooks/useAdminAnimals.ts", import.meta.url)),
   "utf8",
 );
 const service = readFileSync(
-  new URL("../services/adminAnimals.service.ts", import.meta.url),
+  fileURLToPath(new URL("../services/adminAnimals.service.ts", import.meta.url)),
   "utf8",
 );
 const details = readFileSync(
-  new URL("../screens/AdminAnimalDetailsScreen.tsx", import.meta.url),
+  fileURLToPath(new URL("../screens/AdminAnimalDetailsScreen.tsx", import.meta.url)),
   "utf8",
 );
 
