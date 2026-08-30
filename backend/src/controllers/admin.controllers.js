@@ -219,7 +219,7 @@ export const getDashboardStats = async (req, res) => {
       inseminations: totalInseminations,
       pregnancies: totalPregnancies,
       calvings: totalCalvings,
-      successRate: successRateConfig?.value || "84%",
+      successRate: successRateConfig?.value ?? null,
     });
   } catch (error) {
     res
