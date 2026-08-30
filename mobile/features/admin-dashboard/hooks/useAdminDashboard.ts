@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@clerk/clerk-expo";
@@ -6,8 +5,6 @@ import {
   getAdminStats,
   getAdminRecentActivities,
 } from "../services/adminDashboard.service";
-import { getAdminTechnicianWorkloadSummary } from "../../admin-workload/services/adminWorkload.service";
-import { buildAdminAttentionSummary } from "../utils/adminDashboardPresentation";
 
 export const useAdminDashboard = () => {
   const api = useApi();
@@ -27,67 +24,6 @@ export const useAdminDashboard = () => {
     refetchInterval: 1000 * 60,
   });
 
-  const techniciansQuery = useQuery({
-    queryKey: ["admin-technicians-list"],
-    enabled: isLoaded && isSignedIn,
-    queryFn: async () => {
-      const res = await api.get("/admin/list-users?role=technician");
-      return Array.isArray(res.data) ? res.data : [];
-    },
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const aiRequestsQuery = useQuery({
-    queryKey: ["admin-ai-requests"],
-    enabled: isLoaded && isSignedIn,
-    queryFn: async () => {
-      const res = await api.get("/ai-request?limit=100");
-      return Array.isArray(res.data?.data)
-        ? res.data.data
-        : Array.isArray(res.data)
-          ? res.data
-          : [];
-    },
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const healthRequestsQuery = useQuery({
-    queryKey: ["admin-health-requests"],
-    enabled: isLoaded && isSignedIn,
-    queryFn: async () => {
-      const res = await api.get("/health-request?limit=100");
-      return Array.isArray(res.data?.data)
-        ? res.data.data
-        : Array.isArray(res.data)
-          ? res.data
-          : [];
-    },
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const workloadSummaryQuery = useQuery({
-    queryKey: ["admin-technician-workload-summary"],
-    enabled: isLoaded && isSignedIn,
-    queryFn: () => getAdminTechnicianWorkloadSummary(api),
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const attention = useMemo(
-    () =>
-      buildAdminAttentionSummary({
-        technicians: techniciansQuery.data || [],
-        aiRequests: aiRequestsQuery.data || [],
-        healthRequests: healthRequestsQuery.data || [],
-        workloadSummary: workloadSummaryQuery.data || [],
-      }),
-    [
-      techniciansQuery.data,
-      aiRequestsQuery.data,
-      healthRequestsQuery.data,
-      workloadSummaryQuery.data,
-    ],
-  );
-
   return {
     stats: statsQuery.data,
     isLoading: statsQuery.isLoading,
@@ -97,25 +33,5 @@ export const useAdminDashboard = () => {
     isActivitiesLoading: activitiesQuery.isLoading,
     isActivitiesError: activitiesQuery.isError,
     refetchActivities: activitiesQuery.refetch,
-
-    attention,
-    isAttentionLoading:
-      techniciansQuery.isLoading ||
-      aiRequestsQuery.isLoading ||
-      healthRequestsQuery.isLoading ||
-      workloadSummaryQuery.isLoading,
-    isAttentionError:
-      techniciansQuery.isError ||
-      aiRequestsQuery.isError ||
-      healthRequestsQuery.isError ||
-      workloadSummaryQuery.isError,
-    refetchAttention: async () => {
-      await Promise.all([
-        techniciansQuery.refetch(),
-        aiRequestsQuery.refetch(),
-        healthRequestsQuery.refetch(),
-        workloadSummaryQuery.refetch(),
-      ]);
-    },
   };
 };

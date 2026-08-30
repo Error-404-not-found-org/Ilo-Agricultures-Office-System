@@ -190,7 +190,11 @@ export default function AdminNotificationsScreen() {
           description: `Duplicate phone number ${phone} shared by multiple profiles: ${phoneGroups[phone].map((p) => p.name).join(", ")}.`,
           severity: "conflict",
           icon: "account-alert-outline",
-          onPress: () => router.push("/(admin)/claim-monitoring" as any),
+          onPress: () =>
+            router.push({
+              pathname: "/(admin)/(tabs)/admin.users" as any,
+              params: { search: phone },
+            }),
         });
       }
     });

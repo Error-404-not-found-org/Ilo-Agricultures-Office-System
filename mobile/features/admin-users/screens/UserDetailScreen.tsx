@@ -39,6 +39,7 @@ import {
   getCapabilityLabels,
   getDispatchReadinessPresentation,
   getFieldAreaLabel,
+  getProfileClaimStatePresentation,
   getReceiveRequestsPresentation,
 } from "../utils/dispatchPresentation";
 import { getAdminRequestStatusLabel } from "@/features/admin-requests/utils/adminRequestPresentation";
@@ -148,6 +149,7 @@ export default function UserDetailScreen() {
 
   const isSuspended = user.status === "suspended";
   const accountState = getAccountStatePresentation(user);
+  const profileClaimState = getProfileClaimStatePresentation(user);
   const dispatchReadiness = getDispatchReadinessPresentation(user);
   const receiveRequests = getReceiveRequestsPresentation(user.dispatchProfile);
   const capabilities = getCapabilityLabels(user.dispatchProfile);
@@ -234,6 +236,10 @@ export default function UserDetailScreen() {
           <View className="flex-row items-center gap-2 mb-4">
             <StatusBadge label={roleLabels[user.role] || user.role} />
             <StatusBadge label={accountState.label} variant={accountState.tone} />
+            <StatusBadge
+              label={profileClaimState.label}
+              variant={profileClaimState.tone}
+            />
           </View>
 
           {/* Quick Stats Grid */}

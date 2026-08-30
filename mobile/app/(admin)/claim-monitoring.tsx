@@ -1,6 +1,5 @@
-import React from "react";
-import ClaimMonitoringScreen from "@/features/admin-claims/screens/ClaimMonitoringScreen";
+import { Redirect } from "expo-router";
 
 export default function ClaimMonitoringRoute() {
-  return <ClaimMonitoringScreen />;
+  return <Redirect href="/(admin)/(tabs)/admin.users" />;
 }

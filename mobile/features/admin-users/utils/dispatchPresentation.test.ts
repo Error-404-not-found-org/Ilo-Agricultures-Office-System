@@ -7,6 +7,7 @@ import {
   getCapabilityLabels,
   getDispatchReadinessPresentation,
   getFieldAreaLabel,
+  getProfileClaimStatePresentation,
   getReceiveRequestsPresentation,
 } from "./dispatchPresentation.ts";
 
@@ -76,13 +77,51 @@ test("keeps account, availability, and Receive Requests as distinct concepts", (
   });
 });
 
-test("presents an unclaimed invitation without calling it suspended", () => {
+test("presents claim state independently from account state", () => {
   assert.deepEqual(
     getAccountStatePresentation({
       ...readyTechnician,
       isVerified: false,
       profileClaimStatus: "unclaimed",
     }),
-    { label: "Invitation pending", tone: "warning" },
+    { label: "Verification pending", tone: "warning" },
+  );
+
+  assert.deepEqual(getProfileClaimStatePresentation(readyTechnician), {
+    label: "Profile Claimed",
+    tone: "success",
+  });
+  assert.deepEqual(
+    getProfileClaimStatePresentation({
+      ...readyTechnician,
+      profileClaimStatus: "unclaimed",
+    }),
+    { label: "Not Claimed", tone: "warning" },
+  );
+  assert.deepEqual(
+    getProfileClaimStatePresentation({
+      ...readyTechnician,
+      profileClaimStatus: "blocked",
+    }),
+    { label: "Claim Blocked", tone: "danger" },
+  );
+});
+
+test("uses a real Clerk link only as a legacy claim compatibility fallback", () => {
+  assert.deepEqual(
+    getProfileClaimStatePresentation({
+      ...readyTechnician,
+      profileClaimStatus: "none",
+      clerkId: "user_123",
+    }),
+    { label: "Profile Claimed", tone: "success" },
+  );
+  assert.deepEqual(
+    getProfileClaimStatePresentation({
+      ...readyTechnician,
+      profileClaimStatus: "none",
+      clerkId: "manual_profile_123",
+    }),
+    { label: "Not Claimed", tone: "warning" },
   );
 });

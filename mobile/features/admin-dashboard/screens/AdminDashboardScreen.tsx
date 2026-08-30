@@ -7,7 +7,6 @@ import { useTheme } from "@/lib/theme";
 import { useAdminDashboard } from "../hooks/useAdminDashboard";
 import { DashboardHero } from "../components/DashboardHero";
 import { AnalyticsGrid } from "../components/AnalyticsGrid";
-import { AdminAttentionOverview } from "../components/AdminAttentionOverview";
 import { ActivityTimeline } from "../components/ActivityTimeline";
 import { SkeletonGrid } from "../components/SkeletonLoader";
 
@@ -21,10 +20,6 @@ export default function AdminDashboardScreen() {
     isActivitiesLoading,
     isActivitiesError,
     refetchActivities,
-    attention,
-    isAttentionLoading,
-    isAttentionError,
-    refetchAttention,
   } = useAdminDashboard();
 
   return (
@@ -37,7 +32,10 @@ export default function AdminDashboardScreen() {
         {/* 1. Dashboard Hero */}
         <DashboardHero />
 
-        {/* 2. Quick Actions */}
+        {/* 2. Overview */}
+        {isLoading ? <SkeletonGrid /> : <AnalyticsGrid stats={stats} />}
+
+        {/* 3. Quick Actions */}
         <View
           style={{ paddingHorizontal: 24, marginBottom: 24, marginTop: 12 }}
         >
@@ -93,31 +91,23 @@ export default function AdminDashboardScreen() {
                 }
               />
               <ActionCategory
-                title="Claims"
+                title="Workload"
                 icon={
                   <MaterialCommunityIcons
-                    name="clipboard-check-outline"
+                    name="briefcase-outline"
                     size={22}
-                    color="#16a34a"
+                    color="#2563eb"
                   />
                 }
-                iconBg="rgba(22,163,74,0.1)"
-                onPress={() => router.push("/(admin)/claim-monitoring" as any)}
+                iconBg="rgba(37,99,235,0.1)"
+                onPress={() =>
+                  router.push("/(admin)/technician-workload" as any)
+                }
               />
             </View>
           </View>
         </View>
-        <AdminAttentionOverview
-          data={attention}
-          isLoading={isAttentionLoading}
-          isError={isAttentionError}
-          onRetry={refetchAttention}
-        />
-
-        {/* 4. Today's Activity / Analytics */}
-        {isLoading ? <SkeletonGrid /> : <AnalyticsGrid stats={stats} />}
-
-        {/* 9. Recent Activity / Activity Timeline */}
+        {/* 4. Recent Activity */}
         <ActivityTimeline
           activities={activities}
           isLoading={isActivitiesLoading}

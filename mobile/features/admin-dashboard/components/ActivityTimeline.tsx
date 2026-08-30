@@ -136,7 +136,7 @@ export function ActivityTimeline({
               color: colors.primary,
             }}
           >
-            View All
+            View Audit Logs
           </Text>
           <MaterialCommunityIcons
             name="chevron-right"

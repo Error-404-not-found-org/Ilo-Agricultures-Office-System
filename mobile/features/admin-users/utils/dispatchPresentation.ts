@@ -13,6 +13,7 @@ export type DispatchProfile = {
 
 export type DispatchUser = {
   role?: string;
+  clerkId?: string | null;
   status?: string;
   deletedAt?: string | null;
   isVerified?: boolean;
@@ -36,7 +37,7 @@ export const DISPATCH_BLOCKER_LABELS: Record<string, string> = {
   NO_TECHNICIAN_PROVIDED: "Technician details are unavailable",
   ACCOUNT_DELETED: "Account has been deleted",
   ACCOUNT_NOT_VERIFIED: "Account verification is incomplete",
-  ACCOUNT_NOT_CLAIMED: "Invitation has not been claimed",
+  ACCOUNT_NOT_CLAIMED: "Profile has not been claimed",
   ACCOUNT_SUSPENDED: "Account is suspended",
   ACCOUNT_ON_LEAVE: "Account is on leave",
   ACCOUNT_STATUS_INELIGIBLE: "Account is not active",
@@ -132,15 +133,30 @@ export function getAccountStatePresentation(user?: DispatchUser | null) {
   if (user.status === "suspended" || user.status === "blocked") {
     return { label: "Suspended", tone: "danger" } as const;
   }
-  if (user.profileClaimStatus === "blocked") {
-    return { label: "Invitation blocked", tone: "danger" } as const;
-  }
   if (user.status === "on-leave") return { label: "On leave", tone: "warning" } as const;
-  if (user.profileClaimStatus === "unclaimed") {
-    return { label: "Invitation pending", tone: "warning" } as const;
-  }
   if (!user.isVerified) return { label: "Verification pending", tone: "warning" } as const;
   return { label: "Active", tone: "success" } as const;
+}
+
+export function getProfileClaimStatePresentation(user?: DispatchUser | null) {
+  if (user?.profileClaimStatus === "blocked") {
+    return { label: "Claim Blocked", tone: "danger" } as const;
+  }
+
+  if (user?.profileClaimStatus === "claimed") {
+    return { label: "Profile Claimed", tone: "success" } as const;
+  }
+
+  const hasLegacyClerkLink =
+    Boolean(user?.clerkId) && !String(user?.clerkId).startsWith("manual_");
+  if (
+    LEGACY_CLAIM_COMPATIBLE_STATUSES.has(user?.profileClaimStatus) &&
+    hasLegacyClerkLink
+  ) {
+    return { label: "Profile Claimed", tone: "success" } as const;
+  }
+
+  return { label: "Not Claimed", tone: "warning" } as const;
 }
 
 export function getFieldAreaLabel(profile?: DispatchProfile | null) {

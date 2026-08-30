@@ -7,16 +7,10 @@ const workloadScreen = readFileSync(
   new NodeURL("../screens/TechnicianWorkloadScreen.tsx", import.meta.url),
   "utf8",
 );
-const dashboardHook = readFileSync(
-  new NodeURL("../../admin-dashboard/hooks/useAdminDashboard.ts", import.meta.url),
-  "utf8",
-);
 
-test("Dashboard and Workload use the shared canonical workload service", () => {
+test("Workload uses the canonical workload service without a Dashboard duplicate", () => {
   assert.match(workloadScreen, /getAdminTechnicianWorkloadSummary/);
-  assert.match(dashboardHook, /getAdminTechnicianWorkloadSummary/);
   assert.match(workloadScreen, /admin-technician-workload-summary/);
-  assert.match(dashboardHook, /admin-technician-workload-summary/);
 });
 
 test("Workload uses stable IDs and no longer exposes capped-data performance metrics", () => {
