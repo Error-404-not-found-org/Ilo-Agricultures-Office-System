@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
 } from "react-native";
@@ -13,14 +12,14 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { StatusBadge, SearchBar } from "@/components/shared";
+import { AsyncState, StatusBadge, SearchBar } from "@/components/shared";
 import { useRouter } from "expo-router";
 
 const PRIMARY = "#1e3a5f";
 const TABS = ["Unclaimed", "Claimed", "Conflicts", "Audit Logs"];
 
 export default function ClaimMonitoringScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const api = useApi();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(0);
@@ -32,6 +31,7 @@ export default function ClaimMonitoringScreen() {
     isLoading: isUsersLoading,
     refetch: refetchUsers,
     isRefetching: isRefetchingUsers,
+    isError: isUsersError,
   } = useQuery<any[]>({
     queryKey: ["admin-users-claims"],
     queryFn: async () => {
@@ -47,20 +47,37 @@ export default function ClaimMonitoringScreen() {
     isLoading: isAuditLoading,
     refetch: refetchAudit,
     isRefetching: isRefetchingAudit,
+    isError: isAuditError,
   } = useQuery<any[]>({
     queryKey: ["admin-claim-audit-logs"],
     queryFn: async () => {
-      const res = await api.get("/audit?entityType=User&action=claim_profile");
-      return res.data?.data || [];
+      const res = await api.get("/audit-logs", {
+        params: {
+          entityType: "User",
+          action: "claim_profile",
+          limit: 100,
+        },
+      });
+      return Array.isArray(res.data?.data) ? res.data.data : [];
     },
     staleTime: 1000 * 60 * 2,
   });
 
-  const isLoading = isUsersLoading || (isAuditLoading && activeTab === 3);
-  const isRefreshing = isRefetchingUsers || isRefetchingAudit;
+  const isLoading = activeTab === 3 ? isAuditLoading : isUsersLoading;
+  const isError = activeTab === 3 ? isAuditError : isUsersError;
+  const isRefreshing =
+    activeTab === 3 ? isRefetchingAudit : isRefetchingUsers;
 
   const handleRefresh = async () => {
-    await Promise.all([refetchUsers(), refetchAudit()]);
+    if (activeTab === 3) {
+      await refetchAudit();
+      return;
+    }
+    await refetchUsers();
+  };
+
+  const retryCurrentTab = () => {
+    void (activeTab === 3 ? refetchAudit() : refetchUsers());
   };
 
   // 3. Process Farmers claim status groups
@@ -157,9 +174,28 @@ export default function ClaimMonitoringScreen() {
   const renderTabContent = () => {
     if (isLoading) {
       return (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" color={PRIMARY} />
-        </View>
+        <AsyncState
+          state="loading"
+          skeletonCount={3}
+          style={{ flex: 1 }}
+        />
+      );
+    }
+
+    if (isError) {
+      return (
+        <AsyncState
+          state="error"
+          title={
+            activeTab === 3
+              ? "Claim audit unavailable"
+              : "Claim profiles unavailable"
+          }
+          message="The latest claim information could not be loaded."
+          actionLabel="Try Again"
+          onAction={retryCurrentTab}
+          style={{ flex: 1, justifyContent: "center" }}
+        />
       );
     }
 
@@ -171,12 +207,11 @@ export default function ClaimMonitoringScreen() {
           keyExtractor={(item) => item._id}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[PRIMARY]} />}
           ListEmptyComponent={
-            <View style={{ padding: 40, alignItems: "center" }}>
-              <MaterialCommunityIcons name="clipboard-text-outline" size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
-              <Text style={{ marginTop: 12, fontSize: 14, color: colors.textSecondary, fontFamily: "Outfit_600SemiBold" }}>
-                No profiles found
-              </Text>
-            </View>
+            <AsyncState
+              state="empty"
+              title={searchQuery.trim() ? "No matching profiles" : "No profiles found"}
+              message={searchQuery.trim() ? "Try a different name, phone number, or barangay." : "There are no profiles in this claim category."}
+            />
           }
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -334,12 +369,11 @@ export default function ClaimMonitoringScreen() {
           keyExtractor={(item) => item._id}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[PRIMARY]} />}
           ListEmptyComponent={
-            <View style={{ padding: 40, alignItems: "center" }}>
-              <MaterialCommunityIcons name="history" size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
-              <Text style={{ marginTop: 12, fontSize: 14, color: colors.textSecondary, fontFamily: "Outfit_600SemiBold" }}>
-                No audit logs recorded
-              </Text>
-            </View>
+            <AsyncState
+              state="empty"
+              title={searchQuery.trim() ? "No matching claim activity" : "No claim activity recorded"}
+              message={searchQuery.trim() ? "Try a different search term." : "Profile claim activity will appear here when it is recorded."}
+            />
           }
           renderItem={({ item }) => (
             <View

@@ -8,6 +8,7 @@ import { useApi } from "@/lib/api";
 import { useNetInfo } from "@react-native-community/netinfo";
 import { getPendingCountForOwner } from "@/lib/offlineQueue";
 import { queryClient } from "@/lib/queryClient";
+import { getHeaderSyncDestination } from "@/components/headerNavigation";
 
 export default function Header() {
   const router = useRouter();
@@ -15,6 +16,11 @@ export default function Header() {
   const { user } = useUser();
   const api = useApi();
   const netInfo = useNetInfo();
+  const routeSegments = segments as string[];
+  const isAdmin = routeSegments.includes("(admin)");
+  const isFarmer = routeSegments.includes("(farmer)");
+  const isTechnician = routeSegments.includes("(technician)");
+  const syncDestination = getHeaderSyncDestination(routeSegments);
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const dbUserResponse = queryClient.getQueryData([
@@ -28,7 +34,7 @@ export default function Header() {
       try {
         const res = await api.get("/notifications/unread-count");
         setUnreadCount(res.data.count);
-      } catch (err) {
+      } catch {
         // Silently fail for header
       }
     };
@@ -37,6 +43,8 @@ export default function Header() {
 
   // Sync Pending Actions Count
   useEffect(() => {
+    if (!syncDestination) return;
+
     const updateSyncCount = async () => {
       setPendingSyncCount(await getPendingCountForOwner(currentUserId));
     };
@@ -46,11 +54,7 @@ export default function Header() {
     // Check every 10 seconds or when coming back online
     const interval = setInterval(updateSyncCount, 10000);
     return () => clearInterval(interval);
-  }, [currentUserId, netInfo.isConnected]);
-
-  const isAdmin = (segments as string[]).includes("(admin)");
-  const isFarmer = (segments as string[]).includes("(farmer)");
-  const isTechnician = (segments as string[]).includes("(technician)");
+  }, [currentUserId, netInfo.isConnected, syncDestination]);
 
   const roleLabel = isAdmin
     ? "Administrator"
@@ -66,11 +70,6 @@ export default function Header() {
     if (isTechnician && userRole !== "technician") return null;
   }
 
-  const PRIMARY_COLOR = isAdmin
-    ? "#1e3a5f"
-    : isFarmer || isTechnician
-      ? "#00643B"
-      : "#00643B";
   const ACCENT_BG = isAdmin ? "#162d4a" : "#005230";
   const ICON_COLOR = isAdmin ? "#93c5fd" : "#86EFAC";
   const DATE_TEXT = isAdmin ? "text-blue-100/90" : "text-emerald-100/90";
@@ -133,24 +132,28 @@ export default function Header() {
       {/* Right side: Action Buttons */}
       <View className="flex-row items-center gap-2">
         {/* Connectivity Status */}
-        <TouchableOpacity
-          onPress={() => router.push("/(technician)/sync-history" as any)}
-          activeOpacity={0.7}
-          className={`w-10 h-10 ${netInfo.isConnected ? "bg-white/10" : "bg-amber-500/20"} rounded-full items-center justify-center relative`}
-        >
-          <MaterialCommunityIcons
-            name={netInfo.isConnected ? "cloud-check" : "cloud-off-outline"}
-            size={20}
-            color={netInfo.isConnected ? ICON_COLOR : "#f59e0b"}
-          />
-          {pendingSyncCount > 0 && (
-            <View className="absolute -top-1 -right-1 bg-amber-500 w-4 h-4 rounded-full border border-white items-center justify-center">
-              <Text className="text-white text-[9px] font-bold">
-                {pendingSyncCount}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        {syncDestination ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Open synchronization history"
+            onPress={() => router.push(syncDestination)}
+            activeOpacity={0.7}
+            className={`w-10 h-10 ${netInfo.isConnected ? "bg-white/10" : "bg-amber-500/20"} rounded-full items-center justify-center relative`}
+          >
+            <MaterialCommunityIcons
+              name={netInfo.isConnected ? "cloud-check" : "cloud-off-outline"}
+              size={20}
+              color={netInfo.isConnected ? ICON_COLOR : "#f59e0b"}
+            />
+            {pendingSyncCount > 0 && (
+              <View className="absolute -top-1 -right-1 bg-amber-500 w-4 h-4 rounded-full border border-white items-center justify-center">
+                <Text className="text-white text-[9px] font-bold">
+                  {pendingSyncCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           onPress={() => router.push("/notifications")}
