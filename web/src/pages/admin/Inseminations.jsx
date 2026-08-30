@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Search,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import TableNameLink from "../../components/ui/TableNameLink";
@@ -43,6 +44,7 @@ export default function Inseminations() {
     keepPreviousData: true,
   });
   const inseminations = useMemo(() => inseminationPage.inseminations || inseminationPage.data || [], [inseminationPage]);
+  const summary = useMemo(() => inseminationPage.summary || { pregnant: 0, pending: 0, failed: 0 }, [inseminationPage]);
 
   // ---- DYNAMIC DATA PROCESSING AND MAPPING ----
   const processedLogs = useMemo(() => {
@@ -89,7 +91,7 @@ export default function Inseminations() {
       "Sire Code",
       "Estrus Type",
       "Attempt Number",
-      "PD Result"
+      "Cycle Outcome"
     ];
     
     const rows = filteredLogs.map((l) => [
@@ -123,27 +125,13 @@ export default function Inseminations() {
   return (
     <div className="flex h-screen flex-1 flex-col overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Municipal Inseminations"
+        title="Insemination Records"
         subtitle="Artificial Insemination registers, bloodlines, and pregnancy diagnosis status tracker"
-        searchPlaceholder="Search tag, farmer, sire..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
-          setCurrentPage(1);
-        }}
-      >
-        <button
-          onClick={handleExportCSV}
-          disabled={isLoading || filteredLogs.length === 0}
-          className="btn btn-primary btn-sm gap-1.5 px-4 text-xs font-bold"
-        >
-          <Download size={13} /> Export CSV
-        </button>
-      </Topbar>
+      />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Dynamic Metric Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="bg-base-100 border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow p-4 rounded-xl flex items-center gap-3">
             <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <Syringe size={16} />
@@ -161,10 +149,10 @@ export default function Inseminations() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoading ? "..." : processedLogs.filter((l) => l.pdResult === "Pregnant").length}
+                {isLoading ? "..." : summary.pregnant}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Pregnant on This Page
+                Confirmed Pregnant
               </div>
             </div>
           </div>
@@ -174,14 +162,43 @@ export default function Inseminations() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoading ? "..." : processedLogs.filter((l) => l.pdResult === "Pending" || l.pdResult === "pending").length}
+                {isLoading ? "..." : summary.pending}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Pending on This Page
+                Pending Checks
+              </div>
+            </div>
+          </div>
+          <div className="bg-base-100 border-0 border-l-4 border-error shadow-sm hover:shadow-md transition-shadow p-4 rounded-xl flex items-center gap-3">
+            <div className="p-2.5 rounded-xl shrink-0 text-error bg-error/10">
+              <X size={16} />
+            </div>
+            <div>
+              <div className="text-xl font-black">
+                {isLoading ? "..." : summary.failed}
+              </div>
+              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
+                Failed Cycles
               </div>
             </div>
           </div>
         </div>
+
+        {/* Search Bar */}
+        <label className="input input-bordered flex items-center gap-2 w-full sm:max-w-md rounded-xl bg-base-100 shadow-sm transition-colors">
+          <Search size={16} className="text-base-content/50" aria-hidden="true" />
+          <input
+            type="search"
+            className="grow"
+            placeholder="Search tag, farmer, sire..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            aria-label="Search records"
+          />
+        </label>
 
         {/* Filter Ribbon and Table */}
         <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -205,17 +222,17 @@ export default function Inseminations() {
             </select>
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-base-200! border-base-300 focus:bg-base-100! focus:border-primary text-base-content/75 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all duration-200"
-              aria-label="Filter inseminations by pregnancy result"
+              aria-label="Filter inseminations by cycle outcome"
               value={pResultFilter}
               onChange={(e) => {
                 setPResultFilter(e.target.value);
                 setCurrentPage(1);
               }}
             >
-              <option value="">All Diagnostics Results</option>
+              <option value="">All Cycle Outcomes</option>
               <option value="Pending">Pending Check</option>
               <option value="Pregnant">Pregnant (Verified)</option>
-              <option value="Empty">Open (Failed cycle)</option>
+              <option value="Empty">Failed Cycles</option>
             </select>
 
             <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/80">
@@ -233,7 +250,7 @@ export default function Inseminations() {
                   <th className="p-3.5">Farmer Client</th>
                   <th className="p-3.5">Sire Genetics</th>
                   <th className="p-3.5">Estrus Type</th>
-                  <th className="p-3.5 text-center">PD Result</th>
+                  <th className="p-3.5 text-center">Cycle Outcome</th>
                   <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -379,7 +396,7 @@ export default function Inseminations() {
           >
             <div className="flex items-center justify-between border-b border-base-300 pb-2">
               <h3 className="text-sm font-black uppercase text-base-content/50">
-                Breeding Record Inspection
+                Insemination Record Details
               </h3>
               <button
                 onClick={() => setSelectedLog(null)}
@@ -388,47 +405,77 @@ export default function Inseminations() {
                 <X size={16} />
               </button>
             </div>
-            <div className="divide-y divide-base-300 text-xs">
-              {[
-                { k: "Log Code Reference", v: selectedLog.id },
-                { k: "Date Administered", v: selectedLog.date },
-                {
-                  k: "Animal Ear Tag",
-                  v: selectedLog.tag,
-                  s: "text-primary font-black",
-                },
-                { k: "Livestock Owner", v: selectedLog.farmer },
-                {
-                  k: "Sire Genetics Details",
-                  v: `${selectedLog.sireBreed} [${selectedLog.sireCode}]`,
-                },
-                { k: "Cycle Trigger Method", v: selectedLog.estrus },
-                { k: "Attempt Number", v: `Attempt #${selectedLog.attempt}` },
-                {
-                  k: "Pregnancy Diagnosis Result",
-                  v: selectedLog.pdResult,
-                  s: "font-extrabold uppercase",
-                },
-                { k: "Attending Professional", v: selectedLog.tech },
-                { k: "Farmer Notes", v: selectedLog.comment || "None", s: "italic text-base-content/80" },
-                { k: "Technician Observations", v: selectedLog.technicianNote || "None", s: "italic text-primary" },
-              ].map((row, index) => (
-                <div key={index} className="flex justify-between py-2.5">
-                  <span className="text-base-content/80 font-semibold text-left">{row.k}</span>
-                  <span
-                    className={`font-bold text-base-content text-right ${row.s || ""}`}
-                  >
-                    {row.v}
-                  </span>
+            
+            <div className="space-y-5">
+              {/* Service Overview */}
+              <div>
+                <h4 className="text-[10px] font-black text-primary uppercase tracking-wider mb-1.5 pb-1 border-b border-base-300/60">
+                  Service Overview
+                </h4>
+                <div className="divide-y divide-base-300/50 text-xs">
+
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Animal & Owner</span>
+                    <span className="font-bold text-primary">{selectedLog.tag} · {selectedLog.farmer}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Service Date</span>
+                    <span className="font-bold">{selectedLog.date}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Current Status</span>
+                    <span className="font-extrabold uppercase">{selectedLog.pdResult}</span>
+                  </div>
                 </div>
-              ))}
+              </div>
+
+              {/* Genetics & Protocol */}
+              <div>
+                <h4 className="text-[10px] font-black text-success uppercase tracking-wider mb-1.5 pb-1 border-b border-base-300/60">
+                  Genetics & Protocol
+                </h4>
+                <div className="divide-y divide-base-300/50 text-xs">
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Sire Genetics</span>
+                    <span className="font-bold">{selectedLog.sireBreed} [{selectedLog.sireCode}]</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Estrus Type</span>
+                    <span className="font-bold">{selectedLog.estrus}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Attempt Number</span>
+                    <span className="font-bold">Attempt #{selectedLog.attempt}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Field Reports */}
+              <div>
+                <h4 className="text-[10px] font-black text-info uppercase tracking-wider mb-1.5 pb-1 border-b border-base-300/60">
+                  Field Reports & Personnel
+                </h4>
+                <div className="divide-y divide-base-300/50 text-xs">
+                  <div className="flex justify-between py-2">
+                    <span className="text-base-content/70 font-semibold">Attending Tech</span>
+                    <span className="font-bold">{selectedLog.tech}</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5 py-2.5">
+                    <span className="text-base-content/70 font-semibold">Technician Notes</span>
+                    <span className="font-medium text-base-content/90 italic bg-base-200 p-2.5 rounded-lg border border-base-300/50">
+                      {selectedLog.technicianNote || "No notes provided"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1.5 py-2.5">
+                    <span className="text-base-content/70 font-semibold">Farmer Observations</span>
+                    <span className="font-medium text-base-content/90 italic bg-base-200 p-2.5 rounded-lg border border-base-300/50">
+                      {selectedLog.comment || "No observations reported"}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2 bg-base-200 p-3 rounded-xl border border-base-300/80">
-              <Info size={14} className="text-primary shrink-0" />
-              <p className="text-[10px] text-base-content/80 font-bold uppercase tracking-wider">
-                Historical breeding records immutable unless authorized.
-              </p>
-            </div>
+
             <button
               onClick={() => setSelectedLog(null)}
               className="btn btn-sm w-full border-base-300 rounded-xl text-xs font-bold mt-2 cursor-pointer"

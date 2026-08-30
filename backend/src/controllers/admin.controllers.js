@@ -397,7 +397,7 @@ export const getAllInseminations = async (req, res) => {
       ];
     }
 
-    const [inseminations, total] = await Promise.all([
+    const [inseminations, total, pregnantCount, pendingCount, failedCount] = await Promise.all([
       Insemination.find(query)
         .populate("farmerId", "name email")
         .populate("animalId", "earTag species breed")
@@ -405,6 +405,9 @@ export const getAllInseminations = async (req, res) => {
         .skip(skip)
         .limit(limit),
       Insemination.countDocuments(query),
+      Insemination.countDocuments({ ...query, outcome: "Pregnant" }),
+      Insemination.countDocuments({ ...query, outcome: "Pending" }),
+      Insemination.countDocuments({ ...query, outcome: { $regex: "^Failed", $options: "i" } }),
     ]);
 
     res.status(200).send({
@@ -415,6 +418,11 @@ export const getAllInseminations = async (req, res) => {
       total,
       totalPages: Math.ceil(total / limit),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      summary: {
+        pregnant: pregnantCount,
+        pending: pendingCount,
+        failed: failedCount,
+      },
     });
   } catch (error) {
     res

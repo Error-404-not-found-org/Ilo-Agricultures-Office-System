@@ -13,6 +13,7 @@ import {
   Heart,
   Baby,
   Tag,
+  Search,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import { Badge, ui } from "../../components/ui/uiClasses";
@@ -27,8 +28,20 @@ export default function Livestock() {
   const itemsPerPage = 10;
 
   // ---- DYNAMIC DATA PIPELINE ----
-  const { data: animalPage = {}, isLoading, isError, refetch } = useQuery({
-    queryKey: ["admin", "livestock-all", currentPage, searchQuery, speciesFilter, statusFilter],
+  const {
+    data: animalPage = {},
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: [
+      "admin",
+      "livestock-all",
+      currentPage,
+      searchQuery,
+      speciesFilter,
+      statusFilter,
+    ],
     queryFn: async () => {
       const res = await axiosInstance.get("/animals/all", {
         params: {
@@ -43,25 +56,21 @@ export default function Livestock() {
     },
     keepPreviousData: true,
   });
-  const animals = useMemo(() => animalPage.animals || animalPage.data || [], [animalPage]);
+  const animals = useMemo(
+    () => animalPage.animals || animalPage.data || [],
+    [animalPage],
+  );
 
   // ---- DYNAMIC STATS RESOLVERS ----
   const stats = useMemo(() => {
-    const total = animalPage.total ?? animals.length;
-    const pregnant = animals.filter(a => a.reproductiveStatus?.toLowerCase() === "pregnant").length;
-    const female = animals.filter(a => a.gender?.toLowerCase() === "female").length;
-    const recent = animals.filter(a => {
-      if (!a.createdAt) return false;
-      const days = (new Date() - new Date(a.createdAt)) / (1000 * 60 * 60 * 24);
-      return days <= 30;
-    }).length;
+    const summary = animalPage?.summary || {};
     return {
-      total,
-      pregnant,
-      female,
-      recent,
+      total: summary.total ?? animalPage?.total ?? animals.length,
+      pregnant: summary.pregnant ?? 0,
+      cattle: summary.cattle ?? 0,
+      available: summary.available ?? 0,
     };
-  }, [animalPage.total, animals]);
+  }, [animalPage, animals.length]);
 
   // ---- MEMOIZED DATA FILTERING ----
   const filteredAnimals = useMemo(() => {
@@ -71,65 +80,79 @@ export default function Livestock() {
   // ---- PAGINATION COMPUTATION ----
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedAnimals = filteredAnimals;
-  const totalPages = animalPage.totalPages || animalPage.pages || Math.ceil((animalPage.total || filteredAnimals.length) / itemsPerPage) || 1;
+  const totalPages =
+    animalPage.totalPages ||
+    animalPage.pages ||
+    Math.ceil((animalPage.total || filteredAnimals.length) / itemsPerPage) ||
+    1;
 
   return (
     <div className={ui.page}>
       <Topbar
-        title="Livestock Assets"
+        title="Livestock"
         subtitle="Auditable database registry of all municipal biological livestock assets"
-        searchPlaceholder="Search ear tag, breed, owner..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
-          setCurrentPage(1);
-        }}
       />
 
       <main className={ui.main}>
         {/* Dynamic Metric Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`${ui.metricCard} border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow`}>
+          <div
+            className={`${ui.metricCard} border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow`}
+          >
             <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <PawPrint size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">{isLoading ? "..." : stats.total}</div>
+              <div className="text-xl font-black">
+                {isLoading ? "..." : stats.total}
+              </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
                 Total Animals Enrolled
               </div>
             </div>
           </div>
-          <div className={`${ui.metricCard} border-0 border-l-4 border-success shadow-sm hover:shadow-md transition-shadow`}>
+          <div
+            className={`${ui.metricCard} border-0 border-l-4 border-success shadow-sm hover:shadow-md transition-shadow`}
+          >
             <div className="p-2.5 rounded-xl shrink-0 text-success bg-success/10">
               <Heart size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">{isLoading ? "..." : stats.pregnant}</div>
+              <div className="text-xl font-black">
+                {isLoading ? "..." : stats.pregnant}
+              </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Pregnant on This Page
+                Confirmed Pregnant
               </div>
             </div>
           </div>
-          <div className={`${ui.metricCard} border-0 border-l-4 border-info shadow-sm hover:shadow-md transition-shadow`}>
+          <div
+            className={`${ui.metricCard} border-0 border-l-4 border-info shadow-sm hover:shadow-md transition-shadow`}
+          >
             <div className="p-2.5 rounded-xl shrink-0 text-info bg-info/10">
+              <Tag size={16} />
+            </div>
+            <div>
+              <div className="text-xl font-black">
+                {isLoading ? "..." : stats.cattle}
+              </div>
+              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
+                Total Cattle
+              </div>
+            </div>
+          </div>
+          <div
+            className={`${ui.metricCard} border-0 border-l-4 border-warning shadow-sm hover:shadow-md transition-shadow`}
+          >
+            <div className="p-2.5 rounded-xl shrink-0 text-warning bg-warning/10">
               <Activity size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">{isLoading ? "..." : stats.female}</div>
-              <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Females on This Page
+              <div className="text-xl font-black">
+                {isLoading ? "..." : stats.available}
               </div>
-            </div>
-          </div>
-          <div className={`${ui.metricCard} border-0 border-l-4 border-warning shadow-sm hover:shadow-md transition-shadow`}>
-            <div className="p-2.5 rounded-xl shrink-0 text-warning bg-warning/10">
-              <Baby size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black">{isLoading ? "..." : stats.recent}</div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                New on This Page (30d)
+                Available for Breeding
               </div>
             </div>
           </div>
@@ -137,10 +160,27 @@ export default function Livestock() {
 
         {/* Datatable Card Wrapper */}
         <div className={`${ui.panel} p-5 flex-1 flex flex-col min-h-0`}>
-          
           {/* Top Filters Ribbon */}
           <div className={ui.filterBar}>
-            <div className="flex items-center gap-1.5 text-xs text-base-content/80 font-bold uppercase tracking-wide px-1">
+            <label className="input input-sm w-full xl:w-72 flex items-center gap-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary bg-base-200/50">
+              <Search
+                size={16}
+                className="text-base-content/60 shrink-0"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                aria-label="Search livestock"
+                placeholder="Search ear tag, breed, owner..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="grow min-w-0 text-base placeholder:text-base-content/60"
+              />
+            </label>
+            <div className="flex items-center gap-1.5 text-xs text-base-content/80 font-bold uppercase tracking-wide px-1 xl:ml-4">
               <SlidersHorizontal size={13} />
               <span>Filters:</span>
             </div>
@@ -156,8 +196,9 @@ export default function Livestock() {
               <option value="">All Species</option>
               <option value="Dairy Cattle">Dairy Cattle</option>
               <option value="Beef Cattle">Beef Cattle</option>
-              <option value="Water Buffalo (Carabao)">Water Buffalo (Carabao)</option>
-              <option value="Goat">Goat</option>
+              <option value="Water Buffalo (Carabao)">
+                Water Buffalo (Carabao)
+              </option>
             </select>
             <select
               className={ui.select}
@@ -169,19 +210,19 @@ export default function Livestock() {
               }}
             >
               <option value="">All Statuses</option>
-              <option value="normal">Normal</option>
-              <option value="pregnant">Pregnant</option>
-              <option value="inseminated">Inseminated</option>
-              <option value="open">Open</option>
+              <option value="Normal">Normal</option>
+              <option value="Pregnant">Pregnant</option>
+              <option value="Inseminated">Inseminated</option>
+              <option value="Post-partum">Postpartum</option>
             </select>
-            <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/80">
-              {isLoading ? "Fetching ledger..." : `${filteredAnimals.length} animal${filteredAnimals.length !== 1 ? "s" : ""} cataloged`}
-            </span>
           </div>
 
           {/* Database Grid Table */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className={ui.table} aria-label="Municipal livestock registry">
+            <table
+              className={ui.table}
+              aria-label="Municipal livestock registry"
+            >
               <thead>
                 <tr className={ui.tableHead}>
                   <th className="p-3.5 pl-5">Ear Tag</th>
@@ -202,14 +243,23 @@ export default function Livestock() {
                     <td colSpan={8} className="p-6">
                       <div role="alert" className="alert alert-error">
                         <span>Livestock records could not be loaded.</span>
-                        <button type="button" className="btn btn-sm" onClick={() => refetch()}>Retry</button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => refetch()}
+                        >
+                          Retry
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ) : paginatedAnimals.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-6">
-                      <div className={ui.empty}>No registered biological assets matching filter criteria found.</div>
+                      <div className={ui.empty}>
+                        No registered biological assets matching filter criteria
+                        found.
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -220,7 +270,10 @@ export default function Livestock() {
                       onClick={() => navigate(`/admin/livestock/${a._id}`)}
                     >
                       <td className="flex items-center gap-1.5 p-3.5 pl-5 font-bold text-base-content/90">
-                        <Tag size={12} className="shrink-0 text-base-content/70" />
+                        <Tag
+                          size={12}
+                          className="shrink-0 text-base-content/70"
+                        />
                         <TableNameLink
                           to={`/admin/livestock/${a._id}`}
                           ariaLabel={`Open livestock profile for animal ${a.earTag || "without an ear tag"}`}
@@ -228,10 +281,18 @@ export default function Livestock() {
                           #{a.earTag || "Not recorded"}
                         </TableNameLink>
                       </td>
-                      <td className="p-3.5 font-medium text-base-content/90">{a.species || "Not recorded"}</td>
-                      <td className="p-3.5 font-bold text-base-content">{a.breed || "Not recorded"}</td>
-                      <td className="p-3.5 font-medium text-base-content/90">{a.color || "Not recorded"}</td>
-                      <td className="p-3.5 font-semibold text-base-content/90">{a.gender || "Not recorded"}</td>
+                      <td className="p-3.5 font-medium text-base-content/90">
+                        {a.species || "Not recorded"}
+                      </td>
+                      <td className="p-3.5 font-bold text-base-content">
+                        {a.breed || "Not recorded"}
+                      </td>
+                      <td className="p-3.5 font-medium text-base-content/90">
+                        {a.color || "Not recorded"}
+                      </td>
+                      <td className="p-3.5 font-semibold text-base-content/90">
+                        {a.gender || "Not recorded"}
+                      </td>
                       <td className="p-3.5 font-bold text-primary">
                         {a.farmerId?.name || "Not recorded"}
                       </td>
@@ -262,7 +323,9 @@ export default function Livestock() {
           {totalPages > 1 && (
             <div className="mt-3 flex items-center justify-between border-t border-base-300 pt-4">
               <span className="text-[11px] font-medium text-base-content/80">
-                Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredAnimals.length)} of {filteredAnimals.length} animals
+                Showing {startIndex + 1}–
+                {Math.min(startIndex + itemsPerPage, filteredAnimals.length)} of{" "}
+                {filteredAnimals.length} animals
               </span>
               <div className="join" aria-label="Livestock pagination">
                 <button
@@ -274,27 +337,31 @@ export default function Livestock() {
                 >
                   <ChevronLeft size={12} />
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
-                  <button
-                    type="button"
-                    key={pageNumber}
-                    aria-label={`Go to livestock page ${pageNumber}`}
-                    aria-current={currentPage === pageNumber ? "page" : undefined}
-                    disabled={isLoading}
-                    onClick={() => setCurrentPage(pageNumber)}
-                    className={`btn btn-sm join-item text-[11px] font-bold ${
-                      currentPage === pageNumber
-                        ? "btn-primary"
-                        : ""
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (pageNumber) => (
+                    <button
+                      type="button"
+                      key={pageNumber}
+                      aria-label={`Go to livestock page ${pageNumber}`}
+                      aria-current={
+                        currentPage === pageNumber ? "page" : undefined
+                      }
+                      disabled={isLoading}
+                      onClick={() => setCurrentPage(pageNumber)}
+                      className={`btn btn-sm join-item text-[11px] font-bold ${
+                        currentPage === pageNumber ? "btn-primary" : ""
+                      }`}
+                    >
+                      {pageNumber}
+                    </button>
+                  ),
+                )}
                 <button
                   type="button"
                   aria-label="Next livestock page"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
                   disabled={currentPage === totalPages || isLoading}
                   className="btn btn-sm join-item"
                 >
@@ -305,7 +372,6 @@ export default function Livestock() {
           )}
         </div>
       </main>
-
     </div>
   );
 }
