@@ -251,7 +251,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const [assignmentFilter, setAssignmentFilter] = useState(
     getRequestBoardViewSelection(initialRequestView, { isAdmin }).assignment,
   );
-  const [technicianFilter, setTechnicianFilter] = useState("all");
+  const [technicianFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [municipality, setMunicipality] = useState("");
   const [district, setDistrict] = useState("");
@@ -292,7 +292,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
     enabled: !isAdmin,
   });
 
-  const { data: adminTechnicians = [] } = useQuery({
+  useQuery({
     queryKey: ["technicianListForAdmin"],
     queryFn: async () => {
       const res = await axiosInstance.get("/user?role=technician");

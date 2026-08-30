@@ -18,7 +18,7 @@ import axiosInstance from "../../lib/axios";
 import UserAvatar from "../../components/ui/UserAvatar";
 import { Badge, ui } from "../../components/ui/uiClasses";
 import {
-  compactDirectoryList,
+
   formatDirectoryLocation,
   formatOperationalLabel,
   municipalityLabel,

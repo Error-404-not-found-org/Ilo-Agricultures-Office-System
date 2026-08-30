@@ -231,9 +231,7 @@ const AIServiceModal = ({
     [animals, createdAnimal],
   );
 
-  const selectedAnimal =
-    availableAnimals.find((animal) => idOf(animal) === selectedAnimalId) ||
-    (idOf(preSelectedAnimal) === selectedAnimalId ? preSelectedAnimal : null);
+
 
   const {
     data: serviceContext,
@@ -520,7 +518,7 @@ const AIServiceModal = ({
   };
 
   const activeRequest = serviceContext?.activeRequest;
-  const isWalkIn = serviceContext?.mode === "walk_in";
+
   const showProcedureForm = context === "walk-in" || context === "task";
   const hasDirectSelection = Boolean(selectedFarmerId && selectedAnimalId);
   const procedureDisabled =

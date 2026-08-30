@@ -3,7 +3,7 @@ import { MapPin } from "lucide-react";
 import { TableRowSkeleton } from "../../ui/Skeleton";
 import UserAvatar from "../../ui/UserAvatar";
 import { Badge, ui } from "../../ui/uiClasses";
-import TableNameLink from "../../ui/TableNameLink";
+
 import UserActionsMenu from "./UserActionsMenu";
 import {
   compactDirectoryList,

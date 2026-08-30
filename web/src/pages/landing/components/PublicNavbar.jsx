@@ -1,17 +1,11 @@
 import { useState } from "react";
-import { SignOutButton, useUser } from "@clerk/clerk-react";
-import { Menu, X, ArrowRight } from "lucide-react";
+
+import { Menu, X } from "lucide-react";
 import StaffSignInButton from "../../../components/auth/StaffSignInButton";
 import { BRAND_LOGO, NAV_LINKS } from "../data/landingContent";
 
 export default function PublicNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { isSignedIn, user } = useUser();
-
-  const isStaffRole = ["admin", "technician"].includes(
-    user?.publicMetadata?.role,
-  );
-
   return (
     <header className="sticky top-0 z-50 bg-[#FAF9F5]/95 backdrop-blur-md border-b border-slate-200/60 transition-colors">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">

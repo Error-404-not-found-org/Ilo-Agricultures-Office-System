@@ -35,7 +35,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     const [searchFarmer, setSearchFarmer] = useState("");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [selectedAnimalId, setSelectedAnimalId] = useState("");
-    const [fieldErrors, setFieldErrors] = useState({});
+    const [, setFieldErrors] = useState({});
 
     const [formData, setFormData] = useState({
         pregnancyId: '',
@@ -198,47 +198,6 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         setFieldErrors((current) => ({ ...current, calves: null }));
     };
 
-    const _handleOutcomeChange = (outcome) => {
-        if (outcome === "abortion") {
-            setFormData((current) => ({
-                ...current,
-                outcome,
-                numberOfCalves: 0,
-                calves: [],
-            }));
-            setFieldErrors((current) => ({ ...current, calves: null }));
-            return;
-        }
-
-        setFormData((current) => {
-            let calves = current.calves.length
-                ? current.calves
-                : [{ sex: "F", earTag: "", color: "", brand: "", imageUrl: "", isLiving: true }];
-            if (outcome === "mixed" && calves.length < 2) {
-                calves = [
-                    { ...calves[0], isLiving: true },
-                    { sex: "F", earTag: "", color: "", brand: "", imageUrl: "", isLiving: false },
-                ];
-            } else {
-                calves = calves.map((calf, index) => ({
-                    ...calf,
-                    isLiving:
-                        outcome === "live_birth"
-                            ? true
-                            : outcome === "stillbirth"
-                              ? false
-                              : index === 0,
-                }));
-            }
-            return {
-                ...current,
-                outcome,
-                numberOfCalves: calves.length,
-                calves,
-            };
-        });
-        setFieldErrors((current) => ({ ...current, calves: null }));
-    };
 
     const updateCalf = (index, field, value) => {
         const newCalves = [...formData.calves];

@@ -3,13 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import {
-  Download,
+
   Syringe,
   Sparkles,
   HeartPulse,
   X,
   Eye,
-  Info,
   ChevronLeft,
   ChevronRight,
   Filter,
@@ -80,47 +79,6 @@ export default function Inseminations() {
   const totalPages = inseminationPage.totalPages || inseminationPage.pagination?.totalPages || Math.ceil((inseminationPage.total || inseminationPage.pagination?.total || filteredLogs.length) / itemsPerPage) || 1;
   const totalRecords = inseminationPage.total || inseminationPage.pagination?.total || filteredLogs.length;
 
-  // ---- REAL EXPORTER TO CSV ----
-  const handleExportCSV = () => {
-    const headers = [
-      "Registry ID",
-      "Date Run",
-      "Livestock Tag",
-      "Farmer Client",
-      "Sire Genetics",
-      "Sire Code",
-      "Estrus Type",
-      "Attempt Number",
-      "Cycle Outcome"
-    ];
-    
-    const rows = filteredLogs.map((l) => [
-      l.id,
-      l.date,
-      l.tag,
-      l.farmer,
-      l.sireBreed,
-      l.sireCode,
-      l.estrus,
-      l.attempt,
-      l.pdResult
-    ]);
-    
-    const csvContent =
-      headers.join(",") +
-      "\n" +
-      rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-      
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `BreedSmart_Municipal_Inseminations_${new Date().toLocaleDateString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div className="flex h-screen flex-1 flex-col overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
