@@ -2,6 +2,8 @@ import {
   getDispatchReadinessPresentation,
   type DispatchUser,
 } from "../../admin-users/utils/dispatchPresentation.ts";
+import type { TechnicianWorkloadSummary } from "../../admin-workload/services/adminWorkload.service.ts";
+import { getActiveWorkloadTotal } from "../../admin-workload/utils/adminWorkloadPresentation.ts";
 
 type RequestSummary = {
   status?: string;
@@ -10,14 +12,6 @@ type RequestSummary = {
   technicianId?: unknown;
   approvedBy?: unknown;
 };
-
-const activeStatuses = new Set([
-  "approved",
-  "assigned",
-  "scheduled",
-  "in-progress",
-  "in_progress",
-]);
 
 const rowsOf = (payload: any): RequestSummary[] =>
   Array.isArray(payload?.data)
@@ -30,10 +24,12 @@ export function buildAdminAttentionSummary({
   technicians,
   aiRequests,
   healthRequests,
+  workloadSummary,
 }: {
   technicians: DispatchUser[];
   aiRequests: unknown;
   healthRequests: unknown;
+  workloadSummary: TechnicianWorkloadSummary[];
 }) {
   const aiRows = rowsOf(aiRequests);
   const healthRows = rowsOf(healthRequests);
@@ -41,9 +37,7 @@ export function buildAdminAttentionSummary({
   const pendingRequests = allRequests.filter(
     (request) => String(request.status || "").toLowerCase() === "pending",
   ).length;
-  const activeWork = allRequests.filter((request) =>
-    activeStatuses.has(String(request.status || "").toLowerCase()),
-  ).length;
+  const activeWork = getActiveWorkloadTotal(workloadSummary);
   const notReadyTechnicians = technicians.filter(
     (technician) => !getDispatchReadinessPresentation(technician).eligible,
   ).length;

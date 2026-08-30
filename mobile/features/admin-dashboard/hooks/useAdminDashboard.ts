@@ -6,6 +6,7 @@ import {
   getAdminStats,
   getAdminRecentActivities,
 } from "../services/adminDashboard.service";
+import { getAdminTechnicianWorkloadSummary } from "../../admin-workload/services/adminWorkload.service";
 import { buildAdminAttentionSummary } from "../utils/adminDashboardPresentation";
 
 export const useAdminDashboard = () => {
@@ -64,14 +65,27 @@ export const useAdminDashboard = () => {
     staleTime: 1000 * 60 * 2,
   });
 
+  const workloadSummaryQuery = useQuery({
+    queryKey: ["admin-technician-workload-summary"],
+    enabled: isLoaded && isSignedIn,
+    queryFn: () => getAdminTechnicianWorkloadSummary(api),
+    staleTime: 1000 * 60 * 2,
+  });
+
   const attention = useMemo(
     () =>
       buildAdminAttentionSummary({
         technicians: techniciansQuery.data || [],
         aiRequests: aiRequestsQuery.data || [],
         healthRequests: healthRequestsQuery.data || [],
+        workloadSummary: workloadSummaryQuery.data || [],
       }),
-    [techniciansQuery.data, aiRequestsQuery.data, healthRequestsQuery.data],
+    [
+      techniciansQuery.data,
+      aiRequestsQuery.data,
+      healthRequestsQuery.data,
+      workloadSummaryQuery.data,
+    ],
   );
 
   return {
@@ -88,16 +102,19 @@ export const useAdminDashboard = () => {
     isAttentionLoading:
       techniciansQuery.isLoading ||
       aiRequestsQuery.isLoading ||
-      healthRequestsQuery.isLoading,
+      healthRequestsQuery.isLoading ||
+      workloadSummaryQuery.isLoading,
     isAttentionError:
       techniciansQuery.isError ||
       aiRequestsQuery.isError ||
-      healthRequestsQuery.isError,
+      healthRequestsQuery.isError ||
+      workloadSummaryQuery.isError,
     refetchAttention: async () => {
       await Promise.all([
         techniciansQuery.refetch(),
         aiRequestsQuery.refetch(),
         healthRequestsQuery.refetch(),
+        workloadSummaryQuery.refetch(),
       ]);
     },
   };

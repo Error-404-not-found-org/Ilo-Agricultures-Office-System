@@ -35,11 +35,25 @@ test("summarizes actionable Admin attention without hardcoded statistics", () =>
     ],
     aiRequests: { data: [{ status: "pending" }, { status: "scheduled" }] },
     healthRequests: [{ status: "pending" }, { status: "resolved" }],
+    workloadSummary: [
+      {
+        technicianId: "tech-a",
+        name: "Duplicate Name",
+        activeWorkloadTotal: 4,
+        counts: { ai: 1, health: 1, pregnancy: 1, calving: 1, tasks: 0 },
+      },
+      {
+        technicianId: "tech-b",
+        name: "Duplicate Name",
+        activeWorkloadTotal: 2,
+        counts: { ai: 0, health: 1, pregnancy: 0, calving: 0, tasks: 1 },
+      },
+    ],
   });
 
   assert.deepEqual(result, {
     pendingRequests: 2,
-    activeWork: 1,
+    activeWork: 6,
     totalTechnicians: 2,
     notReadyTechnicians: 1,
     setupIncompleteTechnicians: 1,
