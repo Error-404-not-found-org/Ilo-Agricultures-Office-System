@@ -1,197 +1,304 @@
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 import { MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
 import {
   formatBarangayMetric,
-  formatBarangayPercentage,
-  getBarangayStatusPresentation,
+  getDefaultBarangaySort,
   mapBarangayInsight,
+  sortBarangayInsights,
+  sumBarangayMetric,
 } from "./barangayInsightsPresentation";
+
+const SORTABLE_COLUMNS = [
+  { key: "name", label: "Barangay", align: "text-left" },
+  { key: "farmersCount", label: "Farmers", align: "text-right" },
+  { key: "animalsCount", label: "Animals", align: "text-right" },
+  {
+    key: "pendingHealthRequests",
+    label: "Pending Health",
+    align: "text-right",
+  },
+  { key: "pendingAIRequests", label: "Pending AI", align: "text-right" },
+];
 
 const getMunicipalityForBarangay = (brgyName) => {
   if (!brgyName) return "Oton, Iloilo";
 
-  // Clean the name (e.g. if it has suffix like "Fajardo (Jaro)")
   const cleanName = brgyName.split(" (")[0].trim().toLowerCase();
 
-  // Check each municipality in MUNICIPALITY_BARANGAYS
-  for (const [mun, list] of Object.entries(MUNICIPALITY_BARANGAYS)) {
+  for (const [municipality, list] of Object.entries(MUNICIPALITY_BARANGAYS)) {
     const found = list.some(
-      (b) =>
-        b.toLowerCase() === cleanName || b.toLowerCase().includes(cleanName),
+      (barangay) =>
+        barangay.toLowerCase() === cleanName ||
+        barangay.toLowerCase().includes(cleanName),
     );
-    if (found) {
-      return `${mun}, Iloilo`;
-    }
+    if (found) return `${municipality}, Iloilo`;
   }
 
-  // Special check if it contains a district in parentheses (e.g. "Fajardo (Jaro)")
   if (brgyName.includes("(") && brgyName.includes(")")) {
     const match = brgyName.match(/\(([^)]+)\)/);
-    if (match && match[1]) {
+    if (match?.[1]) {
       const district = match[1].trim();
-      const capitalizedDistrict =
-        district.charAt(0).toUpperCase() + district.slice(1);
-      return `${capitalizedDistrict}, Iloilo City`;
+      return `${district.charAt(0).toUpperCase() + district.slice(1)}, Iloilo City`;
     }
   }
 
-  return "Oton, Iloilo"; // Default fallback
+  return "Oton, Iloilo";
 };
 
 export default function BarangayInsights() {
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState(null);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin", "barangay-insights"],
     queryFn: async () => {
-      const res = await axiosInstance.get("/admin/barangays/insights");
-      if (!Array.isArray(res.data)) {
+      const response = await axiosInstance.get("/admin/barangays/insights");
+      if (!Array.isArray(response.data)) {
         throw new Error("Invalid Barangay Insights response");
       }
-      return res.data.map((item) =>
+      return response.data.map((item) =>
         mapBarangayInsight(item, getMunicipalityForBarangay),
       );
     },
   });
 
+  const allBarangays = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const effectiveSort = sort || getDefaultBarangaySort(allBarangays);
   const barangays = useMemo(() => {
-    const list = Array.isArray(data) ? data : [];
-    return list.filter((item) =>
-      item.name.toLowerCase().includes(search.toLowerCase()),
-    );
-  }, [data, search]);
+    const normalizedSearch = search.trim().toLowerCase();
+    const filtered = normalizedSearch
+      ? allBarangays.filter((item) =>
+          item.name.toLowerCase().includes(normalizedSearch),
+        )
+      : allBarangays;
+
+    return sortBarangayInsights(filtered, effectiveSort);
+  }, [allBarangays, effectiveSort, search]);
+
+  const summary = useMemo(
+    () => ({
+      barangays: allBarangays.length,
+      farmers: sumBarangayMetric(allBarangays, "farmersCount"),
+      animals: sumBarangayMetric(allBarangays, "animalsCount"),
+      pendingHealth: sumBarangayMetric(allBarangays, "pendingHealthRequests"),
+    }),
+    [allBarangays],
+  );
+
+  const handleSort = (key) => {
+    setSort((current) => {
+      const active = current || getDefaultBarangaySort(allBarangays);
+      if (active.key === key) {
+        return {
+          key,
+          direction: active.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        key,
+        direction: key === "name" ? "asc" : "desc",
+      };
+    });
+  };
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Barangay Insights"
-        subtitle="Municipal livestock, farmer, and service visibility by barangay"
+        subtitle="Municipal livestock, farmers, and service visibility by barangay"
       />
 
-      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
-        <div className="bg-base-100 border border-base-300 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-base-content/80">
-              Barangay coverage
-            </p>
-            <p className="text-2xl font-black text-base-content">
-              {isLoading ? "..." : barangays.length}
-            </p>
-          </div>
-          <div className="relative w-full sm:w-72">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/80"
-            />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search barangay..."
-              aria-label="Search barangays"
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-base-300 bg-base-200 outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all shadow-sm"
-            />
-          </div>
-        </div>
+      <main className="p-4 md:p-6 space-y-5 flex-1 min-h-0 pb-10">
+        <section
+          aria-label="Barangay summary"
+          className="stats stats-vertical sm:stats-horizontal w-full border border-base-300 bg-base-100 shadow-sm"
+        >
+          <SummaryStat
+            label="Total Barangays"
+            value={isLoading ? null : summary.barangays}
+            loading={isLoading}
+          />
+          <SummaryStat
+            label="Total Farmers"
+            value={summary.farmers}
+            loading={isLoading}
+          />
+          <SummaryStat
+            label="Total Animals"
+            value={summary.animals}
+            loading={isLoading}
+          />
+          <SummaryStat
+            label="Pending Health Requests"
+            value={summary.pendingHealth}
+            loading={isLoading}
+          />
+        </section>
 
-        {error && (
-          <div role="alert" className="alert alert-error alert-soft rounded-2xl">
-            <p className="text-sm font-semibold text-error">
-              Failed to load barangay insights.
-            </p>
-            <button
-              onClick={() => refetch()}
-              className="btn btn-error btn-sm"
-            >
-              Retry
-            </button>
-          </div>
-        )}
+        <section
+          aria-labelledby="barangay-table-heading"
+          className="overflow-hidden rounded-box border border-base-300 bg-base-100"
+        >
+          <div className="flex flex-col gap-3 border-b border-base-300 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2
+                id="barangay-table-heading"
+                className="text-lg font-semibold text-base-content"
+              >
+                Barangay comparison
+              </h2>
+              <p className="mt-0.5 text-sm text-base-content/70">
+                Compare registered livestock and pending service requests.
+              </p>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {isLoading ? (
-            [...Array(6)].map((_, index) => (
-              <div
-                key={index}
-                aria-label="Loading barangay insights"
-                className="h-36 rounded-2xl bg-base-100 border border-base-300 animate-pulse"
+            <label className="input input-sm w-full sm:max-w-sm">
+              <Search
+                size={16}
+                className="shrink-0 text-base-content/60"
+                aria-hidden="true"
               />
-            ))
-          ) : barangays.length === 0 ? (
-            <div className="md:col-span-2 xl:col-span-3 bg-base-100 border border-base-300 rounded-2xl p-10 text-center text-base-content/80 font-medium">
-              No barangay records match this view.
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search barangay..."
+                aria-label="Search barangays"
+                className="grow placeholder:text-base-content/60"
+              />
+            </label>
+          </div>
+
+          {error ? (
+            <div className="p-4">
+              <div role="alert" className="alert alert-error alert-soft">
+                <span className="text-sm font-semibold">
+                  Failed to load barangay insights.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => refetch()}
+                  className="btn btn-sm"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           ) : (
-            barangays.map((item) => {
-              const status = getBarangayStatusPresentation(item.status);
-              return (
-                <article
-                  key={`${item.municipality}-${item.name}`}
-                  aria-label={`${item.name} barangay insight`}
-                  className="bg-base-100 border-0 border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow rounded-2xl p-5"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-black text-base-content">
-                        {item.name}
-                      </p>
-                      <p className="text-xs text-base-content/80 mt-1 font-semibold">
-                        {item.municipality}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {status ? (
-                        <span
-                          className={`badge badge-soft badge-sm ${status.className}`}
+            <div className="overflow-x-auto">
+              <table className="table table-sm table-pin-rows min-w-180">
+                <thead>
+                  <tr>
+                    {SORTABLE_COLUMNS.map((column) => (
+                      <SortableHeader
+                        key={column.key}
+                        column={column}
+                        sort={effectiveSort}
+                        onSort={handleSort}
+                      />
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    Array.from({ length: 6 }).map((_, index) => (
+                      <tr key={index} aria-label="Loading barangay insights">
+                        {SORTABLE_COLUMNS.map((column) => (
+                          <td key={column.key}>
+                            <div className="skeleton h-5 w-full" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : barangays.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={SORTABLE_COLUMNS.length}
+                        className="py-10 text-center text-sm font-medium text-base-content/65"
+                      >
+                        {search.trim()
+                          ? "No barangays match your search."
+                          : "No barangay records are available."}
+                      </td>
+                    </tr>
+                  ) : (
+                    barangays.map((item) => (
+                      <tr key={`${item.municipality}-${item.name}`}>
+                        <th
+                          scope="row"
+                          className="font-semibold text-base-content"
                         >
-                          {status.label}
-                        </span>
-                      ) : null}
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                        <MapPin size={18} aria-hidden="true" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-5">
-                    <Metric
-                      label="Farmers"
-                      value={formatBarangayMetric(item.farmersCount)}
-                    />
-                    <Metric
-                      label="Animals"
-                      value={formatBarangayMetric(item.animalsCount)}
-                    />
-                    <Metric
-                      label="Pending health"
-                      value={formatBarangayMetric(item.pendingHealthRequests)}
-                    />
-                    <Metric
-                      label="AI success"
-                      value={formatBarangayPercentage(item.aiSuccessRate)}
-                    />
-                  </div>
-                </article>
-              );
-            })
+                          {item.name}
+                        </th>
+                        <MetricCell value={item.farmersCount} />
+                        <MetricCell value={item.animalsCount} />
+                        <MetricCell value={item.pendingHealthRequests} />
+                        <MetricCell value={item.pendingAIRequests} />
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </section>
       </main>
     </div>
   );
 }
 
-const Metric = ({ label, value }) => (
-  <div
-    aria-label={`${label}: ${value}`}
-    className="rounded-xl bg-base-200 border border-base-300 p-3"
-  >
-    <p className="text-[10px] font-black uppercase tracking-widest text-base-content/80">
+const SummaryStat = ({ label, value, loading }) => (
+  <div className="stat px-4 py-3.5">
+    <p className="stat-title text-sm font-medium text-base-content/70">
       {label}
     </p>
-    <p className="text-lg font-black text-base-content mt-1">
-      {value}
-    </p>
+    {loading ? (
+      <div className="skeleton mt-2 h-7 w-20" aria-label={`Loading ${label}`} />
+    ) : (
+      <p className="stat-value mt-1 text-2xl font-bold text-base-content">
+        {formatBarangayMetric(value)}
+      </p>
+    )}
   </div>
+);
+
+const SortableHeader = ({ column, sort, onSort }) => {
+  const isActive = sort.key === column.key;
+  const ariaSort = isActive
+    ? sort.direction === "asc"
+      ? "ascending"
+      : "descending"
+    : "none";
+  const SortIcon = !isActive
+    ? ArrowUpDown
+    : sort.direction === "asc"
+      ? ArrowUp
+      : ArrowDown;
+
+  return (
+    <th scope="col" aria-sort={ariaSort} className={column.align}>
+      <button
+        type="button"
+        onClick={() => onSort(column.key)}
+        className={`btn btn-ghost btn-xs min-h-8 gap-1.5 font-semibold ${column.align === "text-right" ? "ml-auto" : ""}`}
+        aria-label={`Sort by ${column.label}`}
+      >
+        {column.label}
+        <SortIcon
+          size={14}
+          aria-hidden="true"
+          className={isActive ? "text-primary" : "text-base-content/45"}
+        />
+      </button>
+    </th>
+  );
+};
+
+const MetricCell = ({ value }) => (
+  <td className="text-right tabular-nums text-base-content/80">
+    {formatBarangayMetric(value)}
+  </td>
 );

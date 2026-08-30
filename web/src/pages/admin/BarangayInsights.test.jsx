@@ -1,12 +1,20 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import axiosInstance from "../../lib/axios";
 import BarangayInsights from "./BarangayInsights";
 import {
   formatBarangayMetric,
-  formatBarangayPercentage,
+  getDefaultBarangaySort,
   mapBarangayInsight,
+  sortBarangayInsights,
+  sumBarangayMetric,
 } from "./barangayInsightsPresentation";
 
 vi.mock("../../lib/axios", () => ({
@@ -38,6 +46,15 @@ const canonicalInsight = {
   status: "attention",
 };
 
+const secondInsight = {
+  ...canonicalInsight,
+  barangay: "Abilay Norte",
+  farmersCount: 3,
+  animalsCount: 8,
+  pendingHealthRequests: 0,
+  pendingAIRequests: 1,
+};
+
 const renderPage = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -50,12 +67,19 @@ const renderPage = () => {
   );
 };
 
-describe("Barangay Insights backend contract", () => {
+const tableBarangayNames = () =>
+  within(screen.getByRole("table"))
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => within(row).queryByRole("rowheader")?.textContent)
+    .filter(Boolean);
+
+describe("Barangay Insights factual table", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("maps canonical fields, ignores fabricated aliases, and preserves zeroes", () => {
+  it("maps only canonical factual fields and preserves real zeroes", () => {
     const mapped = mapBarangayInsight({
       ...canonicalInsight,
       farmersCount: 0,
@@ -71,112 +95,172 @@ describe("Barangay Insights backend contract", () => {
       pendingAIRequests: 3,
       activePregnancies: 4,
       incompleteRecordsCount: 5,
-      aiSuccessRate: 75,
-      activityScore: 68,
-      status: "attention",
     });
     expect(mapped).not.toHaveProperty("technicians");
-  });
-
-  it("distinguishes missing data from zero and uses the backend 0–100 percentage unit", () => {
+    expect(mapped).not.toHaveProperty("status");
+    expect(mapped).not.toHaveProperty("activityScore");
+    expect(mapped).not.toHaveProperty("aiSuccessRate");
     expect(formatBarangayMetric(0)).toBe("0");
     expect(formatBarangayMetric(null)).toBe("Not available");
-    expect(formatBarangayPercentage(0)).toBe("0%");
-    expect(formatBarangayPercentage(75)).toBe("75%");
-    expect(formatBarangayPercentage(null)).toBe("Not available");
   });
 
-  it("renders canonical metrics and status without unsupported Technician coverage", async () => {
+  it("calculates truthful totals and refuses partial totals", () => {
+    const rows = [
+      mapBarangayInsight(canonicalInsight),
+      mapBarangayInsight(secondInsight),
+    ];
+
+    expect(sumBarangayMetric(rows, "farmersCount")).toBe(15);
+    expect(sumBarangayMetric(rows, "animalsCount")).toBe(42);
+    expect(sumBarangayMetric(rows, "pendingHealthRequests")).toBe(2);
+    expect(
+      sumBarangayMetric(
+        [...rows, { ...rows[0], farmersCount: null }],
+        "farmersCount",
+      ),
+    ).toBeNull();
+  });
+
+  it("defaults to pending Health descending, then alphabetic when no workload exists", () => {
+    const rows = [
+      mapBarangayInsight(secondInsight),
+      mapBarangayInsight(canonicalInsight),
+    ];
+
+    expect(getDefaultBarangaySort(rows)).toEqual({
+      key: "pendingHealthRequests",
+      direction: "desc",
+    });
+    expect(
+      sortBarangayInsights(rows, getDefaultBarangaySort(rows)).map(
+        (item) => item.name,
+      ),
+    ).toEqual(["Poblacion East", "Abilay Norte"]);
+
+    const noPending = rows.map((item) => ({
+      ...item,
+      pendingHealthRequests: 0,
+    }));
+    expect(getDefaultBarangaySort(noPending)).toEqual({
+      key: "name",
+      direction: "asc",
+    });
+  });
+
+  it("renders factual summary totals and table columns without heuristic labels", async () => {
     axiosInstance.get.mockResolvedValue({
-      data: [{ ...canonicalInsight, technicians: [{ _id: "unsupported" }] }],
+      data: [canonicalInsight, secondInsight],
     });
     renderPage();
 
-    const card = await screen.findByRole("article", {
-      name: "Poblacion East barangay insight",
+    await screen.findByText("15");
+    const summary = await screen.findByRole("region", {
+      name: "Barangay summary",
     });
-    expect(within(card).getByLabelText("Farmers: 12")).toBeInTheDocument();
-    expect(within(card).getByLabelText("Animals: 34")).toBeInTheDocument();
+    expect(within(summary).getByText("Total Barangays")).toBeInTheDocument();
+    expect(within(summary).getByText("Total Farmers")).toBeInTheDocument();
+    expect(within(summary).getByText("Total Animals")).toBeInTheDocument();
     expect(
-      within(card).getByLabelText("Pending health: 2"),
+      within(summary).getByText("Pending Health Requests"),
     ).toBeInTheDocument();
-    expect(within(card).getByLabelText("AI success: 75%")).toBeInTheDocument();
-    expect(within(card).getByText("Needs attention")).toBeInTheDocument();
-    expect(within(card).queryByText(/technician/i)).not.toBeInTheDocument();
+    expect(within(summary).getByText("15")).toBeInTheDocument();
+    expect(within(summary).getByText("42")).toBeInTheDocument();
+
+    const table = screen.getByRole("table");
+    expect(table).toHaveClass("table-pin-rows", "min-w-180");
+    expect(table.parentElement).toHaveClass("overflow-x-auto");
+    expect(within(table).getByText("Barangay")).toBeInTheDocument();
+    expect(within(table).getByText("Farmers")).toBeInTheDocument();
+    expect(within(table).getByText("Animals")).toBeInTheDocument();
+    expect(within(table).getByText("Pending Health")).toBeInTheDocument();
+    expect(within(table).getByText("Pending AI")).toBeInTheDocument();
+    expect(screen.queryByText("Healthy")).not.toBeInTheDocument();
+    expect(screen.queryByText("Critical")).not.toBeInTheDocument();
+    expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
+    expect(screen.queryByText(/activity score/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/AI success/i)).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
   });
 
-  it("renders real zeroes, missing placeholders, and canonical status labels", async () => {
+  it("sorts every factual column in both directions", async () => {
     axiosInstance.get.mockResolvedValue({
-      data: [
-        {
-          ...canonicalInsight,
-          barangay: "Zero Barangay",
-          farmersCount: 0,
-          animalsCount: 0,
-          pendingHealthRequests: 0,
-          aiSuccessRate: 0,
-          status: "healthy",
-        },
-        {
-          barangay: "Missing Barangay",
-          municipality: "Oton",
-          status: "critical",
-        },
-      ],
+      data: [canonicalInsight, secondInsight],
     });
     renderPage();
 
-    const zeroCard = await screen.findByRole("article", {
-      name: "Zero Barangay barangay insight",
-    });
-    expect(within(zeroCard).getByLabelText("Farmers: 0")).toBeInTheDocument();
-    expect(within(zeroCard).getByLabelText("AI success: 0%")).toBeInTheDocument();
-    expect(within(zeroCard).getByText("Healthy")).toBeInTheDocument();
+    await screen.findByText("Poblacion East");
+    expect(tableBarangayNames()).toEqual(["Poblacion East", "Abilay Norte"]);
 
-    const missingCard = screen.getByRole("article", {
-      name: "Missing Barangay barangay insight",
+    const farmersSort = screen.getByRole("button", {
+      name: "Sort by Farmers",
     });
+    fireEvent.click(farmersSort);
+    expect(tableBarangayNames()).toEqual(["Poblacion East", "Abilay Norte"]);
     expect(
-      within(missingCard).getByLabelText("Farmers: Not available"),
-    ).toBeInTheDocument();
+      screen.getByRole("columnheader", { name: /Farmers/ }),
+    ).toHaveAttribute("aria-sort", "descending");
+
+    fireEvent.click(farmersSort);
+    expect(tableBarangayNames()).toEqual(["Abilay Norte", "Poblacion East"]);
     expect(
-      within(missingCard).getByLabelText("AI success: Not available"),
-    ).toBeInTheDocument();
-    expect(within(missingCard).getByText("Critical")).toBeInTheDocument();
+      screen.getByRole("columnheader", { name: /Farmers/ }),
+    ).toHaveAttribute("aria-sort", "ascending");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Barangay" }));
+    expect(tableBarangayNames()).toEqual(["Abilay Norte", "Poblacion East"]);
+
+    for (const label of ["Animals", "Pending Health", "Pending AI"]) {
+      const control = screen.getByRole("button", {
+        name: `Sort by ${label}`,
+      });
+      fireEvent.click(control);
+      expect(
+        screen.getByRole("columnheader", { name: new RegExp(label) }),
+      ).toHaveAttribute("aria-sort", "descending");
+      fireEvent.click(control);
+      expect(
+        screen.getByRole("columnheader", { name: new RegExp(label) }),
+      ).toHaveAttribute("aria-sort", "ascending");
+    }
   });
 
-  it("keeps search client-side and does not introduce N+1 requests", async () => {
+  it("filters the visible table without changing summary totals or making N+1 requests", async () => {
     axiosInstance.get.mockResolvedValue({
-      data: [
-        canonicalInsight,
-        { ...canonicalInsight, barangay: "Abilay Norte" },
-      ],
+      data: [canonicalInsight, secondInsight],
     });
     renderPage();
 
-    await screen.findByRole("article", {
-      name: "Poblacion East barangay insight",
-    });
-    fireEvent.change(screen.getByRole("textbox", { name: "Search barangays" }), {
-      target: { value: "abilay" },
-    });
-
-    expect(
-      screen.queryByRole("article", {
-        name: "Poblacion East barangay insight",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("article", { name: "Abilay Norte barangay insight" }),
-    ).toBeInTheDocument();
-    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
-    expect(axiosInstance.get).toHaveBeenCalledWith(
-      "/admin/barangays/insights",
+    await screen.findByText("Poblacion East");
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search barangays" }),
+      {
+        target: { value: "abilay" },
+      },
     );
+
+    expect(screen.queryByText("Poblacion East")).not.toBeInTheDocument();
+    expect(screen.getByText("Abilay Norte")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("region", { name: "Barangay summary" }),
+      ).getByText("15"),
+    ).toBeInTheDocument();
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+    expect(axiosInstance.get).toHaveBeenCalledWith("/admin/barangays/insights");
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search barangays" }),
+      {
+        target: { value: "missing" },
+      },
+    );
+    expect(
+      screen.getByText("No barangays match your search."),
+    ).toBeInTheDocument();
   });
 
-  it("preserves loading, empty, error, and invalid-contract states", async () => {
+  it("preserves loading, empty, error, retry, and invalid-contract states", async () => {
     let resolveRequest;
     axiosInstance.get.mockReturnValue(
       new Promise((resolve) => {
@@ -184,11 +268,11 @@ describe("Barangay Insights backend contract", () => {
       }),
     );
     const loadingView = renderPage();
-    expect(
-      screen.getAllByLabelText("Loading barangay insights"),
-    ).toHaveLength(6);
+    expect(screen.getAllByLabelText("Loading barangay insights")).toHaveLength(
+      6,
+    );
     resolveRequest({ data: [] });
-    await screen.findByText("No barangay records match this view.");
+    await screen.findByText("No barangay records are available.");
     loadingView.unmount();
 
     axiosInstance.get.mockRejectedValue(new Error("network unavailable"));
