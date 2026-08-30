@@ -5,18 +5,15 @@ import {
   AlertTriangle,
   ArrowRight,
   Archive,
+  Beef,
   CalendarClock,
   CheckCircle2,
   CircleX,
-  ClipboardList,
   Database,
   FilePenLine,
   History,
-  Inbox,
-  MapPin,
   RefreshCcw,
   ShieldAlert,
-  UserCheck,
   UserRoundCheck,
   UserPlus,
   Users,
@@ -27,11 +24,10 @@ import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
-import { Badge, ui } from "../../components/ui/uiClasses";
+import { ui } from "../../components/ui/uiClasses";
 
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
-const URGENT_VALUES = new Set(["high", "emergency", "urgent", "critical"]);
 
 const sourceResult = (label, result, fallback) => {
   if (result.status !== "fulfilled") {
@@ -56,11 +52,6 @@ const asArray = (value) => {
   if (Array.isArray(value?.logs)) return value.logs;
   if (Array.isArray(value?.barangays)) return value.barangays;
   return [];
-};
-
-const getQueueRequests = (value) => {
-  if (Array.isArray(value?.requests)) return value.requests;
-  return asArray(value);
 };
 
 const numberValue = (value) => {
@@ -109,61 +100,6 @@ const formatRelativeTime = (value) => {
     year: "numeric",
   });
 };
-
-const getRequestType = (request) => {
-  if (request?.type === "ai" || request?.type === "insemination") return "AI";
-  if (request?.type === "health") return "Health";
-  return request?.requestType || request?.raw?.requestType || "Service";
-};
-
-const toDashboardRequest = (request) => {
-  const raw = request?.raw || request || {};
-  const assignedTechnician =
-    request?.assignedTechnician ||
-    raw?.approvedBy?.name ||
-    raw?.handledBy?.name ||
-    "";
-
-  return {
-    id: request?.id || raw?._id,
-    rawId: raw?._id || request?.id,
-    type:
-      request?.type ||
-      raw?.type ||
-      (raw?.issueDescription || raw?.symptoms ? "health" : "service"),
-    requestType: request?.requestType || raw?.requestType,
-    status:
-      request?.displayStatus || request?.status || raw?.status || "pending",
-    urgency: request?.urgency || raw?.urgency || "standard",
-    farmer:
-      request?.farmer ||
-      raw?.farmerId?.name ||
-      raw?.farmer?.name ||
-      "Farmer not recorded",
-    barangay:
-      request?.barangay ||
-      request?.locationLabel ||
-      request?.location ||
-      raw?.farmerId?.address?.barangay ||
-      raw?.barangay ||
-      "Location not recorded",
-    assignedTechnician,
-    cancellationStatus:
-      request?.cancellationStatus || raw?.cancellationStatus || "none",
-    createdAt: request?.createdAt || raw?.createdAt,
-    raw,
-  };
-};
-
-const isUrgentRequest = (request) =>
-  URGENT_VALUES.has(String(request?.urgency || "").toLowerCase());
-
-const isRequestUnassigned = (request) =>
-  !request.assignedTechnician &&
-  !request.raw?.approvedBy &&
-  !request.raw?.technicianId &&
-  !request.raw?.handledBy &&
-  !request.raw?.assignedTechnicianId;
 
 const getAuditSubject = (log) =>
   log?.details?.targetName ||
@@ -222,14 +158,18 @@ const getActivityPresentation = (action) => {
       tone: "border-warning/20 bg-warning/10 text-warning",
     };
   }
-  if (/create technician|add technician|new technician/.test(normalizedAction)) {
+  if (
+    /create technician|add technician|new technician/.test(normalizedAction)
+  ) {
     return {
       icon: UserPlus,
       tone: "border-success/20 bg-success/10 text-success",
     };
   }
   if (
-    /assign|reassign|role|user|technician|invite|suspend|reactivate/.test(normalizedAction)
+    /assign|reassign|role|user|technician|invite|suspend|reactivate/.test(
+      normalizedAction,
+    )
   ) {
     return {
       icon: UserRoundCheck,
@@ -271,38 +211,30 @@ export default function Dashboard() {
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["admin", "dashboard-overview"],
     queryFn: async () => {
-      const [workloadSummary, technicians, technicianRequests, auditLogs] =
+      const [stats, workloadSummary, technicians, auditLogs] =
         await Promise.allSettled([
+          axiosInstance.get("/admin/stats"),
           axiosInstance.get("/admin/technician-workload-summary"),
           axiosInstance.get("/user?role=technician"),
-          axiosInstance.get("/technician/requests", {
-            params: { status: "pending", limit: 50 },
-          }),
           axiosInstance.get("/audit-logs", { params: { limit: 5 } }),
         ]);
 
       const sources = {
+        stats: sourceResult("Overview", stats, {}),
         workloadSummary: sourceResult(
           "Technician workload",
           workloadSummary,
           {},
         ),
         technicians: sourceResult("Technician directory", technicians, []),
-        technicianRequests: sourceResult(
-          "Pending requests",
-          technicianRequests,
-          {},
-        ),
-        auditLogs: sourceResult("Recent activity", auditLogs, {}),
+        auditLogs: sourceResult("Recent audit activity", auditLogs, {}),
       };
 
       return {
         sources,
+        stats: sources.stats.data || {},
         workloadSummary: asArray(sources.workloadSummary.data?.technicians),
         technicians: asArray(sources.technicians.data),
-        requests: getQueueRequests(sources.technicianRequests.data).map(
-          toDashboardRequest,
-        ),
         auditLogs: asArray(sources.auditLogs.data),
       };
     },
@@ -310,8 +242,8 @@ export default function Dashboard() {
   });
 
   const sources = data?.sources || EMPTY_OBJECT;
+  const stats = data?.stats || EMPTY_OBJECT;
   const workloadSummary = data?.workloadSummary || EMPTY_ARRAY;
-  const serviceRequests = data?.requests || EMPTY_ARRAY;
   const technicians = data?.technicians || EMPTY_ARRAY;
   const auditLogs = data?.auditLogs || EMPTY_ARRAY;
   const isSourceOk = useCallback(
@@ -320,57 +252,6 @@ export default function Dashboard() {
   );
   const failedSources = Object.values(sources).filter(
     (source) => source && !source.ok,
-  );
-
-  const urgentRequests = useMemo(
-    () => serviceRequests.filter(isUrgentRequest),
-    [serviceRequests],
-  );
-
-  const unassignedRequests = useMemo(
-    () => serviceRequests.filter(isRequestUnassigned),
-    [serviceRequests],
-  );
-
-  const cancellationReviews = useMemo(
-    () =>
-      serviceRequests.filter(
-        (request) =>
-          String(request.cancellationStatus).toLowerCase() === "requested",
-      ),
-    [serviceRequests],
-  );
-
-  const activeTechnicians = useMemo(
-    () =>
-      technicians.filter(
-        (technician) =>
-          String(technician?.status || "active").toLowerCase() !== "inactive",
-      ),
-    [technicians],
-  );
-
-  const unavailableTechnicians = useMemo(
-    () =>
-      technicians.filter(
-        (technician) =>
-          String(technician?.status || "active").toLowerCase() === "inactive",
-      ),
-    [technicians],
-  );
-
-  const pendingRequests = useMemo(
-    () =>
-      [...serviceRequests].sort((first, second) => {
-        const urgencyDifference =
-          Number(isUrgentRequest(second)) - Number(isUrgentRequest(first));
-        if (urgencyDifference) return urgencyDifference;
-        return (
-          new Date(first.createdAt || 0).getTime() -
-          new Date(second.createdAt || 0).getTime()
-        );
-      }),
-    [serviceRequests],
   );
 
   const workloadRows = useMemo(() => {
@@ -427,78 +308,27 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [isSourceOk, technicians, workloadSummary]);
 
-  const needsAttention = useMemo(
-    () =>
-      [
-        isSourceOk("technicianRequests") && {
-          title: "request needs assignment",
-          pluralTitle: "requests need assignment",
-          count: unassignedRequests.length,
-          description: "Assign a Technician from the Requests page.",
-          to: "/admin/requests?status=pending",
-          tone: "warning",
-        },
-        isSourceOk("technicianRequests") && {
-          title: "cancellation needs review",
-          pluralTitle: "cancellations need review",
-          count: cancellationReviews.length,
-          description: "Review Farmer cancellation requests.",
-          to: "/admin/requests?status=all",
-          tone: "warning",
-        },
-        isSourceOk("technicianRequests") && {
-          title: "urgent case is waiting",
-          pluralTitle: "urgent cases are waiting",
-          count: urgentRequests.length,
-          description: "Review urgent service requests first.",
-          to: "/admin/requests?status=pending",
-          tone: "error",
-        },
-        isSourceOk("technicians") && {
-          title: "Technician is inactive",
-          pluralTitle: "Technicians are inactive",
-          count: unavailableTechnicians.length,
-          description: "Check staffing and dispatch availability.",
-          to: "/admin/users?role=technician",
-          tone: "neutral",
-        },
-      ].filter((item) => item && item.count > 0),
-    [
-      cancellationReviews.length,
-      isSourceOk,
-      unavailableTechnicians.length,
-      unassignedRequests.length,
-      urgentRequests.length,
-    ],
-  );
-
   const metrics = [
     {
-      label: "Requests Waiting",
-      value: isSourceOk("technicianRequests")
-        ? serviceRequests.length
-        : "Unavailable",
-      description: "Awaiting Admin coordination",
-      icon: ClipboardList,
-      tone: "warning",
+      label: "Total Farmers",
+      value: isSourceOk("stats") ? stats.farmers : "Unavailable",
+      description: "Registered Farmer profiles",
+      icon: Users,
+      colorClass: "border-l-primary",
     },
     {
-      label: "Active Technicians",
-      value: isSourceOk("technicians")
-        ? activeTechnicians.length
-        : "Unavailable",
-      description: "Active Technician accounts",
-      icon: UserCheck,
-      tone: "success",
+      label: "Total Technicians",
+      value: isSourceOk("stats") ? stats.technicians : "Unavailable",
+      description: "Registered Technician profiles",
+      icon: UserRoundCheck,
+      colorClass: "border-l-error",
     },
     {
-      label: "Urgent Cases",
-      value: isSourceOk("technicianRequests")
-        ? urgentRequests.length
-        : "Unavailable",
-      description: "Require prompt review",
-      icon: ShieldAlert,
-      tone: "error",
+      label: "Total Animals",
+      value: isSourceOk("stats") ? stats.animals : "Unavailable",
+      description: "Active livestock records",
+      icon: Beef,
+      colorClass: "border-l-accent",
     },
   ];
 
@@ -549,95 +379,32 @@ export default function Dashboard() {
           <PartialDataPanel sources={failedSources} onRetry={handleRefresh} />
         )}
 
-        <section
-          aria-label="Operational metrics"
-          className="grid grid-cols-1 gap-3 lg:grid-cols-3"
-        >
-          {metrics.map((metric) => (
-            <OperationalMetric
-              key={metric.label}
-              {...metric}
-              loading={isLoading}
-            />
-          ))}
-        </section>
-
-        <section
-          aria-label="Immediate Admin work"
-          className="grid grid-cols-1 gap-5 lg:grid-cols-2"
-        >
-          <Panel
-            id="needs-attention"
-            title="Needs Attention"
-            description="Requests and staffing that need Admin review"
+        <section aria-labelledby="overview-heading" className="space-y-3">
+          <h2
+            id="overview-heading"
+            className="text-lg font-bold text-base-content"
           >
-            {!isSourceOk("technicianRequests") &&
-              !isSourceOk("technicians") && (
-                <SectionError
-                  message="We could not load the items that need attention."
-                  onRetry={handleRefresh}
-                />
-              )}
-            {isLoading ? (
-              <SkeletonRows count={3} label="Loading attention items" />
-            ) : needsAttention.length ? (
-              <AttentionList items={needsAttention} />
-            ) : (
-              <EmptyState
-                title="All caught up"
-                description="No requests need assignment, no urgent cases are waiting, and Technician staffing is clear."
-                icon={CheckCircle2}
-                tone="success"
-              />
-            )}
-          </Panel>
-
-          <Panel
-            id="pending-requests"
-            title="Pending Requests"
-            description="Highest-priority requests awaiting coordination"
-            actionLabel="View all Requests"
-            to="/admin/requests"
-          >
-            {!isSourceOk("technicianRequests") ? (
-              <SectionError
-                message="We could not load pending requests."
-                onRetry={handleRefresh}
-              />
-            ) : (
-              <PendingRequestList
-                requests={pendingRequests}
+            Overview
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {metrics.map((metric) => (
+              <OperationalMetric
+                key={metric.label}
+                {...metric}
                 loading={isLoading}
               />
-            )}
-          </Panel>
+            ))}
+          </div>
         </section>
 
         <section
-          aria-label="Operational overview"
+          aria-label="Dashboard details"
           className="grid grid-cols-1 gap-5 lg:grid-cols-2"
         >
-          <Panel
-            id="recent-admin-activity"
-            title="Recent Admin Activity"
-            description="Latest administrative and workflow changes"
-            actionLabel="View Audit Logs"
-            to="/admin/audit-logs"
-          >
-            {!isSourceOk("auditLogs") ? (
-              <SectionError
-                message="We could not load recent Admin activity."
-                onRetry={handleRefresh}
-              />
-            ) : (
-              <AuditPreview logs={auditLogs} loading={isLoading} />
-            )}
-          </Panel>
-
           <Panel
             id="technician-workload"
             title="Technician Workload"
-            description="Technician status and active assignments"
+            description="Technician status and active work"
             actionLabel="View Workload"
             to="/admin/work-queue"
           >
@@ -648,6 +415,23 @@ export default function Dashboard() {
               />
             ) : (
               <TechnicianWorkloadList rows={workloadRows} loading={isLoading} />
+            )}
+          </Panel>
+
+          <Panel
+            id="recent-audit-activity"
+            title="Recent Audit Activity"
+            description="Latest administrative and workflow changes"
+            actionLabel="View Audit Logs"
+            to="/admin/audit-logs"
+          >
+            {!isSourceOk("auditLogs") ? (
+              <SectionError
+                message="We could not load recent audit activity."
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <AuditPreview logs={auditLogs} loading={isLoading} />
             )}
           </Panel>
         </section>
@@ -682,68 +466,21 @@ const Panel = ({ id, title, description, actionLabel, to, children }) => {
   );
 };
 
-const AttentionList = ({ items }) => (
-  <ul className="list divide-y divide-base-300">
-    {items.map((item) => (
-      <li key={item.title} className="list-row items-center px-0 py-3">
-        <span
-          className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-            item.tone === "error"
-              ? "bg-error/10 text-error"
-              : item.tone === "warning"
-                ? "bg-warning/10 text-warning"
-                : "bg-base-200 text-base-content/65"
-          }`}
-        >
-          <AlertTriangle size={17} aria-hidden="true" />
-        </span>
-        <div className="min-w-0">
-          <p className="font-semibold text-base-content">
-            {numberValue(item.count)}{" "}
-            {item.count === 1 ? item.title : item.pluralTitle}
-          </p>
-          <p className="mt-0.5 text-sm text-base-content/75">
-            {item.description}
-          </p>
-        </div>
-        <DashboardActionLink to={item.to} ariaLabel={`Review: ${item.title}`}>
-          Review
-        </DashboardActionLink>
-      </li>
-    ))}
-  </ul>
-);
-
 const OperationalMetric = ({
   label,
   value,
   description,
   icon: Icon,
-  tone,
   loading,
+  colorClass = "border-l-primary",
 }) => {
-  const toneClass = {
-    warning: "border-warning/20 bg-warning/10 text-warning",
-    success: "border-success/20 bg-success/10 text-success",
-    error: "border-error/20 bg-error/10 text-error",
-  }[tone];
-
-  const toneBorderClass = {
-    warning: "border-warning/35",
-    success: "border-success/35",
-    error: "border-error/35",
-  }[tone];
-
   return (
     <article
       data-testid="operational-metric"
-      data-tone={tone}
-      className={`stat min-h-28 rounded-box border-0 border-l-4 bg-base-100 p-4 shadow-sm ${toneBorderClass}`}
+      className={`stat min-h-28 rounded-box border border-base-300 border-l-4 ${colorClass} bg-base-100 p-4 shadow-sm`}
     >
       <div className="stat-figure ml-3 self-center">
-        <span
-          className={`flex h-10 w-10 items-center justify-center rounded-lg border ${toneClass}`}
-        >
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-base-300 bg-base-200 text-base-content/75">
           <Icon size={18} aria-hidden="true" />
         </span>
       </div>
@@ -767,121 +504,6 @@ const OperationalMetric = ({
   );
 };
 
-const getRequestPath = (request) => {
-  const requestId = request.id || request.rawId || request.raw?._id;
-  return requestId
-    ? `/admin/requests?requestId=${encodeURIComponent(requestId)}&status=all`
-    : "/admin/requests?status=all";
-};
-
-const PendingRequestList = ({ requests, loading }) => {
-  if (loading) {
-    return <SkeletonRows count={5} label="Loading pending requests" />;
-  }
-  if (!requests.length) {
-    return (
-      <EmptyState
-        title="No pending requests"
-        description="No service requests currently need Admin coordination."
-        icon={Inbox}
-        tone="primary"
-      />
-    );
-  }
-
-  const visibleRequests = requests.slice(0, 5);
-
-  return (
-    <>
-      <ul className="list divide-y divide-base-300 md:hidden">
-        {visibleRequests.map((request, index) => (
-          <li
-            key={request.id || request.rawId || index}
-            className="list-row grid-cols-[1fr_auto] px-0 py-4"
-          >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-semibold text-base-content">
-                  {request.farmer}
-                </p>
-                <RequestStatus request={request} />
-              </div>
-              <p className="mt-1 text-sm text-base-content/80">
-                {getRequestType(request)}
-              </p>
-              <p className="mt-1 flex items-start gap-1.5 text-sm text-base-content/75">
-                <MapPin
-                  size={14}
-                  className="mt-0.5 shrink-0"
-                  aria-hidden="true"
-                />
-                {request.barangay}
-              </p>
-            </div>
-            <DashboardActionLink to={getRequestPath(request)}>
-              Open Request
-            </DashboardActionLink>
-          </li>
-        ))}
-      </ul>
-
-      <div className="hidden overflow-x-auto md:block">
-        <table className="table table-sm">
-          <thead>
-            <tr>
-              <th>Farmer</th>
-              <th>Service</th>
-              <th>Barangay / Location</th>
-              <th>Status</th>
-              <th className="text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRequests.map((request, index) => (
-              <tr key={request.id || request.rawId || index}>
-                <td className="font-semibold text-base-content">
-                  {request.farmer}
-                </td>
-                <td>{getRequestType(request)}</td>
-                <td>
-                  <span className="flex items-start gap-1.5">
-                    <MapPin
-                      size={14}
-                      className="mt-0.5 shrink-0 text-base-content/75"
-                      aria-hidden="true"
-                    />
-                    {request.barangay}
-                  </span>
-                </td>
-                <td>
-                  <RequestStatus request={request} />
-                </td>
-                <td className="text-right">
-                  <DashboardActionLink to={getRequestPath(request)}>
-                    Open Request
-                  </DashboardActionLink>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-};
-
-const RequestStatus = ({ request }) => {
-  const urgent = isUrgentRequest(request);
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Badge status={request.status}>
-        {formatLabel(request.status, "Pending")}
-      </Badge>
-      {urgent && <Badge status="urgent">Urgent</Badge>}
-    </div>
-  );
-};
-
 const TechnicianWorkloadList = ({ rows, loading }) => {
   if (loading) {
     return <SkeletonRows count={4} label="Loading Technician workload" />;
@@ -890,7 +512,7 @@ const TechnicianWorkloadList = ({ rows, loading }) => {
     return (
       <EmptyState
         title="No workload information"
-        description="Technician workload will appear after active assignments are recorded."
+        description="Technician workload will appear when active work is assigned or becomes due."
         icon={Users}
       />
     );
@@ -924,7 +546,7 @@ const TechnicianWorkloadList = ({ rows, loading }) => {
                 : numberValue(row.activeRequests)}
             </p>
             <p className="text-[10px] font-bold text-base-content/75">
-              active assignments
+              active work
             </p>
           </div>
         </li>

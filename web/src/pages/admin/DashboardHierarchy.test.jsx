@@ -30,6 +30,12 @@ vi.mock("../../components/layout/Topbar", () => ({
 }));
 
 const populatedResponses = {
+  "/admin/stats": {
+    totalUsers: 99,
+    farmers: 12,
+    technicians: 4,
+    animals: 31,
+  },
   "/admin/technician-workload-summary": {
     technicians: [
       {
@@ -49,20 +55,6 @@ const populatedResponses = {
       dispatchProfile: { acceptsNewRequests: true },
     },
   ],
-  "/technician/requests": {
-    requests: [
-      {
-        id: "request-1",
-        type: "health",
-        status: "pending",
-        urgency: "urgent",
-        farmer: "Maria Farmer",
-        barangay: "Poblacion East",
-        assignedTechnician: "",
-        createdAt: "2026-08-26T08:00:00.000Z",
-      },
-    ],
-  },
   "/audit-logs": {
     logs: [
       {
@@ -102,40 +94,43 @@ describe("Admin Dashboard hierarchy", () => {
     setResponses(populatedResponses);
   });
 
-  it("puts attention first and limits the primary metrics to three", async () => {
+  it("uses the canonical three-count Overview", async () => {
     renderDashboard();
 
-    const attention = await screen.findByRole("heading", {
-      name: "Needs Attention",
-    });
-    const pending = screen.getByRole("heading", { name: "Pending Requests" });
-
-    expect(
-      attention.compareDocumentPosition(pending) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    await screen.findByRole("heading", { name: "Overview" });
     expect(screen.getAllByTestId("operational-metric")).toHaveLength(3);
-    expect(screen.queryByText("Service Request Overview")).not.toBeInTheDocument();
-    expect(screen.queryByText("Service Trends")).not.toBeInTheDocument();
+    expect(screen.getByText("Total Farmers")).toBeInTheDocument();
+    expect(await screen.findByText("12")).toBeInTheDocument();
+    expect(screen.getByText("Total Technicians")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("Total Animals")).toBeInTheDocument();
+    expect(screen.getByText("31")).toBeInTheDocument();
+
+    expect(axiosInstance.get).toHaveBeenCalledWith("/admin/stats");
+    expect(screen.queryByText("99")).not.toBeInTheDocument();
   });
 
-  it("uses distinct semantic tones for the three operational metrics", async () => {
+  it("removes the capped request summaries and misleading metrics", async () => {
     renderDashboard();
 
-    await screen.findByRole("heading", { name: "Needs Attention" });
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(screen.queryByText("Requests Waiting")).not.toBeInTheDocument();
+    expect(screen.queryByText("Active Technicians")).not.toBeInTheDocument();
+    expect(screen.queryByText("Urgent Cases")).not.toBeInTheDocument();
     expect(
-      screen.getByText("Requests Waiting").closest("[data-tone]"),
-    ).toHaveAttribute("data-tone", "warning");
+      screen.queryByRole("heading", { name: "Needs Attention" }),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Active Technicians").closest("[data-tone]"),
-    ).toHaveAttribute("data-tone", "success");
-    expect(
-      screen.getByText("Urgent Cases").closest("[data-tone]"),
-    ).toHaveAttribute("data-tone", "error");
+      screen.queryByRole("heading", { name: "Pending Requests" }),
+    ).not.toBeInTheDocument();
+
+    const source = readFileSync("src/pages/admin/Dashboard.jsx", "utf8");
+    expect(source).not.toContain('axiosInstance.get("/technician/requests"');
+    expect(source).not.toContain('status !== "inactive"');
   });
 
   it("uses rounded Technician avatars and typed recent-activity icons", async () => {
-    const { container } = renderDashboard();
+    renderDashboard();
 
     const avatar = await screen.findByRole("img", {
       name: "Technician One profile",
@@ -146,7 +141,10 @@ describe("Admin Dashboard hierarchy", () => {
     expect(screen.getByText("Technician reassigned")).toBeInTheDocument();
     expect(screen.queryByText("Technician Reassigned")).not.toBeInTheDocument();
 
-    const activityIcon = container.querySelector(".lucide-user-round-check");
+    const auditActivity = screen.getByRole("region", {
+      name: "Recent Audit Activity",
+    });
+    const activityIcon = auditActivity.querySelector(".lucide-user-round-check");
     expect(activityIcon).toBeInTheDocument();
     expect(activityIcon.parentElement).toHaveClass(
       "rounded-full",
@@ -155,100 +153,64 @@ describe("Admin Dashboard hierarchy", () => {
     );
   });
 
-  it("keeps request and oversight actions navigation-only", async () => {
+  it("keeps workload and Audit Log navigation available", async () => {
     renderDashboard();
 
-    const requestLinks = await screen.findAllByRole("link", {
-      name: "Open Request",
-    });
-    expect(requestLinks).not.toHaveLength(0);
-    requestLinks.forEach((link) => {
-      expect(link).toHaveAttribute(
-        "href",
-        "/admin/requests?requestId=request-1&status=all",
-      );
-    });
-
     expect(
-      screen.getByRole("link", { name: "View Workload" }),
+      await screen.findByRole("link", { name: "View Workload" }),
     ).toHaveAttribute("href", "/admin/work-queue");
     expect(
       screen.getByRole("link", { name: "View Audit Logs" }),
     ).toHaveAttribute("href", "/admin/audit-logs");
+
+    const sidebarSource = readFileSync("src/components/layout/Sidebar.jsx", "utf8");
+    expect(sidebarSource).toContain('path: "/admin/requests"');
+    expect(sidebarSource).toContain('path: "/admin/work-queue"');
+    expect(sidebarSource).toContain('path: "/admin/audit-logs"');
 
     expect(
       screen.queryByRole("button", { name: /assign|start|complete/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("routes inactive Technician review to canonical Technician Users mode", async () => {
-    setResponses({
-      ...populatedResponses,
-      "/user?role=technician": [
-        {
-          ...populatedResponses["/user?role=technician"][0],
-          status: "inactive",
-        },
-      ],
-    });
+  it("renders only the approved Dashboard sections in the requested order", async () => {
     renderDashboard();
 
-    expect(
-      await screen.findByRole("link", {
-        name: "Review: Technician is inactive",
-      }),
-    ).toHaveAttribute("href", "/admin/users?role=technician");
-  });
-
-  it("keeps the approved compact sections in two responsive pairings", async () => {
-    renderDashboard();
-
-    const immediateWork = await screen.findByRole("region", {
-      name: "Immediate Admin work",
+    const overview = await screen.findByRole("heading", { name: "Overview" });
+    const details = screen.getByRole("region", {
+      name: "Dashboard details",
     });
-    const operationalOverview = screen.getByRole("region", {
-      name: "Operational overview",
+    const workload = within(details).getByRole("heading", {
+      name: "Technician Workload",
+    });
+    const audit = within(details).getByRole("heading", {
+      name: "Recent Audit Activity",
     });
 
     expect(
-      within(immediateWork).getByRole("heading", { name: "Needs Attention" }),
-    ).toBeInTheDocument();
+      overview.compareDocumentPosition(workload) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
-      within(immediateWork).getByRole("heading", { name: "Pending Requests" }),
-    ).toBeInTheDocument();
-    expect(
-      within(operationalOverview).getByRole("heading", {
-        name: "Recent Admin Activity",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(operationalOverview).getByRole("heading", {
-        name: "Technician Workload",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Barangays Needing Attention" }),
-    ).not.toBeInTheDocument();
-    expect(axiosInstance.get).not.toHaveBeenCalledWith(
-      "/admin/barangays/insights",
-    );
+      workload.compareDocumentPosition(audit) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(3);
   });
 
   it("renders calm empty states without technical copy", async () => {
     setResponses({
+      "/admin/stats": { totalUsers: 0, farmers: 0, technicians: 0, animals: 0 },
       "/admin/technician-workload-summary": { technicians: [] },
       "/user?role=technician": [],
-      "/technician/requests": { requests: [] },
       "/audit-logs": { logs: [] },
     });
 
     renderDashboard();
 
     await waitFor(() =>
-      expect(screen.getByText("All caught up")).toBeInTheDocument(),
+      expect(screen.getByText("No workload information")).toBeInTheDocument(),
     );
-    expect(screen.getByText("No pending requests")).toBeInTheDocument();
-    expect(screen.getByText("No workload information")).toBeInTheDocument();
     expect(screen.getByText("No recent activity")).toBeInTheDocument();
 
     document.querySelectorAll("[data-empty-state]").forEach((emptyState) => {
@@ -269,15 +231,16 @@ describe("Admin Dashboard hierarchy", () => {
 
     await screen.findByText("Some dashboard sections are unavailable");
     expect(
-      screen.getByRole("heading", { name: "Pending Requests" }),
+      screen.getByRole("heading", { name: "Overview" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("We could not load recent Admin activity."),
+      screen.getByText("We could not load recent audit activity."),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Technician Workload" }),
     ).toBeInTheDocument();
   });
+
   it("uses the narrow workload endpoint and preserves the 45-second polling cadence", async () => {
     renderDashboard();
 
@@ -285,11 +248,15 @@ describe("Admin Dashboard hierarchy", () => {
     expect(axiosInstance.get).toHaveBeenCalledWith(
       "/admin/technician-workload-summary",
     );
+    expect(axiosInstance.get).toHaveBeenCalledWith("/admin/stats");
     expect(axiosInstance.get).not.toHaveBeenCalledWith("/admin/monitoring");
 
     const source = readFileSync("src/pages/admin/Dashboard.jsx", "utf8");
     expect(source).toContain("refetchInterval: 1000 * 45");
     expect(source).not.toContain('axiosInstance.get("/admin/monitoring")');
+    expect(source).not.toContain('axiosInstance.get("/technician/requests")');
+    await screen.findByText("Technician One");
+    expect(screen.getByText("active work")).toBeInTheDocument();
   });
 
   it("maps duplicate Technician names by stable IDs", async () => {
