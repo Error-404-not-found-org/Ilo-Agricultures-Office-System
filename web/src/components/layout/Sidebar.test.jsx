@@ -208,7 +208,7 @@ describe("Admin Sidebar navigation", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign Out" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Sign Out" })).toHaveClass(
-      "justify-center",
+      "justify-start",
     );
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
@@ -274,6 +274,49 @@ describe("Admin Sidebar navigation", () => {
     expect(dashboard).toHaveAttribute("aria-current", "page");
     expect(dashboard).toHaveClass("bg-primary", "text-primary-content");
     expect(dashboard).toHaveClass("focus-visible:outline-primary");
+  });
+
+  it("shows destination tooltips on collapsed hover and keyboard focus only", () => {
+    const collapsed = renderSidebar("/admin/dashboard", { collapsed: true });
+    const users = screen.getByRole("link", { name: "Users" });
+
+    expect(screen.queryByRole("tooltip", { name: "Users" }))
+      .not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(users.parentElement);
+    expect(screen.getByRole("tooltip", { name: "Users" })).toBeVisible();
+
+    fireEvent.mouseLeave(users.parentElement);
+    expect(screen.queryByRole("tooltip", { name: "Users" }))
+      .not.toBeInTheDocument();
+
+    const tooltipLabels = [
+      "Users",
+      "Requests",
+      "Workload",
+      "Reports",
+      "Audit Logs",
+      "Settings",
+    ];
+    for (const label of tooltipLabels) {
+      const link = screen.getByRole("link", { name: label });
+      expect(link).toHaveAttribute("aria-describedby");
+    }
+
+    fireEvent.focus(users);
+    expect(screen.getByRole("tooltip", { name: "Users" })).toBeVisible();
+    fireEvent.blur(users);
+
+    collapsed.unmount();
+    renderSidebar("/admin/dashboard");
+
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Users" })).toHaveTextContent(
+      "Users",
+    );
+    expect(screen.getByRole("link", { name: "Users" })).not.toHaveAttribute(
+      "aria-describedby",
+    );
   });
 
   it("gives navigation icons hover and focus motion with a reduced-motion fallback", () => {

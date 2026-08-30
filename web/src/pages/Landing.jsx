@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import AuthShell from "../components/auth/AuthShell";
 import axiosInstance from "../lib/axios";
 import {
+  classifyStaffBootstrapFailure,
   getStaffAccessNavigationState,
   STAFF_SIGN_IN_INTENT_KEY,
 } from "../config/staffAccess";
@@ -31,6 +33,8 @@ export default function Landing() {
   const [isHandlingStaffAccessFeedback, setIsHandlingStaffAccessFeedback] =
     useState(() => Boolean(location.state?.staffAccessMessage));
   const [isRejectingStaffAccess, setIsRejectingStaffAccess] = useState(false);
+  const [staffAccessIssue, setStaffAccessIssue] = useState(null);
+  const [staffAccessRetry, setStaffAccessRetry] = useState(0);
   const hasStaffSignInIntent =
     window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY) === "true";
 
@@ -62,8 +66,8 @@ export default function Landing() {
       return () => {};
     }
 
-    const rejectStaffAccess = async (role) => {
-      const navigationState = getStaffAccessNavigationState(role);
+    const rejectStaffAccess = async (role, message) => {
+      const navigationState = getStaffAccessNavigationState(role, message);
       setIsHandlingStaffAccessFeedback(true);
       setIsRejectingStaffAccess(true);
       window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
@@ -96,20 +100,28 @@ export default function Landing() {
 
         const role = response.data?.user?.role;
         if (role === "admin") {
+          setStaffAccessIssue(null);
           window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
           navigate("/admin/dashboard", { replace: true });
           return;
         }
         if (role === "technician") {
+          setStaffAccessIssue(null);
           window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
           navigate("/technician/dashboard", { replace: true });
           return;
         }
 
         await rejectStaffAccess(role);
-      } catch {
+      } catch (error) {
         if (cancelled) return;
-        await rejectStaffAccess();
+        const failure = classifyStaffBootstrapFailure(error);
+        if (failure.kind === "server-unavailable") {
+          setIsHandlingStaffAccessFeedback(true);
+          setStaffAccessIssue(failure.message);
+          return;
+        }
+        await rejectStaffAccess(undefined, failure.message);
       }
     };
 
@@ -124,7 +136,31 @@ export default function Landing() {
     isSignedIn,
     navigate,
     signOut,
+    staffAccessRetry,
   ]);
+
+  if (staffAccessIssue) {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title={staffAccessIssue.title}
+        description={staffAccessIssue.description}
+        helper="Your Clerk session is still active. Retrying will only check your BreedSmart profile again."
+      >
+        <button
+          type="button"
+          className="btn btn-primary w-full"
+          onClick={() => {
+            setStaffAccessIssue(null);
+            setStaffAccessRetry((current) => current + 1);
+          }}
+        >
+          <RefreshCw size={16} />
+          Try Again
+        </button>
+      </AuthShell>
+    );
+  }
 
   if (isRejectingStaffAccess) {
     return (

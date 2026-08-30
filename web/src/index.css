@@ -76,13 +76,43 @@
   --noise: 0;
 }
 
-
 @theme {
   --font-sans: "Outfit", sans-serif;
 }
 
 html {
   font-family: "Outfit", sans-serif;
+}
+
+/* AppLayout owns vertical scrolling. Legacy page roots may still declare
+   viewport height/overflow utilities, so normalize only the routed root. */
+.admin-main-scroll > * {
+  width: 100%;
+  min-height: 100%;
+  height: auto !important;
+  overflow-y: visible !important;
+}
+
+.drawer-side > .admin-sidebar {
+  height: 100vh;
+  min-height: 0;
+}
+
+@supports (height: 100dvh) {
+  .drawer-side > .admin-sidebar {
+    height: 100dvh;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .admin-main-scroll {
+    padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+  }
+
+  .admin-sidebar-footer {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
 }
 
 .auth-shell :where(a, button, input, select, textarea):focus-visible {

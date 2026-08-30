@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { UserButton, useUser, useClerk } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
@@ -35,6 +36,63 @@ const SidebarNavIcon = ({ children }) => (
     {children}
   </span>
 );
+
+const CollapsedNavTooltip = ({ label, children, enabled = true }) => {
+  const anchorRef = useRef(null);
+  const tooltipId = useId();
+  const [position, setPosition] = useState(null);
+
+  const showTooltip = () => {
+    if (!enabled) return;
+    const bounds = anchorRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    setPosition({
+      left: bounds.right + 10,
+      top: bounds.top + bounds.height / 2,
+    });
+  };
+
+  const hideTooltip = () => setPosition(null);
+
+  useEffect(() => {
+    if (!position) return undefined;
+    const dismissTooltip = () => setPosition(null);
+    window.addEventListener("resize", dismissTooltip);
+    window.addEventListener("scroll", dismissTooltip, true);
+    return () => {
+      window.removeEventListener("resize", dismissTooltip);
+      window.removeEventListener("scroll", dismissTooltip, true);
+    };
+  }, [position]);
+
+  if (!enabled) return children;
+
+  return (
+    <div
+      ref={anchorRef}
+      className="w-full"
+      onMouseEnter={enabled ? showTooltip : undefined}
+      onMouseLeave={enabled ? hideTooltip : undefined}
+      onFocusCapture={enabled ? showTooltip : undefined}
+      onBlurCapture={enabled ? hideTooltip : undefined}
+    >
+      {React.cloneElement(children, { "aria-describedby": tooltipId })}
+      {position
+        ? createPortal(
+            <span
+              id={tooltipId}
+              role="tooltip"
+              className="pointer-events-none fixed z-50 -translate-y-1/2 whitespace-nowrap rounded-field bg-neutral px-2 py-1 text-sm font-medium text-neutral-content shadow-sm"
+              style={{ left: position.left, top: position.top }}
+            >
+              {label}
+            </span>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+};
 
 export default function Sidebar() {
   const location = useLocation();
@@ -326,17 +384,18 @@ export default function Sidebar() {
   const isServiceRecordsActive = ADMIN_GROUPS.find(
     (item) => item.type === "group",
   )?.children.some((item) => isPathActive(item.path));
-  const serviceRecordsExpanded =
-    isServiceRecordsActive || isServiceRecordsOpen;
+  const serviceRecordsExpanded = isServiceRecordsActive || isServiceRecordsOpen;
 
   return (
     <>
       <aside
-        className={`relative text-base-content flex flex-col h-screen border-r border-base-300 transition-all duration-300 ease-in-out lg:translate-x-0 ${isAdmin ? "bg-base-100" : "bg-base-200"} ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
+        className={`admin-sidebar relative flex min-h-0 flex-col border-r border-base-300 text-base-content transition-all duration-300 ease-in-out lg:translate-x-0 ${isAdmin ? "bg-base-100" : "bg-base-200"} ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
       >
         {/* Logo */}
         {isCollapsed ? (
-          <div className={`flex flex-col items-center gap-3 border-b border-base-300/80 bg-base-100 group transition-all duration-300 ${isAdmin ? "py-5" : "py-6"}`}>
+          <div
+            className={`group flex shrink-0 flex-col items-center gap-3 border-b border-base-300/80 bg-base-100 transition-all duration-300 ${isAdmin ? "py-5" : "py-6"}`}
+          >
             <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
               <img
                 src="/logo.png"
@@ -353,7 +412,9 @@ export default function Sidebar() {
             </button>
           </div>
         ) : (
-          <div className={`flex items-center justify-between border-b border-base-300/80 p-6 group transition-all duration-300 ${isAdmin ? "bg-base-100" : "bg-base-200"}`}>
+          <div
+            className={`group flex shrink-0 items-center justify-between border-b border-base-300/80 p-6 transition-all duration-300 ${isAdmin ? "bg-base-100" : "bg-base-200"}`}
+          >
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
                 <img
@@ -384,7 +445,7 @@ export default function Sidebar() {
         {/* Nav */}
         <nav
           aria-label={`${isAdmin ? "Admin" : "Technician"} navigation`}
-          className={`flex min-h-0 flex-1 flex-col flex-nowrap overflow-y-auto overflow-x-hidden custom-scrollbar ${isAdmin ? "space-y-1 px-3 py-4" : "space-y-2 px-4 py-6"}`}
+          className={`custom-scrollbar flex min-h-0 flex-1 flex-col flex-nowrap overflow-x-hidden overflow-y-auto overscroll-contain ${isAdmin ? "space-y-1 px-3 py-4" : "space-y-2 px-4 py-6"}`}
         >
           {GROUPS.map((item, idx) => {
             // Section label
@@ -414,11 +475,7 @@ export default function Sidebar() {
 
               if (isCollapsed) {
                 return (
-                  <div
-                    key={item.label}
-                    className="tooltip tooltip-right w-full"
-                    data-tip={item.label}
-                  >
+                  <CollapsedNavTooltip key={item.label} label={item.label}>
                     <button
                       type="button"
                       aria-label={`${item.label}${groupActive ? ", current section" : ""}`}
@@ -429,14 +486,12 @@ export default function Sidebar() {
                         setIsServiceRecordsOpen(true);
                       }}
                       className={`group btn btn-ghost h-11 min-h-11 w-full justify-center rounded-xl p-0 ${adminNavFocus} ${
-                        groupActive
-                          ? adminActiveNav
-                          : adminInactiveNav
+                        groupActive ? adminActiveNav : adminInactiveNav
                       }`}
                     >
                       <SidebarNavIcon>{item.icon}</SidebarNavIcon>
                     </button>
-                  </div>
+                  </CollapsedNavTooltip>
                 );
               }
 
@@ -480,9 +535,7 @@ export default function Sidebar() {
                             to={child.path}
                             aria-current={childActive ? "page" : undefined}
                             className={`group flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${adminNavFocus} ${
-                              childActive
-                                ? adminActiveNav
-                                : adminInactiveNav
+                              childActive ? adminActiveNav : adminInactiveNav
                             }`}
                           >
                             <SidebarNavIcon>{child.icon}</SidebarNavIcon>
@@ -499,10 +552,10 @@ export default function Sidebar() {
             // Single link
             const isActive = isPathActive(item.path);
             return (
-              <div
+              <CollapsedNavTooltip
                 key={item.path}
-                className={isCollapsed ? "tooltip tooltip-right w-full" : ""}
-                data-tip={isCollapsed ? item.label : undefined}
+                label={item.label}
+                enabled={isCollapsed}
               >
                 <Link
                   to={item.path}
@@ -541,14 +594,14 @@ export default function Sidebar() {
                     <span className="status status-error absolute right-1.5 top-1.5" />
                   )}
                 </Link>
-              </div>
+              </CollapsedNavTooltip>
             );
           })}
         </nav>
 
         {/* Footer User Block Integration */}
         <div
-          className={`border-t transition-all duration-300 ${isAdmin ? "border-base-300 bg-base-200/70 p-3" : "border-base-300/80 bg-base-200 p-4"} ${isCollapsed ? `flex flex-col items-center ${isAdmin ? "gap-2" : "gap-3"}` : isAdmin ? "space-y-1" : ""}`}
+          className={`admin-sidebar-footer shrink-0 border-t transition-all duration-300 ${isAdmin ? "border-base-300 bg-base-200/70 p-3" : "border-base-300/80 bg-base-200 p-4"} ${isCollapsed ? `flex flex-col items-center ${isAdmin ? "gap-2" : "gap-3"}` : isAdmin ? "space-y-1" : ""}`}
         >
           {isAdmin ? (
             <div
@@ -562,7 +615,7 @@ export default function Sidebar() {
                 className={`btn btn-ghost flex h-auto min-h-0 cursor-pointer items-center border-0 text-base-content/75 transition-colors hover:bg-base-100 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   isCollapsed
                     ? "mx-auto h-11 w-11 justify-center rounded-full p-1"
-                    : "w-full gap-3 rounded-xl p-2.5"
+                    : "w-full justify-start gap-3 rounded-xl p-2.5"
                 }`}
               >
                 {user?.imageUrl ? (
@@ -641,8 +694,8 @@ export default function Sidebar() {
               onClick={handleLogout}
               className={
                 isAdmin
-                  ? "group btn btn-ghost min-h-11 w-full justify-center gap-3 px-3 text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
-                  : "group btn btn-ghost btn-sm w-full text-error hover:bg-error/10"
+                  ? "group btn btn-ghost min-h-11 w-full justify-start gap-3 px-3 text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+                  : "group btn btn-ghost btn-sm w-full justify-start text-error hover:bg-error/10"
               }
             >
               <SidebarNavIcon>

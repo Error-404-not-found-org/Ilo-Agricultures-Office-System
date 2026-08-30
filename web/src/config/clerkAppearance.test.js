@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   clerkAppearance,
   clerkEmbeddedAppearance,
+  clerkPublicSignInAppearance,
 } from "./clerkAppearance";
 
 describe("BreedSmart Clerk appearance", () => {
@@ -62,5 +63,22 @@ describe("BreedSmart Clerk appearance", () => {
       boxShadow: "none",
     });
     expect(clerkAppearance.elements.card).not.toContain("bg-transparent");
+  });
+
+  it("keeps the light-only public landing sign-in visually coherent", () => {
+    expect(clerkPublicSignInAppearance.variables).toMatchObject({
+      colorPrimary: "#17663a",
+      colorPrimaryForeground: "#ffffff",
+      colorBackground: "#ffffff",
+      colorForeground: "#0f172a",
+      colorMuted: "#f8fafc",
+      colorMutedForeground: "#475569",
+      colorBorder: "#e2e8f0",
+    });
+    expect(clerkPublicSignInAppearance.elements.cardBox).toContain("bg-white");
+    expect(clerkPublicSignInAppearance.elements.card).toContain("bg-white");
+    expect(clerkPublicSignInAppearance.elements.headerTitle).toContain(
+      "text-slate-900",
+    );
   });
 });

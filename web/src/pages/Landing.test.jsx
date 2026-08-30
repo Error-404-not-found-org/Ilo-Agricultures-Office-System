@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -217,6 +217,41 @@ describe("Landing staff role resolution", () => {
     },
   );
 
+  it("keeps Clerk authenticated and offers retry when the BreedSmart server is unavailable", async () => {
+    markStaffSignIn();
+    axiosInstance.post
+      .mockRejectedValueOnce({
+        response: {
+          status: 503,
+          data: {
+            code: "USER_SYNC_UNAVAILABLE",
+            retryable: true,
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { user: { role: "admin" } } });
+
+    renderLanding();
+
+    expect(await screen.findByRole("heading", { name: "Connection problem" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/could not reach the server to verify your staff profile/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/not registered/i)).not.toBeInTheDocument();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent(
+        "/admin/dashboard",
+      );
+    });
+    expect(axiosInstance.post).toHaveBeenCalledTimes(2);
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
   it("signs an unrecognized profile out with the generic access message", async () => {
     markStaffSignIn();
     axiosInstance.post.mockResolvedValue({
@@ -239,7 +274,7 @@ describe("Landing staff role resolution", () => {
     });
   });
 
-  it("signs out safely when no BreedSmart profile can be confirmed", async () => {
+  it("reports a genuine missing BreedSmart profile separately and signs out safely", async () => {
     markStaffSignIn();
     axiosInstance.post.mockRejectedValue({
       response: { status: 404, data: { message: "Profile not found" } },
@@ -252,10 +287,10 @@ describe("Landing staff role resolution", () => {
     });
     await waitFor(() => {
       expect(mocks.toastError).toHaveBeenCalledWith(
-        "Staff account not recognized",
+        "BreedSmart profile not found",
         {
           description:
-            "This account does not have access to the BreedSmart staff workspace. Contact your BreedSmart administrator.",
+            "This Clerk account is authenticated but is not registered in BreedSmart. Contact your BreedSmart administrator.",
         },
       );
     });

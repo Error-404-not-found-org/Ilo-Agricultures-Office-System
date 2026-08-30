@@ -81,6 +81,54 @@ export const clerkStaffSignInAppearance = {
   },
 };
 
+export const clerkPublicSignInAppearance = {
+  ...clerkAppearance,
+  variables: {
+    ...clerkAppearance.variables,
+    colorPrimary: "#17663a",
+    colorPrimaryForeground: "#ffffff",
+    colorDanger: "#dc2626",
+    colorSuccess: "#15803d",
+    colorWarning: "#d97706",
+    colorNeutral: "#1d2b27",
+    colorForeground: "#0f172a",
+    colorMuted: "#f8fafc",
+    colorMutedForeground: "#475569",
+    colorBackground: "#ffffff",
+    colorInput: "#ffffff",
+    colorInputForeground: "#0f172a",
+    colorRing: "#17663a",
+    colorShadow: "#1d2b27",
+    colorBorder: "#e2e8f0",
+    colorModalBackdrop: "#1d2b27",
+  },
+  elements: {
+    ...clerkAppearance.elements,
+    cardBox:
+      "w-full overflow-hidden rounded-box border border-slate-200 bg-white shadow-sm",
+    card: "w-full bg-white shadow-none",
+    headerTitle: "text-2xl font-extrabold tracking-tight text-slate-900",
+    headerSubtitle: "text-sm leading-5 text-slate-600",
+    socialButtonsBlockButton:
+      "h-11 rounded-xl border border-slate-200 bg-white text-slate-900 shadow-none hover:bg-slate-50",
+    dividerLine: "bg-slate-200",
+    dividerText: "text-slate-600",
+    formFieldLabel: "text-sm font-semibold text-slate-800",
+    formFieldInput:
+      "h-11 rounded-xl border-slate-300 bg-white text-slate-900 shadow-none focus:border-[#17663a] focus:ring-2 focus:ring-[#17663a]/20",
+    formButtonPrimary:
+      "h-11 rounded-xl bg-[#17663a] font-semibold text-white shadow-none hover:bg-[#12512e] focus:ring-2 focus:ring-[#17663a]/30",
+    formFieldAction: "font-semibold text-[#17663a] hover:text-[#12512e]",
+    identityPreview:
+      "rounded-xl border border-slate-200 bg-slate-50 shadow-none",
+    identityPreviewEditButton: "text-[#17663a]",
+    footerActionText: {
+      ...clerkAppearance.elements.footerActionText,
+      color: "#475569",
+    },
+  },
+};
+
 export const clerkLocalization = {
   signIn: {
     start: {

@@ -1,7 +1,7 @@
 import { SignInButton } from "@clerk/clerk-react";
 import { LogIn } from "lucide-react";
 
-import { clerkAppearance } from "../../config/clerkAppearance";
+import { clerkPublicSignInAppearance } from "../../config/clerkAppearance";
 import { STAFF_SIGN_IN_INTENT_KEY } from "../../config/staffAccess";
 
 const variantClasses = {
@@ -32,7 +32,7 @@ export default function StaffSignInButton({
     <SignInButton
       mode="modal"
       withSignUp={false}
-      appearance={clerkAppearance}
+      appearance={clerkPublicSignInAppearance}
     >
       <button
         type="button"
