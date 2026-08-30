@@ -47,6 +47,10 @@ export function getRequestBoardViewSelection(view, { isAdmin = false } = {}) {
   };
 }
 
+export function shouldIncludeOperationalTasks({ isAdmin = false } = {}) {
+  return !isAdmin;
+}
+
 export function getRequestAssigneeId(request = {}) {
   const raw = request.raw || request;
   const assignee =

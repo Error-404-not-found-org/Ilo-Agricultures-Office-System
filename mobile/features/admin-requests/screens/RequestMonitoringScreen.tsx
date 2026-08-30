@@ -13,45 +13,49 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { AsyncState, StatusBadge, SearchBar, SelectDropdown } from "@/components/shared";
+import {
+  AsyncState,
+  StatusBadge,
+  SearchBar,
+  SelectDropdown,
+} from "@/components/shared";
 import { useRouter } from "expo-router";
-import { CalendarDays, MapPin, TriangleAlert, UserRound } from "lucide-react-native";
+import { CalendarDays, MapPin, UserRound } from "lucide-react-native";
 import {
   getAdminRequestLocation,
   getAdminRequestSchedule,
   getAdminRequestStatusLabel,
-  isMeaningfullyUrgent,
 } from "../utils/adminRequestPresentation";
+import {
+  ACTIVE_AI_REQUEST_STATUSES,
+  ACTIVE_HEALTH_REQUEST_STATUSES,
+  type AdminRequestStatusFilter,
+  buildActiveRequestUrl,
+  matchesAdminRequestStatus,
+  unwrapAdminRequestList,
+} from "../utils/adminRequestList";
 
 const PRIMARY = "#1e3a5f";
-const TABS = ["All", "AI Requests", "Health Requests", "Cancellations"];
+const TABS = ["Active", "AI", "Health", "Cancellations"];
 
 const STATUS_OPTIONS = [
-  { label: "All Statuses", value: "all" },
+  { label: "All Active Statuses", value: "all" },
   { label: "Unassigned", value: "pending" },
   { label: "Under Review", value: "triaged" },
   { label: "Assigned", value: "assigned" },
   { label: "Scheduled", value: "scheduled" },
   { label: "In Progress", value: "in-progress" },
-  { label: "Completed/Resolved", value: "done" },
-  { label: "Cancelled", value: "cancelled" },
-];
-
-const URGENCY_OPTIONS = [
-  { label: "All Urgency", value: "all" },
-  { label: "Needs urgent attention", value: "urgent" },
 ];
 
 export default function RequestMonitoringScreen() {
   const { colors, isDark } = useTheme();
   const api = useApi();
   const router = useRouter();
-  
+
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [urgencyFilter, setUrgencyFilter] = useState("all");
-  const [techFilter, setTechFilter] = useState("all");
+  const [statusFilter, setStatusFilter] =
+    useState<AdminRequestStatusFilter>("all");
 
   // 1. Fetch AI requests
   const {
@@ -63,13 +67,10 @@ export default function RequestMonitoringScreen() {
   } = useQuery<any[]>({
     queryKey: ["admin-ai-requests"],
     queryFn: async () => {
-      const res = await api.get("/ai-request?limit=100");
-      // Could be wrapped in { data: [...] } or array
-      return Array.isArray(res.data?.data)
-        ? res.data.data
-        : Array.isArray(res.data)
-        ? res.data
-        : [];
+      const res = await api.get(
+        buildActiveRequestUrl("/ai-request", ACTIVE_AI_REQUEST_STATUSES),
+      );
+      return unwrapAdminRequestList(res.data);
     },
     staleTime: 1000 * 60 * 2,
   });
@@ -84,28 +85,15 @@ export default function RequestMonitoringScreen() {
   } = useQuery<any[]>({
     queryKey: ["admin-health-requests"],
     queryFn: async () => {
-      const res = await api.get("/health-request?limit=100");
-      return Array.isArray(res.data?.data)
-        ? res.data.data
-        : Array.isArray(res.data)
-        ? res.data
-        : [];
+      const res = await api.get(
+        buildActiveRequestUrl(
+          "/health-request",
+          ACTIVE_HEALTH_REQUEST_STATUSES,
+        ),
+      );
+      return unwrapAdminRequestList(res.data);
     },
     staleTime: 1000 * 60 * 2,
-  });
-
-  // 3. Fetch Technicians
-  const {
-    data: technicians = [],
-    isLoading: isTechsLoading,
-    refetch: refetchTechnicians,
-  } = useQuery<any[]>({
-    queryKey: ["admin-technicians-list"],
-    queryFn: async () => {
-      const res = await api.get("/admin/list-users?role=technician");
-      return Array.isArray(res.data) ? res.data : [];
-    },
-    staleTime: 1000 * 60 * 5,
   });
 
   const isLoading = isAiLoading || isHealthLoading;
@@ -113,20 +101,8 @@ export default function RequestMonitoringScreen() {
   const isRefreshing = isRefetchingAi || isRefetchingHealth;
 
   const handleRefresh = async () => {
-    await Promise.all([refetchAi(), refetchHealth(), refetchTechnicians()]);
+    await Promise.all([refetchAi(), refetchHealth()]);
   };
-
-  // Convert technicians list to dropdown options
-  const techOptions = useMemo(() => {
-    const list = technicians.map((tech) => ({
-      label: tech.name || "Technician",
-      value: tech._id,
-    }));
-    return [
-      { label: isTechsLoading ? "Loading Technicians…" : "All Technicians", value: "all" },
-      ...list,
-    ];
-  }, [isTechsLoading, technicians]);
 
   // Combine and normalize requests
   const combinedRequests = useMemo(() => {
@@ -135,12 +111,16 @@ export default function RequestMonitoringScreen() {
       type: "ai",
       farmerName: req.farmerId?.name || "No Farmer",
       farmerPhone: req.farmerId?.phoneNumber || "No phone",
-      animalTag: req.animalId?.earTag || req.animalId?.animalId || "Unknown Animal",
+      animalTag:
+        req.animalId?.earTag || req.animalId?.animalId || "Unknown Animal",
       animalBreed: req.animalId?.breed || "Unknown Breed",
       status: req.status || "pending",
-      urgency: "low", // AI requests are generally low/routine urgency
-      technicianName: req.technicianId?.name || req.approvedBy?.name || "Unassigned",
-      technicianId: req.technicianId?._id || req.approvedBy?._id || null,
+      technicianName:
+        req.technicianId?.name ||
+        req.approvedBy?.name ||
+        (req.technicianId || req.approvedBy
+          ? "Assigned Technician"
+          : "Unassigned"),
       createdAt: new Date(req.createdAt || req.inseminationDate || Date.now()),
       cancellationStatus: req.cancellationStatus || "none",
       cancellationReason: req.cancellationReason || "",
@@ -153,12 +133,16 @@ export default function RequestMonitoringScreen() {
       type: "health",
       farmerName: req.farmerId?.name || "No Farmer",
       farmerPhone: req.farmerId?.phoneNumber || "No phone",
-      animalTag: req.animalId?.earTag || req.animalId?.animalId || "Unknown Animal",
+      animalTag:
+        req.animalId?.earTag || req.animalId?.animalId || "Unknown Animal",
       animalBreed: req.animalId?.breed || "Unknown Breed",
       status: req.status || "pending",
-      urgency: req.urgency || "medium",
-      technicianName: req.handledBy?.name || req.assignedTechnicianId?.name || "Unassigned",
-      technicianId: req.handledBy?._id || req.assignedTechnicianId?._id || null,
+      technicianName:
+        req.handledBy?.name ||
+        req.assignedTechnicianId?.name ||
+        (req.handledBy || req.assignedTechnicianId
+          ? "Assigned Technician"
+          : "Unassigned"),
       createdAt: new Date(req.createdAt || Date.now()),
       cancellationStatus: req.cancellationStatus || "none",
       cancellationReason: req.cancellationReason || "",
@@ -166,7 +150,9 @@ export default function RequestMonitoringScreen() {
       schedule: getAdminRequestSchedule(req),
     }));
 
-    return [...aiList, ...healthList].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return [...aiList, ...healthList].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
   }, [aiRequests, healthRequests]);
 
   // Filter requests based on tab and dropdown filters
@@ -182,27 +168,16 @@ export default function RequestMonitoringScreen() {
       list = list.filter((r) => r.cancellationStatus === "requested");
     }
 
-    // Status Dropdown Filter (Note: Map UI done status to DB done / resolved)
+    // Secondary status filtering applies only to the active records selected
+    // by the server queries above.
     if (statusFilter !== "all") {
-      if (statusFilter === "done") {
-        list = list.filter((r) => ["done", "completed", "resolved"].includes(r.status));
-      } else if (statusFilter === "assigned") {
-        list = list.filter((r) => r.status === "assigned" || r.status === "approved");
-      } else if (statusFilter === "in-progress") {
-        list = list.filter((r) => r.status === "in-progress" || r.status === "in_progress");
-      } else {
-        list = list.filter((r) => r.status === statusFilter);
-      }
-    }
-
-    // Urgency Dropdown Filter
-    if (urgencyFilter === "urgent") {
-      list = list.filter((r) => isMeaningfullyUrgent(r.urgency));
-    }
-
-    // Technician Dropdown Filter
-    if (techFilter !== "all") {
-      list = list.filter((r) => r.technicianId === techFilter);
+      list = list.filter((r) =>
+        matchesAdminRequestStatus(
+          r.type === "ai" ? "ai" : "health",
+          r.status,
+          statusFilter,
+        ),
+      );
     }
 
     // Search Query Filter (Farmer name or animal tag)
@@ -212,12 +187,12 @@ export default function RequestMonitoringScreen() {
         (r) =>
           r.farmerName.toLowerCase().includes(query) ||
           r.animalTag.toLowerCase().includes(query) ||
-          r.animalBreed.toLowerCase().includes(query)
+          r.animalBreed.toLowerCase().includes(query),
       );
     }
 
     return list;
-  }, [combinedRequests, activeTab, statusFilter, urgencyFilter, techFilter, searchQuery]);
+  }, [combinedRequests, activeTab, statusFilter, searchQuery]);
 
   return (
     <ScreenLayout>
@@ -234,16 +209,42 @@ export default function RequestMonitoringScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={() => router.back()}
+          style={{
+            width: 48,
+            height: 48,
+            alignItems: "center",
+            justifyContent: "center",
+            marginLeft: -8,
+          }}
+        >
+          <MaterialCommunityIcons
+            name="arrow-left"
+            size={24}
+            color={colors.textPrimary}
+          />
         </TouchableOpacity>
-        <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
-          Service Requests Monitoring
+        <Text
+          style={{
+            fontFamily: "Outfit_800ExtraBold",
+            fontSize: 18,
+            color: colors.textPrimary,
+            marginLeft: 8,
+          }}
+        >
+          Requests
         </Text>
       </View>
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 12 }}>
         {/* Search */}
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search farmer name or ear tag..." />
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search farmer or animal..."
+        />
 
         {/* Tab view */}
         <ScrollView
@@ -280,39 +281,27 @@ export default function RequestMonitoringScreen() {
           ))}
         </ScrollView>
 
-        {/* Filters Row */}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-          <View style={{ flexGrow: 1, flexBasis: "48%" }}>
-            <SelectDropdown
-              label="Status"
-              options={STATUS_OPTIONS}
-              value={statusFilter}
-              onChange={setStatusFilter}
-            />
-          </View>
-          <View style={{ flexGrow: 1, flexBasis: "48%" }}>
-            <SelectDropdown
-              label="Urgency"
-              options={URGENCY_OPTIONS}
-              value={urgencyFilter}
-              onChange={setUrgencyFilter}
-            />
-          </View>
-          <View style={{ flexGrow: 1, flexBasis: "100%" }}>
-            <SelectDropdown
-              label="Technician"
-              options={techOptions}
-              value={techFilter}
-              onChange={setTechFilter}
-              searchable
-            />
-          </View>
+        <View style={{ marginBottom: 16 }}>
+          <SelectDropdown
+            label="Status"
+            options={STATUS_OPTIONS}
+            value={statusFilter}
+            onChange={(value) =>
+              setStatusFilter(value as AdminRequestStatusFilter)
+            }
+          />
         </View>
 
         {/* Request List */}
         <View style={{ flex: 1 }}>
           {isLoading ? (
-            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
               <ActivityIndicator size="large" color={PRIMARY} />
             </View>
           ) : isError ? (
@@ -327,18 +316,35 @@ export default function RequestMonitoringScreen() {
             <FlatList
               data={filteredRequests}
               keyExtractor={(item) => `${item.type}-${item._id}`}
-              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[PRIMARY]} />}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={handleRefresh}
+                  colors={[PRIMARY]}
+                />
+              }
               contentContainerStyle={{ paddingBottom: 80 }}
               ListEmptyComponent={
                 <View style={{ padding: 40, alignItems: "center" }}>
-                  <MaterialCommunityIcons name="bell-outline" size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
-                  <Text style={{ marginTop: 12, fontSize: 14, color: colors.textSecondary, fontFamily: "Outfit_600SemiBold" }}>
+                  <MaterialCommunityIcons
+                    name="bell-outline"
+                    size={48}
+                    color={colors.textSecondary}
+                    style={{ opacity: 0.5 }}
+                  />
+                  <Text
+                    style={{
+                      marginTop: 12,
+                      fontSize: 14,
+                      color: colors.textSecondary,
+                      fontFamily: "Outfit_600SemiBold",
+                    }}
+                  >
                     No service requests found
                   </Text>
                 </View>
               }
               renderItem={({ item }) => {
-                const isUrgent = isMeaningfullyUrgent(item.urgency);
                 const isCancellation = item.cancellationStatus === "requested";
 
                 return (
@@ -355,65 +361,150 @@ export default function RequestMonitoringScreen() {
                       padding: 16,
                       marginBottom: 12,
                       borderWidth: isCancellation ? 1.5 : 1,
-                      borderColor: isCancellation
-                        ? "#f59e0b"
-                        : isUrgent
-                        ? "#fca5a5"
-                        : colors.border,
+                      borderColor: isCancellation ? "#f59e0b" : colors.border,
                       shadowColor: "#000",
                       shadowOpacity: isDark ? 0 : 0.02,
                       shadowRadius: 8,
                       elevation: isDark ? 0 : 2,
                     }}
                   >
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
                         <MaterialCommunityIcons
                           name={item.type === "ai" ? "needle" : "medical-bag"}
                           size={18}
                           color={item.type === "ai" ? "#7c3aed" : "#ef4444"}
                         />
-                        <Text style={{ fontSize: 13, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
-                          {item.type === "ai" ? "Breeding/AI Request" : "Health Assistance"}
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontFamily: "Outfit_800ExtraBold",
+                            color: colors.textPrimary,
+                          }}
+                        >
+                          {item.type === "ai"
+                            ? "Breeding/AI Request"
+                            : "Health Assistance"}
                         </Text>
                       </View>
-                      <StatusBadge label={getAdminRequestStatusLabel(item.status)} />
+                      <StatusBadge
+                        label={getAdminRequestStatusLabel(item.status)}
+                      />
                     </View>
 
-                    <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: colors.textPrimary, marginBottom: 4 }}>
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        fontFamily: "Outfit_700Bold",
+                        color: colors.textPrimary,
+                        marginBottom: 4,
+                      }}
+                    >
                       Farmer: {item.farmerName}
                     </Text>
-                    <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 4 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontFamily: "Outfit_600SemiBold",
+                        color: colors.textSecondary,
+                        marginBottom: 4,
+                      }}
+                    >
                       Animal Tag: {item.animalTag} ({item.animalBreed})
                     </Text>
 
                     <View style={{ gap: 6, marginTop: 8 }}>
-                      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "flex-start",
+                          gap: 8,
+                        }}
+                      >
                         <MapPin size={15} color={colors.textMuted} />
-                        <Text style={{ flex: 1, fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{item.location}</Text>
+                        <Text
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            fontFamily: "Outfit_500Medium",
+                            color: colors.textSecondary,
+                          }}
+                        >
+                          {item.location}
+                        </Text>
                       </View>
                       {item.schedule ? (
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
                           <CalendarDays size={15} color={colors.textMuted} />
-                          <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>{item.schedule}</Text>
-                        </View>
-                      ) : null}
-                      {isUrgent ? (
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          <TriangleAlert size={15} color="#dc2626" />
-                          <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#dc2626" }}>Needs urgent attention</Text>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontFamily: "Outfit_500Medium",
+                              color: colors.textSecondary,
+                            }}
+                          >
+                            {item.schedule}
+                          </Text>
                         </View>
                       ) : null}
                     </View>
 
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8, borderTopWidth: 0.5, borderTopColor: colors.border, paddingTop: 8 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginTop: 8,
+                        borderTopWidth: 0.5,
+                        borderTopColor: colors.border,
+                        paddingTop: 8,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          flex: 1,
+                        }}
+                      >
                         <UserRound size={14} color={colors.textMuted} />
-                        <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontFamily: "Outfit_500Medium",
+                            color: colors.textSecondary,
+                          }}
+                        >
                           {item.technicianName}
                         </Text>
                       </View>
-                      <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: "Outfit_500Medium",
+                          color: colors.textSecondary,
+                        }}
+                      >
                         {item.createdAt.toLocaleDateString()}
                       </Text>
                     </View>
@@ -422,7 +513,9 @@ export default function RequestMonitoringScreen() {
                       <View
                         style={{
                           marginTop: 10,
-                          backgroundColor: isDark ? "rgba(245,158,11,0.1)" : "#fef3c7",
+                          backgroundColor: isDark
+                            ? "rgba(245,158,11,0.1)"
+                            : "#fef3c7",
                           padding: 10,
                           borderRadius: 12,
                           flexDirection: "row",
@@ -430,8 +523,19 @@ export default function RequestMonitoringScreen() {
                           gap: 6,
                         }}
                       >
-                        <MaterialCommunityIcons name="alert" size={14} color="#d97706" />
-                        <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#d97706", flex: 1 }}>
+                        <MaterialCommunityIcons
+                          name="alert"
+                          size={14}
+                          color="#d97706"
+                        />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontFamily: "Outfit_700Bold",
+                            color: "#d97706",
+                            flex: 1,
+                          }}
+                        >
                           Cancellation requested by farmer
                         </Text>
                       </View>

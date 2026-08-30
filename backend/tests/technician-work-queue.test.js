@@ -537,6 +537,84 @@ test("Technician Work Queue backend contract", async (t) => {
   );
 
   await t.test(
+    "Admin can filter paginated AI and Health requests by assigned Technician",
+    async () => {
+      state.inseminations = [
+        aiRecord({
+          _id: ids.scheduled,
+          approvedBy: ids.technician,
+          technicianId: ids.technician,
+        }),
+        aiRecord({
+          _id: ids.otherScheduled,
+          approvedBy: ids.otherTechnician,
+          technicianId: ids.otherTechnician,
+        }),
+      ];
+      state.healthRequests = [
+        {
+          _id: ids.health,
+          farmerId: farmer,
+          animalId: animal,
+          handledBy: ids.technician,
+          assignedTechnicianId: ids.technician,
+          status: "scheduled",
+          deletedAt: null,
+          createdAt: new Date("2026-08-03T00:00:00.000Z"),
+        },
+        {
+          _id: ids.otherHealth,
+          farmerId: farmer,
+          animalId: animal,
+          handledBy: ids.otherTechnician,
+          assignedTechnicianId: ids.otherTechnician,
+          status: "scheduled",
+          deletedAt: null,
+          createdAt: new Date("2026-08-04T00:00:00.000Z"),
+        },
+      ];
+      state.tasks = [];
+
+      const recorder = responseRecorder();
+      await getTechnicianRequests(
+        {
+          query: {
+            type: "all",
+            status: "all",
+            assignment: "all",
+            assignedTechnicianId: ids.technician,
+            includeOperationalTasks: "false",
+            page: "1",
+            limit: "6",
+          },
+          user: { _id: "507f1f77bcf86cd799439099", role: "admin" },
+        },
+        recorder.response,
+      );
+
+      assert.equal(recorder.statusCode, 200);
+      assert.equal(recorder.body.pagination.total, 2);
+      assert.deepEqual(
+        recorder.body.requests.map((request) => String(request.id)).sort(),
+        [ids.health, ids.scheduled].sort(),
+      );
+
+      const forbidden = responseRecorder();
+      await getTechnicianRequests(
+        {
+          query: {
+            assignment: "all",
+            assignedTechnicianId: ids.otherTechnician,
+          },
+          user: technicianUser,
+        },
+        forbidden.response,
+      );
+      assert.equal(forbidden.statusCode, 403);
+    },
+  );
+
+  await t.test(
     "Open Requests applies Field Area, capability, and Receive Requests eligibility",
     async () => {
       state.inseminations = [

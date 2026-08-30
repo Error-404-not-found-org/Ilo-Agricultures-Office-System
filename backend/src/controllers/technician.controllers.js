@@ -3357,6 +3357,7 @@ export const getTechnicianRequests = async (req, res) => {
       includeOperationalTasks,
       includeCounts,
       requestId,
+      assignedTechnicianId,
     } = req.query;
     page = Math.max(Number.parseInt(page, 10) || 1, 1);
     limit = Math.min(Math.max(Number.parseInt(limit, 10) || 10, 1), 50);
@@ -3528,6 +3529,33 @@ export const getTechnicianRequests = async (req, res) => {
         ],
       });
       taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
+    }
+
+    if (assignedTechnicianId) {
+      if (req.user.role !== "admin") {
+        return res.status(403).json({
+          message: "Only Admin can filter requests by assigned Technician.",
+        });
+      }
+      if (!mongoose.Types.ObjectId.isValid(assignedTechnicianId)) {
+        return res.status(400).json({
+          message: "The selected Technician reference is invalid.",
+        });
+      }
+
+      appendMongoCondition(aiQuery, {
+        $or: [
+          { approvedBy: assignedTechnicianId },
+          { technicianId: assignedTechnicianId },
+        ],
+      });
+      appendMongoCondition(healthQuery, {
+        $or: [
+          { handledBy: assignedTechnicianId },
+          { assignedTechnicianId },
+        ],
+      });
+      taskQuery.technicianId = assignedTechnicianId;
     }
 
     // 2. Urgency Filter

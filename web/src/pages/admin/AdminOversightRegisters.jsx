@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertCircle, ClipboardList, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 
@@ -44,76 +44,10 @@ function animalCell(record) {
 }
 
 const configs = {
-  work: {
-    title: "Municipal Workload Oversight",
-    subtitle: "Review active field assignments without performing Technician clinical work",
-    notice:
-      "This Admin view is read-only. Clinical recording and task completion remain Technician responsibilities.",
-    endpoint: "/technician/work-queue",
-    queryKey: "work-queue-oversight",
-    tableLabel: "Municipal technician workload oversight",
-    empty: "No field assignments are currently available for oversight.",
-    error: "Municipal workload could not be loaded.",
-    headers: ["Service", "Farmer and animal", "Assigned technician", "Schedule", "Status", "Oversight"],
-    getRecords: (data) => (Array.isArray(data.data) ? data.data : []),
-    rowKey: (record) => record.taskId || record.id,
-    cells: (record) => {
-      const requestId = record.workflowId || record.id;
-      const assignee =
-        record.raw?.approvedBy?.name ||
-        record.raw?.handledBy?.name ||
-        record.raw?.assignedTechnicianId?.name ||
-        record.raw?.technicianId?.name ||
-        "Unassigned";
-      return [
-        <div key="service">
-          <div className="font-semibold">
-            {record.serviceType || record.workflowType || missing}
-          </div>
-          <div className="text-xs text-base-content/80">
-            {record.workflowType || "Workflow not recorded"}
-          </div>
-        </div>,
-        <div key="client">
-          <div className="font-semibold">
-            {record.farmer?.name || record.farmerName || missing}
-          </div>
-          <div className="text-xs text-base-content/80">
-            {record.animal?.earTag ||
-              record.animal?.name ||
-              record.animalTag ||
-              "Animal not recorded"}
-          </div>
-        </div>,
-        assignee,
-        <div key="schedule">
-          <div>{formatDate(record.schedule?.date || record.displayDate, "Not scheduled")}</div>
-          <div className="text-xs text-base-content/80">
-            {record.schedule?.visitPeriod || "Visit period not recorded"}
-          </div>
-        </div>,
-        <span key="status" className="badge badge-outline">
-          {record.displayStatus || record.status || missing}
-        </span>,
-        requestId ? (
-          <Link
-            key="oversight"
-            to={`/admin/requests?requestId=${encodeURIComponent(requestId)}&status=all`}
-            className="btn btn-sm"
-          >
-            Open monitoring
-          </Link>
-        ) : (
-          <span key="oversight" className="text-sm text-base-content/80">
-            Not available
-          </span>
-        ),
-      ];
-    },
-  },
   pregnancy: {
-    title: "Pregnancy Check Oversight",
-    subtitle: "Review municipal pregnancy records entered through Technician workflows",
+    title: "Pregnancy Records",
+    subtitle:
+      "Review municipal pregnancy records entered through Technician workflows",
     notice:
       "This Admin register is read-only. Pregnancy diagnosis must be recorded by a Technician through the clinical workflow.",
     endpoint: "/admin/pregnancy-checks",
@@ -121,7 +55,14 @@ const configs = {
     tableLabel: "Municipal pregnancy check oversight",
     empty: "No pregnancy checks have been recorded.",
     error: "Pregnancy records could not be loaded.",
-    headers: ["Diagnosis date", "Animal", "Farmer", "Result", "Expected calving", "Cycle status"],
+    headers: [
+      "Diagnosis date",
+      "Animal",
+      "Farmer",
+      "Result",
+      "Expected calving",
+      "Cycle status",
+    ],
     getRecords: (data) =>
       Array.isArray(data.data)
         ? data.data
@@ -145,8 +86,9 @@ const configs = {
     ],
   },
   calvings: {
-    title: "Calving and Newborn Oversight",
-    subtitle: "Review municipal calving records entered through Technician workflows",
+    title: "Calving/Offspring Records",
+    subtitle:
+      "Review municipal calving records entered through Technician workflows",
     notice:
       "This Admin register is read-only. Calving and newborn clinical details must be recorded by a Technician.",
     endpoint: "/admin/calvings",
@@ -154,7 +96,14 @@ const configs = {
     tableLabel: "Municipal calving and newborn oversight",
     empty: "No calving records have been recorded.",
     error: "Calving records could not be loaded.",
-    headers: ["Calving date", "Dam", "Farmer", "Outcome", "Calves", "Calving ease"],
+    headers: [
+      "Calving date",
+      "Dam",
+      "Farmer",
+      "Outcome",
+      "Calves",
+      "Calving ease",
+    ],
     getRecords: (data) =>
       Array.isArray(data.data)
         ? data.data
@@ -184,7 +133,13 @@ function OversightRegister({ type }) {
   const config = configs[type];
   const [page, setPage] = useState(1);
   const limit = 15;
-  const { data = {}, isLoading, isError, isFetching, refetch } = useQuery({
+  const {
+    data = {},
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useQuery({
     queryKey: ["admin", config.queryKey, page],
     queryFn: async () => {
       const response = await axiosInstance.get(config.endpoint, {
@@ -207,17 +162,16 @@ function OversightRegister({ type }) {
     <div className="flex min-h-screen flex-1 flex-col overflow-y-auto bg-base-200 text-base-content">
       <Topbar title={config.title} subtitle={config.subtitle} />
       <main className="flex-1 space-y-4 p-4 sm:p-6">
-        <div role="alert" className="alert alert-info alert-soft">
-          <ClipboardList size={18} />
-          <span>{config.notice}</span>
-        </div>
-
         <section className="overflow-hidden rounded-box border border-base-300 bg-base-100">
           {isError ? (
             <div role="alert" className="alert alert-error m-4 w-auto">
               <AlertCircle size={18} />
               <span>{config.error}</span>
-              <button type="button" className="btn btn-sm" onClick={() => refetch()}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => refetch()}
+              >
                 <RefreshCw size={14} />
                 Retry
               </button>
@@ -252,7 +206,10 @@ function OversightRegister({ type }) {
                     </tr>
                   ) : (
                     records.map((record) => (
-                      <tr key={config.rowKey(record)} className="hover:bg-base-300/60 transition-colors cursor-pointer">
+                      <tr
+                        key={config.rowKey(record)}
+                        className="hover:bg-base-300/60 transition-colors cursor-pointer"
+                      >
                         {config.cells(record).map((cell, index) => (
                           <td key={config.headers[index]}>{cell}</td>
                         ))}
@@ -265,7 +222,9 @@ function OversightRegister({ type }) {
           )}
 
           <div className="flex items-center justify-between border-t border-base-300 px-4 py-3">
-            <span className="text-sm font-medium text-base-content/80">{total} record(s)</span>
+            <span className="text-sm font-medium text-base-content/80">
+              {total} record(s)
+            </span>
             <div className="join">
               <button
                 type="button"
@@ -294,9 +253,6 @@ function OversightRegister({ type }) {
   );
 }
 
-export function AdminWorkQueue() {
-  return <OversightRegister type="work" />;
-}
 
 export function AdminPregnancyOversight() {
   return <OversightRegister type="pregnancy" />;

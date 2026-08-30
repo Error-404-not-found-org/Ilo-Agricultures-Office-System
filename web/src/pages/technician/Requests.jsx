@@ -26,15 +26,13 @@ import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import RequestActionModal from "../../components/dialogs/RequestActionModal";
 import AIClaimScheduleAction from "../../components/dialogs/AIClaimScheduleAction";
 import { ui } from "../../components/ui/uiClasses";
+import AdminRequestCards from "../../components/admin/requests/AdminRequestCards";
 import Modal from "../../components/ui/Modal";
 import {
   getClaimType,
   getTechnicianStatus,
 } from "../../constants/technicianWorkflow";
-import {
-  WEB_ROLES,
-  getRequestActionPolicy,
-} from "../../constants/webRoles";
+import { WEB_ROLES, getRequestActionPolicy } from "../../constants/webRoles";
 import {
   ILOILO_CITY_DISTRICT_OPTIONS,
   ILOILO_CITY_NAME,
@@ -48,6 +46,7 @@ import {
   getRequestBoardViewSelection,
   getRequestStatusPresentation,
   isActiveRequestAssignedTo,
+  shouldIncludeOperationalTasks,
 } from "../../utils/requestBoardViews";
 
 // Helper to convert strings to Title Case
@@ -252,6 +251,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const [assignmentFilter, setAssignmentFilter] = useState(
     getRequestBoardViewSelection(initialRequestView, { isAdmin }).assignment,
   );
+  const [technicianFilter, setTechnicianFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [municipality, setMunicipality] = useState("");
   const [district, setDistrict] = useState("");
@@ -280,7 +280,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const statusParam =
     statusFilter === "in-progress" ? "in_progress" : statusFilter;
 
-  // Background query to fetch stats and sidebar summary counts
+  // Technician-only background query for the operational side panels.
   const { data: statsRequests = [] } = useQuery({
     queryKey: ["technician", "requests-stats-background"],
     queryFn: async () => {
@@ -289,15 +289,34 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
       });
       return res.data?.requests || [];
     },
+    enabled: !isAdmin,
   });
+
+  const { data: adminTechnicians = [] } = useQuery({
+    queryKey: ["technicianListForAdmin"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user?role=technician");
+      return Array.isArray(res.data) ? res.data : res.data?.users || [];
+    },
+    enabled: isAdmin,
+  });
+
+  const effectiveAssignmentFilter = isAdmin
+    ? technicianFilter === "unassigned"
+      ? "unassigned"
+      : "all"
+    : assignmentFilter;
+  const effectiveSortBy = isAdmin ? "newest" : sortBy;
 
   const requestsQueryKey = [
     "technician",
     "requests",
+    isAdmin ? "admin" : "technician",
     statusParam,
     typeFilter,
     urgencyFilter,
     assignmentFilter,
+    technicianFilter,
     sortBy,
     municipality,
     barangay,
@@ -322,15 +341,20 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
         params: {
           status: statusParam,
           type: typeFilter,
-          urgency: urgencyFilter === "all" ? undefined : urgencyFilter,
-          assignment: assignmentFilter,
-          sortBy,
-          municipality: municipality || undefined,
-          barangay: barangay || undefined,
-          nearLat: nearCoords?.latitude,
-          nearLng: nearCoords?.longitude,
+          urgency:
+            !isAdmin && urgencyFilter !== "all" ? urgencyFilter : undefined,
+          assignment: effectiveAssignmentFilter,
+          assignedTechnicianId:
+            isAdmin && !["all", "unassigned"].includes(technicianFilter)
+              ? technicianFilter
+              : undefined,
+          sortBy: effectiveSortBy,
+          municipality: !isAdmin && municipality ? municipality : undefined,
+          barangay: !isAdmin && barangay ? barangay : undefined,
+          nearLat: !isAdmin ? nearCoords?.latitude : undefined,
+          nearLng: !isAdmin ? nearCoords?.longitude : undefined,
           search: searchQuery || undefined,
-          includeOperationalTasks: true,
+          includeOperationalTasks: shouldIncludeOperationalTasks({ isAdmin }),
           page: currentPage,
           limit: itemsPerPage,
           requestId: requestedId || undefined,
@@ -578,58 +602,66 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
     isTaskModalOpen ||
     Boolean(deepLinkedTask && dismissedDeepLink !== requestedId);
 
-  // Dynamic request type summary calculations
-  const pregnancyCount = statsRequests.filter((r) => {
-    const meta = getServiceMeta(r);
-    return meta.workflow === "pregnancy_check";
-  }).length;
+  const requestInsights = useMemo(() => {
+    const emptyInsights = {
+      pregnancyCount: 0,
+      vaccinationCount: 0,
+      aiCount: 0,
+      healthCount: 0,
+      calvingCount: 0,
+      generalCount: 0,
+      claimedRequests: [],
+    };
 
-  const vaccinationCount = statsRequests.filter((r) => {
-    const meta = getServiceMeta(r);
-    return (
-      meta.serviceType === "vaccination" ||
-      String(r.type).toLowerCase().includes("vacc")
-    );
-  }).length;
+    if (isAdmin) return emptyInsights;
 
-  const aiCount = statsRequests.filter((r) => {
-    const meta = getServiceMeta(r);
-    return meta.workflow === "insemination";
-  }).length;
+    const counts = statsRequests.reduce((summary, request) => {
+      const meta = getServiceMeta(request);
 
-  const healthCount = statsRequests.filter((r) => {
-    const meta = getServiceMeta(r);
-    return meta.workflow === "health";
-  }).length;
+      if (meta.workflow === "pregnancy_check") summary.pregnancyCount += 1;
+      if (
+        meta.serviceType === "vaccination" ||
+        String(request.type).toLowerCase().includes("vacc")
+      ) {
+        summary.vaccinationCount += 1;
+      }
+      if (meta.workflow === "insemination") summary.aiCount += 1;
+      if (meta.workflow === "health") summary.healthCount += 1;
+      if (meta.workflow === "calving") summary.calvingCount += 1;
+      if (meta.workflow === "task") summary.generalCount += 1;
 
-  const calvingCount = statsRequests.filter((r) => {
-    const meta = getServiceMeta(r);
-    return meta.workflow === "calving";
-  }).length;
+      return summary;
+    }, emptyInsights);
 
-  const generalCount = statsRequests.filter((r) => {
-    const meta = getServiceMeta(r);
-    return meta.workflow === "task";
-  }).length;
+    const claimedRequests = dbUser?._id
+      ? statsRequests
+          .filter((request) => isActiveRequestAssignedTo(request, dbUser._id))
+          .slice(0, 3)
+          .map((request) => {
+            const meta = getServiceMeta(request);
+            const status = getTechnicianStatus(request.status);
+            return {
+              id: request.id,
+              label: meta.label,
+              animal: `Tag #${request.earTag || "Livestock"}`,
+              status: status.label,
+              statusClass: status.badgeClass,
+            };
+          })
+      : [];
 
-  // Dynamic claimed requests list for current technician
-  const claimedRequests = useMemo(() => {
-    if (!dbUser?._id) return [];
-    return statsRequests
-      .filter((req) => isActiveRequestAssignedTo(req, dbUser._id))
-      .slice(0, 3)
-      .map((req) => {
-        const meta = getServiceMeta(req);
-        const status = getTechnicianStatus(req.status);
-        return {
-          id: req.id,
-          label: meta.label,
-          animal: `Tag #${req.earTag || "Livestock"}`,
-          status: status.label,
-          statusClass: status.badgeClass,
-        };
-      });
-  }, [statsRequests, dbUser]);
+    return { ...counts, claimedRequests };
+  }, [isAdmin, statsRequests, dbUser]);
+
+  const {
+    pregnancyCount,
+    vaccinationCount,
+    aiCount,
+    healthCount,
+    calvingCount,
+    generalCount,
+    claimedRequests,
+  } = requestInsights;
 
   // Action Handlers
   const handleClaimRequest = async (request) => {
@@ -875,7 +907,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   return (
     <div className={`${ui.page} bg-base-200/50`}>
       <Topbar
-        title={isAdmin ? "Request Monitoring" : "Request Board"}
+        title={isAdmin ? "Requests" : "Request Board"}
         subtitle={
           isAdmin
             ? "Review municipal service requests and technician assignments"
@@ -887,729 +919,844 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
         className={`${ui.main} w-full max-w-500 mx-auto p-4 lg:p-6 space-y-6`}
       >
         {/* ================= 1. PRIMARY SPLIT LAYOUT ================= */}
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px] gap-6 items-start">
+        <div
+          className={`grid grid-cols-1 items-start gap-6 ${
+            isAdmin ? "" : "xl:grid-cols-[minmax(0,1fr)_280px]"
+          }`}
+        >
           {/* LEFT COLUMN: FILTERS, REQUEST LIST, PAGINATION */}
           <div className="space-y-6">
             {/* Filter toolbar */}
             <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 space-y-2">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-base-content tracking-tight">
-                  {isAdmin ? "Needs review" : "Available Requests"}
-                </h2>
-
-                <p
-                  className="text-sm font-medium text-base-content/60 whitespace-nowrap"
-                  aria-live="polite"
-                >
-                  {isMasterLoading
-                    ? "Loading requests…"
-                    : `${totalItems} request${totalItems !== 1 ? "s" : ""}`}
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-base-300/60">
-                <label className="input input-sm w-full flex items-center gap-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
-                  <Search
-                    size={16}
-                    className="text-base-content/60 shrink-0"
-                    aria-hidden="true"
-                  />
-                  <input
-                    type="search"
-                    aria-label="Search service requests"
-                    placeholder="Search farmer, animal, or tag…"
-                    value={searchQuery}
-                    onChange={(event) => {
-                      setSearchQuery(event.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="grow min-w-0 text-base placeholder:text-base-content/60"
-                  />
-                </label>
-
-                <details
-                  ref={filtersPanelRef}
-                  className="dropdown dropdown-end w-full sm:w-auto"
-                >
-                  <summary className="btn btn-sm btn-outline w-full sm:w-auto gap-2 list-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-                    <Filter size={14} aria-hidden="true" />
-                    Filters
-                    {activeFilters.length > 0 && (
-                      <span className="badge badge-sm badge-primary">
-                        {activeFilters.length}
+              {isAdmin ? (
+                <>
+                  {/* Admin request filters */}
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
+                    <label className="form-control w-full lg:min-w-72 lg:flex-[1_1_45%] lg:max-w-2xl">
+                      <span className="label text-sm font-semibold text-base-content/60">
+                        Search
                       </span>
-                    )}
-                  </summary>
-
-                  <div className="dropdown-content z-30 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-box border border-base-300 bg-base-100 p-4 shadow-lg">
-                    <div className="flex items-center justify-between gap-4 mb-4">
-                      <div>
-                        <h3 className="font-semibold text-lg text-base-content">
-                          Filter requests
-                        </h3>
-                        <p className="text-base text-base-content/60 mt-0.5">
-                          Results update as you choose filters.
-                        </p>
-                      </div>
-                      {activeFilters.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={clearAdvancedFilters}
-                          className="btn btn-xs btn-ghost"
-                        >
-                          Clear all
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <label className="form-control">
-                        <span className="label text-sm font-semibold text-base-content/60">
-                          Request status
-                        </span>
-                        <select
-                          aria-label="Request status"
-                          value={statusFilter}
+                      <span className="input input-sm w-full flex items-center gap-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+                        <Search
+                          size={16}
+                          className="text-base-content/60 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <input
+                          type="search"
+                          aria-label="Search service requests"
+                          placeholder="Search farmer, animal, or tag…"
+                          value={searchQuery}
                           onChange={(event) => {
-                            setStatusFilter(event.target.value);
+                            setSearchQuery(event.target.value);
                             setCurrentPage(1);
                           }}
-                          className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          {primaryView === REQUEST_BOARD_VIEWS.AVAILABLE ? (
-                            <>
-                              <option value="pending">Pending</option>
-                              <option value="approved">Approved</option>
-                              <option value="all">All available</option>
-                            </>
-                          ) : primaryView === REQUEST_BOARD_VIEWS.MINE ? (
-                            <>
-                              {actionPolicy.isTechnician && (
-                                <option value="active">
-                                  All active requests
-                                </option>
-                              )}
-                              <option value="scheduled">Scheduled</option>
-                              <option value="in-progress">In progress</option>
-                            </>
-                          ) : (
-                            <>
-                              <option value="history">All history</option>
-                              <option value="completed">Completed</option>
-                              <option value="declined">
-                                Declined / cancelled
-                              </option>
-                            </>
-                          )}
-                        </select>
-                      </label>
+                          className="grow min-w-0 text-base placeholder:text-base-content/60"
+                        />
+                      </span>
+                    </label>
 
-                      <label className="form-control">
-                        <span className="label text-sm font-semibold text-base-content/60">
-                          Service type
-                        </span>
-                        <select
-                          aria-label="Service type"
-                          value={typeFilter}
-                          onChange={(event) => {
-                            setTypeFilter(event.target.value);
-                            setCurrentPage(1);
-                          }}
-                          className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          <option value="all">All service types</option>
-                          <option value="ai">AI Services</option>
-                          <option value="health">Health Assistance</option>
-                        </select>
-                      </label>
-
-                      <label className="form-control">
-                        <span className="label text-sm font-semibold text-base-content/60">
-                          Urgency
-                        </span>
-                        <select
-                          aria-label="Urgency"
-                          value={urgencyFilter}
-                          onChange={(event) => {
-                            setUrgencyFilter(event.target.value);
-                            setCurrentPage(1);
-                          }}
-                          className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          <option value="all">All urgency levels</option>
-                          <option value="urgent">Urgent only</option>
-                        </select>
-                      </label>
-
-                      <label className="form-control">
-                        <span className="label text-sm font-semibold text-base-content/60">
-                          Municipality
-                        </span>
-                        <select
-                          aria-label="Municipality"
-                          value={municipality}
-                          onChange={(event) => {
-                            setMunicipality(event.target.value);
-                            setDistrict("");
-                            setBarangay("");
-                            setCurrentPage(1);
-                          }}
-                          className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          <option value="">All municipalities</option>
-                          {ILOILO_MUNICIPALITY_OPTIONS.map((name) => (
-                            <option key={name} value={name}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      {municipality === ILOILO_CITY_NAME && (
-                        <label className="form-control">
-                          <span className="label text-sm font-semibold text-base-content/60">
-                            District
-                          </span>
-                          <select
-                            aria-label="District"
-                            value={district}
-                            onChange={(event) => {
-                              setDistrict(event.target.value);
-                              setBarangay("");
-                              setCurrentPage(1);
-                            }}
-                            className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                          >
-                            <option value="">All districts</option>
-                            {ILOILO_CITY_DISTRICT_OPTIONS.map((name) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-
-                      <label className="form-control">
-                        <span className="label text-sm font-semibold text-base-content/60">
-                          Barangay
-                        </span>
-                        <select
-                          aria-label="Barangay"
-                          value={barangay}
-                          disabled={
-                            !municipality ||
-                            (municipality === ILOILO_CITY_NAME && !district)
-                          }
-                          onChange={(event) => {
-                            setBarangay(event.target.value);
-                            setCurrentPage(1);
-                          }}
-                          className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          <option value="">All barangays</option>
-                          {barangayOptions.map((name) => (
-                            <option key={name} value={name}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="form-control">
-                        <span className="label text-sm font-semibold text-base-content/60">
-                          Sort order
-                        </span>
-                        <select
-                          aria-label="Sort order"
-                          value={sortBy}
-                          onChange={(event) => {
-                            setSortBy(event.target.value);
-                            setCurrentPage(1);
-                          }}
-                          className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          <option value="newest">Newest first</option>
-                          <option value="oldest">Oldest first</option>
-                          <option value="preferredDate">Visit date</option>
-                          {nearCoords && (
-                            <option value="distance">Nearest first</option>
-                          )}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-base-300">
-                      <button
-                        type="button"
-                        onClick={toggleNearMe}
-                        disabled={isLocating}
-                        className={`btn btn-sm gap-2 ${nearCoords ? "btn-primary" : "btn-ghost"}`}
+                    <label className="form-control w-full lg:w-44">
+                      <span className="label text-sm font-semibold text-base-content/60">
+                        Status
+                      </span>
+                      <select
+                        aria-label="Request status"
+                        value={statusFilter}
+                        onChange={(event) => {
+                          setStatusFilter(event.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        {isLocating ? (
-                          <span className="loading loading-spinner loading-xs" />
-                        ) : (
-                          <MapPin size={14} aria-hidden="true" />
-                        )}
-                        {nearCoords ? "Using my location" : "Near me"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          filtersPanelRef.current?.removeAttribute("open")
-                        }
-                        className="btn btn-sm"
+                        <option value="all">All statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="in-progress">In progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="declined">Declined / cancelled</option>
+                      </select>
+                    </label>
+
+                    <label className="form-control w-full lg:w-48">
+                      <span className="label text-sm font-semibold text-base-content/60">
+                        Service Type
+                      </span>
+                      <select
+                        aria-label="Service type"
+                        value={typeFilter}
+                        onChange={(event) => {
+                          setTypeFilter(event.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        Done
-                      </button>
-                    </div>
+                        <option value="all">All service types</option>
+                        <option value="ai">AI Services</option>
+                        <option value="health">Health Assistance</option>
+                      </select>
+                    </label>
                   </div>
-                </details>
-              </div>
 
-              {activeFilters.length > 0 && (
-                <div
-                  className="flex flex-wrap items-center gap-2"
-                  aria-label="Active filters"
-                >
-                  {activeFilters.map((filter) => (
-                    <button
-                      key={filter.key}
-                      type="button"
-                      onClick={() => {
-                        filter.clear();
-                        setCurrentPage(1);
-                      }}
-                      className="badge badge-outline gap-1.5 min-h-7 px-3 text-base-content/70 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                      aria-label={`Remove ${filter.label} filter`}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 mt-2 border-t border-base-300/60">
+                    <h2 className="text-lg font-semibold text-base-content tracking-tight">
+                      Needs review
+                    </h2>
+                    <p
+                      className="text-sm font-medium text-base-content/60 whitespace-nowrap"
+                      aria-live="polite"
                     >
-                      {filter.label}
-                      <span aria-hidden="true">×</span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={clearAdvancedFilters}
-                    className="btn btn-xs btn-ghost"
-                  >
-                    Clear all
-                  </button>
-                </div>
+                      {isMasterLoading
+                        ? "Loading requests…"
+                        : `${totalItems} request${totalItems !== 1 ? "s" : ""}`}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Technician request filters */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-base-content tracking-tight">
+                      {isAdmin ? "Needs review" : "Available Requests"}
+                    </h2>
+
+                    <p
+                      className="text-sm font-medium text-base-content/60 whitespace-nowrap"
+                      aria-live="polite"
+                    >
+                      {isMasterLoading
+                        ? "Loading requests…"
+                        : `${totalItems} request${totalItems !== 1 ? "s" : ""}`}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-base-300/60">
+                    <label className="input input-sm w-full flex items-center gap-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+                      <Search
+                        size={16}
+                        className="text-base-content/60 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <input
+                        type="search"
+                        aria-label="Search service requests"
+                        placeholder="Search farmer, animal, or tag…"
+                        value={searchQuery}
+                        onChange={(event) => {
+                          setSearchQuery(event.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="grow min-w-0 text-base placeholder:text-base-content/60"
+                      />
+                    </label>
+
+                    <details
+                      ref={filtersPanelRef}
+                      className="dropdown dropdown-end w-full sm:w-auto"
+                    >
+                      <summary className="btn btn-sm btn-outline w-full sm:w-auto gap-2 list-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                        <Filter size={14} aria-hidden="true" />
+                        Filters
+                        {activeFilters.length > 0 && (
+                          <span className="badge badge-sm badge-primary">
+                            {activeFilters.length}
+                          </span>
+                        )}
+                      </summary>
+
+                      <div className="dropdown-content z-30 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-box border border-base-300 bg-base-100 p-4 shadow-lg">
+                        <div className="flex items-center justify-between gap-4 mb-4">
+                          <div>
+                            <h3 className="font-semibold text-lg text-base-content">
+                              Filter requests
+                            </h3>
+                            <p className="text-base text-base-content/60 mt-0.5">
+                              Results update as you choose filters.
+                            </p>
+                          </div>
+                          {activeFilters.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={clearAdvancedFilters}
+                              className="btn btn-xs btn-ghost"
+                            >
+                              Clear all
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <label className="form-control">
+                            <span className="label text-sm font-semibold text-base-content/60">
+                              Request status
+                            </span>
+                            <select
+                              aria-label="Request status"
+                              value={statusFilter}
+                              onChange={(event) => {
+                                setStatusFilter(event.target.value);
+                                setCurrentPage(1);
+                              }}
+                              className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              {primaryView === REQUEST_BOARD_VIEWS.AVAILABLE ? (
+                                <>
+                                  <option value="pending">Pending</option>
+                                  <option value="approved">Approved</option>
+                                  <option value="all">All available</option>
+                                </>
+                              ) : primaryView === REQUEST_BOARD_VIEWS.MINE ? (
+                                <>
+                                  {actionPolicy.isTechnician && (
+                                    <option value="active">
+                                      All active requests
+                                    </option>
+                                  )}
+                                  <option value="scheduled">Scheduled</option>
+                                  <option value="in-progress">
+                                    In progress
+                                  </option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="history">All history</option>
+                                  <option value="completed">Completed</option>
+                                  <option value="declined">
+                                    Declined / cancelled
+                                  </option>
+                                </>
+                              )}
+                            </select>
+                          </label>
+
+                          <label className="form-control">
+                            <span className="label text-sm font-semibold text-base-content/60">
+                              Service type
+                            </span>
+                            <select
+                              aria-label="Service type"
+                              value={typeFilter}
+                              onChange={(event) => {
+                                setTypeFilter(event.target.value);
+                                setCurrentPage(1);
+                              }}
+                              className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <option value="all">All service types</option>
+                              <option value="ai">AI Services</option>
+                              <option value="health">Health Assistance</option>
+                            </select>
+                          </label>
+
+                          <label className="form-control">
+                            <span className="label text-sm font-semibold text-base-content/60">
+                              Urgency
+                            </span>
+                            <select
+                              aria-label="Urgency"
+                              value={urgencyFilter}
+                              onChange={(event) => {
+                                setUrgencyFilter(event.target.value);
+                                setCurrentPage(1);
+                              }}
+                              className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <option value="all">All urgency levels</option>
+                              <option value="urgent">Urgent only</option>
+                            </select>
+                          </label>
+
+                          <label className="form-control">
+                            <span className="label text-sm font-semibold text-base-content/60">
+                              Municipality
+                            </span>
+                            <select
+                              aria-label="Municipality"
+                              value={municipality}
+                              onChange={(event) => {
+                                setMunicipality(event.target.value);
+                                setDistrict("");
+                                setBarangay("");
+                                setCurrentPage(1);
+                              }}
+                              className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <option value="">All municipalities</option>
+                              {ILOILO_MUNICIPALITY_OPTIONS.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          {municipality === ILOILO_CITY_NAME && (
+                            <label className="form-control">
+                              <span className="label text-sm font-semibold text-base-content/60">
+                                District
+                              </span>
+                              <select
+                                aria-label="District"
+                                value={district}
+                                onChange={(event) => {
+                                  setDistrict(event.target.value);
+                                  setBarangay("");
+                                  setCurrentPage(1);
+                                }}
+                                className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <option value="">All districts</option>
+                                {ILOILO_CITY_DISTRICT_OPTIONS.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+
+                          <label className="form-control">
+                            <span className="label text-sm font-semibold text-base-content/60">
+                              Barangay
+                            </span>
+                            <select
+                              aria-label="Barangay"
+                              value={barangay}
+                              disabled={
+                                !municipality ||
+                                (municipality === ILOILO_CITY_NAME && !district)
+                              }
+                              onChange={(event) => {
+                                setBarangay(event.target.value);
+                                setCurrentPage(1);
+                              }}
+                              className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <option value="">All barangays</option>
+                              {barangayOptions.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="form-control">
+                            <span className="label text-sm font-semibold text-base-content/60">
+                              Sort order
+                            </span>
+                            <select
+                              aria-label="Sort order"
+                              value={sortBy}
+                              onChange={(event) => {
+                                setSortBy(event.target.value);
+                                setCurrentPage(1);
+                              }}
+                              className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <option value="newest">Newest first</option>
+                              <option value="oldest">Oldest first</option>
+                              <option value="preferredDate">Visit date</option>
+                              {nearCoords && (
+                                <option value="distance">Nearest first</option>
+                              )}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-base-300">
+                          <button
+                            type="button"
+                            onClick={toggleNearMe}
+                            disabled={isLocating}
+                            className={`btn btn-sm gap-2 ${nearCoords ? "btn-primary" : "btn-ghost"}`}
+                          >
+                            {isLocating ? (
+                              <span className="loading loading-spinner loading-xs" />
+                            ) : (
+                              <MapPin size={14} aria-hidden="true" />
+                            )}
+                            {nearCoords ? "Using my location" : "Near me"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              filtersPanelRef.current?.removeAttribute("open")
+                            }
+                            className="btn btn-sm"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+
+                  {activeFilters.length > 0 && (
+                    <div
+                      className="flex flex-wrap items-center gap-2"
+                      aria-label="Active filters"
+                    >
+                      {activeFilters.map((filter) => (
+                        <button
+                          key={filter.key}
+                          type="button"
+                          onClick={() => {
+                            filter.clear();
+                            setCurrentPage(1);
+                          }}
+                          className="badge badge-outline gap-1.5 min-h-7 px-3 text-base-content/70 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          aria-label={`Remove ${filter.label} filter`}
+                        >
+                          {filter.label}
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={clearAdvancedFilters}
+                        className="btn btn-xs btn-ghost"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             {/* Main items display grid/list with static container height and fixed column widths */}
             <div id="request-board-results" className="w-full mb-8">
-              <div className="card bg-base-100 border border-base-300/60 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-145 xl:h-150">
-                {/* Scrollable table viewport with table-fixed layout */}
-                <div className="overflow-x-auto overflow-y-auto flex-1">
-                  <table className="table table-pin-rows table-fixed w-full min-w-155 text-left">
-                    <colgroup>
-                      <col className="w-[22%] min-w-32.5" />
-                      <col className="w-[32%] min-w-45" />
-                      <col className="w-[22%] min-w-32.5" />
-                      <col className="w-[14%] min-w-25" />
-                      <col className="w-[10%] min-w-20" />
-                    </colgroup>
-                    <thead>
-                      <tr className="bg-base-200/70 text-xs font-semibold text-base-content/70 border-b border-base-300 uppercase tracking-wider">
-                        <th scope="col" className="p-4 pl-6">
-                          Farmer / Contact
-                        </th>
-                        <th scope="col" className="p-4">
-                          Service Request
-                        </th>
-                        <th scope="col" className="p-4">
-                          Schedule / Location
-                        </th>
-                        <th scope="col" className="p-4 text-center">
-                          Status
-                        </th>
-                        <th scope="col" className="p-4 pr-6 text-right">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-base-200/50">
-                      {isMasterLoading ? (
-                        [...Array(6)].map((_, idx) => (
-                          <TableRowSkeleton key={idx} />
-                        ))
-                      ) : isQueueError ? (
-                        <tr>
-                          <td colSpan={5} className="p-12 text-center">
-                            <div
-                              className="alert alert-error max-w-md mx-auto flex flex-col justify-center items-center"
-                              role="alert"
-                            >
-                              <AlertCircle size={24} aria-hidden="true" />
-                              <div className="text-center">
-                                <h3 className="font-semibold">
-                                  Requests are unavailable
+              <div
+                className={`${isAdmin ? "" : "card border border-base-300/60 bg-base-100 shadow-sm"} flex min-h-145 flex-col overflow-hidden rounded-2xl xl:h-150`}
+              >
+                {isAdmin ? (
+                  <AdminRequestCards
+                    requests={requests}
+                    isLoading={isMasterLoading}
+                    isError={isQueueError}
+                    error={queueError}
+                    onRetry={() => refetchQueue()}
+                    onViewRequest={openRequest}
+                    emptyMessage={
+                      searchQuery
+                        ? `No service requests match "${searchQuery}".`
+                        : "There are no requests under the selected filters."
+                    }
+                  />
+                ) : (
+                  <div className="flex-1 overflow-x-auto overflow-y-auto">
+                    <table className="table table-pin-rows table-fixed w-full min-w-155 text-left">
+                      <colgroup>
+                        <col className="w-[22%] min-w-32.5" />
+                        <col className="w-[32%] min-w-45" />
+                        <col className="w-[22%] min-w-32.5" />
+                        <col className="w-[14%] min-w-25" />
+                        <col className="w-[10%] min-w-20" />
+                      </colgroup>
+                      <thead>
+                        <tr className="bg-base-200/70 text-xs font-semibold text-base-content/70 border-b border-base-300 uppercase tracking-wider">
+                          <th scope="col" className="p-4 pl-6">
+                            Farmer / Contact
+                          </th>
+                          <th scope="col" className="p-4">
+                            Service Request
+                          </th>
+                          <th scope="col" className="p-4">
+                            Schedule / Location
+                          </th>
+                          <th scope="col" className="p-4 text-center">
+                            Status
+                          </th>
+                          <th scope="col" className="p-4 pr-6 text-right">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-base-200/50">
+                        {isMasterLoading ? (
+                          [...Array(6)].map((_, idx) => (
+                            <TableRowSkeleton key={idx} />
+                          ))
+                        ) : isQueueError ? (
+                          <tr>
+                            <td colSpan={5} className="p-12 text-center">
+                              <div
+                                className="alert alert-error max-w-md mx-auto flex flex-col justify-center items-center"
+                                role="alert"
+                              >
+                                <AlertCircle size={24} aria-hidden="true" />
+                                <div className="text-center">
+                                  <h3 className="font-semibold">
+                                    Requests are unavailable
+                                  </h3>
+                                  <p className="text-sm">
+                                    {queueError?.response?.data?.message ||
+                                      "Refresh the request board to try again."}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm mt-2"
+                                  onClick={() => refetchQueue()}
+                                >
+                                  Retry
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : requests.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-16 text-center">
+                              <div className="flex flex-col items-center justify-center gap-3 py-12">
+                                <ShieldAlert
+                                  size={40}
+                                  className="text-base-content/20"
+                                />
+                                <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mt-1">
+                                  No matches found
                                 </h3>
-                                <p className="text-sm">
-                                  {queueError?.response?.data?.message ||
-                                    "Refresh the request board to try again."}
+                                <p className="text-sm font-semibold text-base-content/40 max-w-sm leading-relaxed">
+                                  {searchQuery
+                                    ? `We couldn't find any service requests matching "${searchQuery}".`
+                                    : "There are currently no active requests under this tab category."}
                                 </p>
                               </div>
-                              <button
-                                type="button"
-                                className="btn btn-sm mt-2"
-                                onClick={() => refetchQueue()}
+                            </td>
+                          </tr>
+                        ) : (
+                          requests.map((req) => {
+                            const reqTechId = getRequestAssigneeId(req);
+                            const statusPresentation =
+                              getRequestStatusPresentation(req, { isAdmin }) ||
+                              getTechnicianStatus(req.status);
+
+                            const isAssignedToOther =
+                              reqTechId &&
+                              dbUser?._id &&
+                              String(reqTechId) !== String(dbUser._id);
+                            const isAIClaimAndSchedule =
+                              actionPolicy.canSchedule &&
+                              req.workflowType === "AI" &&
+                              req.allowedAction === "CLAIM_AND_SCHEDULE";
+
+                            const visitDate = req.visitDate
+                              ? new Date(req.visitDate)
+                              : null;
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const isOverdue =
+                              (req.status === "in-progress" ||
+                                req.status === "approved") &&
+                              visitDate &&
+                              visitDate < today;
+
+                            return (
+                              <tr
+                                key={req.id}
+                                onClick={() => openRequest(req)}
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    openRequest(req);
+                                  }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Open ${req.serviceLabel} request for ${req.farmer}`}
+                                className="hover:bg-base-200/40 transition-colors cursor-pointer relative text-base font-semibold text-base-content/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                               >
-                                Retry
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : requests.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="p-16 text-center">
-                            <div className="flex flex-col items-center justify-center gap-3 py-12">
-                              <ShieldAlert
-                                size={40}
-                                className="text-base-content/20"
-                              />
-                              <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mt-1">
-                                No matches found
-                              </h3>
-                              <p className="text-sm font-semibold text-base-content/40 max-w-sm leading-relaxed">
-                                {searchQuery
-                                  ? `We couldn't find any service requests matching "${searchQuery}".`
-                                  : "There are currently no active requests under this tab category."}
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        requests.map((req) => {
-                          const reqTechId = getRequestAssigneeId(req);
-                          const statusPresentation =
-                            getRequestStatusPresentation(req, { isAdmin }) ||
-                            getTechnicianStatus(req.status);
-
-                          const isAssignedToOther =
-                            reqTechId &&
-                            dbUser?._id &&
-                            String(reqTechId) !== String(dbUser._id);
-                          const isAIClaimAndSchedule =
-                            actionPolicy.canSchedule &&
-                            req.workflowType === "AI" &&
-                            req.allowedAction === "CLAIM_AND_SCHEDULE";
-
-                          const visitDate = req.visitDate
-                            ? new Date(req.visitDate)
-                            : null;
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          const isOverdue =
-                            (req.status === "in-progress" ||
-                              req.status === "approved") &&
-                            visitDate &&
-                            visitDate < today;
-
-                          return (
-                            <tr
-                              key={req.id}
-                              onClick={() => openRequest(req)}
-                              onKeyDown={(event) => {
-                                if (
-                                  event.key === "Enter" ||
-                                  event.key === " "
-                                ) {
-                                  event.preventDefault();
-                                  openRequest(req);
-                                }
-                              }}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`Open ${req.serviceLabel} request for ${req.farmer}`}
-                              className="hover:bg-base-200/40 transition-colors cursor-pointer relative text-base font-semibold text-base-content/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                            >
-                              {/* COLUMN 1: FARMER INFO */}
-                              <td className="p-4 pl-6 align-top">
-                                <div className="flex items-start gap-3 min-w-0">
-                                  {isOverdue && (
-                                    <div
-                                      className="w-1.5 h-10 bg-rose-500 rounded-full animate-pulse shrink-0 self-center"
-                                      title="Overdue Request"
-                                    />
-                                  )}
-                                  <UserAvatar
-                                    name={req.farmer}
-                                    imageUrl={req.farmerImageUrl}
-                                    size={48}
-                                    sizeClass="h-12 w-12"
-                                    className="shadow-sm shrink-0"
-                                  />
-                                  <div className="min-w-0 grow">
-                                    <h4 className="text-sm font-semibold text-base-content tracking-tight truncate">
-                                      {toTitleCase(req.farmer)}
-                                    </h4>
-                                    <p className="text-xs font-medium text-base-content/70 mt-0.5 truncate">
-                                      Brgy. {toTitleCase(req.location)}
-                                    </p>
-                                    <p
-                                      className="text-xs font-medium text-primary mt-1 flex items-center gap-1.5 truncate"
-                                      aria-label={`Farmer contact: ${req.farmerPhone}`}
-                                    >
-                                      <Phone
-                                        size={15}
-                                        aria-hidden="true"
-                                        className="shrink-0"
+                                {/* COLUMN 1: FARMER INFO */}
+                                <td className="p-4 pl-6 align-top">
+                                  <div className="flex items-start gap-3 min-w-0">
+                                    {isOverdue && (
+                                      <div
+                                        className="w-1.5 h-10 bg-rose-500 rounded-full animate-pulse shrink-0 self-center"
+                                        title="Overdue Request"
                                       />
-                                      <span className="truncate">
-                                        {req.farmerPhone}
+                                    )}
+                                    <UserAvatar
+                                      name={req.farmer}
+                                      imageUrl={req.farmerImageUrl}
+                                      size={48}
+                                      sizeClass="h-12 w-12"
+                                      className="shadow-sm shrink-0"
+                                    />
+                                    <div className="min-w-0 grow">
+                                      <h4 className="text-sm font-semibold text-base-content tracking-tight truncate">
+                                        {toTitleCase(req.farmer)}
+                                      </h4>
+                                      <p className="text-xs font-medium text-base-content/70 mt-0.5 truncate">
+                                        Brgy. {toTitleCase(req.location)}
+                                      </p>
+                                      <p
+                                        className="text-xs font-medium text-primary mt-1 flex items-center gap-1.5 truncate"
+                                        aria-label={`Farmer contact: ${req.farmerPhone}`}
+                                      >
+                                        <Phone
+                                          size={15}
+                                          aria-hidden="true"
+                                          className="shrink-0"
+                                        />
+                                        <span className="truncate">
+                                          {req.farmerPhone}
+                                        </span>
+                                      </p>
+                                      {req.farmerBadge && (
+                                        <span className="badge badge-sm badge-ghost mt-1 font-semibold uppercase text-[10px]">
+                                          {String(req.farmerBadge).replaceAll(
+                                            "_",
+                                            " ",
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* COLUMN 2: SERVICE DETAILS */}
+                                <td className="p-4 align-top">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 ${req.iconColor}`}
+                                      >
+                                        {req.serviceBadge}
                                       </span>
+                                      <span className="font-semibold text-sm text-base-content truncate">
+                                        {req.serviceLabel}
+                                      </span>
+
+                                      {req.previousTechnician && (
+                                        <span className="badge badge-sm badge-soft badge-info font-medium text-[10px] shrink-0">
+                                          Re-insemination
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs font-medium text-base-content/90 mt-1 truncate">
+                                      Animal:{" "}
+                                      {req.breed
+                                        ? toTitleCase(req.breed)
+                                        : "Livestock"}{" "}
+                                      (Tag #{req.animalTag})
                                     </p>
-                                    {req.farmerBadge && (
-                                      <span className="badge badge-sm badge-ghost mt-1 font-semibold uppercase text-[10px]">
-                                        {String(req.farmerBadge).replaceAll(
-                                          "_",
-                                          " ",
+                                    <p className="text-xs text-base-content/65 mt-1 leading-relaxed line-clamp-2">
+                                      Details: {req.taskDetails}
+                                    </p>
+                                    {req.formattedSentAt ? (
+                                      <p className="text-xs text-base-content/60 mt-1.5 flex items-center gap-1.5">
+                                        <Clock
+                                          size={13}
+                                          aria-hidden="true"
+                                          className="shrink-0"
+                                        />
+                                        <time
+                                          dateTime={req.createdAt}
+                                          className="truncate"
+                                        >
+                                          Sent {req.formattedSentAt}
+                                        </time>
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </td>
+
+                                {/* COLUMN 3: GEOGRAPHIC AND DATETIME */}
+                                <td className="p-4 align-top">
+                                  <div className="flex flex-col gap-1 min-w-0">
+                                    <div>
+                                      <span className="font-medium text-sm text-base-content block truncate">
+                                        Brgy.{" "}
+                                        {toTitleCase(
+                                          req.location.split(",")[0],
                                         )}
                                       </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </td>
+                                    </div>
 
-                              {/* COLUMN 2: SERVICE DETAILS */}
-                              <td className="p-4 align-top">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span
-                                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 ${req.iconColor}`}
-                                    >
-                                      {req.serviceBadge}
-                                    </span>
-                                    <span className="font-semibold text-sm text-base-content truncate">
-                                      {req.serviceLabel}
-                                    </span>
-
-                                    {req.previousTechnician && (
-                                      <span className="badge badge-sm badge-soft badge-info font-medium text-[10px] shrink-0">
-                                        Re-insemination
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs font-medium text-base-content/90 mt-1 truncate">
-                                    Animal:{" "}
-                                    {req.breed
-                                      ? toTitleCase(req.breed)
-                                      : "Livestock"}{" "}
-                                    (Tag #{req.animalTag})
-                                  </p>
-                                  <p className="text-xs text-base-content/65 mt-1 leading-relaxed line-clamp-2">
-                                    Details: {req.taskDetails}
-                                  </p>
-                                  {req.formattedSentAt ? (
-                                    <p className="text-xs text-base-content/60 mt-1.5 flex items-center gap-1.5">
-                                      <Clock
-                                        size={13}
-                                        aria-hidden="true"
-                                        className="shrink-0"
-                                      />
-                                      <time
-                                        dateTime={req.createdAt}
-                                        className="truncate"
-                                      >
-                                        Sent {req.formattedSentAt}
-                                      </time>
-                                    </p>
-                                  ) : null}
-                                </div>
-                              </td>
-
-                              {/* COLUMN 3: GEOGRAPHIC AND DATETIME */}
-                              <td className="p-4 align-top">
-                                <div className="flex flex-col gap-1 min-w-0">
-                                  <div>
-                                    <span className="font-medium text-sm text-base-content block truncate">
-                                      Brgy.{" "}
-                                      {toTitleCase(req.location.split(",")[0])}
-                                    </span>
-                                  </div>
-
-                                  <div className="mt-1">
-                                    <span className="text-xs font-medium text-base-content/80 flex items-center gap-1.5 truncate">
-                                      <Calendar
-                                        size={15}
-                                        className="text-base-content/40 shrink-0"
-                                      />
-                                      {req.workflowType === "AI"
-                                        ? req.date
-                                        : req.formattedDateOnly}
-                                    </span>
-                                    {req.workflowType !== "AI" && (
-                                      <span className="text-xs text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
-                                        <Clock
-                                          size={14}
+                                    <div className="mt-1">
+                                      <span className="text-xs font-medium text-base-content/80 flex items-center gap-1.5 truncate">
+                                        <Calendar
+                                          size={15}
                                           className="text-base-content/40 shrink-0"
                                         />
-                                        {req.formattedTimeOnly}
+                                        {req.workflowType === "AI"
+                                          ? req.date
+                                          : req.formattedDateOnly}
                                       </span>
-                                    )}
+                                      {req.workflowType !== "AI" && (
+                                        <span className="text-xs text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
+                                          <Clock
+                                            size={14}
+                                            className="text-base-content/40 shrink-0"
+                                          />
+                                          {req.formattedTimeOnly}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
+                                </td>
 
-                              {/* COLUMN 4: STATUS */}
-                              <td className="p-4 align-top text-center">
-                                <div className="flex flex-col items-center justify-center gap-1.5 pt-0.5">
-                                  <span
-                                    className={`badge text-xs font-semibold shadow-2xs ${statusPresentation.badgeClass}`}
-                                  >
-                                    {statusPresentation.label}
-                                  </span>
-                                  {["approved", "assigned"].includes(
-                                    req.status,
-                                  ) && (
-                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25 tracking-wide max-w-full truncate">
-                                      <AlertCircle
-                                        size={15}
-                                        className="shrink-0 text-amber-600 dark:text-amber-400"
-                                      />
-                                      <span className="truncate">
-                                        Review date
-                                      </span>
+                                {/* COLUMN 4: STATUS */}
+                                <td className="p-4 align-top text-center">
+                                  <div className="flex flex-col items-center justify-center gap-1.5 pt-0.5">
+                                    <span
+                                      className={`badge text-xs font-semibold shadow-2xs ${statusPresentation.badgeClass}`}
+                                    >
+                                      {statusPresentation.label}
                                     </span>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* COLUMN 5: ACTIONS */}
-                              <td className="p-4 pr-6 align-top text-right">
-                                <div className="flex items-center justify-end gap-2 pt-0.5">
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex items-center gap-2 justify-end"
-                                  >
-                                    {isAIClaimAndSchedule && (
-                                      <button
-                                        type="button"
-                                        className="btn btn-sm whitespace-nowrap"
-                                        disabled={isUpdating}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          openAIRequest(req, "schedule");
-                                        }}
-                                      >
-                                        <Calendar
-                                          size={16}
-                                          aria-hidden="true"
+                                    {["approved", "assigned"].includes(
+                                      req.status,
+                                    ) && (
+                                      <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25 tracking-wide max-w-full truncate">
+                                        <AlertCircle
+                                          size={15}
+                                          className="shrink-0 text-amber-600 dark:text-amber-400"
                                         />
-                                        {req.actionLabel}
-                                      </button>
-                                    )}
-
-                                    {actionPolicy.canClaim &&
-                                      !isAIClaimAndSchedule &&
-                                      req.status === "pending" &&
-                                      !reqTechId && (
-                                        <button
-                                          type="button"
-                                          disabled={isUpdating}
-                                          onClick={() =>
-                                            handleClaimRequest(req)
-                                          }
-                                          className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer shadow-xs"
-                                          title="Claim Request"
-                                          aria-label={`Claim request for ${req.farmer}`}
-                                        >
-                                          <CirclePlus
-                                            size={18}
-                                            aria-hidden="true"
-                                          />
-                                        </button>
-                                      )}
-
-                                    {(req.type === "breeding_verification" ||
-                                      primaryView ===
-                                        REQUEST_BOARD_VIEWS.HISTORY) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openRequest(req)}
-                                        className="btn btn-sm btn-square btn-ghost text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer"
-                                        title={
-                                          primaryView ===
-                                          REQUEST_BOARD_VIEWS.HISTORY
-                                            ? "View request details"
-                                            : "View farmer observation"
-                                        }
-                                        aria-label={`View request details for ${req.farmer}`}
-                                      >
-                                        <Eye size={18} aria-hidden="true" />
-                                      </button>
-                                    )}
-
-                                    {actionPolicy.canComplete &&
-                                      req.status === "in-progress" &&
-                                      req.type !== "breeding_verification" &&
-                                      !isAssignedToOther && (
-                                        <button
-                                          type="button"
-                                          disabled={isUpdating}
-                                          onClick={() => openRequest(req)}
-                                          className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                                          title={
-                                            req.type === "health"
-                                              ? "Submit health record"
-                                              : `Complete ${req.serviceLabel}`
-                                          }
-                                          aria-label={
-                                            req.type === "health"
-                                              ? `Submit health record for ${req.farmer}`
-                                              : `Complete ${req.serviceLabel} for ${req.farmer}`
-                                          }
-                                        >
-                                          <CheckCircle
-                                            size={18}
-                                            aria-hidden="true"
-                                          />
-                                        </button>
-                                      )}
-
-                                    {actionPolicy.canCancelOwnRequest &&
-                                      !isAssignedToOther &&
-                                      ["insemination", "health"].includes(
-                                        req.type,
-                                      ) && (
-                                        <button
-                                          type="button"
-                                          disabled={isUpdating}
-                                          onClick={() =>
-                                            handleDeleteRequest(
-                                              req.id,
-                                              req.type,
-                                            )
-                                          }
-                                          className="btn btn-sm btn-circle btn-ghost text-rose-500 hover:bg-rose-500/10 cursor-pointer"
-                                          title="Cancel Request"
-                                          aria-label={`Cancel request for ${req.farmer}`}
-                                        >
-                                          <Trash2
-                                            size={18}
-                                            aria-hidden="true"
-                                          />
-                                        </button>
-                                      )}
-
-                                    {isAssignedToOther && (
-                                      <div className="flex items-center gap-1 text-sm font-semibold text-amber-600 uppercase tracking-wider select-none bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10 shrink-0">
-                                        <Lock size={15} /> Locked
-                                      </div>
+                                        <span className="truncate">
+                                          Review date
+                                        </span>
+                                      </span>
                                     )}
                                   </div>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                                </td>
+
+                                {/* COLUMN 5: ACTIONS */}
+                                <td className="p-4 pr-6 align-top text-right">
+                                  <div className="flex items-center justify-end gap-2 pt-0.5">
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="flex items-center gap-2 justify-end"
+                                    >
+                                      {isAIClaimAndSchedule && (
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm whitespace-nowrap"
+                                          disabled={isUpdating}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openAIRequest(req, "schedule");
+                                          }}
+                                        >
+                                          <Calendar
+                                            size={16}
+                                            aria-hidden="true"
+                                          />
+                                          {req.actionLabel}
+                                        </button>
+                                      )}
+
+                                      {actionPolicy.canClaim &&
+                                        !isAIClaimAndSchedule &&
+                                        req.status === "pending" &&
+                                        !reqTechId && (
+                                          <button
+                                            type="button"
+                                            disabled={isUpdating}
+                                            onClick={() =>
+                                              handleClaimRequest(req)
+                                            }
+                                            className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer shadow-xs"
+                                            title="Claim Request"
+                                            aria-label={`Claim request for ${req.farmer}`}
+                                          >
+                                            <CirclePlus
+                                              size={18}
+                                              aria-hidden="true"
+                                            />
+                                          </button>
+                                        )}
+
+                                      {(req.type === "breeding_verification" ||
+                                        primaryView ===
+                                          REQUEST_BOARD_VIEWS.HISTORY) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openRequest(req)}
+                                          className="btn btn-sm btn-square btn-ghost text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer"
+                                          title={
+                                            primaryView ===
+                                            REQUEST_BOARD_VIEWS.HISTORY
+                                              ? "View request details"
+                                              : "View farmer observation"
+                                          }
+                                          aria-label={`View request details for ${req.farmer}`}
+                                        >
+                                          <Eye size={18} aria-hidden="true" />
+                                        </button>
+                                      )}
+
+                                      {actionPolicy.canComplete &&
+                                        req.status === "in-progress" &&
+                                        req.type !== "breeding_verification" &&
+                                        !isAssignedToOther && (
+                                          <button
+                                            type="button"
+                                            disabled={isUpdating}
+                                            onClick={() => openRequest(req)}
+                                            className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                            title={
+                                              req.type === "health"
+                                                ? "Submit health record"
+                                                : `Complete ${req.serviceLabel}`
+                                            }
+                                            aria-label={
+                                              req.type === "health"
+                                                ? `Submit health record for ${req.farmer}`
+                                                : `Complete ${req.serviceLabel} for ${req.farmer}`
+                                            }
+                                          >
+                                            <CheckCircle
+                                              size={18}
+                                              aria-hidden="true"
+                                            />
+                                          </button>
+                                        )}
+
+                                      {actionPolicy.canCancelOwnRequest &&
+                                        !isAssignedToOther &&
+                                        ["insemination", "health"].includes(
+                                          req.type,
+                                        ) && (
+                                          <button
+                                            type="button"
+                                            disabled={isUpdating}
+                                            onClick={() =>
+                                              handleDeleteRequest(
+                                                req.id,
+                                                req.type,
+                                              )
+                                            }
+                                            className="btn btn-sm btn-circle btn-ghost text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                                            title="Cancel Request"
+                                            aria-label={`Cancel request for ${req.farmer}`}
+                                          >
+                                            <Trash2
+                                              size={18}
+                                              aria-hidden="true"
+                                            />
+                                          </button>
+                                        )}
+
+                                      {isAssignedToOther && (
+                                        <div className="flex items-center gap-1 text-sm font-semibold text-amber-600 uppercase tracking-wider select-none bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10 shrink-0">
+                                          <Lock size={15} /> Locked
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
                 {/* Integrated Static Pagination Footer */}
                 {!isMasterLoading && totalPages > 1 && (
@@ -1659,136 +1806,140 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: RADAR MAP, STATS SUMMARY, CLAIMED LIST */}
-          <aside className="space-y-6">
-            {/* 2. REQUEST TYPE SUMMARY COUNTS */}
-            <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
-                  Request Summary
-                </h3>
-              </div>
-
-              <div className="space-y-3 pt-1">
-                {/* Pregnancy Check */}
-                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />{" "}
-                    Pregnancy Check
-                  </span>
-                  <span className="text-base-content/60 font-semibold">
-                    {pregnancyCount}
-                  </span>
-                </div>
-
-                {/* Vaccination */}
-                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />{" "}
-                    Vaccination
-                  </span>
-                  <span className="text-base-content/60 font-semibold">
-                    {vaccinationCount}
-                  </span>
-                </div>
-
-                {/* AI Service */}
-                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />{" "}
-                    AI Service
-                  </span>
-                  <span className="text-base-content/60 font-semibold">
-                    {aiCount}
-                  </span>
-                </div>
-
-                {/* Health Assistance */}
-                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />{" "}
-                    Health Assistance
-                  </span>
-                  <span className="text-base-content/60 font-semibold">
-                    {healthCount}
-                  </span>
-                </div>
-
-                {/* Calving Assistance */}
-                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />{" "}
-                    Calving Assistance
-                  </span>
-                  <span className="text-base-content/60 font-semibold">
-                    {calvingCount}
-                  </span>
-                </div>
-
-                {/* General Check-up */}
-                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />{" "}
-                    General Check-up
-                  </span>
-                  <span className="text-base-content/60 font-semibold">
-                    {generalCount}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. MY CLAIMED REQUESTS PANEL */}
-            <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
+          {!isAdmin ? (
+            <aside
+              className="space-y-6"
+              aria-label="Technician request insights"
+            >
+              {/* 2. REQUEST TYPE SUMMARY COUNTS */}
+              <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
-                    Claimed Requests
+                    Request Summary
                   </h3>
                 </div>
-                <button
-                  onClick={() => {
-                    setPrimaryView(REQUEST_BOARD_VIEWS.MINE);
-                    setStatusFilter("all");
-                    setAssignmentFilter("mine");
-                    setCurrentPage(1);
-                  }}
-                  className="btn btn-sm btn-ghost text-primary text-[10px] uppercase font-semibold"
-                >
-                  View all
-                </button>
+
+                <div className="space-y-3 pt-1">
+                  {/* Pregnancy Check */}
+                  <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />{" "}
+                      Pregnancy Check
+                    </span>
+                    <span className="text-base-content/60 font-semibold">
+                      {pregnancyCount}
+                    </span>
+                  </div>
+
+                  {/* Vaccination */}
+                  <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />{" "}
+                      Vaccination
+                    </span>
+                    <span className="text-base-content/60 font-semibold">
+                      {vaccinationCount}
+                    </span>
+                  </div>
+
+                  {/* AI Service */}
+                  <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />{" "}
+                      AI Service
+                    </span>
+                    <span className="text-base-content/60 font-semibold">
+                      {aiCount}
+                    </span>
+                  </div>
+
+                  {/* Health Assistance */}
+                  <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />{" "}
+                      Health Assistance
+                    </span>
+                    <span className="text-base-content/60 font-semibold">
+                      {healthCount}
+                    </span>
+                  </div>
+
+                  {/* Calving Assistance */}
+                  <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />{" "}
+                      Calving Assistance
+                    </span>
+                    <span className="text-base-content/60 font-semibold">
+                      {calvingCount}
+                    </span>
+                  </div>
+
+                  {/* General Check-up */}
+                  <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />{" "}
+                      General Check-up
+                    </span>
+                    <span className="text-base-content/60 font-semibold">
+                      {generalCount}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <ul className="list gap-2 pt-1">
-                {claimedRequests.length === 0 ? (
-                  <li className="py-6 text-center text-base text-base-content/60">
-                    No active claimed requests.
-                  </li>
-                ) : (
-                  claimedRequests.map((claimed) => (
-                    <li
-                      key={claimed.id}
-                      className="list-row items-center gap-3 rounded-xl bg-base-200/60 p-3"
-                    >
-                      <div className="list-col-grow min-w-0">
-                        <span className="text-sm font-semibold text-base-content block leading-tight truncate">
-                          {claimed.label}
-                        </span>
-                        <span className="text-sm text-base-content/65 block mt-1 truncate">
-                          {claimed.animal}
-                        </span>
-                      </div>
-                      <span
-                        className={`badge badge-md font-extrabold text-xs shrink-0 ${claimed.statusClass}`}
-                      >
-                        {claimed.status}
-                      </span>
+              {/* 3. MY CLAIMED REQUESTS PANEL */}
+              <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
+                      Claimed Requests
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPrimaryView(REQUEST_BOARD_VIEWS.MINE);
+                      setStatusFilter("all");
+                      setAssignmentFilter("mine");
+                      setCurrentPage(1);
+                    }}
+                    className="btn btn-sm btn-ghost text-primary text-[10px] uppercase font-semibold"
+                  >
+                    View all
+                  </button>
+                </div>
+
+                <ul className="list gap-2 pt-1">
+                  {claimedRequests.length === 0 ? (
+                    <li className="py-6 text-center text-base text-base-content/60">
+                      No active claimed requests.
                     </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          </aside>
+                  ) : (
+                    claimedRequests.map((claimed) => (
+                      <li
+                        key={claimed.id}
+                        className="list-row items-center gap-3 rounded-xl bg-base-200/60 p-3"
+                      >
+                        <div className="list-col-grow min-w-0">
+                          <span className="text-sm font-semibold text-base-content block leading-tight truncate">
+                            {claimed.label}
+                          </span>
+                          <span className="text-sm text-base-content/65 block mt-1 truncate">
+                            {claimed.animal}
+                          </span>
+                        </div>
+                        <span
+                          className={`badge badge-md font-extrabold text-xs shrink-0 ${claimed.statusClass}`}
+                        >
+                          {claimed.status}
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            </aside>
+          ) : null}
         </div>
       </main>
 
