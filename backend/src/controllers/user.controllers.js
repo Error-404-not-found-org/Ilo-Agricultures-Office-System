@@ -1460,7 +1460,7 @@ export const getUserById = async (req, res) => {
           $or: [{ actorId: id }, { entityId: id }],
         })
           .sort({ createdAt: -1 })
-          .limit(30)
+          .limit(5)
           .lean();
       } catch (err) {
         console.error("Error fetching activity history:", err);
@@ -1472,7 +1472,7 @@ export const getUserById = async (req, res) => {
           const sessions = await clerkClient.sessions.getSessionList({
             userId: user.clerkId,
           });
-          loginHistory = sessions.map((s) => ({
+          loginHistory = sessions.slice(0, 5).map((s) => ({
             id: s.id,
             status: s.status,
             lastActiveAt: s.lastActiveAt,
@@ -1532,6 +1532,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       const healthHistory = await HealthRequest.find({
         handledBy: id,
@@ -1539,6 +1540,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       serviceHistory = [
         ...insHistory.map((i) => ({ ...i, type: "ai" })),
@@ -1546,7 +1548,7 @@ export const getUserById = async (req, res) => {
       ].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      ).slice(0, 5);
     } else if (user.role === "farmer") {
       const technicianScope = isTechnicianFarmerDetail
         ? {
@@ -1630,6 +1632,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       const healthHistory = await HealthRequest.find({
         farmerId: id,
@@ -1638,6 +1641,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       const taskHistory = await Task.find({
         farmerId: id,
@@ -1645,7 +1649,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalIds", "earTag animalId breed species")
         .sort({ createdAt: -1 })
-        .limit(20)
+        .limit(5)
         .lean();
       serviceHistory = [
         ...insHistory.map((i) => ({ ...i, type: "ai" })),
@@ -1663,7 +1667,7 @@ export const getUserById = async (req, res) => {
       ].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      ).slice(0, 5);
 
       // Fetch custom technician field notes
       try {

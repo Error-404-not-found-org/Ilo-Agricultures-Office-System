@@ -8,19 +8,19 @@ import {
 } from "../services/adminAnimals.service.ts";
 
 const screen = readFileSync(
-  fileURLToPath(new URL("../screens/AdminAnimalsScreen.tsx", import.meta.url)),
+  fileURLToPath(new URL("../screens/AdminAnimalsScreen.tsx", import.meta.url) as any),
   "utf8",
 );
 const hook = readFileSync(
-  fileURLToPath(new URL("../hooks/useAdminAnimals.ts", import.meta.url)),
+  fileURLToPath(new URL("../hooks/useAdminAnimals.ts", import.meta.url) as any),
   "utf8",
 );
 const service = readFileSync(
-  fileURLToPath(new URL("../services/adminAnimals.service.ts", import.meta.url)),
+  fileURLToPath(new URL("../services/adminAnimals.service.ts", import.meta.url) as any),
   "utf8",
 );
 const details = readFileSync(
-  fileURLToPath(new URL("../screens/AdminAnimalDetailsScreen.tsx", import.meta.url)),
+  fileURLToPath(new URL("../screens/AdminAnimalDetailsScreen.tsx", import.meta.url) as any),
   "utf8",
 );
 
