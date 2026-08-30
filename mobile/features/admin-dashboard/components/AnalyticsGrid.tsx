@@ -70,6 +70,7 @@ export function AnalyticsGrid({ stats }: AnalyticsGridProps) {
           fontFamily: "Outfit_800ExtraBold",
           color: colors.textPrimary,
           marginBottom: 12,
+          marginTop: 18,
         }}
       >
         Overview
