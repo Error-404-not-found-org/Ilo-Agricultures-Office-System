@@ -27,6 +27,7 @@ export default function AdminRecordsScreen() {
     currentData,
     totalRecordsCount,
     isLoading,
+    isRefreshing,
     isError,
     searchQuery,
     setSearchQuery,
@@ -50,6 +51,7 @@ export default function AdminRecordsScreen() {
     setShowEndPicker,
     clearDateRange,
     handleExport,
+    isExporting,
     handleRefresh,
   } = useAdminRecords();
 
@@ -114,6 +116,8 @@ export default function AdminRecordsScreen() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Export CSV"
+            accessibilityState={{ disabled: isExporting }}
+            disabled={isExporting}
             onPress={() => handleExport("csv")}
             style={{
               backgroundColor: colors.card,
@@ -126,6 +130,7 @@ export default function AdminRecordsScreen() {
               flexDirection: 'row',
               alignItems: "center",
               gap: 4,
+              opacity: isExporting ? 0.5 : 1,
             }}
           >
             <MaterialCommunityIcons name="file-delimited" size={14} color="#16a34a" />
@@ -135,6 +140,8 @@ export default function AdminRecordsScreen() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Export Excel"
+            accessibilityState={{ disabled: isExporting }}
+            disabled={isExporting}
             onPress={() => handleExport("excel")}
             style={{
               backgroundColor: colors.card,
@@ -147,6 +154,7 @@ export default function AdminRecordsScreen() {
               flexDirection: 'row',
               alignItems: "center",
               gap: 4,
+              opacity: isExporting ? 0.5 : 1,
             }}
           >
             <MaterialCommunityIcons name="file-excel" size={14} color="#10b981" />
@@ -156,6 +164,8 @@ export default function AdminRecordsScreen() {
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Export PDF"
+            accessibilityState={{ disabled: isExporting }}
+            disabled={isExporting}
             onPress={() => handleExport("pdf")}
             style={{
               backgroundColor: colors.card,
@@ -168,6 +178,7 @@ export default function AdminRecordsScreen() {
               flexDirection: 'row',
               alignItems: "center",
               gap: 4,
+              opacity: isExporting ? 0.5 : 1,
             }}
           >
             <MaterialCommunityIcons name="file-pdf-box" size={14} color="#ef4444" />
@@ -217,7 +228,7 @@ export default function AdminRecordsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 120 }}
           refreshControl={
-            <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} colors={[PRIMARY]} tintColor={PRIMARY} />
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[PRIMARY]} tintColor={PRIMARY} />
           }
           ListHeaderComponent={headerElement}
           ListEmptyComponent={() => {

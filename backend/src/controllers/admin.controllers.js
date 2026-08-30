@@ -341,18 +341,38 @@ export const getChartData = async (req, res) => {
   }
 };
 
+const applyAdminRecordDateRange = (query, field, startDate, endDate) => {
+  const range = {};
+  const parsedStart = startDate ? new Date(startDate) : null;
+  const parsedEnd = endDate ? new Date(endDate) : null;
+
+  if (parsedStart && !Number.isNaN(parsedStart.getTime())) {
+    range.$gte = parsedStart;
+  }
+  if (parsedEnd && !Number.isNaN(parsedEnd.getTime())) {
+    range.$lte = parsedEnd;
+  }
+  if (Object.keys(range).length > 0) query[field] = range;
+};
+
 // ... existing get functions implementation ...
 export const getAllInseminations = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const { search, estrus, outcome, status } = req.query;
+    const { search, estrus, outcome, status, startDate, endDate } = req.query;
     const query = { deletedAt: null };
 
     if (estrus) query.estrus = estrus;
     if (outcome) query.outcome = outcome;
     if (status) query.status = status;
+    applyAdminRecordDateRange(
+      query,
+      "inseminationDate",
+      startDate,
+      endDate,
+    );
     if (search) {
       const searchRegex = { $regex: search, $options: "i" };
       const [matchedFarmers, matchedAnimals] = await Promise.all([
@@ -438,9 +458,41 @@ export const getAllPregnancyChecks = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const { search, startDate, endDate } = req.query;
+    const query = { deletedAt: null };
 
-    const [pregnancyChecks, total] = await Promise.all([
-      Pregnancy.find({ deletedAt: null })
+    applyAdminRecordDateRange(
+      query,
+      "pregnancyDiagnosis.date",
+      startDate,
+      endDate,
+    );
+
+    if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      const [matchedFarmers, matchedAnimals] = await Promise.all([
+        User.find({ name: searchRegex }).select("_id").lean(),
+        Animal.find({
+          $or: [
+            { animalId: searchRegex },
+            { earTag: searchRegex },
+            { breed: searchRegex },
+            { species: searchRegex },
+          ],
+        })
+          .select("_id")
+          .lean(),
+      ]);
+      query.$or = [
+        { "pregnancyDiagnosis.result": searchRegex },
+        { "confirmation.methodCode": searchRegex },
+        { farmerId: { $in: matchedFarmers.map((farmer) => farmer._id) } },
+        { animalId: { $in: matchedAnimals.map((animal) => animal._id) } },
+      ];
+    }
+
+    const [pregnancyChecks, total, pregnant] = await Promise.all([
+      Pregnancy.find(query)
         .populate("farmerId", "name email")
         .populate("animalId", "earTag species breed")
         .populate({
@@ -450,13 +502,29 @@ export const getAllPregnancyChecks = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      Pregnancy.countDocuments({ deletedAt: null }),
+      Pregnancy.countDocuments(query),
+      Pregnancy.countDocuments({
+        ...query,
+        "pregnancyDiagnosis.result": {
+          $regex: "^pregnant$",
+          $options: "i",
+        },
+      }),
     ]);
+    const totalPages = Math.ceil(total / limit);
 
     res.status(200).send({
       data: pregnancyChecks,
       pregnancyChecks: pregnancyChecks, // backwards compatibility
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      page,
+      limit,
+      total,
+      totalPages,
+      pagination: { total, page, limit, totalPages },
+      summary: {
+        pregnant,
+        successRate: total === 0 ? 0 : Math.round((pregnant / total) * 100),
+      },
     });
   } catch (error) {
     res.status(500).send({
@@ -471,12 +539,20 @@ export const getAllCalvings = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const { search, species, calvingEase, seen } = req.query;
+    const {
+      search,
+      species,
+      calvingEase,
+      seen,
+      startDate,
+      endDate,
+    } = req.query;
     const query = { deletedAt: null };
 
     if (calvingEase) query.calvingEase = calvingEase;
     if (seen === "seen") query.isSeen = true;
     if (seen === "unseen") query.isSeen = { $ne: true };
+    applyAdminRecordDateRange(query, "date", startDate, endDate);
     if (search || species) {
       const searchRegex = search ? { $regex: search, $options: "i" } : null;
       const animalFilters = [];
