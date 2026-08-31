@@ -74,6 +74,10 @@ import {
   buildFarmerAIRequest,
   buildFarmerAIRequests,
 } from "../domain/ai-request-presentation.js";
+import {
+  getAIRequestPhotos,
+  normalizeSubmittedAIRequestPhotos,
+} from "../domain/ai-request-attachments.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -243,12 +247,17 @@ export const createAIRequest = async (req, res) => {
       resolvedAt: new Date(),
     };
 
+    const normalizedPhotos = normalizeSubmittedAIRequestPhotos(photos);
+    const compatibilityImageUrl =
+      normalizedPhotos[0] ||
+      (typeof imageUrl === "string" ? imageUrl.trim() : "");
+
     const request = await createAIRequestWithGuard(
       {
         farmerId,
         animalId,
-        imageUrl: imageUrl || (photos && photos.length > 0 ? photos[0] : ""),
-        photos: photos || [],
+        imageUrl: compatibilityImageUrl,
+        photos: normalizedPhotos,
         comment: comment || "",
         heatSigns: heatSigns || [],
         status: "pending",
@@ -276,7 +285,10 @@ export const createAIRequest = async (req, res) => {
           (isReInsemination
             ? "Farmer requested another AI service after the previous attempt was confirmed unsuccessful."
             : "Farmer requested artificial insemination service."),
-        attachments: photos?.length > 0 ? photos : imageUrl ? [imageUrl] : [],
+        attachments: getAIRequestPhotos({
+          photos: normalizedPhotos,
+          imageUrl: compatibilityImageUrl,
+        }),
         metadata: {
           attemptNumber,
           previousAttemptId: request.previousAttemptId || null,
@@ -1925,6 +1937,8 @@ export const buildCandidateAIDetail = (request) => {
       ? request.previousAttemptId
       : null;
 
+  const requestPhotos = getAIRequestPhotos(request);
+
   return {
     id: request._id,
     _id: request._id,
@@ -1955,7 +1969,8 @@ export const buildCandidateAIDetail = (request) => {
     heatSigns: request.heatSigns,
     farmerNotes: safeCandidateText(request.comment),
     comment: safeCandidateText(request.comment),
-    imageUrl: safeCandidateText(request.imageUrl),
+    imageUrl: requestPhotos[0] || "",
+    photos: requestPhotos,
     animalId: request.animalId,
     farmerName: safeCandidateText(farmer.name),
     municipality:
@@ -2110,6 +2125,9 @@ export const getAIRequestDetail = async (req, res) => {
       request.farmerId?._id?.toString() === req.user._id.toString();
 
     const requestObj = request.toObject();
+
+    requestObj.photos = getAIRequestPhotos(requestObj);
+    requestObj.imageUrl = requestObj.photos[0] || "";
 
     requestObj.status = normalizeAIStatus(requestObj.status);
     requestObj.requestKind =

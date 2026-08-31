@@ -59,16 +59,18 @@ const AIRequestSummary = ({ request, compact = false }) => {
       : "Not recorded";
   const attachmentUrls = [
     ...new Set(
-      (Array.isArray(request.attachments?.urls)
-        ? request.attachments.urls
-        : []
-      ).filter((url) => typeof url === "string" && url.trim()),
+      [
+        ...(Array.isArray(request.photos) ? request.photos : []),
+        request.imageUrl,
+        ...(Array.isArray(request.attachments?.urls)
+          ? request.attachments.urls
+          : []),
+      ]
+        .filter((url) => typeof url === "string" && url.trim())
+        .map((url) => url.trim()),
     ),
   ];
-  const attachmentCount = Math.max(
-    Number(request.attachments?.count || 0),
-    attachmentUrls.length,
-  );
+  const attachmentCount = attachmentUrls.length;
 
   return (
     <section
@@ -136,7 +138,7 @@ const AIRequestSummary = ({ request, compact = false }) => {
         <div className="mt-4 space-y-2">
           <p className="flex items-center gap-2 text-sm font-medium text-base-content/70">
             <Paperclip size={15} aria-hidden="true" />
-            {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
+            Farmer request photos ({attachmentCount})
           </p>
           {attachmentUrls.length > 0 && (
             <div
@@ -155,7 +157,7 @@ const AIRequestSummary = ({ request, compact = false }) => {
                   <figure className="aspect-video bg-base-200">
                     <img
                       src={url}
-                      alt={`AI request attachment ${index + 1}`}
+                      alt={`Farmer-submitted AI request photo ${index + 1}`}
                       className="h-full w-full object-cover"
                       loading="lazy"
                     />
@@ -163,6 +165,11 @@ const AIRequestSummary = ({ request, compact = false }) => {
                 </a>
               ))}
             </div>
+          )}
+          {attachmentUrls.length === 0 && (
+            <p className="text-sm text-base-content/60">
+              No request photos submitted.
+            </p>
           )}
         </div>
       )}

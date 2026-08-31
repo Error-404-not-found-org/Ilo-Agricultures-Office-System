@@ -1,3 +1,5 @@
+import { getAIRequestPhotos } from "./ai-request-attachments.js";
+
 const toPlainObject = (value) => {
   if (!value) return value;
   return typeof value.toObject === "function" ? value.toObject() : { ...value };
@@ -24,6 +26,9 @@ const safePreviousAttempt = (value) => {
 export const buildFarmerAIRequest = (request) => {
   const result = toPlainObject(request);
   if (!result) return result;
+
+  result.photos = getAIRequestPhotos(result);
+  result.imageUrl = result.photos[0] || "";
 
   const technicianDisplayName = safeTechnicianName(result);
   const outcomeConfirmedByDisplayName = result.outcomeConfirmedBy?.name || "";

@@ -126,10 +126,10 @@ describe("Unified AI Request modal", () => {
     expect(detailsDialog).toHaveTextContent("San Roque, Iloilo City");
     expect(detailsDialog).toHaveTextContent("Standing heat, Clear mucus");
     expect(detailsDialog).toHaveTextContent("August 4, 2026");
-    expect(detailsDialog).toHaveTextContent("1 attachment");
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (1)");
     expect(detailsDialog).toHaveTextContent("Pending");
     const attachment = within(detailsDialog).getByRole("img", {
-      name: "AI request attachment 1",
+      name: "Farmer-submitted AI request photo 1",
     });
     expect(attachment).toHaveAttribute("src", "https://example.test/heat.jpg");
     expect(
@@ -151,6 +151,77 @@ describe("Unified AI Request modal", () => {
     expect(scheduleDialog).toBe(detailsDialog);
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(mocks.patch).not.toHaveBeenCalled();
+  });
+
+  it("renders all unique request photos with historical imageUrl fallback", () => {
+    const multiImageRequest = {
+      ...request,
+      photos: [
+        "https://example.test/one.jpg",
+        "https://example.test/two.jpg",
+      ],
+      imageUrl: "https://example.test/one.jpg",
+      attachments: {
+        count: 3,
+        urls: [
+          "https://example.test/one.jpg",
+          "https://example.test/three.jpg",
+        ],
+      },
+    };
+    renderModal({ initialRequest: multiImageRequest });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: "AI Request Details",
+    });
+    expect(
+      within(detailsDialog).getAllByRole("img", {
+        name: /Farmer-submitted AI request photo/,
+      }),
+    ).toHaveLength(3);
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (3)");
+  });
+
+  it("renders a historical imageUrl-only request once", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        imageUrl: "https://example.test/historical.jpg",
+        attachments: undefined,
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: "AI Request Details",
+    });
+    expect(
+      within(detailsDialog).getAllByRole("img", {
+        name: /Farmer-submitted AI request photo/,
+      }),
+    ).toHaveLength(1);
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (1)");
+  });
+
+  it("shows a safe empty state when no request photo exists", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        imageUrl: undefined,
+        photos: [],
+        attachments: undefined,
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: "AI Request Details",
+    });
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (0)");
+    expect(detailsDialog).toHaveTextContent("No request photos submitted.");
+    expect(
+      within(detailsDialog).queryByRole("img", {
+        name: /Farmer-submitted AI request photo/,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("returns to details in the same modal and cancels without mutation", () => {

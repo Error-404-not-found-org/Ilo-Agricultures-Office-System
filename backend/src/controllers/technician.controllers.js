@@ -75,6 +75,7 @@ import {
   buildActiveHealthWorkFilter,
   buildActiveStandaloneTaskFilter,
 } from "../services/technician-workload-summary.service.js";
+import { getAIRequestPhotos } from "../domain/ai-request-attachments.js";
 
 const combineMongoFilters = (baseFilter, ...conditions) => {
   const { $and: baseAnd = [], ...base } = baseFilter;
@@ -3982,8 +3983,10 @@ export const getTechnicianRequests = async (req, res) => {
       }
 
       const attachmentUrls = [
-        rec.imageUrl,
-        ...(Array.isArray(rec.evidencePhotos) ? rec.evidencePhotos : []),
+        ...new Set([
+          ...getAIRequestPhotos(rec),
+          ...(Array.isArray(rec.evidencePhotos) ? rec.evidencePhotos : []),
+        ]),
       ].filter(Boolean);
 
       let distanceKm = null;
@@ -4038,6 +4041,11 @@ export const getTechnicianRequests = async (req, res) => {
           visitPeriod: rec.visitPeriod,
           heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
           requestSubmissionDate: rec.createdAt,
+          attachments: {
+            primaryUrl: attachmentUrls[0] || null,
+            urls: attachmentUrls,
+            count: attachmentUrls.length,
+          },
           createdAt: rec.createdAt,
         };
       }
@@ -4100,7 +4108,7 @@ export const getTechnicianRequests = async (req, res) => {
         heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
         requestSubmissionDate: rec.createdAt,
         attachments: {
-          primaryUrl: rec.imageUrl || attachmentUrls[0] || null,
+          primaryUrl: attachmentUrls[0] || null,
           urls: attachmentUrls,
           count: attachmentUrls.length,
         },

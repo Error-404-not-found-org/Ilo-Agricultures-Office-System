@@ -53,6 +53,7 @@ import {
   getAIScheduleTiming,
   getRelativeAIScheduleDayLabel,
 } from "../utils/aiScheduleAvailability";
+import { getAIRequestAttachmentUrls } from "../utils/aiRequestAttachments";
 
 type ScheduleMode = "accept" | "schedule" | "reschedule";
 
@@ -124,21 +125,6 @@ const getFarmerLocation = (farmer: any) => {
     .filter(Boolean)
     .join(", ");
 };
-
-const getAttachmentUrls = (request: any) =>
-  Array.from(
-    new Set(
-      [
-        request?.imageUrl,
-        request?.photos,
-        request?.attachments?.urls,
-        request?.attachments,
-      ]
-        .flatMap((value) => (Array.isArray(value) ? value : [value]))
-        .map(cleanText)
-        .filter(Boolean),
-    ),
-  );
 
 const getErrorMessage = (error: any, fallback: string) =>
   error?.response?.data?.message || error?.message || fallback;
@@ -256,7 +242,10 @@ export function AIRequestDetails({
     request?.farmerNotes || request?.comment || request?.note,
     "\n\n",
   );
-  const attachments = useMemo(() => getAttachmentUrls(request), [request]);
+  const attachments = useMemo(
+    () => getAIRequestAttachmentUrls(request),
+    [request],
+  );
   const submittedAt = formatDate(request?.createdAt, true);
   const scheduledDate = formatDate(request?.scheduledDate);
   const visitPeriod = cleanText(
@@ -796,7 +785,7 @@ export function AIRequestDetails({
             textRole="title"
             style={{ color: colors.textPrimary, marginTop: 24 }}
           >
-            AI Request Attachments
+            Farmer Request Photos
           </Text>
           {attachments.length > 0 ? (
             <ScrollView
@@ -812,7 +801,7 @@ export function AIRequestDetails({
                   <Image
                     source={{ uri }}
                     resizeMode="cover"
-                    accessibilityLabel={`AI request attachment ${index + 1}`}
+                    accessibilityLabel={`Farmer AI request photo ${index + 1}`}
                     style={{ width: 112, height: 88, borderRadius: 12 }}
                   />
                 </TouchableOpacity>
@@ -823,7 +812,7 @@ export function AIRequestDetails({
               textRole="body"
               style={{ color: colors.textSecondary, marginTop: 8 }}
             >
-              No attachments submitted.
+              No request photos submitted.
             </Text>
           )}
         </View>
