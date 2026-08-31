@@ -519,7 +519,7 @@ test("HEALTH START", async (t) => {
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 403);
   });
-  await t.test("Admin behavior preserved", async () => {
+  await t.test("Admin clinical mutation remains forbidden", async () => {
     const adminId = new mongoose.Types.ObjectId();
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-ST8", species: "Carabao", breed: "Native" });
@@ -527,6 +527,9 @@ test("HEALTH START", async (t) => {
     const { req, res } = reqRes({ status: "in-progress" }, "admin", adminId);
     req.params.id = reqOwned._id;
     await updateHealthRequestStatus(req, res);
-    assert.equal(res.statusCode, 200);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, "TECHNICIAN_CLINICAL_ROLE_REQUIRED");
+    const unchanged = await HealthRequest.findById(reqOwned._id);
+    assert.equal(unchanged.status, "scheduled");
   });
 });
