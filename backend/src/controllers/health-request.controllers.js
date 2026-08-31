@@ -508,6 +508,7 @@ export const updateHealthRequestStatus = async (req, res) => {
     if (status === "scheduled") {
       updateFields.scheduledDate = normalizedScheduledDate;
       updateFields.visitPeriod = normalizedVisitPeriod;
+      updateFields.handlingMethod = "farm_visit";
     }
     if (status === "in-progress" && !existing.serviceStartedAt) {
       updateFields.serviceStartedAt = new Date();
