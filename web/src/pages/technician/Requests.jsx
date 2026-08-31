@@ -24,6 +24,7 @@ import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
 import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import RequestActionModal from "../../components/dialogs/RequestActionModal";
+import HealthRequestActionModal from "../../components/dialogs/HealthRequestActionModal";
 import AIClaimScheduleAction from "../../components/dialogs/AIClaimScheduleAction";
 import { ui } from "../../components/ui/uiClasses";
 import AdminRequestCards from "../../components/admin/requests/AdminRequestCards";
@@ -68,7 +69,7 @@ const localDateKey = (value) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatCanonicalAISchedule = (schedule = {}) => {
+const formatCanonicalVisitSchedule = (schedule = {}) => {
   if (!schedule.date) {
     return {
       combined: "Not scheduled",
@@ -394,9 +395,19 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
 
       const farmerBadge = req.raw?.farmerId?.accountStatus || null;
       const isCanonicalAI = req.workflowType === "AI";
+      const isCanonicalHealth = service.workflow === "health";
+      const usesCanonicalVisitPeriod = isCanonicalAI || isCanonicalHealth;
       const canonicalSchedule = {
-        date: req.schedule?.date || null,
-        visitPeriod: req.schedule?.visitPeriod || null,
+        date:
+          req.schedule?.date ||
+          (isCanonicalHealth
+            ? req.scheduledDate || req.raw?.scheduledDate || null
+            : null),
+        visitPeriod:
+          req.schedule?.visitPeriod ||
+          (isCanonicalHealth
+            ? req.visitPeriod || req.raw?.visitPeriod || null
+            : null),
       };
       const legacyScheduleValue =
         req.scheduledDate || req.preferredDate || req.createdAt || null;
@@ -406,9 +417,9 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
       const isValidLegacyDate =
         legacyScheduleDate && !Number.isNaN(legacyScheduleDate.getTime());
       const canonicalSchedulePresentation =
-        formatCanonicalAISchedule(canonicalSchedule);
+        formatCanonicalVisitSchedule(canonicalSchedule);
 
-      const formattedDateOnly = isCanonicalAI
+      const formattedDateOnly = usesCanonicalVisitPeriod
         ? canonicalSchedulePresentation.dateLabel
         : isValidLegacyDate
           ? legacyScheduleDate.toLocaleDateString("en-US", {
@@ -418,7 +429,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
             })
           : "Date unavailable";
 
-      const formattedTimeOnly = isCanonicalAI
+      const formattedTimeOnly = usesCanonicalVisitPeriod
         ? canonicalSchedulePresentation.periodLabel
         : isValidLegacyDate
           ? legacyScheduleDate.toLocaleTimeString("en-US", {
@@ -427,7 +438,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
             })
           : "Time unavailable";
 
-      const formattedSchedule = isCanonicalAI
+      const formattedSchedule = usesCanonicalVisitPeriod
         ? canonicalSchedulePresentation.combined
         : isValidLegacyDate
           ? `${formattedDateOnly}, ${formattedTimeOnly}`
@@ -601,6 +612,9 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const isActiveTaskModalOpen =
     isTaskModalOpen ||
     Boolean(deepLinkedTask && dismissedDeepLink !== requestedId);
+  const isTechnicianHealthTask =
+    actionPolicy.isTechnician &&
+    (activeTask?.workflowType === "Health" || activeTask?.type === "health");
 
   const requestInsights = useMemo(() => {
     const emptyInsights = {
@@ -2013,18 +2027,30 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
       )}
 
       {/* ===== TASK ACTION DIALOG MODAL ===== */}
-      <RequestActionModal
-        isOpen={isActiveTaskModalOpen}
-        onClose={() => {
-          setIsTaskModalOpen(false);
-          if (requestedId) setDismissedDeepLink(requestedId);
-        }}
-        task={activeTask}
-        onSuccess={() => {
-          refetchQueue();
-        }}
-        role={actionPolicy.role}
-      />
+      {isTechnicianHealthTask ? (
+        <HealthRequestActionModal
+          isOpen={isActiveTaskModalOpen}
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            if (requestedId) setDismissedDeepLink(requestedId);
+          }}
+          task={activeTask}
+          onSuccess={() => refetchQueue()}
+        />
+      ) : (
+        <RequestActionModal
+          isOpen={isActiveTaskModalOpen}
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            if (requestedId) setDismissedDeepLink(requestedId);
+          }}
+          task={activeTask}
+          onSuccess={() => {
+            refetchQueue();
+          }}
+          role={actionPolicy.role}
+        />
+      )}
     </div>
   );
 }

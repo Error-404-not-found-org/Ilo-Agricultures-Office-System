@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { readFileSync } from "node:fs";
@@ -33,7 +33,7 @@ vi.mock("../../components/layout/Topbar", () => ({
   default: ({ title }) => <h1>{title}</h1>,
 }));
 
-vi.mock("../../components/dialogs/RequestActionModal", () => ({
+vi.mock("../../components/dialogs/HealthRequestActionModal", () => ({
   default: ({ isOpen, task }) =>
     isOpen ? (
       <div
@@ -152,7 +152,7 @@ describe("Work Queue owned Health workflow", () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
-  it("starts Health against the canonical singular request route", async () => {
+  it("opens scheduled Health through the same request-linked action system", async () => {
     renderQueue([
       {
         ...baseTask,
@@ -174,12 +174,12 @@ describe("Work Queue owned Health workflow", () => {
       await screen.findByRole("button", { name: "Start Service" }),
     );
 
-    await waitFor(() =>
-      expect(mocks.patch).toHaveBeenCalledWith(
-        `/health-request/${ids.health}/status`,
-        { status: "in-progress" },
-      ),
-    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Owned Health request",
+    });
+    expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
+    expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
+    expect(mocks.patch).not.toHaveBeenCalled();
     expect(mocks.post).not.toHaveBeenCalled();
   });
 

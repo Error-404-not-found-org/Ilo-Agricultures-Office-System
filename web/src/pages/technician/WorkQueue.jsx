@@ -16,7 +16,7 @@ import axiosInstance from "../../lib/axios";
 import { ui } from "../../components/ui/uiClasses";
 import Topbar from "../../components/layout/Topbar";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
-import RequestActionModal from "../../components/dialogs/RequestActionModal";
+import HealthRequestActionModal from "../../components/dialogs/HealthRequestActionModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import Modal from "../../components/ui/Modal";
@@ -236,6 +236,16 @@ export default function WorkQueue() {
         completeMutation.mutate(task.taskId);
         return;
       case "START_SERVICE":
+        if (task.workflowType === "Health") {
+          if (!isMongoId(task.workflowId)) {
+            toast.error(
+              "This Health work item has an invalid request identifier.",
+            );
+            return;
+          }
+          setSelectedTaskWrapper(task);
+          return;
+        }
         if (task.workflowType === "AI") {
           toast.error("AI service recording must use Record Insemination.");
           return;
@@ -728,7 +738,7 @@ export default function WorkQueue() {
         }
         onSuccess={() => setSelectedTaskWrapper(null)}
       />
-      <RequestActionModal
+      <HealthRequestActionModal
         isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "Health"}
         onClose={() => setSelectedTaskWrapper(null)}
         task={
