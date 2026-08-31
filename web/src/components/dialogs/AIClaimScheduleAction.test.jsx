@@ -204,7 +204,6 @@ describe("Unified AI Request modal", () => {
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["technician", "work-queue", "mine"],
-        exact: true,
       });
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

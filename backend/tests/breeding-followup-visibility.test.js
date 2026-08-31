@@ -205,4 +205,124 @@ describe("Breeding Follow-up My Work Visibility", () => {
     );
     assert.strictEqual(visibleGenerals.length, 1, "Future pending GeneralVisit should be visible");
   });
+  it("returns owned completed PD and BreedingFollowUp only from completed My Work", async () => {
+    const [technician, otherTechnician, farmer] = await User.create([
+      {
+        name: "Owner Tech",
+        email: "completed-owner@test.com",
+        password: "password123",
+        role: "technician",
+      },
+      {
+        name: "Other Tech",
+        email: "completed-other@test.com",
+        password: "password123",
+        role: "technician",
+      },
+      {
+        name: "Completed Farmer",
+        email: "completed-farmer@test.com",
+        password: "password123",
+        role: "farmer",
+      },
+    ]);
+    const common = {
+      notes: "Completed reproductive work",
+      category: "Routine",
+      farmerId: farmer._id,
+      dueDate: new Date(Date.now() - 86400000),
+    };
+    const [completedPd, completedFollowup, otherCompletedPd, activePd] =
+      await Task.create([
+        {
+          ...common,
+          technicianId: technician._id,
+          taskType: "PD",
+          status: "Completed",
+          completedAt: new Date(),
+        },
+        {
+          ...common,
+          technicianId: technician._id,
+          taskType: "BreedingFollowUp",
+          status: "Completed",
+          completedAt: new Date(),
+        },
+        {
+          ...common,
+          technicianId: otherTechnician._id,
+          taskType: "PD",
+          status: "Completed",
+          completedAt: new Date(),
+        },
+        {
+          ...common,
+          technicianId: technician._id,
+          taskType: "PD",
+          status: "Pending",
+        },
+      ]);
+
+    const completedResponse = {
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(data) {
+        this.body = data;
+        return this;
+      },
+    };
+    await getWorkQueue(
+      {
+        user: { _id: technician._id, role: "technician" },
+        query: { workState: "completed", type: "pregnancy", limit: 20 },
+      },
+      completedResponse,
+    );
+
+    assert.equal(completedResponse.statusCode, 200);
+    assert.deepEqual(
+      new Set(completedResponse.body.data.map((item) => item.id)),
+      new Set([String(completedPd._id), String(completedFollowup._id)]),
+    );
+    assert.equal(
+      completedResponse.body.data.some(
+        (item) => item.id === String(otherCompletedPd._id),
+      ),
+      false,
+    );
+    assert.equal(completedResponse.body.pagination.total, 2);
+    assert.equal(completedResponse.body.counts.pregnancy, 2);
+
+    const activeResponse = {
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(data) {
+        this.body = data;
+        return this;
+      },
+    };
+    await getWorkQueue(
+      {
+        user: { _id: technician._id, role: "technician" },
+        query: { workState: "active", type: "pregnancy", limit: 20 },
+      },
+      activeResponse,
+    );
+    assert.deepEqual(
+      activeResponse.body.data.map((item) => item.id),
+      [String(activePd._id)],
+    );
+    assert.equal(
+      activeResponse.body.data.some(
+        (item) =>
+          item.id === String(completedPd._id) ||
+          item.id === String(completedFollowup._id),
+      ),
+      false,
+    );
+  });
 });

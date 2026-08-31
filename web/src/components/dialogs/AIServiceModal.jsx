@@ -279,7 +279,6 @@ const AIServiceModal = ({
       const invalidations = [
         queryClient.invalidateQueries({
           queryKey: ["technician", "work-queue", "mine"],
-          exact: true,
         }),
         queryClient.invalidateQueries({
           queryKey: ["technician", "requests"],

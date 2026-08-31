@@ -4503,20 +4503,6 @@ export const getWorkQueue = async (req, res) => {
       workState === "completed"
         ? {
             status: "Completed",
-            $and: [
-              {
-                $or: [
-                  { taskType: { $nin: ["PD", "BreedingFollowUp"] } },
-                  {
-                    taskType: { $in: ["PD", "BreedingFollowUp"] },
-                    $or: [
-                      { status: "Pending", dueDate: { $ne: null, $lte: now } },
-                      { status: "In Progress" },
-                    ],
-                  },
-                ],
-              },
-            ],
             ...(isAdmin ? {} : { technicianId: authenticatedUserId }),
           }
         : null;
@@ -4598,7 +4584,9 @@ export const getWorkQueue = async (req, res) => {
     const includeTasks = ["all", "pregnancy", "calving"].includes(type);
     const typedTaskQuery =
       type === "pregnancy"
-        ? combineMongoFilters(taskQuery, { taskType: "PD" })
+        ? combineMongoFilters(taskQuery, {
+            taskType: { $in: ["PD", "BreedingFollowUp"] },
+          })
         : type === "calving"
           ? combineMongoFilters(taskQuery, {
               taskType: { $in: ["CD", "Calving"] },
@@ -4710,7 +4698,7 @@ export const getWorkQueue = async (req, res) => {
       : [];
     const scheduledTasks = [...standaloneTasks, ...executionTasks];
     const pregnancyCountQuery = combineMongoFilters(standaloneTaskQuery, {
-      taskType: "PD",
+      taskType: { $in: ["PD", "BreedingFollowUp"] },
     });
     const calvingCountQuery = combineMongoFilters(standaloneTaskQuery, {
       taskType: { $in: ["CD", "Calving"] },

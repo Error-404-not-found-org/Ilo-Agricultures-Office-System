@@ -82,8 +82,7 @@ const baseTask = {
   schedule: { date: "2026-08-31", visitPeriod: "afternoon" },
 };
 
-const renderQueue = (tasks) => {
-  mocks.get.mockResolvedValue({ data: { data: tasks } });
+const renderWorkQueue = () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -94,6 +93,28 @@ const renderQueue = (tasks) => {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+};
+
+const renderQueue = (tasks) => {
+  mocks.get.mockResolvedValue({
+    data: {
+      data: tasks,
+      pagination: {
+        page: 1,
+        limit: 8,
+        total: tasks.length,
+        totalPages: 1,
+      },
+      counts: {
+        all: tasks.length,
+        ai: 0,
+        health: 0,
+        pregnancy: 0,
+        calving: 0,
+      },
+    },
+  });
+  renderWorkQueue();
 };
 
 describe("Work Queue owned Health workflow", () => {
@@ -234,5 +255,116 @@ describe("Work Queue owned Health workflow", () => {
     );
     expect(dashboardSource).toContain("<WalkInHealthModal");
     expect(dashboardSource).toContain("existingOnly");
+  });
+});
+
+describe("My Work canonical server data", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.patch.mockResolvedValue({ data: {} });
+    mocks.get.mockImplementation((_url, config = {}) => {
+      const params = config.params || {};
+      const page = params.page || 1;
+      return Promise.resolve({
+        data: {
+          data: [
+            {
+              ...baseTask,
+              id: `server-task-${page}`,
+              workflowId: null,
+              taskId: `server-task-${page}`,
+              workflowType: "StandaloneTask",
+              type: "task",
+              taskType: "GeneralVisit",
+              serviceType: "General Visit",
+              allowedAction: null,
+              actionLabel: null,
+              raw: { _id: `server-task-${page}` },
+            },
+          ],
+          pagination: { page, limit: 8, total: 24, totalPages: 3 },
+          counts: { all: 24, ai: 7, health: 8, pregnancy: 5, calving: 4 },
+        },
+      });
+    });
+  });
+
+  it("uses backend pagination and totals, including the completed state", async () => {
+    renderWorkQueue();
+
+    expect(await screen.findByRole("heading", { name: "My Work" })).toBeTruthy();
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
+        params: {
+          page: 1,
+          limit: 8,
+          workState: "active",
+          type: "all",
+        },
+      }),
+    );
+    expect(screen.getByText("Active owned work: 24")).toBeTruthy();
+    expect(screen.getByText("Showing 1–1 of 24")).toBeTruthy();
+    expect(screen.getByText("Page 1 of 3")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenLastCalledWith("/technician/work-queue", {
+        params: {
+          page: 2,
+          limit: 8,
+          workState: "active",
+          type: "all",
+        },
+      }),
+    );
+    expect(await screen.findByText("Page 2 of 3")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Completed" }));
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenLastCalledWith("/technician/work-queue", {
+        params: {
+          page: 1,
+          limit: 8,
+          workState: "completed",
+          type: "all",
+        },
+      }),
+    );
+    expect(await screen.findByText("Completed owned work: 24")).toBeTruthy();
+  });
+
+  it("sends service type and search to the backend and resets to page one", async () => {
+    renderWorkQueue();
+    await screen.findByText("Page 1 of 3");
+
+    fireEvent.change(screen.getByLabelText("Service type"), {
+      target: { value: "health" },
+    });
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenLastCalledWith("/technician/work-queue", {
+        params: {
+          page: 1,
+          limit: 8,
+          workState: "active",
+          type: "health",
+        },
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Search My Work"), {
+      target: { value: "Maria" },
+    });
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenLastCalledWith("/technician/work-queue", {
+        params: {
+          page: 1,
+          limit: 8,
+          workState: "active",
+          type: "health",
+          search: "Maria",
+        },
+      }),
+    );
   });
 });

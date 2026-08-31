@@ -164,7 +164,6 @@ describe("request-linked AI recording modal", () => {
     await waitFor(() => {
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["technician", "work-queue", "mine"],
-        exact: true,
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["technician", "inseminations-list"],

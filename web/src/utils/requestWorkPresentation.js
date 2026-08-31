@@ -88,6 +88,8 @@ export const normalizeServiceType = (itemOrValue) => {
       "pregnancy_check",
       "pregnancy_diagnosis",
       "breeding_verification",
+      "breedingfollowup",
+      "breeding_follow_up",
     ].includes(value)
   ) {
     return "pregnancy";

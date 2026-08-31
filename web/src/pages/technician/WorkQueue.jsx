@@ -1,18 +1,15 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
   Search,
-  Clock,
-  Calendar,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
   MoreVertical,
   PawPrint,
   UserRound,
-  Pause,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
@@ -63,18 +60,6 @@ const formatRecordDate = (value) => {
   });
 };
 
-function MetricCard({ icon, value, label, note }) {
-  return (
-    <div className="stats border border-base-300 bg-base-100 shadow-sm">
-      <div className="stat py-4">
-        <div className="stat-figure hidden text-primary sm:block">{icon}</div>
-        <div className="stat-title text-xs font-semibold">{label}</div>
-        <div className="stat-value text-2xl">{value}</div>
-        <div className="stat-desc text-base-content/70">{note}</div>
-      </div>
-    </div>
-  );
-}
 
 export default function WorkQueue() {
   const queryClient = useQueryClient();
@@ -138,10 +123,29 @@ export default function WorkQueue() {
   };
 
   const query = useQuery({
-    queryKey: ["technician", "work-queue", "mine"],
+    queryKey: [
+      "technician",
+      "work-queue",
+      "mine",
+      {
+        page: currentPage,
+        limit: itemsPerPage,
+        workState: workStateFilter,
+        type: typeFilter,
+        search: search.trim(),
+      },
+    ],
     queryFn: async () => {
-      const response = await axiosInstance.get("/technician/work-queue");
-      return response.data?.data || [];
+      const response = await axiosInstance.get("/technician/work-queue", {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          workState: workStateFilter,
+          type: typeFilter,
+          ...(search.trim() ? { search: search.trim() } : {}),
+        },
+      });
+      return response.data || {};
     },
   });
 
@@ -152,7 +156,6 @@ export default function WorkQueue() {
       toast.success("Task completed.");
       queryClient.invalidateQueries({
         queryKey: ["technician", "work-queue", "mine"],
-        exact: true,
       });
     },
     onError: (error) =>
@@ -161,63 +164,20 @@ export default function WorkQueue() {
       ),
   });
 
-  const totalCounts = useMemo(
-    () =>
-      (query.data || []).filter(
-        (t) => !["done", "resolved", "Completed"].includes(t.status),
-      ).length,
-    [query.data],
-  );
-
-  const dueTodayCounts = useMemo(() => {
-    return (query.data || []).filter((t) => t.isReadyToday || t.overdue).length;
-  }, [query.data]);
-
-  const upcomingCounts = useMemo(() => {
-    return (query.data || []).filter(
-      (t) =>
-        !t.isReadyToday && !t.overdue && new Date(t.displayDate) > new Date(),
-    ).length;
-  }, [query.data]);
-
-  const onHoldCounts = 0; // Not applicable in unified agenda
-
-  const tasks = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (query.data || []).filter((task) => {
-      const haystack = [
-        task.task,
-        task.farmerName,
-        task.animalTag,
-        task.serviceType,
-        task.taskType,
-        task.displayStatus,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      let matchesStatus = true;
-      const isCompleted = ["done", "resolved", "completed"].includes(String(task.status).toLowerCase());
-      if (workStateFilter === "active") {
-        matchesStatus = !isCompleted;
-      } else if (workStateFilter === "completed") {
-        matchesStatus = isCompleted;
-      }
-
-      let matchesType = true;
-      if (typeFilter !== "all") {
-        matchesType = normalizeServiceType(task) === typeFilter;
-      }
-
-      return (!q || haystack.includes(q)) && matchesType && matchesStatus;
-    });
-  }, [query.data, search, workStateFilter, typeFilter]);
-
-  const paginatedTasks = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return tasks.slice(startIndex, startIndex + itemsPerPage);
-  }, [tasks, currentPage, itemsPerPage]);
+  const tasks = Array.isArray(query.data?.data) ? query.data.data : [];
+  const pagination = {
+    page: Number(query.data?.pagination?.page) || currentPage,
+    limit: Number(query.data?.pagination?.limit) || itemsPerPage,
+    total: Number(query.data?.pagination?.total) || 0,
+    totalPages: Math.max(Number(query.data?.pagination?.totalPages) || 1, 1),
+  };
+  const authoritativeWorkCount = Number(query.data?.counts?.all) || 0;
+  const workStateLabel =
+    workStateFilter === "completed" ? "Completed owned work" : "Active owned work";
+  const pageStart = tasks.length
+    ? (pagination.page - 1) * pagination.limit + 1
+    : 0;
+  const pageEnd = tasks.length ? pageStart + tasks.length - 1 : 0;
 
   const handleStartService = async (task) => {
     try {
@@ -301,40 +261,12 @@ export default function WorkQueue() {
   return (
     <div className={ui.page}>
       <Topbar
-        title="Work Queue"
-        subtitle="Complete assigned field tasks and lifecycle follow-ups"
+        title="My Work"
+        subtitle="Manage your assigned services and follow-up tasks"
       />
 
       <main className={ui.main}>
-        {/* ================= 1. METRICS ROW ================= */}
-        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <MetricCard
-            icon={<ClipboardCheck size={21} />}
-            value={query.isLoading ? "—" : totalCounts}
-            label="Total Tasks"
-            note="All pending tasks"
-          />
-          <MetricCard
-            icon={<Clock size={21} />}
-            value={query.isLoading ? "—" : dueTodayCounts}
-            label="Due Today"
-            note="Requires attention"
-          />
-          <MetricCard
-            icon={<Calendar size={21} />}
-            value={query.isLoading ? "—" : upcomingCounts}
-            label="Upcoming"
-            note="Scheduled future tasks"
-          />
-          <MetricCard
-            icon={<Pause size={21} />}
-            value={query.isLoading ? "—" : onHoldCounts}
-            label="On Hold"
-            note="Waiting on prerequisites"
-          />
-        </section>
-
-        {/* ================= 2. MAIN CARD: FILTERS & TABLE ================= */}
+        {/* ================= MAIN CARD: FILTERS & TABLE ================= */}
         <section className="card card-border bg-base-100 shadow-sm">
           {/* FILTER BAR */}
           <div className="card-body gap-4 p-4 md:p-5">
@@ -360,6 +292,7 @@ export default function WorkQueue() {
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <select
+                  aria-label="Service type"
                   value={typeFilter}
                   onChange={(e) => {
                     setTypeFilter(e.target.value);
@@ -377,6 +310,7 @@ export default function WorkQueue() {
                 <div className="relative w-full sm:w-64">
                   <input
                     type="text"
+                    aria-label="Search My Work"
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);
@@ -391,6 +325,15 @@ export default function WorkQueue() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-base-content/65">
+              <span>
+                {workStateLabel}: {query.isLoading ? "—" : authoritativeWorkCount}
+              </span>
+              <span>
+                {query.isLoading ? "Loading matching work…" : `${pagination.total} matching item${pagination.total === 1 ? "" : "s"}`}
+              </span>
             </div>
 
             {/* TABLE SECTION */}
@@ -428,6 +371,21 @@ export default function WorkQueue() {
                   </tbody>
                 </table>
               </div>
+            ) : query.isError ? (
+              <div className="rounded-box border border-error/30 bg-error/5 px-5 py-10 text-center">
+                <h2 className="font-bold text-error">Could not load My Work</h2>
+                <p className="mt-1 text-sm text-base-content/65">
+                  {query.error?.response?.data?.message ||
+                    "Check your connection and try again."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => query.refetch()}
+                  className="btn btn-sm btn-outline mt-4"
+                >
+                  Retry
+                </button>
+              </div>
             ) : tasks.length === 0 ? (
               <div className="rounded-box border border-dashed border-base-300 px-5 py-12 text-center">
                 <ClipboardCheck
@@ -436,16 +394,16 @@ export default function WorkQueue() {
                 />
                 <h2 className="font-bold">No tasks found</h2>
                 <p className="mt-1 text-sm text-base-content/60">
-                  {search || typeFilter !== "all" || workStateFilter !== "all"
+                  {search || typeFilter !== "all" || workStateFilter !== "active"
                     ? "Try adjusting your filters to see more tasks."
                     : "You're all caught up! No tasks assigned to you right now."}
                 </p>
-                {(search || typeFilter !== "all" || workStateFilter !== "all") && (
+                {(search || typeFilter !== "all" || workStateFilter !== "active") && (
                   <button
                     onClick={() => {
                       setSearch("");
                       setTypeFilter("all");
-                      setWorkStateFilter("all");
+                      setWorkStateFilter("active");
                       setCurrentPage(1);
                     }}
                     className="btn btn-sm mt-4"
@@ -469,7 +427,7 @@ export default function WorkQueue() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-base-300">
-                      {paginatedTasks.map((task) => {
+                      {tasks.map((task) => {
                         const workflowStatus = normalizeWorkflowStatus(task);
                         const statusPresentation = getWorkflowStatusPresentation(workflowStatus);
                         const serviceType = normalizeServiceType(task);
@@ -689,39 +647,41 @@ export default function WorkQueue() {
                 </div>
 
                 {/* PAGINATION */}
-                {tasks.length > itemsPerPage && (
-                  <div className="pt-3 flex items-center justify-between">
+                {pagination.total > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
                     <span className="text-[11px] font-medium text-base-content/60">
-                      Showing {(currentPage - 1) * itemsPerPage + 1}–
-                      {Math.min(currentPage * itemsPerPage, tasks.length)} of{" "}
-                      {tasks.length}
+                      Showing {pageStart}–{pageEnd} of {pagination.total}
                     </span>
-                    <div className="join">
-                      <button
-                        onClick={() =>
-                          setCurrentPage((p) => Math.max(1, p - 1))
-                        }
-                        disabled={currentPage === 1}
-                        className="join-item btn btn-xs btn-outline border-base-300 bg-base-100"
-                      >
-                        <ChevronLeft size={12} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          setCurrentPage((p) =>
-                            Math.min(
-                              Math.ceil(tasks.length / itemsPerPage),
-                              p + 1,
-                            ),
-                          )
-                        }
-                        disabled={
-                          currentPage === Math.ceil(tasks.length / itemsPerPage)
-                        }
-                        className="join-item btn btn-xs btn-outline border-base-300 bg-base-100"
-                      >
-                        <ChevronRight size={12} />
-                      </button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] font-medium text-base-content/60">
+                        Page {pagination.page} of {pagination.totalPages}
+                      </span>
+                      <div className="join">
+                        <button
+                          type="button"
+                          aria-label="Previous page"
+                          onClick={() =>
+                            setCurrentPage((page) => Math.max(1, page - 1))
+                          }
+                          disabled={pagination.page <= 1}
+                          className="join-item btn btn-xs btn-outline border-base-300 bg-base-100"
+                        >
+                          <ChevronLeft size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Next page"
+                          onClick={() =>
+                            setCurrentPage((page) =>
+                              Math.min(pagination.totalPages, page + 1),
+                            )
+                          }
+                          disabled={pagination.page >= pagination.totalPages}
+                          className="join-item btn btn-xs btn-outline border-base-300 bg-base-100"
+                        >
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

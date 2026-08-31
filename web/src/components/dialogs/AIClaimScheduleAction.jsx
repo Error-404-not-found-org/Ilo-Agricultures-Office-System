@@ -295,7 +295,6 @@ export default function AIRequestModal({
       }),
       queryClient.invalidateQueries({
         queryKey: ["technician", "work-queue", "mine"],
-        exact: true,
       }),
     ]);
   };
