@@ -180,8 +180,10 @@ const crossPartitions = (left, right) =>
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
-    const { fullAgenda } = req.query;
+    const { fullAgenda, includeFutureDateBoundTasks } = req.query;
     const isFull = fullAgenda === "true";
+    const isDateBoundSchedule =
+      isFull && includeFutureDateBoundTasks === "true";
 
     const now = new Date();
     const PHT_OFFSET = 8 * 60 * 60 * 1000;
@@ -434,18 +436,26 @@ export const getTechnicianDashboardData = async (req, res) => {
       Task.find({
         status: { $in: ["Pending", "In Progress"] },
         $and: [
-          {
-            $or: [
-              { taskType: { $nin: ["PD", "BreedingFollowUp"] }, dueDate: { $ne: null } },
-              {
-                taskType: { $in: ["PD", "BreedingFollowUp"] },
+          isDateBoundSchedule
+            ? { dueDate: { $ne: null } }
+            : {
                 $or: [
-                  { status: "Pending", dueDate: { $ne: null, $lte: new Date() } },
-                  { status: "In Progress", dueDate: { $ne: null } },
+                  {
+                    taskType: { $nin: ["PD", "BreedingFollowUp"] },
+                    dueDate: { $ne: null },
+                  },
+                  {
+                    taskType: { $in: ["PD", "BreedingFollowUp"] },
+                    $or: [
+                      {
+                        status: "Pending",
+                        dueDate: { $ne: null, $lte: new Date() },
+                      },
+                      { status: "In Progress", dueDate: { $ne: null } },
+                    ],
+                  },
                 ],
               },
-            ],
-          },
         ],
         ...(req.user.role !== "admin" ? { technicianId: req.user._id } : {}),
       })
@@ -561,6 +571,7 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       const item = {
         id: ins._id,
+        scheduledDate: ins.scheduledDate || null,
         type: "insemination",
         taskType: "AI",
         serviceType: "Artificial Insemination",
@@ -692,6 +703,7 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       const item = {
         id: healthRequest._id,
+        scheduledDate: healthRequest.scheduledDate || null,
         type: "health",
         taskType: "Health",
         serviceType: healthRequest.requestType || "Health Assistance",
@@ -701,6 +713,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
         visitPeriod: healthRequest.visitPeriod || null,
+        handlingMethod: healthRequest.handlingMethod || null,
         farmer: healthRequest.farmerId?.name || "Unknown Farmer",
         farmerName: healthRequest.farmerId?.name || "Unknown Farmer",
         farmerPhone:
@@ -798,6 +811,9 @@ export const getTechnicianDashboardData = async (req, res) => {
       ) {
         if (
           hasScheduledVisit &&
+          !["advice", "office_pickup"].includes(
+            healthRequest.handlingMethod,
+          ) &&
           healthRequest.status !== "pending" &&
           assignedToMeHealth
         ) {
@@ -829,6 +845,8 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       const item = {
         id: taskDoc._id,
+        taskId: taskDoc._id,
+        dueDate: taskDoc.dueDate || null,
         type: "task",
         taskType: taskDoc.taskType || "Other",
         status: taskDoc.status,
