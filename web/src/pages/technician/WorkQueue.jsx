@@ -19,7 +19,7 @@ import axiosInstance from "../../lib/axios";
 import { ui } from "../../components/ui/uiClasses";
 import Topbar from "../../components/layout/Topbar";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
-import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
+import RequestActionModal from "../../components/dialogs/RequestActionModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import Modal from "../../components/ui/Modal";
@@ -226,7 +226,7 @@ export default function WorkQueue() {
           status: "in-progress",
         });
       } else if (task.type === "health") {
-        await axiosInstance.patch(`/health-requests/${task.workflowId}/status`, {
+        await axiosInstance.patch(`/health-request/${task.workflowId}/status`, {
           status: "in-progress",
         });
       }
@@ -242,6 +242,12 @@ export default function WorkQueue() {
       case "RECORD_SERVICE":
         if (task.workflowType === "AI" && !isMongoId(task.workflowId)) {
           toast.error("This AI work item has an invalid workflow identifier.");
+          return;
+        }
+        if (task.workflowType === "Health" && !isMongoId(task.workflowId)) {
+          toast.error(
+            "This Health work item has an invalid request identifier.",
+          );
           return;
         }
         setSelectedTaskWrapper(task);
@@ -762,11 +768,17 @@ export default function WorkQueue() {
         }
         onSuccess={() => setSelectedTaskWrapper(null)}
       />
-      <WalkInHealthModal
+      <RequestActionModal
         isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "Health"}
         onClose={() => setSelectedTaskWrapper(null)}
-        taskData={selectedTaskWrapper?.raw}
-        taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
+        task={
+          selectedTaskWrapper?.workflowType === "Health"
+            ? {
+                ...selectedTaskWrapper,
+                id: selectedTaskWrapper.workflowId,
+              }
+            : null
+        }
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
       />
       <RecordCalvingModal
