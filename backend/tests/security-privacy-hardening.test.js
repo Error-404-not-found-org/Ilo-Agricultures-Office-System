@@ -257,7 +257,16 @@ test("Privacy: Farmer notification Health detail strips internal clinical and wo
   );
 });
 
-test("Security: Health ownership guards reject other technicians and stay atomic", () => {
+test("Security: Health ownership guards reject unclaimed and other-technician mutations", () => {
+  assert.throws(
+    () =>
+      assertHealthRequestMutationOwnership(
+        { _id: "technician-1", role: "technician" },
+        { handledBy: null, assignedTechnicianId: null },
+      ),
+    (error) =>
+      error.status === 409 && error.code === "HEALTH_REQUEST_CLAIM_REQUIRED",
+  );
   assert.throws(
     () =>
       assertHealthRequestMutationOwnership(

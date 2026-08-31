@@ -182,10 +182,6 @@ export const getTechnicianDashboardData = async (req, res) => {
   try {
     const { fullAgenda } = req.query;
     const isFull = fullAgenda === "true";
-    const hideDeclinedForMe =
-      req.user?.role !== "admin" && req.user?._id
-        ? { declinedByTechnicianIds: { $ne: req.user._id } }
-        : {};
 
     const now = new Date();
     const PHT_OFFSET = 8 * 60 * 60 * 1000;
@@ -200,6 +196,48 @@ export const getTechnicianDashboardData = async (req, res) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const isAdmin = req.user?.role === "admin";
+    const aiDispatch = isAdmin
+      ? null
+      : buildNewRequestDispatchFilter({
+          technician: req.user,
+          requestType: "AI",
+        });
+    const healthDispatch = isAdmin
+      ? null
+      : buildNewRequestDispatchFilter({
+          technician: req.user,
+          requestType: "HEALTH",
+        });
+    const eligibleUnassignedAI = {
+      approvedBy: null,
+      technicianId: null,
+      declinedByTechnicianIds: { $ne: req.user?._id },
+      ...(aiDispatch?.filter || {}),
+    };
+    const eligibleUnassignedHealth = {
+      handledBy: null,
+      assignedTechnicianId: null,
+      declinedByTechnicianIds: { $ne: req.user?._id },
+      ...(healthDispatch?.filter || {}),
+    };
+    const dashboardAIVisibility = isAdmin
+      ? {}
+      : {
+          $or: [
+            { approvedBy: req.user._id },
+            { technicianId: req.user._id },
+            eligibleUnassignedAI,
+          ],
+        };
+    const dashboardHealthVisibility = isAdmin
+      ? {}
+      : {
+          $or: [
+            { handledBy: req.user._id },
+            { assignedTechnicianId: req.user._id },
+            eligibleUnassignedHealth,
+          ],
+        };
     const assigneeFilterAI = isAdmin
       ? {}
       : {
@@ -241,7 +279,8 @@ export const getTechnicianDashboardData = async (req, res) => {
       }),
       HealthRequest.countDocuments({
         status: "pending",
-        // Unassigned requests don't have handledBy yet, so global unassigned stat is acceptable or scoped to local
+        deletedAt: null,
+        ...(isAdmin ? {} : eligibleUnassignedHealth),
       }),
       Insemination.countDocuments({
         inseminationDate: { $gte: ninetyDaysAgo },
@@ -281,7 +320,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       Insemination.find({
         status: { $in: ["pending", "approved", "scheduled", "in-progress"] },
         deletedAt: null,
-        ...hideDeclinedForMe,
+        ...dashboardAIVisibility,
       })
         .populate(
           "farmerId",
@@ -305,7 +344,7 @@ export const getTechnicianDashboardData = async (req, res) => {
           ],
         },
         deletedAt: null,
-        ...hideDeclinedForMe,
+        ...dashboardHealthVisibility,
       })
         .populate(
           "farmerId",
@@ -600,8 +639,6 @@ export const getTechnicianDashboardData = async (req, res) => {
               "",
           };
           pendingRequests.push(candidateItem);
-        } else if (assignedToMeAI) {
-          pendingRequests.push(item);
         }
       }
 
@@ -751,8 +788,6 @@ export const getTechnicianDashboardData = async (req, res) => {
               "",
           };
           pendingRequests.push(candidateItem);
-        } else if (assignedToMeHealth) {
-          pendingRequests.push(item);
         }
       }
 

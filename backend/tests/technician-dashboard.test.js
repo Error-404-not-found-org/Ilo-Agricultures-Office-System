@@ -9,6 +9,15 @@ import { Animal } from "../src/models/animal.model.js";
 import { User } from "../src/models/user.model.js";
 
 describe("Technician Dashboard Regression Tests", () => {
+  const otonDispatch = {
+    location: {
+      municipalityCode: "063034000",
+      municipalityName: "Oton",
+      localityType: "municipality",
+    },
+    stage: "local",
+  };
+
   let techUser;
   let adminUser;
   let farmerUser;
@@ -38,7 +47,21 @@ describe("Technician Dashboard Regression Tests", () => {
       Task.deleteMany({})
     ]);
 
-    techUser = new User({ clerkId: "clerk1", role: "technician", status: "active", email: "tech@example.com", name: "Tech User" });
+    techUser = new User({
+      clerkId: "clerk1",
+      role: "technician",
+      status: "active",
+      email: "tech@example.com",
+      name: "Tech User",
+      isVerified: true,
+      profileClaimStatus: "claimed",
+      dispatchProfile: {
+        acceptsNewRequests: true,
+        availabilityStatus: "available",
+        serviceCapabilities: ["AI", "HEALTH"],
+        serviceMunicipalities: [{ municipalityCode: "063034000" }],
+      },
+    });
     adminUser = new User({ clerkId: "clerk2", role: "admin", status: "active", email: "admin@example.com", name: "Admin User" });
     farmerUser = new User({ clerkId: "clerk3", role: "farmer", status: "active", email: "farmer@example.com", name: "Farmer Bob" });
     await Promise.all([techUser.save(), adminUser.save(), farmerUser.save()]);
@@ -70,6 +93,7 @@ describe("Technician Dashboard Regression Tests", () => {
       farmerId: farmerUser._id,
       animalId: animal1._id,
       status: "pending",
+      dispatch: otonDispatch,
       createdAt: new Date("2026-08-01T10:00:00Z"),
       inseminationType: "Artificial Insemination"
     });
@@ -98,6 +122,7 @@ describe("Technician Dashboard Regression Tests", () => {
       farmerId: farmerUser._id,
       animalId: animal1._id,
       status: "pending",
+      dispatch: otonDispatch,
       createdAt: new Date("2026-08-02T10:00:00Z"),
       urgency: "medium",
       symptoms: "cough"
@@ -127,6 +152,7 @@ describe("Technician Dashboard Regression Tests", () => {
       farmerId: farmerUser._id,
       animalId: animal1._id,
       status: "pending",
+      dispatch: otonDispatch,
       createdAt: new Date("2026-08-01T10:00:00Z"),
       inseminationType: "Artificial Insemination"
     });
@@ -147,6 +173,7 @@ describe("Technician Dashboard Regression Tests", () => {
       farmerId: farmerUser._id,
       animalId: animal3._id,
       status: "pending",
+      dispatch: otonDispatch,
       createdAt: new Date("2026-08-02T10:00:00Z"), // Middle
       urgency: "low",
       symptoms: "fever"
@@ -159,21 +186,20 @@ describe("Technician Dashboard Regression Tests", () => {
     assert.equal(response.statusCode, 200);
     assert.ok(response.body.pendingRequests);
     const pending = response.body.pendingRequests;
-    assert.equal(pending.length, 3);
+    assert.equal(pending.length, 2);
     
     // Sorted newest first
     assert.equal(pending[0].type, "health");
-    assert.equal(pending[0].id.toString(), assignedHealth._id.toString());
-    assert.equal(pending[0].farmer, farmerUser.name, "Assigned item retains farmer name");
-    assert.ok(pending[0].raw, "Assigned item retains full operational shape");
-    
-    assert.equal(pending[1].type, "health");
-    assert.equal(pending[1].id.toString(), unassignedHealth._id.toString());
+    assert.equal(pending[0].id.toString(), unassignedHealth._id.toString());
+    assert.equal(pending[0].raw, undefined, "Unassigned item is candidate-safe");
+
+    assert.equal(pending[1].type, "insemination");
+    assert.equal(pending[1].id.toString(), unassignedAI._id.toString());
     assert.equal(pending[1].raw, undefined, "Unassigned item is candidate-safe");
-    
-    assert.equal(pending[2].type, "insemination");
-    assert.equal(pending[2].id.toString(), unassignedAI._id.toString());
-    assert.equal(pending[2].raw, undefined, "Unassigned item is candidate-safe");
+    assert.ok(
+      !pending.some((item) => item.id.toString() === assignedHealth._id.toString()),
+      "Owned work belongs in My Work, not available Farmer Requests",
+    );
   });
 
   it("Missing or malformed dates sort after valid-dated items without throwing", async () => {
@@ -181,6 +207,7 @@ describe("Technician Dashboard Regression Tests", () => {
       farmerId: farmerUser._id,
       animalId: animal1._id,
       status: "pending",
+      dispatch: otonDispatch,
       createdAt: new Date("2026-08-01T10:00:00Z"),
       inseminationType: "Artificial Insemination"
     });
@@ -191,6 +218,7 @@ describe("Technician Dashboard Regression Tests", () => {
       farmerId: farmerUser._id,
       animalId: animal2._id,
       status: "pending",
+      dispatch: otonDispatch,
       inseminationType: "Artificial Insemination"
     });
     await malformedAI.save();
@@ -213,7 +241,14 @@ describe("Technician Dashboard Regression Tests", () => {
     assert.equal(pending[1].id.toString(), malformedAI._id.toString());
   });
 
-  it("Health ownership allows assigned technician full shape visibility without variable shadowing bug", async () => {
+  it("Claimed AI and Health work are excluded from available Farmer Requests", async () => {
+    await Insemination.create({
+      farmerId: farmerUser._id,
+      animalId: animal2._id,
+      status: "approved",
+      approvedBy: techUser._id,
+      dispatch: otonDispatch,
+    });
     const assignedHealth = new HealthRequest({
       farmerId: farmerUser._id,
       animalId: animal1._id,
@@ -229,12 +264,61 @@ describe("Technician Dashboard Regression Tests", () => {
     let { req, res, response } = mockReqRes(techUser);
     await getTechnicianDashboardData(req, res);
     assert.equal(response.statusCode, 200);
-    assert.ok(response.body.pendingRequests[0].raw, "Assigned tech sees full item");
+    assert.equal(response.body.pendingRequests.length, 0);
 
     // Admin user request
     ({ req, res, response } = mockReqRes(adminUser));
     await getTechnicianDashboardData(req, res);
     assert.equal(response.statusCode, 200);
-    assert.ok(response.body.pendingRequests[0].raw, "Admin sees full item");
+    assert.equal(response.body.pendingRequests.length, 0);
+  });
+
+  it("shows only eligible unclaimed AI and Health requests", async () => {
+    const outsideDispatch = {
+      location: {
+        municipalityCode: "063022000",
+        municipalityName: "Miagao",
+        localityType: "municipality",
+      },
+      stage: "local",
+    };
+    const records = await Promise.all([
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "pending",
+        dispatch: otonDispatch,
+      }),
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "pending",
+        dispatch: outsideDispatch,
+      }),
+      HealthRequest.create({
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "pending",
+        symptoms: "Eligible health request",
+        dispatch: otonDispatch,
+      }),
+      HealthRequest.create({
+        farmerId: farmerUser._id,
+        animalId: animal3._id,
+        status: "pending",
+        symptoms: "Outside service area",
+        dispatch: outsideDispatch,
+      }),
+    ]);
+
+    const { req, res, response } = mockReqRes(techUser);
+    await getTechnicianDashboardData(req, res);
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(
+      response.body.pendingRequests.map((item) => item.id.toString()).sort(),
+      [records[0]._id.toString(), records[2]._id.toString()].sort(),
+    );
+    assert.equal(response.body.stats.pendingHealth, 1);
   });
 });
