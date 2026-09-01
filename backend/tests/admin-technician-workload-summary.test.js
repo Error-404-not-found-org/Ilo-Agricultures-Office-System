@@ -95,6 +95,7 @@ test("shared active filters preserve canonical and legacy Work Queue status rule
   );
   assert.deepEqual(tasks.$nor[1], {
     relatedRecordType: { $in: ["insemination", "health"] },
+    taskType: { $nin: DUE_GATED_REPRODUCTIVE_TASK_TYPES },
   });
   assert.equal(
     tasks.$and[0].$or[1].$or[0].dueDate.$lte.getTime(),
@@ -123,6 +124,7 @@ test("shared completed filters preserve canonical My Work ownership and duplicat
   assert.equal(tasks.technicianId, technicianId);
   assert.deepEqual(tasks.$nor[1], {
     relatedRecordType: { $in: ["insemination", "health"] },
+    taskType: { $nin: DUE_GATED_REPRODUCTIVE_TASK_TYPES },
   });
 });
 

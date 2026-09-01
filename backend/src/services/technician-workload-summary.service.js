@@ -64,6 +64,13 @@ export const buildCompletedHealthWorkFilter = ({ technicianId } = {}) => ({
     : {}),
 });
 
+export const DUE_GATED_REPRODUCTIVE_TASK_TYPES = Object.freeze([
+  "PD",
+  "BreedingFollowUp",
+  "CD",
+  "Calving",
+]);
+
 export const buildCompletedStandaloneTaskFilter = ({ technicianId } = {}) => ({
   status: "Completed",
   $nor: [
@@ -72,17 +79,13 @@ export const buildCompletedStandaloneTaskFilter = ({ technicianId } = {}) => ({
         $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
       },
     },
-    { relatedRecordType: { $in: ["insemination", "health"] } },
+    {
+      relatedRecordType: { $in: ["insemination", "health"] },
+      taskType: { $nin: DUE_GATED_REPRODUCTIVE_TASK_TYPES },
+    },
   ],
   ...(technicianId ? { technicianId } : {}),
 });
-
-export const DUE_GATED_REPRODUCTIVE_TASK_TYPES = Object.freeze([
-  "PD",
-  "BreedingFollowUp",
-  "CD",
-  "Calving",
-]);
 
 export const buildActiveStandaloneTaskFilter = ({ technicianId, now } = {}) => ({
   status: { $in: ["Pending", "In Progress"] },
@@ -106,7 +109,10 @@ export const buildActiveStandaloneTaskFilter = ({ technicianId, now } = {}) => (
         $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
       },
     },
-    { relatedRecordType: { $in: ["insemination", "health"] } },
+    {
+      relatedRecordType: { $in: ["insemination", "health"] },
+      taskType: { $nin: DUE_GATED_REPRODUCTIVE_TASK_TYPES },
+    },
   ],
   ...(technicianId ? { technicianId } : {}),
 });

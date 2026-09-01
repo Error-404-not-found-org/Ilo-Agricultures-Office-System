@@ -4647,17 +4647,23 @@ export const getWorkQueue = async (req, res) => {
             })
           : taskQuery;
     const aiPartitions = workQueueDatePartitions(
-      ["scheduledDate", "completedAt", "createdAt"],
+      workState === "completed"
+        ? ["completedAt", "inseminationDate", "createdAt"]
+        : ["scheduledDate", "createdAt"],
       workState,
       todayStart,
     );
     const healthPartitions = workQueueDatePartitions(
-      ["scheduledDate", "resolvedAt", "updatedAt", "createdAt"],
+      workState === "completed"
+        ? ["resolvedAt", "createdAt"]
+        : ["scheduledDate", "createdAt"],
       workState,
       todayStart,
     );
     const taskPartitions = workQueueDatePartitions(
-      ["dueDate", "completedAt", "updatedAt", "createdAt"],
+      workState === "completed"
+        ? ["completedAt", "createdAt"]
+        : ["dueDate", "createdAt"],
       workState,
       todayStart,
     );
@@ -4685,7 +4691,10 @@ export const getWorkQueue = async (req, res) => {
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
-        .populate("animalIds", "name animalId earTag imageUrl breed species gender");
+        .populate(
+          "animalIds",
+          "name animalId earTag imageUrl breed species gender farmerId",
+        );
 
     const [inseminations, healthReqs, standaloneTasks] = await Promise.all([
       includeAI
@@ -4721,9 +4730,13 @@ export const getWorkQueue = async (req, res) => {
       ...inseminations.map((item) => item._id),
       ...healthReqs.map((item) => item._id),
     ];
+    const executionTaskStatusFilter =
+      workState === "completed"
+        ? "Completed"
+        : { $in: ["Pending", "In Progress"] };
     const executionTasks = workflowIds.length
       ? await Task.find({
-          status: { $in: ["Pending", "In Progress", "Completed"] },
+          status: executionTaskStatusFilter,
           ...(isAdmin
             ? {}
             : {
@@ -4750,7 +4763,11 @@ export const getWorkQueue = async (req, res) => {
           ],
         }).lean()
       : [];
-    const scheduledTasks = [...standaloneTasks, ...executionTasks];
+    // Linked execution Tasks provide request/task identifiers for AI and
+    // Health cards. They are not independent Work Queue items. Appending them
+    // here previously allowed an active reproductive Task linked to a
+    // completed AI request to leak into workState=completed.
+    const scheduledTasks = standaloneTasks;
     const pregnancyCountQuery = combineMongoFilters(standaloneTaskQuery, {
       taskType: { $in: ["PD", "BreedingFollowUp"] },
     });
@@ -4859,6 +4876,181 @@ export const getWorkQueue = async (req, res) => {
 
       return null;
     };
+
+    const uniqueMongoIds = (values) => [
+      ...new Set(
+        values
+          .map(idOf)
+          .filter((value) => value && mongoose.isValidObjectId(value)),
+      ),
+    ];
+    const hasPresentationFields = (value, fields) =>
+      value &&
+      typeof value === "object" &&
+      fields.some((field) => value[field] !== undefined);
+    const taskRelationshipRefs = scheduledTasks.map((taskDoc) => {
+      const metadata = taskDoc.metadata || {};
+      const relatedRecordType = String(
+        taskDoc.relatedRecordType || "",
+      ).toLowerCase();
+      return {
+        taskDoc,
+        directAnimalRef:
+          (Array.isArray(taskDoc.animalIds) && taskDoc.animalIds[0]) ||
+          taskDoc.animalId ||
+          metadata.animalId ||
+          null,
+        directFarmerRef: taskDoc.farmerId || metadata.farmerId || null,
+        pregnancyId: idOf(
+          taskDoc.pregnancyId ||
+            metadata.pregnancyId ||
+            (relatedRecordType === "pregnancy"
+              ? taskDoc.relatedRecordId
+              : null),
+        ),
+        calvingId: idOf(
+          taskDoc.calvingId ||
+            metadata.calvingId ||
+            (relatedRecordType === "calving"
+              ? taskDoc.relatedRecordId
+              : null),
+        ),
+        inseminationId: idOf(
+          taskDoc.inseminationId ||
+            metadata.inseminationId ||
+            (relatedRecordType === "insemination"
+              ? taskDoc.relatedRecordId
+              : null),
+        ),
+      };
+    });
+    const pregnancyIds = uniqueMongoIds(
+      taskRelationshipRefs.map((relationship) => relationship.pregnancyId),
+    );
+    const calvingIds = uniqueMongoIds(
+      taskRelationshipRefs.map((relationship) => relationship.calvingId),
+    );
+    const inseminationIds = uniqueMongoIds(
+      taskRelationshipRefs.map((relationship) => relationship.inseminationId),
+    );
+    const [linkedPregnancies, linkedCalvings, linkedInseminations] =
+      await Promise.all([
+        pregnancyIds.length
+          ? Pregnancy.find({ _id: { $in: pregnancyIds } })
+              .select(
+                "_id animalId farmerId inseminationId pregnancyDiagnosis confirmation completedAt",
+              )
+              .lean()
+          : [],
+        calvingIds.length
+          ? Calving.find({ _id: { $in: calvingIds } })
+              .select(
+                "_id animalId farmerId pregnancyId inseminationId date",
+              )
+              .lean()
+          : [],
+        inseminationIds.length
+          ? Insemination.find({ _id: { $in: inseminationIds } })
+              .select(
+                "_id animalId farmerId outcomeConfirmedAt inseminationDate completedAt",
+              )
+              .lean()
+          : [],
+      ]);
+    const pregnancyById = new Map(
+      linkedPregnancies.map((record) => [idOf(record), record]),
+    );
+    const calvingById = new Map(
+      linkedCalvings.map((record) => [idOf(record), record]),
+    );
+    const inseminationById = new Map(
+      linkedInseminations.map((record) => [idOf(record), record]),
+    );
+    const taskRelationshipSources = taskRelationshipRefs.map((relationship) => {
+      const pregnancy = pregnancyById.get(relationship.pregnancyId) || null;
+      const calving = calvingById.get(relationship.calvingId) || null;
+      const insemination =
+        inseminationById.get(relationship.inseminationId) || null;
+      return {
+        ...relationship,
+        pregnancy,
+        calving,
+        insemination,
+        animalRef:
+          relationship.directAnimalRef ||
+          pregnancy?.animalId ||
+          calving?.animalId ||
+          insemination?.animalId ||
+          null,
+        farmerRef:
+          relationship.directFarmerRef ||
+          pregnancy?.farmerId ||
+          calving?.farmerId ||
+          insemination?.farmerId ||
+          null,
+      };
+    });
+    const taskAnimalIds = uniqueMongoIds(
+      taskRelationshipSources.map((relationship) => relationship.animalRef),
+    );
+    const taskAnimals = taskAnimalIds.length
+      ? await Animal.find({ _id: { $in: taskAnimalIds } })
+          .select(
+            "_id farmerId name animalId earTag imageUrl breed species gender",
+          )
+          .lean()
+      : [];
+    const animalById = new Map(
+      taskAnimals.map((record) => [idOf(record), record]),
+    );
+    const taskFarmerIds = uniqueMongoIds(
+      taskRelationshipSources.map((relationship) => {
+        const animal = animalById.get(idOf(relationship.animalRef));
+        return relationship.farmerRef || animal?.farmerId || null;
+      }),
+    );
+    const taskFarmers = taskFarmerIds.length
+      ? await User.find({ _id: { $in: taskFarmerIds } })
+          .select(
+            "_id name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
+          )
+          .lean()
+      : [];
+    const farmerById = new Map(
+      taskFarmers.map((record) => [idOf(record), record]),
+    );
+    const taskContextById = new Map(
+      taskRelationshipSources.map((relationship) => {
+        const fetchedAnimal = animalById.get(idOf(relationship.animalRef));
+        const animal =
+          fetchedAnimal ||
+          (hasPresentationFields(relationship.animalRef, [
+            "name",
+            "animalId",
+            "earTag",
+          ])
+            ? relationship.animalRef
+            : null);
+        const farmerRef =
+          relationship.farmerRef || animal?.farmerId || null;
+        const fetchedFarmer = farmerById.get(idOf(farmerRef));
+        const farmer =
+          fetchedFarmer ||
+          (hasPresentationFields(farmerRef, ["name", "address", "farmLocation"])
+            ? farmerRef
+            : null);
+        return [
+          idOf(relationship.taskDoc),
+          {
+            animal,
+            farmer,
+            pregnancy: relationship.pregnancy,
+            calving: relationship.calving,
+            insemination: relationship.insemination,
+          },
+        ];
+      }),
+    );
     const terminalHealthRequestIds = healthReqs
       .filter(
         (request) =>
@@ -4870,13 +5062,13 @@ export const getWorkQueue = async (req, res) => {
       ? await MedicalRecord.find({
           healthRequestId: { $in: terminalHealthRequestIds },
         })
-          .select("_id healthRequestId")
+          .select("_id healthRequestId date")
           .lean()
       : [];
-    const medicalRecordIdByHealthRequest = new Map(
+    const medicalRecordByHealthRequest = new Map(
       healthMedicalRecords.map((record) => [
         idOf(record.healthRequestId),
-        idOf(record),
+        record,
       ]),
     );
     const cleanAddressPart = (value) => {
@@ -4987,7 +5179,8 @@ export const getWorkQueue = async (req, res) => {
 
       // PD and Calving are distinct downstream activities even when they carry
       // an insemination id for lineage.
-      if (["PD", "CD", "CALVING"].includes(taskType)) return false;
+      if (["PD", "CD", "CALVING", "BREEDINGFOLLOWUP"].includes(taskType))
+        return false;
 
       if (workflowType === "AI") {
         return taskType === "AI" || relatedRecordType === "insemination";
@@ -5004,7 +5197,7 @@ export const getWorkQueue = async (req, res) => {
     };
 
     const findExecutionTask = (workflowType, workflowId) =>
-      scheduledTasks.find((taskDoc) => {
+      executionTasks.find((taskDoc) => {
         const taskTechnicianId = idOf(taskDoc.technicianId);
         const taskIsVisible =
           isAdmin ||
@@ -5048,10 +5241,13 @@ export const getWorkQueue = async (req, res) => {
       const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
       const scheduleDate = ins.scheduledDate || null;
       const completedAt =
-        canonicalStatus === AI_STATUS.DONE ? ins.completedAt || null : null;
-      const itemDisplayDate =
-        scheduleDate || completedAt || ins.createdAt || null;
+        canonicalStatus === AI_STATUS.DONE
+          ? ins.completedAt || ins.inseminationDate || null
+          : null;
       const terminal = canonicalStatus === AI_STATUS.DONE;
+      const itemDisplayDate = terminal
+        ? completedAt || ins.createdAt || null
+        : scheduleDate || ins.createdAt || null;
       const attemptNumber = Number.isInteger(ins.attemptNumber)
         ? ins.attemptNumber
         : null;
@@ -5161,8 +5357,9 @@ export const getWorkQueue = async (req, res) => {
     healthReqs.forEach((req) => {
       const workflowId = idOf(req);
       if (!workflowId) return;
-      const medicalRecordId =
-        medicalRecordIdByHealthRequest.get(workflowId) || null;
+      const medicalRecord =
+        medicalRecordByHealthRequest.get(workflowId) || null;
+      const medicalRecordId = idOf(medicalRecord);
 
       const matchedTask = findExecutionTask("Health", workflowId);
       const taskId = idOf(matchedTask);
@@ -5179,10 +5376,11 @@ export const getWorkQueue = async (req, res) => {
         healthStatus,
       );
       const completedAt = terminal
-        ? req.resolvedAt || req.updatedAt || null
+        ? req.resolvedAt || medicalRecord?.date || null
         : null;
-      const itemDisplayDate =
-        scheduleDate || completedAt || req.createdAt || null;
+      const itemDisplayDate = terminal
+        ? completedAt || req.createdAt || null
+        : scheduleDate || req.createdAt || null;
 
       let allowedAction = null;
       let actionLabel = null;
@@ -5298,11 +5496,13 @@ export const getWorkQueue = async (req, res) => {
         return;
       }
 
-      const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
       const terminal = taskDoc.status === "Completed";
-      const firstAnimal = Array.isArray(taskDoc.animalIds)
-        ? taskDoc.animalIds[0]
-        : null;
+      if ((workState === "completed") !== terminal) return;
+      const taskContext = taskContextById.get(taskId) || {};
+      const firstAnimal =
+        taskContext.animal ||
+        (Array.isArray(taskDoc.animalIds) ? taskDoc.animalIds[0] : null);
+      const taskFarmer = taskContext.farmer || taskDoc.farmerId || null;
 
       let allowedAction = null;
       let wType = "StandaloneTask";
@@ -5311,6 +5511,22 @@ export const getWorkQueue = async (req, res) => {
         wType = "BreedingFollowUp";
       if (taskDoc.taskType === "CD" || taskDoc.taskType === "Calving")
         wType = "Calving";
+
+      const completedAt = terminal
+        ? taskDoc.completedAt ||
+          (wType === "PD"
+            ? taskContext.pregnancy?.pregnancyDiagnosis?.date ||
+              taskContext.pregnancy?.confirmation?.confirmedAt ||
+              null
+            : wType === "BreedingFollowUp"
+              ? taskContext.insemination?.outcomeConfirmedAt || null
+              : wType === "Calving"
+                ? taskContext.calving?.date || null
+                : null)
+        : null;
+      const itemDisplayDate = terminal
+        ? completedAt || taskDoc.createdAt || null
+        : taskDoc.dueDate || taskDoc.createdAt || null;
 
       if (["PD", "Calving"].includes(wType)) {
         if (
@@ -5371,20 +5587,25 @@ export const getWorkQueue = async (req, res) => {
         actionLabel,
         title: serviceType,
         summary: taskDoc.notes || null,
-        farmer: serializeFarmer(taskDoc.farmerId),
+        farmer: serializeFarmer(taskFarmer),
         animal: serializeAnimal(firstAnimal),
         timing: {
           kind: terminal ? "completed" : "due",
-          date: terminal
-            ? taskDoc.completedAt || taskDoc.updatedAt || null
-            : taskDoc.dueDate || null,
+          date: terminal ? completedAt : taskDoc.dueDate || null,
           visitPeriod: null,
         },
         context: {
           notes: taskDoc.notes || null,
           workflowStage: taskDoc.metadata?.workflowStage || null,
-          pregnancyId: idOf(taskDoc.metadata?.pregnancyId || taskDoc.relatedRecordId),
-          inseminationId: idOf(taskDoc.metadata?.inseminationId),
+          pregnancyId: idOf(
+            taskDoc.metadata?.pregnancyId || taskContext.pregnancy,
+          ),
+          inseminationId: idOf(
+            taskDoc.metadata?.inseminationId ||
+              taskContext.insemination ||
+              taskContext.pregnancy?.inseminationId ||
+              taskContext.calving?.inseminationId,
+          ),
           reportType: taskDoc.metadata?.reportType || null,
         },
         schedule: {
@@ -5392,24 +5613,22 @@ export const getWorkQueue = async (req, res) => {
           visitPeriod: taskDoc.metadata?.visitPeriod || null,
         },
         requestedAt: taskDoc.createdAt || null,
-        completedAt: terminal
-          ? taskDoc.completedAt || taskDoc.updatedAt || null
-          : null,
+        completedAt,
         displayStatus: taskDoc.status,
         time: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
-        farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerName: taskFarmer?.name || "Unknown Farmer",
         farmerPhone:
-          taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
+          taskFarmer?.phoneNumber || taskFarmer?.phone || null,
         farmerImageUrl:
-          taskDoc.farmerId?.imageUrl ||
-          taskDoc.farmerId?.avatarUrl ||
-          taskDoc.farmerId?.profilePicture ||
-          taskDoc.farmerId?.avatar ||
+          taskFarmer?.imageUrl ||
+          taskFarmer?.avatarUrl ||
+          taskFarmer?.profilePicture ||
+          taskFarmer?.avatar ||
           null,
-        farmerId: taskDoc.farmerId || null,
-        location: formatAddress(taskDoc.farmerId?.address),
-        ...getFarmLocationDetails(taskDoc.farmerId),
+        farmerId: taskFarmer || null,
+        location: formatAddress(taskFarmer?.address),
+        ...getFarmLocationDetails(taskFarmer),
         animalId: firstAnimal || null,
         animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
         preferredTime: formatTime(itemDisplayDate),
