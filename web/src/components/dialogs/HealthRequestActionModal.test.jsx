@@ -94,6 +94,27 @@ describe("HealthRequestActionModal", () => {
     vi.useRealTimers();
   });
 
+  it("can remain mounted closed while its task context is cleared", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    expect(() =>
+      render(
+        <QueryClientProvider client={queryClient}>
+          <HealthRequestActionModal
+            isOpen={false}
+            onClose={vi.fn()}
+            task={null}
+            onSuccess={vi.fn()}
+          />
+        </QueryClientProvider>,
+      ),
+    ).not.toThrow();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
   it("shows all unique Farmer request photos from the original Health request", async () => {
     renderModal(
       ownedRequest({

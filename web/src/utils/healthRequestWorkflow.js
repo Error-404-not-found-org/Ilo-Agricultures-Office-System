@@ -14,8 +14,10 @@ const entityPresent = (value) => {
 export const normalizeHealthStatus = (value) =>
   text(value).toLowerCase().replaceAll("_", "-").replaceAll(" ", "-");
 
-export const getHealthRequestId = (task = {}) =>
-  task.workflowId || task.id || task._id || task.raw?._id || task.raw?.id || null;
+export const getHealthRequestId = (task) => {
+  if (!task || typeof task !== "object") return null;
+  return task.workflowId || task.id || task._id || task.raw?._id || task.raw?.id || null;
+};
 
 export const isOwnedHealthRequest = (request = {}) =>
   entityPresent(request.handledBy) ||

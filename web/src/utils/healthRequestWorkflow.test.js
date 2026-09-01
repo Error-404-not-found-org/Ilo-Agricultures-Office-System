@@ -17,10 +17,24 @@ const owned = {
 };
 
 describe("Web Health request workflow rules", () => {
-  it("keeps response methods request-linked and blocks incompatible states", () => {
+  it("returns no request ID for empty modal context", () => {
+    expect(getHealthRequestId(null)).toBeNull();
+    expect(getHealthRequestId(undefined)).toBeNull();
+    expect(getHealthRequestId({})).toBeNull();
+  });
+
+  it("prefers workflow IDs and preserves normalized ID fallbacks", () => {
     expect(getHealthRequestId({ workflowId: "request-1", id: "task-1" })).toBe(
       "request-1",
     );
+    expect(getHealthRequestId({ id: "request-2" })).toBe("request-2");
+    expect(getHealthRequestId({ _id: "request-3" })).toBe("request-3");
+    expect(getHealthRequestId({ raw: { _id: "request-4" } })).toBe(
+      "request-4",
+    );
+  });
+
+  it("keeps response methods request-linked and blocks incompatible states", () => {
     expect(isHealthAdviceEligible(owned)).toBe(true);
     expect(isHealthOfficePickupEligible(owned)).toBe(true);
     expect(isHealthFarmVisitEligible(owned)).toBe(true);
