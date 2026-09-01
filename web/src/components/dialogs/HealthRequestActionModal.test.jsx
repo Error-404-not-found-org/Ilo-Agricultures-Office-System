@@ -90,6 +90,24 @@ describe("HealthRequestActionModal", () => {
     mocks.patch.mockResolvedValue({ data: { data: ownedRequest() } });
   });
 
+  it("does not throw for a closed modal without a task", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    expect(() =>
+      render(
+        <QueryClientProvider client={queryClient}>
+          <HealthRequestActionModal
+            isOpen={false}
+            onClose={vi.fn()}
+            task={null}
+            onSuccess={vi.fn()}
+          />
+        </QueryClientProvider>,
+      ),
+    ).not.toThrow();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });

@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
   Search,
-  CheckCircle,
   ChevronLeft,
   ChevronRight,
   MoreVertical,
@@ -30,7 +29,6 @@ import {
   MY_WORK_FILTERS,
   getServicePresentation,
   formatCanonicalVisitSchedule,
-  isDateOnlyWorkflowType,
   normalizeServiceType,
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
@@ -76,14 +74,19 @@ export default function WorkQueue({ embedded = false }) {
       "active",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
-  const [selectedAIRecord, setSelectedAIRecord] = useState(null);
+  const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
+  const [breedingFollowUp, setBreedingFollowUp] = useState(null);
+  const [followUpDraft, setFollowUpDraft] = useState({
+    reportType: "possible_pregnancy",
+    notes: "",
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
   const formatRelativeSchedule = (value) => {
-    if (!value) return { date: "No date", time: "—" };
+    if (!value) return "No date recorded";
     const targetDate = new Date(value);
     if (Number.isNaN(targetDate.getTime()))
-      return { date: "No date", time: "—" };
+      return "No date recorded";
 
     const today = new Date();
 
@@ -117,12 +120,7 @@ export default function WorkQueue({ embedded = false }) {
       });
     }
 
-    const timePart = targetDate.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
-    return { date: datePart, time: timePart };
+    return datePart;
   };
 
   const query = useQuery({
@@ -164,6 +162,24 @@ export default function WorkQueue({ embedded = false }) {
     onError: (error) =>
       toast.error(
         error.response?.data?.message || "Could not complete this task.",
+      ),
+  });
+
+  const breedingFollowUpMutation = useMutation({
+    mutationFn: ({ workflowId, reportType, notes }) =>
+      axiosInstance.post(
+        `/ai-request/${encodeURIComponent(workflowId)}/technician-observation`,
+        { reportType, notes },
+      ),
+    onSuccess: () => {
+      toast.success("Breeding follow-up recorded.");
+      setBreedingFollowUp(null);
+      setFollowUpDraft({ reportType: "possible_pregnancy", notes: "" });
+      queryClient.invalidateQueries({ queryKey: ["technician"] });
+    },
+    onError: (error) =>
+      toast.error(
+        error.response?.data?.message || "Could not record the breeding follow-up.",
       ),
   });
 
@@ -216,18 +232,20 @@ export default function WorkQueue({ embedded = false }) {
         setSelectedTaskWrapper(task);
         return;
       case "VIEW_RECORD":
-        if (task.workflowType === "AI") {
-          if (!isMongoId(task.workflowId)) {
-            toast.error("This AI record has an invalid workflow identifier.");
-            return;
-          }
-          setSelectedAIRecord(task);
+      case "VIEW_RESPONSE":
+      case "VIEW_DETAILS":
+        setSelectedWorkDetails(task);
+        return;
+      case "RECORD_BREEDING_OBSERVATION": {
+        const inseminationId = task.context?.inseminationId;
+        if (!isMongoId(inseminationId)) {
+          toast.error("This breeding follow-up has an invalid AI record identifier.");
           return;
         }
-        toast.info(
-          "Viewing this historical record remains available from its existing workflow.",
-        );
+        setFollowUpDraft({ reportType: "possible_pregnancy", notes: "" });
+        setBreedingFollowUp(task);
         return;
+      }
       case "COMPLETE_TASK":
         if (
           task.workflowType !== "StandaloneTask" ||
@@ -249,6 +267,10 @@ export default function WorkQueue({ embedded = false }) {
           setSelectedTaskWrapper(task);
           return;
         }
+        if (["PD", "Calving"].includes(task.workflowType)) {
+          setSelectedTaskWrapper(task);
+          return;
+        }
         if (task.workflowType === "AI") {
           toast.error("AI service recording must use Record Insemination.");
           return;
@@ -256,13 +278,15 @@ export default function WorkQueue({ embedded = false }) {
         handleStartService(task);
         return;
       case "SCHEDULE_VISIT":
-        toast.info(
-          "Please use the existing Schedule workflow for this service.",
-        );
+        if (!isMongoId(task.workflowId)) {
+          toast.error("This AI work item has an invalid workflow identifier.");
+          return;
+        }
+        navigate(`/technician/requests?requestId=${encodeURIComponent(task.workflowId)}`);
         return;
       case "CLAIM":
       case "CLAIM_AND_SCHEDULE":
-        toast.info("Please use the Requests page to claim this work.");
+        toast.error("This work is not assigned to you. Claim it from Available Requests.");
         return;
       default:
         toast.error("This work item does not have a supported action.");
@@ -458,22 +482,39 @@ export default function WorkQueue({ embedded = false }) {
                         const statusPresentation = getWorkflowStatusPresentation(workflowStatus);
                         const serviceType = normalizeServiceType(task);
                         const servicePresentation = getServicePresentation(serviceType);
-                        const complete = workflowStatus === "completed";
-                        const canViewCompletedAI =
-                          task.workflowType === "AI" &&
-                          task.allowedAction === "VIEW_RECORD";
                         const priority = task.urgent ? 1 : 0;
                         const animalReference =
-                          task.animalTag || "Not recorded";
+                          task.animal?.earTag || "Not recorded";
                         const readiness = getTaskReadiness(task.raw || task);
                         const actionDisabled =
                           !readiness.ready ||
-                          (task.workflowType === "AI" &&
-                            (!task.allowedAction || !task.actionLabel));
-                        const animalId =
-                          task.raw?.animalId?._id ||
-                          task.raw?.animalIds?.[0]?._id;
-                        const farmerId = task.raw?.farmerId?._id;
+                          !task.allowedAction ||
+                          (task.workflowType === "AI" && !task.actionLabel);
+                        const animalId = task.animal?.id || null;
+                        const farmerId = task.farmer?.id || null;
+                        const timing = task.timing || {
+                          kind: ["AI", "Health"].includes(task.workflowType)
+                            ? "scheduled_visit"
+                            : "due",
+                          date: task.schedule?.date || task.displayDate || null,
+                          visitPeriod: task.schedule?.visitPeriod || null,
+                        };
+                        const timingLabel =
+                          timing.kind === "scheduled_visit"
+                            ? formatCanonicalVisitSchedule({
+                                date: timing.date,
+                                visitPeriod: timing.visitPeriod,
+                              })
+                            : timing.kind === "completed"
+                              ? `Completed ${formatRecordDate(timing.date)}`
+                              : `Due ${formatRelativeSchedule(timing.date)}`;
+                        const primaryActionLabel =
+                          ["VIEW_RECORD", "VIEW_RESPONSE", "VIEW_DETAILS"].includes(
+                            task.allowedAction,
+                          ) ||
+                          ["AI", "BreedingFollowUp"].includes(task.workflowType)
+                            ? task.actionLabel
+                            : getTaskPrimaryActionLabel(task);
                         const menuId = `task-actions-${String(task.id).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
                         const menuAnchor = `--${menuId}`;
 
@@ -524,45 +565,19 @@ export default function WorkQueue({ embedded = false }) {
                                     •
                                   </span>
                                   <span className="text-base-content/40 truncate max-w-24">
-                                    {task.raw?.animalId?.species ||
-                                      task.raw?.animalIds?.[0]?.species ||
-                                      "Livestock"}
+                                    {task.animal?.species || "Livestock"}
                                   </span>
                                 </div>
                               </div>
                             </td>
 
-                            {/* 3. SCHEDULE */}
+                            {/* 3. CANONICAL TIMING */}
                             <td className="p-3.5 align-top">
-                              {["AI", "Health"].includes(task.workflowType) ? (
-                                <span
-                                  className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
-                                >
-                                  {formatCanonicalVisitSchedule(task.schedule)}
-                                </span>
-                              ) : (
-                                (() => {
-                                const sched = formatRelativeSchedule(
-                                  task.displayDate,
-                                );
-                                return (
-                                  <div>
-                                    <span
-                                      className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
-                                    >
-                                      {sched.date}
-                                    </span>
-                                    {!isDateOnlyWorkflowType(
-                                      task.workflowType,
-                                    ) ? (
-                                      <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
-                                        {sched.time}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                );
-                                })()
-                              )}
+                              <span
+                                className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
+                              >
+                                {timingLabel}
+                              </span>
                             </td>
 
                             {/* 4. STATUS */}
@@ -576,35 +591,23 @@ export default function WorkQueue({ embedded = false }) {
 
                             {/* 5. PRIMARY ACTION */}
                             <td className="p-3.5 align-top pr-6 text-right">
-                              {complete && !canViewCompletedAI ? (
-                                <span className="text-[11px] font-bold text-emerald-600 flex items-center justify-end gap-1 mt-1">
-                                  <CheckCircle size={13} /> Completed
-                                </span>
-                              ) : (
-                                <div
-                                  className={
-                                    !readiness.ready
-                                      ? "tooltip tooltip-left inline-block"
-                                      : "inline-block"
-                                  }
-                                  data-tip={
-                                    !readiness.ready
-                                      ? readiness.reason
-                                      : undefined
-                                  }
+                              <div
+                                className={
+                                  !readiness.ready
+                                    ? "tooltip tooltip-left inline-block"
+                                    : "inline-block"
+                                }
+                                data-tip={!readiness.ready ? readiness.reason : undefined}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={actionDisabled}
+                                  onClick={() => openTask(task)}
+                                  className="btn btn-xs px-4 btn-primary"
                                 >
-                                  <button
-                                    type="button"
-                                    disabled={actionDisabled}
-                                    onClick={() => openTask(task)}
-                                    className={`btn btn-xs px-4 btn-primary`}
-                                  >
-                                    {task.workflowType === "AI"
-                                      ? task.actionLabel
-                                      : getTaskPrimaryActionLabel(task)}
-                                  </button>
-                                </div>
-                              )}
+                                  {primaryActionLabel}
+                                </button>
+                              </div>
                             </td>
 
                             {/* 6. ACTIONS MENU */}
@@ -776,66 +779,146 @@ export default function WorkQueue({ embedded = false }) {
       <RecordCalvingModal
         isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "Calving"}
         onClose={() => setSelectedTaskWrapper(null)}
-        taskData={selectedTaskWrapper?.raw}
+        pregnancyData={
+          selectedTaskWrapper?.workflowType === "Calving" &&
+          selectedTaskWrapper?.context?.pregnancyId
+            ? {
+                _id: selectedTaskWrapper.context.pregnancyId,
+                animalId: selectedTaskWrapper.animal?.id || null,
+              }
+            : null
+        }
+        preSelectedFarmer={selectedTaskWrapper?.farmer?.id || null}
+        preSelectedAnimal={selectedTaskWrapper?.animal?.id || null}
         taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
       />
       <Modal
-        isOpen={Boolean(selectedAIRecord)}
-        onClose={() => setSelectedAIRecord(null)}
-        title="Insemination record"
-        subtitle="Completed AI service summary"
+        isOpen={Boolean(selectedWorkDetails)}
+        onClose={() => setSelectedWorkDetails(null)}
+        title={selectedWorkDetails?.title || selectedWorkDetails?.serviceType || "Work details"}
+        subtitle="Recorded workflow summary"
         size="md"
         actions={
           <button
             type="button"
             className="btn btn-sm"
-            onClick={() => setSelectedAIRecord(null)}
+            onClick={() => setSelectedWorkDetails(null)}
           >
             Close
           </button>
         }
       >
-        {selectedAIRecord && (
+        {selectedWorkDetails && (
           <div className="space-y-4 text-sm">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <p className="text-xs text-base-content/55">Farmer</p>
-                <p className="font-semibold">{selectedAIRecord.farmer?.name}</p>
+                <p className="font-semibold">{selectedWorkDetails.farmer?.name || "Not recorded"}</p>
               </div>
               <div>
                 <p className="text-xs text-base-content/55">Animal</p>
                 <p className="font-semibold">
-                  {selectedAIRecord.animal?.name}
-                  {selectedAIRecord.animal?.earTag
-                    ? ` · Tag ${selectedAIRecord.animal.earTag}`
+                  {selectedWorkDetails.animal?.name || "Not recorded"}
+                  {selectedWorkDetails.animal?.earTag
+                    ? ` · Tag ${selectedWorkDetails.animal.earTag}`
                     : ""}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-base-content/55">Scheduled visit</p>
+                <p className="text-xs text-base-content/55">Status</p>
                 <p className="font-semibold">
-                  {formatCanonicalVisitSchedule(selectedAIRecord.schedule)}
+                  {getWorkflowStatusPresentation(
+                    normalizeWorkflowStatus(selectedWorkDetails),
+                  ).label}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-base-content/55">Completed</p>
+                <p className="text-xs text-base-content/55">
+                  {selectedWorkDetails.timing?.kind === "due" ? "Due" : "Completed"}
+                </p>
                 <p className="font-semibold">
-                  {formatRecordDate(selectedAIRecord.completedAt)}
+                  {formatRecordDate(
+                    selectedWorkDetails.timing?.date || selectedWorkDetails.completedAt,
+                  )}
                 </p>
               </div>
             </div>
             <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
-              <p className="text-xs text-base-content/55">Recorded service</p>
-              <p className="font-semibold">
-                {selectedAIRecord.raw?.sireBreed || "Sire breed not recorded"}
-                {selectedAIRecord.raw?.sireCode
-                  ? ` · ${selectedAIRecord.raw.sireCode}`
-                  : ""}
-              </p>
+              <p className="text-xs text-base-content/55">Service information</p>
+              <p className="font-semibold">{selectedWorkDetails.summary || "No additional service details recorded."}</p>
+              {selectedWorkDetails.context?.sireBreed && (
+                <p className="mt-1 text-base-content/70">
+                  Sire: {selectedWorkDetails.context.sireBreed}
+                  {selectedWorkDetails.context.sireCode
+                    ? ` · ${selectedWorkDetails.context.sireCode}`
+                    : ""}
+                </p>
+              )}
+              {selectedWorkDetails.context?.handlingMethod && (
+                <p className="mt-1 text-base-content/70">
+                  Handling: {String(selectedWorkDetails.context.handlingMethod).replaceAll("_", " ")}
+                </p>
+              )}
             </div>
           </div>
         )}
+      </Modal>
+      <Modal
+        isOpen={Boolean(breedingFollowUp)}
+        onClose={() => setBreedingFollowUp(null)}
+        title="Record breeding follow-up"
+        subtitle="Record the technician's current observation for this AI attempt."
+        size="md"
+        actions={
+          <>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setBreedingFollowUp(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              disabled={breedingFollowUpMutation.isPending}
+              onClick={() =>
+                breedingFollowUpMutation.mutate({
+                  workflowId: breedingFollowUp.context?.inseminationId,
+                  ...followUpDraft,
+                })
+              }
+            >
+              {breedingFollowUpMutation.isPending ? "Saving…" : "Record follow-up"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <label className="form-control">
+            <span className="label-text font-semibold">Observation</span>
+            <select
+              className="select select-bordered mt-1"
+              value={followUpDraft.reportType}
+              onChange={(event) =>
+                setFollowUpDraft((current) => ({ ...current, reportType: event.target.value }))
+              }
+            >
+              <option value="possible_pregnancy">Possible pregnancy</option>
+              <option value="return_to_heat">Return to heat</option>
+              <option value="unsure">Unsure</option>
+              <option value="unable_to_contact">Unable to contact</option>
+            </select>
+          </label>
+          <label className="form-control">
+            <span className="label-text font-semibold">Notes</span>
+            <textarea
+              className="textarea textarea-bordered mt-1 min-h-28"
+              value={followUpDraft.notes}
+              onChange={(event) =>
+                setFollowUpDraft((current) => ({ ...current, notes: event.target.value }))
+              }
+              placeholder="What did you observe?"
+            />
+          </label>
+        </div>
       </Modal>
     </div>
   );

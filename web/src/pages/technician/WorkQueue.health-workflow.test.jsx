@@ -56,8 +56,14 @@ vi.mock("../../components/dialogs/PregnancyDiagnosisModal", () => ({
 }));
 
 vi.mock("../../components/dialogs/RecordCalvingModal", () => ({
-  default: ({ isOpen, taskId }) =>
-    isOpen ? <div role="dialog" aria-label={`Calving ${taskId}`} /> : null,
+  default: ({ isOpen, taskId, pregnancyData }) =>
+    isOpen ? (
+      <div
+        role="dialog"
+        aria-label={`Calving ${taskId}`}
+        data-pregnancy-id={pregnancyData?._id}
+      />
+    ) : null,
 }));
 
 import WorkQueue from "./WorkQueue";
@@ -222,6 +228,7 @@ describe("Work Queue owned Health workflow", () => {
         serviceType: "Calving",
         allowedAction: "RECORD_SERVICE",
         actionLabel: "Record Calving",
+        context: { pregnancyId: "507f1f77bcf86cd799439051" },
         raw: { _id: ids.calvingTask, taskType: "Calving" },
       },
     ]);
@@ -238,6 +245,37 @@ describe("Work Queue owned Health workflow", () => {
     expect(
       screen.getByRole("dialog", { name: `Calving ${ids.calvingTask}` }),
     ).toBeTruthy();
+    expect(
+      screen.getByRole("dialog", { name: `Calving ${ids.calvingTask}` }),
+    ).toHaveAttribute("data-pregnancy-id", "507f1f77bcf86cd799439051");
+  });
+
+  it("records a due breeding follow-up through its canonical AI endpoint", async () => {
+    renderQueue([
+      {
+        ...baseTask,
+        id: "507f1f77bcf86cd799439061",
+        taskId: "507f1f77bcf86cd799439061",
+        workflowType: "BreedingFollowUp",
+        type: "task",
+        taskType: "BreedingFollowUp",
+        serviceType: "Breeding Follow-up",
+        allowedAction: "RECORD_BREEDING_OBSERVATION",
+        actionLabel: "Record Follow-up",
+        context: { inseminationId: ids.ai },
+        raw: { _id: "507f1f77bcf86cd799439061", taskType: "BreedingFollowUp" },
+      },
+    ]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Record Follow-up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record follow-up" }));
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(
+        `/ai-request/${ids.ai}/technician-observation`,
+        { reportType: "possible_pregnancy", notes: "" },
+      ),
+    );
   });
 
   it("keeps the genuine quick-action walk-in endpoint intact", () => {
