@@ -154,8 +154,10 @@ function RequestsSectionTabs({ activeSection, onSelect }) {
         type="button"
         role="tab"
         aria-selected={activeSection === REQUEST_SECTIONS.AVAILABLE}
-        className={`tab grow sm:grow-0 ${
-          activeSection === REQUEST_SECTIONS.AVAILABLE ? "tab-active" : ""
+        className={`tab grow sm:grow-0 font-semibold ${
+          activeSection === REQUEST_SECTIONS.AVAILABLE
+            ? "tab-active font-bold! bg-primary/15! text-primary!"
+            : ""
         }`}
         onClick={() => onSelect(REQUEST_SECTIONS.AVAILABLE)}
       >
@@ -165,8 +167,10 @@ function RequestsSectionTabs({ activeSection, onSelect }) {
         type="button"
         role="tab"
         aria-selected={activeSection === REQUEST_SECTIONS.MY_WORK}
-        className={`tab grow sm:grow-0 ${
-          activeSection === REQUEST_SECTIONS.MY_WORK ? "tab-active" : ""
+        className={`tab grow sm:grow-0 font-semibold ${
+          activeSection === REQUEST_SECTIONS.MY_WORK
+            ? "tab-active font-bold! bg-primary/15! text-primary!"
+            : ""
         }`}
         onClick={() => onSelect(REQUEST_SECTIONS.MY_WORK)}
       >
@@ -552,8 +556,7 @@ function RequestBoard({ role, onSelectSection }) {
     });
 
     mapped = mapped.filter(
-      (request) =>
-        request.type === "insemination" || request.type === "health",
+      (request) => request.type === "insemination" || request.type === "health",
     );
 
     if (primaryView === REQUEST_BOARD_VIEWS.AVAILABLE) {
@@ -816,8 +819,8 @@ function RequestBoard({ role, onSelectSection }) {
                     </p>
                   </div>
 
-                  <div className="grid gap-3 border-t border-base-300 pt-3 lg:grid-cols-[minmax(16rem,1fr)_auto_auto] lg:items-end">
-                    <label className="form-control">
+                  <div className="flex flex-col lg:flex-row gap-3 border-t border-base-300 pt-3 lg:items-end">
+                    <label className="form-control w-full lg:w-1/2 lg:mr-auto">
                       <span className="label text-sm font-semibold text-base-content/65">
                         Search
                       </span>
@@ -856,7 +859,9 @@ function RequestBoard({ role, onSelectSection }) {
                             type="button"
                             aria-pressed={typeFilter === value}
                             className={`btn btn-sm join-item grow lg:grow-0 ${
-                              typeFilter === value ? "btn-active" : ""
+                              typeFilter === value
+                                ? "bg-success/15 text-success border-success/30 hover:bg-success/25 font-bold"
+                                : ""
                             }`}
                             onClick={() => {
                               setTypeFilter(value);
@@ -883,7 +888,9 @@ function RequestBoard({ role, onSelectSection }) {
                             type="button"
                             aria-pressed={urgencyFilter === value}
                             className={`btn btn-sm join-item grow lg:grow-0 ${
-                              urgencyFilter === value ? "btn-active" : ""
+                              urgencyFilter === value
+                                ? "bg-success/15 text-success border-success/30 hover:bg-success/25 font-bold"
+                                : ""
                             }`}
                             onClick={() => {
                               setUrgencyFilter(value);
@@ -988,7 +995,7 @@ function RequestBoard({ role, onSelectSection }) {
                         <p className="mt-1 max-w-md text-sm leading-relaxed text-base-content/65">
                           {hasListFilters
                             ? "Try a broader search or clear the Type and Urgency filters."
-                            : "New Farmer AI and Health requests will appear here when they are available to claim."}
+                            : "New Farmer Insemination and Health requests will appear here when they are available to claim."}
                         </p>
                         {hasListFilters ? (
                           <button
@@ -1071,7 +1078,6 @@ function RequestBoard({ role, onSelectSection }) {
               </div>
             </div>
           </div>
-
         </div>
       </main>
 

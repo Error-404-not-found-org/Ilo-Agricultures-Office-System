@@ -75,6 +75,9 @@ const ids = {
   aiTask: "507f1f77bcf86cd799439022",
   pregnancyTask: "507f1f77bcf86cd799439031",
   calvingTask: "507f1f77bcf86cd799439041",
+  followUpTask: "507f1f77bcf86cd799439061",
+  farmer: "507f1f77bcf86cd799439071",
+  animal: "507f1f77bcf86cd799439081",
 };
 
 const baseTask = {
@@ -101,24 +104,31 @@ const renderWorkQueue = (initialEntry = "/technician/requests?section=myWork") =
   );
 };
 
-const renderQueue = (tasks) => {
-  mocks.get.mockResolvedValue({
-    data: {
-      data: tasks,
-      pagination: {
-        page: 1,
-        limit: 8,
-        total: tasks.length,
-        totalPages: 1,
+const renderQueue = (tasks, { taskDetailsById = {} } = {}) => {
+  mocks.get.mockImplementation((url) => {
+    if (url.startsWith("/tasks/")) {
+      const taskId = decodeURIComponent(url.slice("/tasks/".length));
+      return Promise.resolve({ data: taskDetailsById[taskId] || null });
+    }
+
+    return Promise.resolve({
+      data: {
+        data: tasks,
+        pagination: {
+          page: 1,
+          limit: 8,
+          total: tasks.length,
+          totalPages: 1,
+        },
+        counts: {
+          all: tasks.length,
+          ai: 0,
+          health: 0,
+          pregnancy: 0,
+          calving: 0,
+        },
       },
-      counts: {
-        all: tasks.length,
-        ai: 0,
-        health: 0,
-        pregnancy: 0,
-        calving: 0,
-      },
-    },
+    });
   });
   renderWorkQueue();
 };
@@ -252,25 +262,73 @@ describe("Work Queue owned Health workflow", () => {
     ).toHaveAttribute("data-pregnancy-id", "507f1f77bcf86cd799439051");
   });
 
-  it("records a due breeding follow-up through its canonical AI endpoint", async () => {
-    renderQueue([
+  it("loads canonical breeding and farmer details before recording follow-up", async () => {
+    renderQueue(
+      [
+        {
+          ...baseTask,
+          id: ids.followUpTask,
+          taskId: ids.followUpTask,
+          workflowType: "BreedingFollowUp",
+          type: "task",
+          taskType: "BreedingFollowUp",
+          serviceType: "Breeding Follow-up",
+          allowedAction: "RECORD_BREEDING_OBSERVATION",
+          actionLabel: "Record Follow-up",
+          context: { inseminationId: ids.ai },
+          raw: { _id: ids.followUpTask, taskType: "BreedingFollowUp" },
+        },
+      ],
       {
-        ...baseTask,
-        id: "507f1f77bcf86cd799439061",
-        taskId: "507f1f77bcf86cd799439061",
-        workflowType: "BreedingFollowUp",
-        type: "task",
-        taskType: "BreedingFollowUp",
-        serviceType: "Breeding Follow-up",
-        allowedAction: "RECORD_BREEDING_OBSERVATION",
-        actionLabel: "Record Follow-up",
-        context: { inseminationId: ids.ai },
-        raw: { _id: "507f1f77bcf86cd799439061", taskType: "BreedingFollowUp" },
+        taskDetailsById: {
+          [ids.followUpTask]: {
+            _id: ids.followUpTask,
+            farmerId: {
+              _id: ids.farmer,
+              name: "Dong Pongase",
+              imageUrl: "https://images.example/dong-pongase.jpg",
+              phoneNumber: "09171234567",
+            },
+            animalIds: [
+              {
+                _id: ids.animal,
+                name: "02DP",
+                earTag: "02DP",
+                species: "Cattle",
+                breed: "Native",
+              },
+            ],
+            insemination: {
+              _id: ids.ai,
+              inseminationDate: "2024-08-25T04:00:00.000Z",
+              attemptNumber: 1,
+              sireCode: "44-12",
+              sireBreed: "Brahman",
+            },
+          },
+        },
       },
-    ]);
+    );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Record Follow-up" }));
-    fireEvent.click(screen.getByRole("button", { name: "Record follow-up" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Record Follow-up" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(`/tasks/${ids.followUpTask}`),
+    );
+    expect(await screen.findByText(/August 25, 2024/)).toBeTruthy();
+    expect(screen.getByText("#1")).toBeTruthy();
+    expect(screen.getByText("44-12")).toBeTruthy();
+    expect(screen.getByText("Dong Pongase")).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Dong Pongase profile" }),
+    ).toHaveAttribute("src", "https://images.example/dong-pongase.jpg");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Record Follow-up" })[1],
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit Follow-up" }));
 
     await waitFor(() =>
       expect(mocks.post).toHaveBeenCalledWith(
@@ -278,6 +336,47 @@ describe("Work Queue owned Health workflow", () => {
         { reportType: "possible_pregnancy", notes: "" },
       ),
     );
+  });
+
+  it("uses sire breed only when the canonical sire code is unavailable", async () => {
+    renderQueue(
+      [
+        {
+          ...baseTask,
+          id: ids.followUpTask,
+          taskId: ids.followUpTask,
+          workflowType: "BreedingFollowUp",
+          type: "task",
+          taskType: "BreedingFollowUp",
+          serviceType: "Breeding Follow-up",
+          allowedAction: "RECORD_BREEDING_OBSERVATION",
+          actionLabel: "Record Follow-up",
+          context: { inseminationId: ids.ai },
+          raw: { _id: ids.followUpTask, taskType: "BreedingFollowUp" },
+        },
+      ],
+      {
+        taskDetailsById: {
+          [ids.followUpTask]: {
+            farmerId: { _id: ids.farmer, name: "Dong Pongase" },
+            animalIds: [{ _id: ids.animal, earTag: "02DP" }],
+            insemination: {
+              _id: ids.ai,
+              inseminationDate: "2024-08-25T04:00:00.000Z",
+              attemptNumber: 1,
+              sireCode: "",
+              sireBreed: "Brahman",
+            },
+          },
+        },
+      },
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Record Follow-up" }),
+    );
+
+    expect(await screen.findByText("Brahman")).toBeTruthy();
   });
 
   it("keeps the genuine quick-action walk-in endpoint intact", () => {

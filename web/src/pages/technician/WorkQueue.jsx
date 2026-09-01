@@ -9,7 +9,18 @@ import {
   ChevronLeft,
   ChevronRight,
   PawPrint,
-  UserRound,
+  CheckCircle2,
+  AlertCircle,
+  HelpCircle,
+  PhoneOff,
+  MessageSquare,
+  Phone,
+  Stethoscope,
+  Dna,
+  Hash,
+  Flame,
+  Droplets,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
@@ -20,12 +31,8 @@ import HealthRequestActionModal from "../../components/dialogs/HealthRequestActi
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import Modal from "../../components/ui/Modal";
-import {
-  getTaskReadiness,
-} from "../../constants/technicianWorkflow";
-import {
-  getTaskPrimaryActionLabel,
-} from "../../utils/taskNavigation";
+import { getTaskReadiness } from "../../constants/technicianWorkflow";
+import { getTaskPrimaryActionLabel } from "../../utils/taskNavigation";
 import {
   MY_WORK_FILTERS,
   getServicePresentation,
@@ -53,12 +60,157 @@ const formatRecordDate = (value) => {
   if (Number.isNaN(date.getTime())) return "Not recorded";
   return date.toLocaleDateString("en-US", {
     timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "long",
+    month: "short",
     day: "numeric",
   });
 };
 
+const formatInseminationDate = (value) => {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  const dateStr = date.toLocaleDateString("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const timeStr = date.toLocaleTimeString("en-US", {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    minute: "numeric",
+  });
+  return `${dateStr} at ${timeStr}`;
+};
+
+const CompletedAIViewRecord = ({ workDetails }) => {
+  const { data: record, isLoading } = useQuery({
+    queryKey: ["completedAI", workDetails?.animal?.id, workDetails?.workflowId],
+    queryFn: async () => {
+      const res = await axiosInstance.get(`/animals/${workDetails.animal.id}/records/insemination/${workDetails.workflowId}`);
+      return res.data?.data || res.data;
+    },
+    enabled: Boolean(workDetails?.animal?.id && workDetails?.workflowId),
+  });
+
+  if (isLoading) return <div className="p-4 text-center text-sm text-base-content/60">Loading canonical record...</div>;
+  if (!record) return <div className="p-4 text-center text-sm text-error">Record not found</div>;
+
+  const animalName = workDetails.animal?.name || "Unknown";
+  const animalTag = record.animalId?.earTag || workDetails.animal?.earTag;
+  const species = record.animalId?.species || workDetails.animal?.species || "Unknown";
+  const breed = record.animalId?.breed || workDetails.animal?.breed || "Unknown";
+
+  const details = record.details || {};
+  const technicianName = record.technician?.name || details.technician;
+  const performedDate = details.serviceDate || record.date;
+
+  const renderMissing = () => (
+    <span className="text-base-content/40 font-normal flex items-center gap-1 mt-0.5">
+      <AlertCircle size={14} /> Not recorded
+    </span>
+  );
+
+  return (
+    <div className="space-y-6 text-sm">
+      {/* ANIMAL CARD */}
+      <div>
+        <p className="text-[10px] font-bold text-base-content/50 mb-2 uppercase tracking-widest">Animal</p>
+        <div className="rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+            <PawPrint size={24} />
+          </div>
+          <div>
+            <p className="font-bold text-base-content text-base">
+              {animalName}
+              {animalTag ? ` · Tag ${animalTag}` : ""}
+            </p>
+            <p className="text-xs text-base-content/60 mt-0.5">{breed} · {species}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* SERVICE DETAILS */}
+      <div>
+        <p className="text-[10px] font-bold text-base-content/50 mb-2 uppercase tracking-widest">Service Details</p>
+        <div className="rounded-xl border border-base-200 bg-base-100 shadow-sm divide-y divide-base-200">
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">AI Performed At</p>
+              <div className="font-bold text-base-content">{performedDate ? formatInseminationDate(performedDate) : renderMissing()}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <Stethoscope size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Technician</p>
+              <div className="font-bold text-base-content">{technicianName || renderMissing()}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <Dna size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Sire Breed</p>
+              <div className="font-bold text-base-content">{details.sireBreed || renderMissing()}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <Hash size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Sire Code</p>
+              <div className="font-bold text-base-content">{details.sireCode || renderMissing()}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <Flame size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Estrus Type</p>
+              <div className="font-bold text-base-content">{details.estrus || renderMissing()}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <Droplets size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Semen Doses</p>
+              <div className="font-bold text-base-content">{details.semenDosesUsed || 1}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+              <Info size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Status</p>
+              <div className="font-bold text-base-content">{details.status ? toTitleCase(details.status) : toTitleCase(record.status || "completed")}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* RECORD INFORMATION */}
+      <div>
+        <p className="text-[10px] font-bold text-base-content/50 mb-2 uppercase tracking-widest">Record Information</p>
+        <div className="rounded-xl border border-base-200 bg-base-50 p-4">
+          <p className="text-[10px] font-bold text-base-content/50">Official record ID</p>
+          <p className="font-mono text-xs text-base-content mt-1 border-b border-base-content/20 inline-block pb-0.5">{record.id || record.sourceId || record._id}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function WorkQueue({ embedded = false }) {
   const queryClient = useQueryClient();
@@ -77,6 +229,7 @@ export default function WorkQueue({ embedded = false }) {
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
   const [breedingFollowUp, setBreedingFollowUp] = useState(null);
+  const [breedingFollowUpStep, setBreedingFollowUpStep] = useState("overview");
   const [followUpDraft, setFollowUpDraft] = useState({
     reportType: "possible_pregnancy",
     notes: "",
@@ -86,8 +239,7 @@ export default function WorkQueue({ embedded = false }) {
   const formatRelativeSchedule = (value) => {
     if (!value) return "No date recorded";
     const targetDate = new Date(value);
-    if (Number.isNaN(targetDate.getTime()))
-      return "No date recorded";
+    if (Number.isNaN(targetDate.getTime())) return "No date recorded";
 
     const today = new Date();
 
@@ -115,9 +267,11 @@ export default function WorkQueue({ embedded = false }) {
     } else if (diffDays > 1 && diffDays <= 7) {
       datePart = `In ${diffDays} days`;
     } else {
+      const isSameYear = targetDate.getFullYear() === today.getFullYear();
       datePart = targetDate.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
+        ...(isSameYear ? {} : { year: "numeric" }),
       });
     }
 
@@ -151,6 +305,45 @@ export default function WorkQueue({ embedded = false }) {
     },
   });
 
+  const breedingFollowUpTaskId =
+    breedingFollowUp?.taskId || breedingFollowUp?.id || null;
+  const breedingFollowUpDetailsQuery = useQuery({
+    queryKey: [
+      "technician",
+      "tasks",
+      "detail",
+      breedingFollowUpTaskId || "",
+    ],
+    enabled:
+      Boolean(breedingFollowUp) && isMongoId(breedingFollowUpTaskId),
+    queryFn: async () => {
+      const response = await axiosInstance.get(
+        `/tasks/${encodeURIComponent(breedingFollowUpTaskId)}`,
+      );
+      return response.data || null;
+    },
+  });
+
+  const breedingFollowUpDetails = breedingFollowUpDetailsQuery.data;
+  const breedingFollowUpInsemination = breedingFollowUpDetails?.insemination;
+  const breedingFollowUpFarmer =
+    breedingFollowUpDetails?.farmerId || breedingFollowUp?.farmer || null;
+  const breedingFollowUpAnimal =
+    breedingFollowUpDetails?.animalIds?.[0] ||
+    breedingFollowUp?.animal ||
+    breedingFollowUpInsemination?.animalId ||
+    null;
+  const breedingFollowUpInseminationId =
+    breedingFollowUpInsemination?._id ||
+    breedingFollowUp?.context?.inseminationId ||
+    null;
+  const breedingFollowUpSire =
+    breedingFollowUpInsemination?.sireCode ||
+    breedingFollowUpInsemination?.sireBreed ||
+    null;
+  const breedingFollowUpUnavailableLabel =
+    breedingFollowUpDetailsQuery.isLoading ? "Loading…" : "Not available";
+
   const completeMutation = useMutation({
     mutationFn: (taskId) =>
       axiosInstance.put(`/tasks/${encodeURIComponent(taskId)}/complete`, {}),
@@ -180,7 +373,8 @@ export default function WorkQueue({ embedded = false }) {
     },
     onError: (error) =>
       toast.error(
-        error.response?.data?.message || "Could not record the breeding follow-up.",
+        error.response?.data?.message ||
+          "Could not record the breeding follow-up.",
       ),
   });
 
@@ -199,9 +393,12 @@ export default function WorkQueue({ embedded = false }) {
   const handleStartService = async (task) => {
     try {
       if (task.type === "insemination") {
-        await axiosInstance.patch(`/technician/inseminations/${task.workflowId}/status`, {
-          status: "in-progress",
-        });
+        await axiosInstance.patch(
+          `/technician/inseminations/${task.workflowId}/status`,
+          {
+            status: "in-progress",
+          },
+        );
       } else if (task.type === "health") {
         await axiosInstance.patch(`/health-request/${task.workflowId}/status`, {
           status: "in-progress",
@@ -231,7 +428,9 @@ export default function WorkQueue({ embedded = false }) {
         return;
       case "HANDLE_REQUEST":
         if (task.workflowType !== "Health" || !isMongoId(task.workflowId)) {
-          toast.error("This Health work item has an invalid request identifier.");
+          toast.error(
+            "This Health work item has an invalid request identifier.",
+          );
           return;
         }
         setSelectedTaskWrapper(task);
@@ -244,18 +443,18 @@ export default function WorkQueue({ embedded = false }) {
       case "RECORD_BREEDING_OBSERVATION": {
         const inseminationId = task.context?.inseminationId;
         if (!isMongoId(inseminationId)) {
-          toast.error("This breeding follow-up has an invalid AI record identifier.");
+          toast.error(
+            "This breeding follow-up has an invalid AI record identifier.",
+          );
           return;
         }
         setFollowUpDraft({ reportType: "possible_pregnancy", notes: "" });
+        setBreedingFollowUpStep("overview");
         setBreedingFollowUp(task);
         return;
       }
       case "COMPLETE_TASK":
-        if (
-          task.workflowType !== "StandaloneTask" ||
-          !isMongoId(task.taskId)
-        ) {
+        if (task.workflowType !== "StandaloneTask" || !isMongoId(task.taskId)) {
           toast.error("This standalone task has an invalid task identifier.");
           return;
         }
@@ -287,11 +486,15 @@ export default function WorkQueue({ embedded = false }) {
           toast.error("This AI work item has an invalid workflow identifier.");
           return;
         }
-        navigate(`/technician/requests?requestId=${encodeURIComponent(task.workflowId)}`);
+        navigate(
+          `/technician/requests?requestId=${encodeURIComponent(task.workflowId)}`,
+        );
         return;
       case "CLAIM":
       case "CLAIM_AND_SCHEDULE":
-        toast.error("This work is not assigned to you. Claim it from Available Requests.");
+        toast.error(
+          "This work is not assigned to you. Claim it from Available Requests.",
+        );
         return;
       default:
         toast.error("This work item does not have a supported action.");
@@ -338,7 +541,7 @@ export default function WorkQueue({ embedded = false }) {
                     type="button"
                     key={status.id}
                     onClick={() => selectWorkState(status.id)}
-                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${workStateFilter === status.id ? "btn-neutral" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
+                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${workStateFilter === status.id ? "bg-primary/15 text-primary border-primary/30 hover:bg-primary/20" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
                   >
                     {status.label}
                   </button>
@@ -353,7 +556,7 @@ export default function WorkQueue({ embedded = false }) {
                     setTypeFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="select select-sm select-bordered w-full sm:w-36 bg-base-100 border-base-200 font-medium"
+                  className="select select-sm select-bordered w-full sm:w-36 bg-base-100 border-base-300 font-medium"
                 >
                   {MY_WORK_FILTERS.map((filter) => (
                     <option key={filter.value} value={filter.value}>
@@ -372,7 +575,7 @@ export default function WorkQueue({ embedded = false }) {
                       setCurrentPage(1);
                     }}
                     placeholder="Search farmer, animal..."
-                    className="input input-sm input-bordered w-full pl-8 bg-base-100 border-base-200 font-medium"
+                    className="input input-sm input-bordered w-full pl-8 bg-base-100 border-base-300 font-medium"
                   />
                   <Search
                     size={14}
@@ -386,7 +589,10 @@ export default function WorkQueue({ embedded = false }) {
             {query.isLoading ? (
               <div className="space-y-3" aria-label="Loading work queue">
                 {[0, 1, 2, 3].map((row) => (
-                  <div key={row} className="rounded-box border border-base-300 p-4">
+                  <div
+                    key={row}
+                    className="rounded-box border border-base-300 p-4"
+                  >
                     <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
                       <div className="space-y-2">
                         <span className="skeleton block h-4 w-40" />
@@ -424,11 +630,15 @@ export default function WorkQueue({ embedded = false }) {
                 />
                 <h2 className="font-bold">No tasks found</h2>
                 <p className="mt-1 text-sm text-base-content/60">
-                  {search || typeFilter !== "all" || workStateFilter !== "active"
+                  {search ||
+                  typeFilter !== "all" ||
+                  workStateFilter !== "active"
                     ? "Try adjusting your filters to see more tasks."
                     : "You're all caught up! No tasks assigned to you right now."}
                 </p>
-                {(search || typeFilter !== "all" || workStateFilter !== "active") && (
+                {(search ||
+                  typeFilter !== "all" ||
+                  workStateFilter !== "active") && (
                   <button
                     onClick={() => {
                       setSearch("");
@@ -510,29 +720,133 @@ export default function WorkQueue({ embedded = false }) {
                                 </span>
                               ) : null}
                             </div>
-                            <h3 className="mt-3 text-base font-bold text-base-content">
-                              {toTitleCase(
-                                task.farmer?.name ||
-                                  task.farmerName ||
-                                  "Farmer not recorded",
-                              )}
-                            </h3>
-                            <p className="mt-1 text-sm text-base-content/70">
-                              {task.animal?.name || "Animal not recorded"}
-                              {animalReference !== "Not recorded"
-                                ? ` · Tag ${animalReference}`
-                                : ""}
-                              {task.animal?.species
-                                ? ` · ${task.animal.species}`
-                                : ""}
-                              {task.animal?.breed
-                                ? ` · ${task.animal.breed}`
-                                : ""}
-                            </p>
+                            {/* Farmer name — clickable with avatar */}
+                            {farmerId ? (
+                              <button
+                                type="button"
+                                className="group mt-2 flex items-center gap-1.5 text-left"
+                                onClick={() =>
+                                  navigate(`/technician/farmers/${farmerId}`)
+                                }
+                              >
+                                <div className="relative flex cursor-pointer h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-[9px] font-bold uppercase text-primary">
+                                  {task.farmer?.imageUrl && (
+                                    <img
+                                      src={task.farmer.imageUrl}
+                                      alt=""
+                                      className="absolute inset-0 z-10 h-full w-full object-cover"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                      }}
+                                    />
+                                  )}
+                                  <span className="z-0">
+                                    {(
+                                      task.farmer?.name ||
+                                      task.farmerName ||
+                                      "F"
+                                    ).charAt(0)}
+                                  </span>
+                                </div>
+                                <h3 className="text-sm font-bold cursor-pointer text-base-content transition-colors group-hover:text-primary">
+                                  {toTitleCase(
+                                    task.farmer?.name ||
+                                      task.farmerName ||
+                                      "Farmer not recorded",
+                                  )}
+                                </h3>
+                              </button>
+                            ) : (
+                              <h3 className="mt-2 text-sm font-bold text-base-content">
+                                {toTitleCase(
+                                  task.farmer?.name ||
+                                    task.farmerName ||
+                                    "Farmer not recorded",
+                                )}
+                              </h3>
+                            )}
+
+                            {/* Animal info — clickable with paw icon */}
+                            {animalId ? (
+                              <button
+                                type="button"
+                                className="group mt-1 flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs text-base-content/60"
+                                onClick={() =>
+                                  navigate(`/technician/animals/${animalId}`)
+                                }
+                              >
+                                <PawPrint
+                                  size={11}
+                                  className="shrink-0 text-base-content/40 transition-colors group-hover:text-primary"
+                                  aria-hidden="true"
+                                />
+                                {task.animal?.name ? (
+                                  <span className="font-medium text-base-content/75 transition-colors group-hover:text-primary">
+                                    {task.animal.name}
+                                  </span>
+                                ) : null}
+                                {animalReference !== "Not recorded" ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="opacity-40">·</span>
+                                    Tag {animalReference}
+                                  </span>
+                                ) : null}
+                                {task.animal?.species ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="opacity-40">·</span>
+                                    {task.animal.species}
+                                  </span>
+                                ) : null}
+                                {task.animal?.breed ? (
+                                  <span className="truncate italic">
+                                    {task.animal.breed}
+                                  </span>
+                                ) : null}
+                              </button>
+                            ) : (
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-base-content/60">
+                                {task.animal?.name ? (
+                                  <span className="font-medium text-base-content/75">
+                                    {task.animal.name}
+                                  </span>
+                                ) : null}
+                                {animalReference !== "Not recorded" ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="opacity-40">·</span>
+                                    Tag {animalReference}
+                                  </span>
+                                ) : null}
+                                {task.animal?.species ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="opacity-40">·</span>
+                                    {task.animal.species}
+                                  </span>
+                                ) : null}
+                                {task.animal?.breed ? (
+                                  <span className="truncate italic">
+                                    {task.animal.breed}
+                                  </span>
+                                ) : null}
+                              </div>
+                            )}
+
                             {task.summary ? (
-                              <p className="mt-2 line-clamp-2 text-sm text-base-content/60">
-                                {task.summary}
-                              </p>
+                              <div className="mt-2 space-y-2">
+                                {task.summary.match(/(Contact the.*)/i) ? (
+                                  <>
+                                    <p className="line-clamp-2 text-xs text-base-content/55">
+                                      {task.summary.split(/(Contact the.*)/i)[0]}
+                                    </p>
+                                    <div className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary">
+                                      {task.summary.match(/(Contact the.*)/i)[0]}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <p className="line-clamp-2 text-xs text-base-content/55">
+                                    {task.summary}
+                                  </p>
+                                )}
+                              </div>
                             ) : null}
                           </div>
 
@@ -567,38 +881,16 @@ export default function WorkQueue({ embedded = false }) {
                             </div>
                           </dl>
 
-                          <div className="flex flex-wrap items-center gap-2 lg:max-w-70 lg:justify-end">
-                            {farmerId ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                onClick={() =>
-                                  navigate(`/technician/farmers/${farmerId}`)
-                                }
-                              >
-                                <UserRound size={15} aria-hidden="true" />
-                                Farmer
-                              </button>
-                            ) : null}
-                            {animalId ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                onClick={() =>
-                                  navigate(`/technician/animals/${animalId}`)
-                                }
-                              >
-                                <PawPrint size={15} aria-hidden="true" />
-                                Animal
-                              </button>
-                            ) : null}
+                          <div className="flex flex-wrap items-center gap-2 lg:max-w-72 lg:justify-end">
                             {task.allowedAction ? (
                               <div
                                 className={
                                   !readiness.ready ? "tooltip tooltip-left" : ""
                                 }
                                 data-tip={
-                                  !readiness.ready ? readiness.reason : undefined
+                                  !readiness.ready
+                                    ? readiness.reason
+                                    : undefined
                                 }
                               >
                                 <button
@@ -668,14 +960,22 @@ export default function WorkQueue({ embedded = false }) {
       </ContentContainer>
 
       <PregnancyDiagnosisModal
-        isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "PD"}
+        isOpen={
+          Boolean(selectedTaskWrapper) &&
+          selectedTaskWrapper?.workflowType === "PD"
+        }
         onClose={() => setSelectedTaskWrapper(null)}
         taskData={selectedTaskWrapper?.raw}
         taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
+        onSuccess={() =>
+          queryClient.invalidateQueries({ queryKey: ["technician"] })
+        }
       />
       <AIServiceModal
-        isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "AI"}
+        isOpen={
+          Boolean(selectedTaskWrapper) &&
+          selectedTaskWrapper?.workflowType === "AI"
+        }
         context="task"
         onClose={() => setSelectedTaskWrapper(null)}
         taskData={selectedTaskWrapper?.raw}
@@ -705,7 +1005,10 @@ export default function WorkQueue({ embedded = false }) {
         onSuccess={() => setSelectedTaskWrapper(null)}
       />
       <HealthRequestActionModal
-        isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "Health"}
+        isOpen={
+          Boolean(selectedTaskWrapper) &&
+          selectedTaskWrapper?.workflowType === "Health"
+        }
         onClose={() => setSelectedTaskWrapper(null)}
         task={
           selectedTaskWrapper?.workflowType === "Health"
@@ -715,10 +1018,15 @@ export default function WorkQueue({ embedded = false }) {
               }
             : null
         }
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
+        onSuccess={() =>
+          queryClient.invalidateQueries({ queryKey: ["technician"] })
+        }
       />
       <RecordCalvingModal
-        isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "Calving"}
+        isOpen={
+          Boolean(selectedTaskWrapper) &&
+          selectedTaskWrapper?.workflowType === "Calving"
+        }
         onClose={() => setSelectedTaskWrapper(null)}
         pregnancyData={
           selectedTaskWrapper?.workflowType === "Calving" &&
@@ -732,12 +1040,18 @@ export default function WorkQueue({ embedded = false }) {
         preSelectedFarmer={selectedTaskWrapper?.farmer?.id || null}
         preSelectedAnimal={selectedTaskWrapper?.animal?.id || null}
         taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
+        onSuccess={() =>
+          queryClient.invalidateQueries({ queryKey: ["technician"] })
+        }
       />
       <Modal
         isOpen={Boolean(selectedWorkDetails)}
         onClose={() => setSelectedWorkDetails(null)}
-        title={selectedWorkDetails?.title || selectedWorkDetails?.serviceType || "Work details"}
+        title={
+          selectedWorkDetails?.title ||
+          selectedWorkDetails?.serviceType ||
+          "Work details"
+        }
         subtitle="Recorded workflow summary"
         size="md"
         actions={
@@ -750,12 +1064,16 @@ export default function WorkQueue({ embedded = false }) {
           </button>
         }
       >
-        {selectedWorkDetails && (
+        {selectedWorkDetails && selectedWorkDetails.workflowType === "AI" && workStateFilter === "completed" ? (
+          <CompletedAIViewRecord workDetails={selectedWorkDetails} />
+        ) : selectedWorkDetails && (
           <div className="space-y-4 text-sm">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <p className="text-xs text-base-content/55">Farmer</p>
-                <p className="font-semibold">{selectedWorkDetails.farmer?.name || "Not recorded"}</p>
+                <p className="font-semibold">
+                  {selectedWorkDetails.farmer?.name || "Not recorded"}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-base-content/55">Animal</p>
@@ -769,25 +1087,35 @@ export default function WorkQueue({ embedded = false }) {
               <div>
                 <p className="text-xs text-base-content/55">Status</p>
                 <p className="font-semibold">
-                  {getWorkflowStatusPresentation(
-                    normalizeWorkflowStatus(selectedWorkDetails),
-                  ).label}
+                  {
+                    getWorkflowStatusPresentation(
+                      normalizeWorkflowStatus(selectedWorkDetails),
+                    ).label
+                  }
                 </p>
               </div>
               <div>
                 <p className="text-xs text-base-content/55">
-                  {selectedWorkDetails.timing?.kind === "due" ? "Due" : "Completed"}
+                  {selectedWorkDetails.timing?.kind === "due"
+                    ? "Due"
+                    : "Completed"}
                 </p>
                 <p className="font-semibold">
                   {formatRecordDate(
-                    selectedWorkDetails.timing?.date || selectedWorkDetails.completedAt,
+                    selectedWorkDetails.timing?.date ||
+                      selectedWorkDetails.completedAt,
                   )}
                 </p>
               </div>
             </div>
             <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
-              <p className="text-xs text-base-content/55">Service information</p>
-              <p className="font-semibold">{selectedWorkDetails.summary || "No additional service details recorded."}</p>
+              <p className="text-xs text-base-content/55">
+                Service information
+              </p>
+              <p className="font-semibold">
+                {selectedWorkDetails.summary ||
+                  "No additional service details recorded."}
+              </p>
               {selectedWorkDetails.context?.sireBreed && (
                 <p className="mt-1 text-base-content/70">
                   Sire: {selectedWorkDetails.context.sireBreed}
@@ -798,7 +1126,10 @@ export default function WorkQueue({ embedded = false }) {
               )}
               {selectedWorkDetails.context?.handlingMethod && (
                 <p className="mt-1 text-base-content/70">
-                  Handling: {String(selectedWorkDetails.context.handlingMethod).replaceAll("_", " ")}
+                  Handling:{" "}
+                  {String(
+                    selectedWorkDetails.context.handlingMethod,
+                  ).replaceAll("_", " ")}
                 </p>
               )}
             </div>
@@ -808,58 +1139,315 @@ export default function WorkQueue({ embedded = false }) {
       <Modal
         isOpen={Boolean(breedingFollowUp)}
         onClose={() => setBreedingFollowUp(null)}
-        title="Record breeding follow-up"
-        subtitle="Record the technician's current observation for this AI attempt."
+        title={
+          breedingFollowUpStep === "overview"
+            ? "Breeding Follow-up"
+            : "Record breeding follow-up"
+        }
+        subtitle={
+          breedingFollowUpStep === "overview"
+            ? undefined
+            : "Record the technician's current observation for this AI attempt."
+        }
         size="md"
         actions={
-          <>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setBreedingFollowUp(null)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={breedingFollowUpMutation.isPending}
-              onClick={() =>
-                breedingFollowUpMutation.mutate({
-                  workflowId: breedingFollowUp.context?.inseminationId,
-                  ...followUpDraft,
-                })
-              }
-            >
-              {breedingFollowUpMutation.isPending ? "Saving…" : "Record follow-up"}
-            </button>
-          </>
+          breedingFollowUpStep === "overview" ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => setBreedingFollowUp(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => setBreedingFollowUpStep("form")}
+              >
+                Record Follow-up
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => setBreedingFollowUpStep("overview")}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                disabled={breedingFollowUpMutation.isPending}
+                onClick={() =>
+                  breedingFollowUpMutation.mutate({
+                    workflowId: breedingFollowUpInseminationId,
+                    ...followUpDraft,
+                  })
+                }
+              >
+                {breedingFollowUpMutation.isPending
+                  ? "Saving…"
+                  : "Submit Follow-up"}
+              </button>
+            </>
+          )
         }
       >
-        <div className="space-y-4">
-          <label className="form-control">
-            <span className="label-text font-semibold">Observation</span>
-            <select
-              className="select select-bordered mt-1"
-              value={followUpDraft.reportType}
-              onChange={(event) =>
-                setFollowUpDraft((current) => ({ ...current, reportType: event.target.value }))
-              }
-            >
-              <option value="possible_pregnancy">Possible pregnancy</option>
-              <option value="return_to_heat">Return to heat</option>
-              <option value="unsure">Unsure</option>
-              <option value="unable_to_contact">Unable to contact</option>
-            </select>
-          </label>
-          <label className="form-control">
-            <span className="label-text font-semibold">Notes</span>
-            <textarea
-              className="textarea textarea-bordered mt-1 min-h-28"
-              value={followUpDraft.notes}
-              onChange={(event) =>
-                setFollowUpDraft((current) => ({ ...current, notes: event.target.value }))
-              }
-              placeholder="What did you observe?"
-            />
-          </label>
-        </div>
+        {breedingFollowUpStep === "overview" ? (
+          <div className="space-y-4">
+            {breedingFollowUpDetailsQuery.isError ? (
+              <div className="alert alert-error" role="alert">
+                <AlertCircle size={18} aria-hidden="true" />
+                <span>Could not load the breeding record details.</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => breedingFollowUpDetailsQuery.refetch()}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
+            {/* Breeding Reference */}
+            <div className="rounded-xl border border-base-300 p-4">
+              <h3 className="font-bold text-primary mb-3">
+                Breeding Reference
+              </h3>
+              <div>
+                <h4 className="text-lg font-bold text-base-content">
+                  {breedingFollowUpAnimal?.name ||
+                    (breedingFollowUpAnimal?.earTag
+                      ? `Tag ${breedingFollowUpAnimal.earTag}`
+                      : "Unknown Animal")}
+                </h4>
+                <p className="text-sm text-base-content/60">
+                  {[
+                    breedingFollowUpAnimal?.species,
+                    breedingFollowUpAnimal?.breed,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "No breed info"}
+                </p>
+              </div>
+
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-base-content/60">Date Inseminated</span>
+                  <span className="font-medium text-base-content">
+                    {breedingFollowUpInsemination?.inseminationDate
+                      ? formatInseminationDate(
+                          breedingFollowUpInsemination.inseminationDate,
+                        )
+                      : breedingFollowUpUnavailableLabel}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-base-content/60">Attempt</span>
+                  <span className="font-medium text-base-content">
+                    {breedingFollowUpInsemination?.attemptNumber != null
+                      ? `#${breedingFollowUpInsemination.attemptNumber}`
+                      : breedingFollowUpUnavailableLabel}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-base-content/60">Sire</span>
+                  <span className="font-medium text-base-content">
+                    {breedingFollowUpSire ||
+                      breedingFollowUpUnavailableLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Farmer Update */}
+            <div className="rounded-xl border border-base-300 p-4">
+              <h3 className="font-bold text-base-content mb-3">
+                Farmer Update
+              </h3>
+              <div className="text-center py-4">
+                <MessageSquare
+                  className="mx-auto text-base-content/30 mb-2"
+                  size={24}
+                />
+                <h4 className="font-bold text-base-content text-sm">
+                  No farmer update received
+                </h4>
+                <p className="text-xs text-base-content/60 mt-1 max-w-70 mx-auto">
+                  Contact the farmer to ask whether the animal showed signs of
+                  returning to heat.
+                </p>
+              </div>
+            </div>
+
+            {/* Farmer Contact */}
+            <div className="rounded-xl border border-base-300 p-4">
+              <h3 className="font-bold text-primary mb-3">Farmer Contact</h3>
+              <div className="flex items-center gap-3">
+                {breedingFollowUpFarmer?.imageUrl ? (
+                  <div className="avatar">
+                    <div className="h-10 w-10 rounded-full">
+                      <img
+                        src={breedingFollowUpFarmer.imageUrl}
+                        alt={`${breedingFollowUpFarmer.name || "Farmer"} profile`}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="avatar avatar-placeholder">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 text-primary">
+                      <span className="text-sm font-semibold">
+                        {breedingFollowUpFarmer?.name
+                          ? breedingFollowUpFarmer.name.charAt(0).toUpperCase()
+                          : "F"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <h4 className="font-bold text-base-content text-sm">
+                    {breedingFollowUpFarmer?.name ||
+                      breedingFollowUp?.farmerName ||
+                      "Unknown Farmer"}
+                  </h4>
+                  <p className="text-xs text-base-content/60">
+                    {breedingFollowUpFarmer?.phoneNumber ||
+                      breedingFollowUpFarmer?.phone ||
+                      "No phone number available"}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={
+                  breedingFollowUpFarmer?.phoneNumber ||
+                  breedingFollowUpFarmer?.phone
+                    ? `tel:${breedingFollowUpFarmer.phoneNumber || breedingFollowUpFarmer.phone}`
+                    : undefined
+                }
+                className={`btn btn-outline btn-primary w-full mt-4 ${!breedingFollowUpFarmer?.phoneNumber && !breedingFollowUpFarmer?.phone ? "btn-disabled" : ""}`}
+              >
+                <Phone size={16} />
+                Call Farmer
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <label className="form-control">
+              <div className="text-sm font-bold text-base-content mb-2">
+                Follow-up Outcome
+              </div>
+              <div className="grid gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFollowUpDraft((c) => ({
+                      ...c,
+                      reportType: "possible_pregnancy",
+                    }))
+                  }
+                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                    followUpDraft.reportType === "possible_pregnancy"
+                      ? "border-primary bg-primary/5"
+                      : "border-base-300 bg-base-100 hover:border-base-content/20"
+                  }`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CheckCircle2 size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base-content">
+                      No heat noticed
+                    </h4>
+                    <p className="mt-1 text-xs text-base-content/70">
+                      No heat signs were reported. Pregnancy still requires
+                      professional confirmation.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFollowUpDraft((c) => ({
+                      ...c,
+                      reportType: "return_to_heat",
+                    }))
+                  }
+                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                    followUpDraft.reportType === "return_to_heat"
+                      ? "border-error bg-error/5"
+                      : "border-base-300 bg-base-100 hover:border-base-content/20"
+                  }`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error/10 text-error">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base-content">
+                      Returned to heat
+                    </h4>
+                    <p className="mt-1 text-xs text-base-content/70">
+                      Return-to-heat signs were observed or reported.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFollowUpDraft((c) => ({ ...c, reportType: "unsure" }))
+                  }
+                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                    followUpDraft.reportType === "unsure"
+                      ? "border-warning bg-warning/5"
+                      : "border-base-300 bg-base-100 hover:border-base-content/20"
+                  }`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
+                    <HelpCircle size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base-content">Not sure</h4>
+                    <p className="mt-1 text-xs text-base-content/70">
+                      Unable to determine whether the animal returned to heat.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFollowUpDraft((c) => ({
+                      ...c,
+                      reportType: "unable_to_contact",
+                    }))
+                  }
+                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                    followUpDraft.reportType === "unable_to_contact"
+                      ? "border-base-content/30 bg-base-200"
+                      : "border-base-300 bg-base-100 hover:border-base-content/20"
+                  }`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content/60">
+                    <PhoneOff size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base-content">
+                      Unable to contact farmer
+                    </h4>
+                    <p className="mt-1 text-xs text-base-content/70">
+                      No reproductive observation will be recorded.
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </label>
+          </div>
+        )}
       </Modal>
     </div>
   );
