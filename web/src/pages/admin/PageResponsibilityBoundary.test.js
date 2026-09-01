@@ -70,7 +70,8 @@ describe("Admin page responsibility composition", () => {
     expect(adminFilters).not.toContain('aria-label="Sort order"');
     expect(adminFilters).not.toContain("Near me");
     expect(adminFilters).not.toContain("Filter requests");
-    expect(technicianFilters).toContain('aria-label="Request ownership"');
+    expect(requests).toContain('aria-label="Technician request sections"');
+    expect(technicianFilters).not.toContain('aria-label="Request ownership"');
     expect(technicianFilters).toContain('aria-label="Request type"');
     expect(technicianFilters).toContain('aria-label="Health urgency"');
     expect(technicianFilters).not.toContain('aria-label="Municipality"');

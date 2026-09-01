@@ -93,23 +93,24 @@ describe("technician Schedule presentation", () => {
       "/technician/requests",
       "requestId=health-1",
     ],
-    [task(), "task", "/technician/work-queue", "taskId=task-1"],
+    [task(), "task", "/technician/requests", "taskId=task-1"],
     [
       task({ taskType: "CD", id: "calving-task", taskId: "calving-task" }),
       "task",
-      "/technician/work-queue",
+      "/technician/requests",
       "taskId=calving-task",
     ],
     [
       task({ taskType: "GeneralVisit", id: "general-task", taskId: "general-task" }),
       "task",
-      "/technician/work-queue",
+      "/technician/requests",
       "taskId=general-task",
     ],
   ])("routes %o to its canonical %s detail surface", (item, kind, path, search) => {
     const target = getScheduleNavigationTarget(item);
     expect(target.kind).toBe(kind);
     expect(target.path).toBe(path);
+    expect(target.search).toContain("section=myWork");
     expect(target.search).toContain(search);
   });
 

@@ -57,7 +57,6 @@ const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
 const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
 const TechnicianSchedule = lazy(() => import("./pages/technician/Schedule"));
 const TechnicianRequests = lazy(() => import("./pages/technician/Requests"));
-const TechnicianWorkQueue = lazy(() => import("./pages/technician/WorkQueue"));
 const BreedingLedger = lazy(() => import("./pages/technician/BreedingLedger"));
 const TechSettings = lazy(() => import("./pages/technician/Settings"));
 const Moowie = lazy(() => import("./pages/technician/Moowie"));
@@ -83,6 +82,22 @@ function LegacyTechnicianRequestDetailsRedirect() {
     : "/technician/requests?status=all";
 
   return <Navigate to={target} replace />;
+}
+
+function LegacyTechnicianWorkQueueRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  const legacyWorkState = params.get("workStateFilter");
+
+  params.set("section", "myWork");
+  if (!params.has("workState") && legacyWorkState) {
+    params.set("workState", legacyWorkState);
+  }
+  params.delete("workStateFilter");
+  params.delete("scope");
+  params.delete("statusFilter");
+
+  return <Navigate to={`/technician/requests?${params.toString()}`} replace />;
 }
 
 
@@ -279,7 +294,10 @@ function App() {
                 path="requests"
                 element={<TechnicianRequests role="technician" />}
               />
-              <Route path="work-queue" element={<TechnicianWorkQueue />} />
+              <Route
+                path="work-queue"
+                element={<LegacyTechnicianWorkQueueRedirect />}
+              />
               <Route path="moowie" element={<Moowie />} />
               <Route path="settings" element={<TechSettings />} />
             </Route>

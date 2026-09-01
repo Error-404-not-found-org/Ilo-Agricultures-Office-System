@@ -194,10 +194,11 @@ export const getScheduleNavigationTarget = (item = {}) => {
   if (["pregnancy", "breeding_follow_up", "calving", "task"].includes(kind)) {
     const taskId = idOf(item.taskId || item.id || item._id || item.raw?._id);
     return taskId
-      ? {
+        ? {
           kind: "task",
-          path: "/technician/work-queue",
-          search: "?taskId=" + encodeURIComponent(taskId),
+          path: "/technician/requests",
+          search:
+            "?section=myWork&taskId=" + encodeURIComponent(taskId),
           label: "View Task",
         }
       : null;
@@ -212,8 +213,8 @@ export const getScheduleNavigationTarget = (item = {}) => {
           kind: "request",
           path: "/technician/requests",
           search:
-            "?requestId=" + encodeURIComponent(requestId) + "&status=all",
-          label: "View Request",
+            "?section=myWork&requestId=" + encodeURIComponent(requestId),
+          label: "View Work",
         }
       : null;
   }

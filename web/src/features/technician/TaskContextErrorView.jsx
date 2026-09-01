@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 export default function TaskContextErrorView({
   errorType = "missing_info",
-  returnTo = "/technician/work-queue",
+  returnTo = "/technician/requests?section=myWork",
   title: customTitle = "",
   message: customMessage = ""
 }) {

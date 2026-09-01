@@ -385,7 +385,7 @@ const AIServiceModal = ({
       queryClient.invalidateQueries({ queryKey: ["technician"] });
       onClose();
       navigate(
-        `/technician/requests?requestId=${encodeURIComponent(requestId)}&status=approved`,
+        `/technician/requests?section=myWork&requestId=${encodeURIComponent(requestId)}`,
       );
     },
     onError: (error) => {
@@ -455,14 +455,13 @@ const AIServiceModal = ({
     onClose();
     if (isWorkQueueStatus(request.status) && request.taskId) {
       navigate(
-        `/technician/work-queue?scope=mine&statusFilter=all&taskId=${encodeURIComponent(request.taskId)}`,
+        `/technician/requests?section=myWork&taskId=${encodeURIComponent(request.taskId)}`,
       );
       return;
     }
 
-    const status = isWorkQueueStatus(request.status) ? "scheduled" : "approved";
     navigate(
-      `/technician/requests?requestId=${encodeURIComponent(request.requestId)}&status=${status}`,
+      `/technician/requests?section=myWork&requestId=${encodeURIComponent(request.requestId)}`,
     );
   };
 

@@ -237,11 +237,6 @@ export default function Sidebar() {
         label: "Requests",
         badge: livePendingCount > 0 ? String(livePendingCount) : null,
       },
-      {
-        path: "/technician/work-queue",
-        icon: <ListChecks size={16} />,
-        label: "My Work",
-      },
       { type: "label", label: "Records" },
       {
         path: "/technician/farmers",

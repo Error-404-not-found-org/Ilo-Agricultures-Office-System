@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Search,
@@ -20,6 +20,7 @@ import AdminRequestCards from "../../components/admin/requests/AdminRequestCards
 import Modal from "../../components/ui/Modal";
 import { getClaimType } from "../../constants/technicianWorkflow";
 import { WEB_ROLES, getRequestActionPolicy } from "../../constants/webRoles";
+import WorkQueue from "./WorkQueue";
 import {
   REQUEST_BOARD_VIEWS,
   getInitialRequestBoardView,
@@ -138,7 +139,113 @@ const getServiceMeta = (request = {}) => {
   };
 };
 
+const REQUEST_SECTIONS = Object.freeze({
+  AVAILABLE: "available",
+  MY_WORK: "myWork",
+});
+
+function RequestsSectionTabs({ activeSection, onSelect }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Technician request sections"
+      className="tabs tabs-box tabs-sm w-full sm:w-fit"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeSection === REQUEST_SECTIONS.AVAILABLE}
+        className={`tab grow sm:grow-0 ${
+          activeSection === REQUEST_SECTIONS.AVAILABLE ? "tab-active" : ""
+        }`}
+        onClick={() => onSelect(REQUEST_SECTIONS.AVAILABLE)}
+      >
+        Available
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeSection === REQUEST_SECTIONS.MY_WORK}
+        className={`tab grow sm:grow-0 ${
+          activeSection === REQUEST_SECTIONS.MY_WORK ? "tab-active" : ""
+        }`}
+        onClick={() => onSelect(REQUEST_SECTIONS.MY_WORK)}
+      >
+        My Work
+      </button>
+    </div>
+  );
+}
+
 export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isTechnician = role === WEB_ROLES.TECHNICIAN;
+  const requestedSection = searchParams.get("section");
+  const activeSection =
+    requestedSection === REQUEST_SECTIONS.MY_WORK
+      ? REQUEST_SECTIONS.MY_WORK
+      : REQUEST_SECTIONS.AVAILABLE;
+
+  useEffect(() => {
+    if (!isTechnician || requestedSection === activeSection) return;
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("section", activeSection);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [activeSection, isTechnician, requestedSection, setSearchParams]);
+
+  const selectSection = (section) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("section", section);
+      if (section === REQUEST_SECTIONS.MY_WORK) {
+        next.delete("requestId");
+        next.delete("status");
+      } else {
+        next.delete("taskId");
+        next.delete("workState");
+        next.delete("workStateFilter");
+      }
+      return next;
+    });
+  };
+
+  if (!isTechnician) return <RequestBoard role={role} />;
+
+  if (activeSection === REQUEST_SECTIONS.MY_WORK) {
+    return (
+      <div className={`${ui.page} bg-base-200/50`}>
+        <Topbar
+          title="Requests"
+          subtitle="Available Farmer requests and work already assigned to you"
+        />
+        <main
+          className={`${ui.main} mx-auto w-full max-w-500 space-y-6 p-4 lg:p-6`}
+        >
+          <RequestsSectionTabs
+            activeSection={activeSection}
+            onSelect={selectSection}
+          />
+          <div>
+            <h2 className="text-lg font-semibold text-base-content">My Work</h2>
+            <p className="mt-1 text-sm text-base-content/65">
+              Work currently assigned to you.
+            </p>
+          </div>
+          <WorkQueue embedded />
+        </main>
+      </div>
+    );
+  }
+
+  return <RequestBoard role={role} onSelectSection={selectSection} />;
+}
+
+function RequestBoard({ role, onSelectSection }) {
   const queryClient = useQueryClient();
   const actionPolicy = getRequestActionPolicy(role);
   const { isAdmin } = actionPolicy;
@@ -152,14 +259,10 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const requestedInitialView = getInitialRequestBoardView(
     normalizedInitialStatus,
   );
-  const initialRequestView =
-    !isAdmin && requestedInitialView === REQUEST_BOARD_VIEWS.HISTORY
-      ? REQUEST_BOARD_VIEWS.MINE
-      : requestedInitialView;
-  const initialStatusFilter =
-    !isAdmin && requestedInitialView === REQUEST_BOARD_VIEWS.HISTORY
-      ? "active"
-      : normalizedInitialStatus;
+  const initialRequestView = isAdmin
+    ? requestedInitialView
+    : REQUEST_BOARD_VIEWS.AVAILABLE;
+  const initialStatusFilter = isAdmin ? normalizedInitialStatus : "pending";
   const [dismissedDeepLink, setDismissedDeepLink] = useState(null);
 
   const { data: dbUser } = useQuery({
@@ -171,11 +274,11 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
     enabled: actionPolicy.isTechnician,
   });
 
-  const [primaryView, setPrimaryView] = useState(initialRequestView);
+  const [primaryView] = useState(initialRequestView);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [typeFilter, setTypeFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
-  const [assignmentFilter, setAssignmentFilter] = useState(
+  const [assignmentFilter] = useState(
     getRequestBoardViewSelection(initialRequestView, { isAdmin }).assignment,
   );
   const [technicianFilter] = useState("all");
@@ -591,14 +694,6 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
   const totalPages = queueData?.pagination?.totalPages || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
 
-  const selectPrimaryView = (view) => {
-    const selection = getRequestBoardViewSelection(view, { isAdmin });
-    setPrimaryView(view);
-    setStatusFilter(selection.status);
-    setAssignmentFilter(selection.assignment);
-    setCurrentPage(1);
-  };
-
   const clearListFilters = () => {
     setTypeFilter("all");
     setUrgencyFilter("all");
@@ -639,6 +734,12 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
       <main
         className={`${ui.main} w-full max-w-500 mx-auto p-4 lg:p-6 space-y-6`}
       >
+        {!isAdmin && (
+          <RequestsSectionTabs
+            activeSection={REQUEST_SECTIONS.AVAILABLE}
+            onSelect={onSelectSection}
+          />
+        )}
         <div className="space-y-6">
           <div className="space-y-6">
             {/* Filter toolbar */}
@@ -737,7 +838,7 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
                         Incoming requests
                       </h2>
                       <p className="mt-1 text-sm text-base-content/65">
-                        Claim available Farmer requests or review requests assigned to you.
+                        Farmer service requests you can claim.
                       </p>
                     </div>
                     <p
@@ -748,45 +849,6 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
                         ? "Loading requests…"
                         : `${totalItems} request${totalItems !== 1 ? "s" : ""}`}
                     </p>
-                  </div>
-
-                  <div
-                    role="tablist"
-                    aria-label="Request ownership"
-                    className="tabs tabs-box tabs-sm w-full sm:w-fit"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={
-                        primaryView === REQUEST_BOARD_VIEWS.AVAILABLE
-                      }
-                      className={`tab grow sm:grow-0 ${
-                        primaryView === REQUEST_BOARD_VIEWS.AVAILABLE
-                          ? "tab-active"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        selectPrimaryView(REQUEST_BOARD_VIEWS.AVAILABLE)
-                      }
-                    >
-                      Available
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={primaryView === REQUEST_BOARD_VIEWS.MINE}
-                      className={`tab grow sm:grow-0 ${
-                        primaryView === REQUEST_BOARD_VIEWS.MINE
-                          ? "tab-active"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        selectPrimaryView(REQUEST_BOARD_VIEWS.MINE)
-                      }
-                    >
-                      Mine
-                    </button>
                   </div>
 
                   <div className="grid gap-3 border-t border-base-300 pt-3 lg:grid-cols-[minmax(16rem,1fr)_auto_auto] lg:items-end">
@@ -956,16 +1018,12 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
                         <h3 className="mt-3 text-base font-semibold text-base-content">
                           {hasListFilters
                             ? "No requests match these filters"
-                            : primaryView === REQUEST_BOARD_VIEWS.AVAILABLE
-                              ? "No available requests"
-                              : "No active claimed requests"}
+                            : "No available requests"}
                         </h3>
                         <p className="mt-1 max-w-md text-sm leading-relaxed text-base-content/65">
                           {hasListFilters
                             ? "Try a broader search or clear the Type and Urgency filters."
-                            : primaryView === REQUEST_BOARD_VIEWS.AVAILABLE
-                              ? "New Farmer AI and Health requests will appear here when they are available to claim."
-                              : "Requests you claim remain viewable here. Field execution continues in My Work."}
+                            : "New Farmer AI and Health requests will appear here when they are available to claim."}
                         </p>
                         {hasListFilters ? (
                           <button

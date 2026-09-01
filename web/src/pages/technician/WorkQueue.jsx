@@ -61,16 +61,19 @@ const formatRecordDate = (value) => {
 };
 
 
-export default function WorkQueue() {
+export default function WorkQueue({ embedded = false }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [typeFilter, setTypeFilter] = useState(
     () => searchParams.get("typeFilter") || "all",
   );
   const [workStateFilter, setWorkStateFilter] = useState(
-    () => searchParams.get("workStateFilter") || "active",
+    () =>
+      searchParams.get("workState") ||
+      searchParams.get("workStateFilter") ||
+      "active",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
   const [selectedAIRecord, setSelectedAIRecord] = useState(null);
@@ -267,15 +270,31 @@ export default function WorkQueue() {
   };
 
   const focusedTaskId = searchParams.get("taskId");
+  const focusedWorkflowId = searchParams.get("requestId");
+  const ContentContainer = embedded ? "div" : "main";
+
+  const selectWorkState = (workState) => {
+    setWorkStateFilter(workState);
+    setCurrentPage(1);
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("section", "myWork");
+      next.set("workState", workState);
+      next.delete("workStateFilter");
+      return next;
+    });
+  };
 
   return (
-    <div className={ui.page}>
-      <Topbar
-        title="My Work"
-        subtitle="Manage your assigned services and follow-up tasks"
-      />
+    <div className={embedded ? "contents" : ui.page}>
+      {!embedded && (
+        <Topbar
+          title="My Work"
+          subtitle="Manage your assigned services and follow-up tasks"
+        />
+      )}
 
-      <main className={ui.main}>
+      <ContentContainer className={embedded ? "" : ui.main}>
         {/* ================= MAIN CARD: FILTERS & TABLE ================= */}
         <section className="card card-border bg-base-100 shadow-sm">
           {/* FILTER BAR */}
@@ -289,10 +308,7 @@ export default function WorkQueue() {
                   <button
                     type="button"
                     key={status.id}
-                    onClick={() => {
-                      setWorkStateFilter(status.id);
-                      setCurrentPage(1);
-                    }}
+                    onClick={() => selectWorkState(status.id)}
                     className={`join-item btn btn-sm px-4 whitespace-nowrap ${workStateFilter === status.id ? "btn-neutral" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
                   >
                     {status.label}
@@ -413,7 +429,7 @@ export default function WorkQueue() {
                     onClick={() => {
                       setSearch("");
                       setTypeFilter("all");
-                      setWorkStateFilter("active");
+                      selectWorkState("active");
                       setCurrentPage(1);
                     }}
                     className="btn btn-sm mt-4"
@@ -464,7 +480,13 @@ export default function WorkQueue() {
                         return (
                           <tr
                             key={task.id}
-                            className={`hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85 ${focusedTaskId === task.id ? "bg-primary/5" : ""}`}
+                            className={`hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85 ${
+                              focusedTaskId === task.id ||
+                              focusedTaskId === task.taskId ||
+                              focusedWorkflowId === task.workflowId
+                                ? "bg-primary/5"
+                                : ""
+                            }`}
                           >
                             {/* 1. SERVICE */}
                             <td className="p-3.5 pl-6 align-top">
@@ -699,7 +721,7 @@ export default function WorkQueue() {
             )}
           </div>
         </section>
-      </main>
+      </ContentContainer>
 
       <PregnancyDiagnosisModal
         isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "PD"}

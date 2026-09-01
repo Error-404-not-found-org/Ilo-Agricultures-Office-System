@@ -82,13 +82,13 @@ const baseTask = {
   schedule: { date: "2026-08-31", visitPeriod: "afternoon" },
 };
 
-const renderWorkQueue = () => {
+const renderWorkQueue = (initialEntry = "/technician/requests?section=myWork") => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <WorkQueue />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -323,6 +323,24 @@ describe("My Work canonical server data", () => {
     fireEvent.click(screen.getByRole("button", { name: "Completed" }));
     await waitFor(() =>
       expect(mocks.get).toHaveBeenLastCalledWith("/technician/work-queue", {
+        params: {
+          page: 1,
+          limit: 8,
+          workState: "completed",
+          type: "all",
+        },
+      }),
+    );
+    expect(await screen.findByText("Completed owned work: 24")).toBeTruthy();
+  });
+
+  it("loads completed My Work directly from the canonical URL state", async () => {
+    renderWorkQueue(
+      "/technician/requests?section=myWork&workState=completed",
+    );
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
         params: {
           page: 1,
           limit: 8,

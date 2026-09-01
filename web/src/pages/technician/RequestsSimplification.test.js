@@ -27,24 +27,25 @@ describe("Technician Requests responsibility", () => {
   });
 
   it("keeps only practical visible Technician filters", () => {
+    expect(requestsSource).toContain(
+      'aria-label="Technician request sections"',
+    );
     expect(requestsSource).toContain('aria-label="Search service requests"');
-    expect(requestsSource).toContain('aria-label="Request ownership"');
     expect(requestsSource).toContain('aria-label="Request type"');
     expect(requestsSource).toContain('aria-label="Health urgency"');
+    expect(requestsSource).not.toContain('aria-label="Request ownership"');
     expect(requestsSource).not.toContain('aria-label="Municipality"');
     expect(requestsSource).not.toContain('aria-label="District"');
     expect(requestsSource).not.toContain('aria-label="Sort order"');
     expect(requestsSource).not.toContain("Near me");
   });
 
-  it("maps Available and Mine to the canonical backend query contract", () => {
+  it("maps Available to the canonical unclaimed backend query contract", () => {
     expect(
       getRequestBoardViewSelection(REQUEST_BOARD_VIEWS.AVAILABLE),
     ).toEqual({ status: "pending", assignment: "unassigned" });
-    expect(getRequestBoardViewSelection(REQUEST_BOARD_VIEWS.MINE)).toEqual({
-      status: "active",
-      assignment: "mine",
-    });
+    expect(requestsSource).toContain("<WorkQueue embedded />");
+    expect(requestsSource).toContain('MY_WORK: "myWork"');
   });
 
   it("keeps AI and Health canonical detail workflows without walk-in UI", () => {
@@ -53,6 +54,6 @@ describe("Technician Requests responsibility", () => {
     expect(requestsSource).not.toContain("WalkInHealthModal");
     expect(requestsSource).not.toContain("WalkInInsemination");
     expect(requestsSource).toContain("No available requests");
-    expect(requestsSource).toContain("No active claimed requests");
+    expect(requestsSource).not.toContain("No active claimed requests");
   });
 });
