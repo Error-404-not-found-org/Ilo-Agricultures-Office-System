@@ -31,6 +31,9 @@ describe("Technician Requests and My Work navigation", () => {
     expect(app).toContain("function LegacyTechnicianWorkQueueRedirect()");
     expect(app).toContain('params.set("section", "myWork")');
     expect(app).toContain("<LegacyTechnicianWorkQueueRedirect />");
+    expect(app).toContain(
+      '"/technician/requests?section=myWork"',
+    );
     expect(sidebar).not.toContain('path: "/technician/work-queue"');
     expect(sidebar).toContain('path: "/technician/requests"');
   });

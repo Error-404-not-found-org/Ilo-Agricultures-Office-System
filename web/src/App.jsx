@@ -78,8 +78,8 @@ function LegacyTechnicianRequestDetailsRedirect() {
   const params = new URLSearchParams(search);
   const requestId = params.get("requestId");
   const target = requestId
-    ? `/technician/requests?requestId=${encodeURIComponent(requestId)}&status=all`
-    : "/technician/requests?status=all";
+    ? `/technician/requests?section=myWork&requestId=${encodeURIComponent(requestId)}`
+    : "/technician/requests?section=myWork";
 
   return <Navigate to={target} replace />;
 }
