@@ -18,7 +18,6 @@ import RequestQueueCard from "../../features/technician/RequestQueueCard";
 import { ui } from "../../components/ui/uiClasses";
 import AdminRequestCards from "../../components/admin/requests/AdminRequestCards";
 import Modal from "../../components/ui/Modal";
-import { getClaimType } from "../../constants/technicianWorkflow";
 import { WEB_ROLES, getRequestActionPolicy } from "../../constants/webRoles";
 import WorkQueue from "./WorkQueue";
 import {
@@ -618,40 +617,6 @@ function RequestBoard({ role, onSelectSection }) {
     (activeTask?.workflowType === "Health" || activeTask?.type === "health");
 
   // Action Handlers
-  const handleClaimRequest = async (request) => {
-    if (!actionPolicy.canClaim) return;
-    if (
-      actionPolicy.canSchedule &&
-      request.workflowType === "AI" &&
-      request.allowedAction === "CLAIM_AND_SCHEDULE"
-    ) {
-      return;
-    }
-    if (isUpdating) return;
-    const claimType = getClaimType(request.queueType || request.type);
-    if (!claimType) {
-      toast.error("This request cannot be claimed from the service queue.");
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      await axiosInstance.patch(
-        `/technician/requests/${claimType}/${request.id}/claim`,
-      );
-      toast.success(
-        "Request claimed. You can now schedule or open its details.",
-      );
-      await queryClient.invalidateQueries({ queryKey: ["technician"] });
-    } catch (error) {
-      toast.error(
-        error.response?.data?.message || "The request could not be claimed.",
-      );
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
   const handleDeleteRequest = async (id, type) => {
     if (!actionPolicy.canCancelOwnRequest || isUpdating) return;
     if (!["insemination", "health"].includes(type)) {
@@ -1046,10 +1011,6 @@ function RequestBoard({ role, onSelectSection }) {
                             canClaim={actionPolicy.canClaim}
                             canCancel={actionPolicy.canCancelOwnRequest}
                             onOpen={openRequest}
-                            onClaim={handleClaimRequest}
-                            onSchedule={(selectedRequest) =>
-                              openAIRequest(selectedRequest, "schedule")
-                            }
                             onCancel={(selectedRequest) =>
                               handleDeleteRequest(
                                 selectedRequest.id,

@@ -34,8 +34,11 @@ const request = {
   farmerPhone: "09171234567",
   animalName: "Bessie",
   animalTag: "EAR-17",
+  species: "Cattle",
+  breed: "Holstein",
   location: "San Roque, Iloilo City",
-  heatSigns: ["Standing heat", "Clear mucus"],
+  heatSigns: ["standingHeat", "clear_mucus"],
+  taskDetails: "Observed standing heat this morning.",
   requestSubmissionDate: "2026-08-04T01:00:00.000Z",
   attachments: { count: 1, urls: ["https://example.test/heat.jpg"] },
   schedule: { date: null, visitPeriod: null },
@@ -102,8 +105,8 @@ const renderModal = (props = {}) => {
   return { invalidate };
 };
 
-const chooseTodayAndMorning = () => {
-  fireEvent.click(screen.getByLabelText("Today"));
+const chooseTomorrowAndMorning = () => {
+  fireEvent.click(screen.getByLabelText("Tomorrow"));
   fireEvent.click(screen.getByLabelText("Morning"));
 };
 
@@ -123,8 +126,12 @@ describe("Unified AI Request modal", () => {
     expect(detailsDialog).toHaveTextContent("Maria Santos");
     expect(detailsDialog).toHaveTextContent("09171234567");
     expect(detailsDialog).toHaveTextContent("Bessie · Tag EAR-17");
+    expect(detailsDialog).toHaveTextContent("Cattle · Holstein");
     expect(detailsDialog).toHaveTextContent("San Roque, Iloilo City");
-    expect(detailsDialog).toHaveTextContent("Standing heat, Clear mucus");
+    expect(detailsDialog).toHaveTextContent("Standing Heat, Clear Mucus");
+    expect(detailsDialog).toHaveTextContent(
+      "Observed standing heat this morning.",
+    );
     expect(detailsDialog).toHaveTextContent("August 4, 2026");
     expect(detailsDialog).toHaveTextContent("Farmer request photos (1)");
     expect(detailsDialog).toHaveTextContent("Pending");
@@ -132,11 +139,21 @@ describe("Unified AI Request modal", () => {
       name: "Farmer-submitted AI request photo 1",
     });
     expect(attachment).toHaveAttribute("src", "https://example.test/heat.jpg");
-    expect(
-      within(detailsDialog).getByRole("link", {
-        name: "Open request image 1",
+    fireEvent.click(
+      within(detailsDialog).getByRole("button", {
+        name: "Enlarge request image 1",
       }),
-    ).toHaveAttribute("href", "https://example.test/heat.jpg");
+    );
+    expect(
+      screen.getByRole("img", {
+        name: "Enlarged Farmer-submitted AI request",
+      }),
+    ).toHaveAttribute("src", "https://example.test/heat.jpg");
+    fireEvent.click(
+      within(
+        screen.getByRole("dialog", { name: "Farmer request photo" }),
+      ).getByRole("button", { name: "Close" }),
+    );
     expect(mocks.patch).not.toHaveBeenCalled();
 
     fireEvent.click(
@@ -249,7 +266,7 @@ describe("Unified AI Request modal", () => {
   it("confirms once through workflowId with only canonical payload fields", async () => {
     mocks.patch.mockResolvedValue({ data: { request: { status: "scheduled" } } });
     const { invalidate } = renderModal({ initialView: "schedule" });
-    chooseTodayAndMorning();
+    chooseTomorrowAndMorning();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
 
@@ -280,6 +297,41 @@ describe("Unified AI Request modal", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("requires current-period confirmation and sends the canonical acknowledgement", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-08-31T07:00:00.000Z"));
+    mocks.patch.mockResolvedValue({ data: { request: { status: "scheduled" } } });
+
+    try {
+      renderModal({ initialView: "schedule" });
+      fireEvent.click(screen.getByLabelText("Today"));
+      expect(screen.getByLabelText("Morning")).toBeDisabled();
+      fireEvent.click(screen.getByLabelText("Afternoon"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
+      expect(mocks.patch).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Confirm that you can still attend during this current service period.",
+      );
+
+      fireEvent.click(
+        screen.getByLabelText(
+          "I confirm I can still attend during this current service period.",
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
+
+      await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce());
+      expect(mocks.patch.mock.calls[0][1]).toEqual({
+        scheduledDate: "2026-08-31",
+        visitPeriod: "afternoon",
+        samePeriodConfirmed: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("blocks duplicate confirmation while the first request is pending", async () => {
     let resolveRequest;
     mocks.patch.mockImplementation(
@@ -289,7 +341,7 @@ describe("Unified AI Request modal", () => {
         }),
     );
     renderModal({ initialView: "schedule" });
-    chooseTodayAndMorning();
+    chooseTomorrowAndMorning();
 
     const confirm = screen.getByRole("button", { name: "Confirm Schedule" });
     fireEvent.click(confirm);

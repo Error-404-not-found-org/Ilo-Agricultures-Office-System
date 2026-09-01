@@ -13,14 +13,16 @@ import {
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import Modal from "../ui/Modal";
+import {
+  getHealthVisitPeriodAvailability,
+  getManilaDateKey,
+} from "../../utils/healthRequestWorkflow";
 
 const dateKeyWithOffset = (dayOffset = 0) => {
-  const date = new Date();
-  date.setDate(date.getDate() + dayOffset);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const [year, month, day] = getManilaDateKey().split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + dayOffset))
+    .toISOString()
+    .slice(0, 10);
 };
 
 const backendErrorDetails = (error) => ({
@@ -35,7 +37,10 @@ const humanizeStatus = (status) =>
     .replaceAll("-", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const AIRequestSummary = ({ request, compact = false }) => {
+const humanizeObservation = (value) =>
+  humanizeStatus(String(value || "").replace(/([a-z])([A-Z])/g, "$1 $2"));
+
+const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
   const farmerName =
     request.farmerDetails?.name || request.farmer || "Unknown farmer";
   const phone =
@@ -71,6 +76,12 @@ const AIRequestSummary = ({ request, compact = false }) => {
     ),
   ];
   const attachmentCount = attachmentUrls.length;
+  const requestNotes =
+    request.taskDetails ||
+    request.raw?.farmerDescription ||
+    request.raw?.farmerNotes ||
+    request.raw?.notes ||
+    null;
 
   return (
     <section
@@ -100,6 +111,16 @@ const AIRequestSummary = ({ request, compact = false }) => {
         </div>
 
         {!compact && (
+          <div>
+            <p className="text-xs text-base-content/55">Species and breed</p>
+            <p>
+              {[request.species, request.breed].filter(Boolean).join(" · ") ||
+                "Not recorded"}
+            </p>
+          </div>
+        )}
+
+        {!compact && (
           <div className="flex items-start gap-2">
             <Phone
               size={15}
@@ -123,7 +144,9 @@ const AIRequestSummary = ({ request, compact = false }) => {
             <div>
               <p className="text-xs text-base-content/55">Heat signs</p>
               <p>
-                {heatSigns.length ? heatSigns.join(", ") : "None submitted"}
+                {heatSigns.length
+                  ? heatSigns.map(humanizeObservation).join(", ")
+                  : "None submitted"}
               </p>
             </div>
             <div>
@@ -136,6 +159,12 @@ const AIRequestSummary = ({ request, compact = false }) => {
 
       {!compact && (
         <div className="mt-4 space-y-2">
+          <div>
+            <p className="text-xs text-base-content/55">Farmer notes</p>
+            <p className="mt-1 text-sm text-base-content/80">
+              {requestNotes || "No additional notes submitted."}
+            </p>
+          </div>
           <p className="flex items-center gap-2 text-sm font-medium text-base-content/70">
             <Paperclip size={15} aria-hidden="true" />
             Farmer request photos ({attachmentCount})
@@ -146,13 +175,12 @@ const AIRequestSummary = ({ request, compact = false }) => {
               aria-label="Submitted request images"
             >
               {attachmentUrls.map((url, index) => (
-                <a
+                <button
+                  type="button"
                   key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
                   className="card card-border overflow-hidden bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  aria-label={`Open request image ${index + 1}`}
+                  aria-label={`Enlarge request image ${index + 1}`}
+                  onClick={() => onPreviewImage?.(url)}
                 >
                   <figure className="aspect-video bg-base-200">
                     <img
@@ -162,7 +190,7 @@ const AIRequestSummary = ({ request, compact = false }) => {
                       loading="lazy"
                     />
                   </figure>
-                </a>
+                </button>
               ))}
             </div>
           )}
@@ -192,6 +220,8 @@ export default function AIRequestModal({
   const [visitPeriod, setVisitPeriod] = useState("");
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [samePeriodConfirmed, setSamePeriodConfirmed] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const request = modalState?.request || null;
   const view = modalState?.view === "schedule" ? "schedule" : "details";
@@ -215,6 +245,10 @@ export default function AIRequestModal({
         : dateChoice === "custom"
           ? customDate
           : "";
+  const selectedPeriodAvailability = getHealthVisitPeriodAvailability(
+    selectedDate,
+    visitPeriod,
+  );
 
   const validate = () => {
     const nextErrors = {};
@@ -225,6 +259,14 @@ export default function AIRequestModal({
     }
     if (!visitPeriod) {
       nextErrors.visitPeriod = "Choose Morning or Afternoon.";
+    } else if (selectedPeriodAvailability.disabled) {
+      nextErrors.visitPeriod = selectedPeriodAvailability.reason;
+    } else if (
+      selectedPeriodAvailability.requiresConfirmation &&
+      !samePeriodConfirmed
+    ) {
+      nextErrors.visitPeriod =
+        "Confirm that you can still attend during this current service period.";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -243,6 +285,9 @@ export default function AIRequestModal({
         {
           scheduledDate: selectedDate,
           visitPeriod,
+          ...(selectedPeriodAvailability.requiresConfirmation
+            ? { samePeriodConfirmed: true }
+            : {}),
         },
       );
     } catch (error) {
@@ -252,6 +297,19 @@ export default function AIRequestModal({
 
       if (details.code === "INVALID_VISIT_PERIOD") {
         setErrors({ visitPeriod: "Choose Morning or Afternoon." });
+        return;
+      }
+      if (details.code === "VISIT_PERIOD_CONFIRMATION_REQUIRED") {
+        setErrors({
+          visitPeriod:
+            "Confirm that you can still attend during this current service period.",
+        });
+        return;
+      }
+      if (details.code === "VISIT_PERIOD_IN_PAST") {
+        setErrors({
+          visitPeriod: details.message || "That service period has passed.",
+        });
         return;
       }
       if (
@@ -359,24 +417,25 @@ export default function AIRequestModal({
     );
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={closeModal}
-      title={
-        view === "schedule"
-          ? request.actionLabel || "Claim & Set Visit"
-          : "AI Request Details"
-      }
-      subtitle={
-        view === "schedule"
-          ? "Choose the visit date and service period before assignment."
-          : "Review the farmer's artificial insemination request."
-      }
-      size="lg"
-      actions={actions}
-    >
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={closeModal}
+        title={
+          view === "schedule"
+            ? request.actionLabel || "Claim & Set Visit"
+            : "AI Request Details"
+        }
+        subtitle={
+          view === "schedule"
+            ? "Choose the visit date and service period before assignment."
+            : "Review the farmer's artificial insemination request."
+        }
+        size="lg"
+        actions={actions}
+      >
       {view === "details" ? (
-        <AIRequestSummary request={request} />
+        <AIRequestSummary request={request} onPreviewImage={setPreviewImage} />
       ) : (
         <div className="space-y-5">
           <AIRequestSummary request={request} compact />
@@ -406,6 +465,7 @@ export default function AIRequestModal({
                     checked={dateChoice === value}
                     onChange={() => {
                       setDateChoice(value);
+                      setSamePeriodConfirmed(false);
                       setErrors((current) => ({ ...current, date: null }));
                     }}
                     className="radio radio-sm"
@@ -423,6 +483,7 @@ export default function AIRequestModal({
                 value={customDate}
                 onChange={(event) => {
                   setCustomDate(event.target.value);
+                  setSamePeriodConfirmed(false);
                   setErrors((current) => ({ ...current, date: null }));
                 }}
               />
@@ -440,18 +501,25 @@ export default function AIRequestModal({
               {[
                 ["morning", "Morning"],
                 ["afternoon", "Afternoon"],
-              ].map(([value, label]) => (
+              ].map(([value, label]) => {
+                const availability = getHealthVisitPeriodAvailability(
+                  selectedDate,
+                  value,
+                );
+                return (
                 <label
                   key={value}
-                  className="flex cursor-pointer items-center gap-2 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"
+                  className={`flex items-center gap-2 rounded-box border border-base-300 bg-base-100 px-3 py-2.5 ${availability.disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                 >
                   <input
                     type="radio"
                     name={`ai-visit-period-${fieldId}`}
                     value={value}
                     checked={visitPeriod === value}
+                    disabled={availability.disabled}
                     onChange={() => {
                       setVisitPeriod(value);
+                      setSamePeriodConfirmed(false);
                       setErrors((current) => ({
                         ...current,
                         visitPeriod: null,
@@ -466,8 +534,28 @@ export default function AIRequestModal({
                   />
                   <span className="font-medium text-base-content">{label}</span>
                 </label>
-              ))}
+                );
+              })}
             </div>
+            {selectedPeriodAvailability.requiresConfirmation && visitPeriod ? (
+              <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-warning checkbox-sm mt-0.5"
+                  checked={samePeriodConfirmed}
+                  onChange={(event) => {
+                    setSamePeriodConfirmed(event.target.checked);
+                    setErrors((current) => ({
+                      ...current,
+                      visitPeriod: null,
+                    }));
+                  }}
+                />
+                <span>
+                  I confirm I can still attend during this current service period.
+                </span>
+              </label>
+            ) : null}
             {errors.visitPeriod && (
               <p role="alert" className="label text-error">
                 {errors.visitPeriod}
@@ -476,6 +564,30 @@ export default function AIRequestModal({
           </fieldset>
         </div>
       )}
-    </Modal>
+      </Modal>
+      <Modal
+        isOpen={Boolean(previewImage)}
+        onClose={() => setPreviewImage(null)}
+        title="Farmer request photo"
+        size="lg"
+        actions={
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setPreviewImage(null)}
+          >
+            Close
+          </button>
+        }
+      >
+        {previewImage ? (
+          <img
+            src={previewImage}
+            alt="Enlarged Farmer-submitted AI request"
+            className="max-h-[70vh] w-full rounded-box object-contain"
+          />
+        ) : null}
+      </Modal>
+    </>
   );
 }

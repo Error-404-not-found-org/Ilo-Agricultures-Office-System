@@ -134,4 +134,54 @@ describe("Web Health request workflow rules", () => {
       ).disabled,
     ).toBe(true);
   });
+
+  it("keeps exact Morning and Afternoon service-period boundaries", () => {
+    const date = "2026-08-31";
+    const atManila = (time) =>
+      new Date(`2026-08-31T${time}:00.000+08:00`);
+
+    expect(
+      getHealthVisitPeriodAvailability(date, "morning", atManila("09:59")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: false });
+    expect(
+      getHealthVisitPeriodAvailability(date, "morning", atManila("10:00")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: true });
+    expect(
+      getHealthVisitPeriodAvailability(date, "morning", atManila("11:59")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: true });
+    expect(
+      getHealthVisitPeriodAvailability(date, "morning", atManila("12:00")),
+    ).toMatchObject({ disabled: true, requiresConfirmation: false });
+
+    expect(
+      getHealthVisitPeriodAvailability(date, "afternoon", atManila("12:23")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: false });
+    expect(
+      getHealthVisitPeriodAvailability(date, "afternoon", atManila("14:59")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: false });
+    expect(
+      getHealthVisitPeriodAvailability(date, "afternoon", atManila("15:00")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: true });
+    expect(
+      getHealthVisitPeriodAvailability(date, "afternoon", atManila("17:59")),
+    ).toMatchObject({ disabled: false, requiresConfirmation: true });
+    expect(
+      getHealthVisitPeriodAvailability(date, "afternoon", atManila("18:00")),
+    ).toMatchObject({ disabled: true, requiresConfirmation: false });
+
+    expect(
+      getHealthVisitPeriodAvailability(
+        "2026-09-01",
+        "morning",
+        atManila("18:00"),
+      ),
+    ).toMatchObject({ disabled: false, requiresConfirmation: false });
+    expect(
+      getHealthVisitPeriodAvailability(
+        "2026-08-30",
+        "afternoon",
+        atManila("09:00"),
+      ),
+    ).toMatchObject({ disabled: true, requiresConfirmation: false });
+  });
 });

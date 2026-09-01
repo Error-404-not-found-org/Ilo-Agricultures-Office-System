@@ -40,8 +40,6 @@ export default function RequestQueueCard({
   canClaim,
   canCancel,
   onOpen,
-  onClaim,
-  onSchedule,
   onCancel,
 }) {
   const assigneeId = getRequestAssigneeId(request);
@@ -76,23 +74,11 @@ export default function RequestQueueCard({
     !["Not scheduled", "Date unavailable"].includes(request.date);
 
   const handlePrimaryAction = () => {
-    if (isAvailable && isAI && canClaim) {
-      onSchedule(request);
-      return;
-    }
-    if (isAvailable && canClaim) {
-      onClaim(request);
-      return;
-    }
     onOpen(request);
   };
 
   const primaryLabel =
-    isAvailable && canClaim
-      ? isAI
-        ? "Claim & Schedule"
-        : "Claim Request"
-      : "View Request";
+    isAvailable && canClaim ? "Review Request" : "View Request";
 
   return (
     <article className="card card-border bg-base-100">
