@@ -6,6 +6,9 @@ import {
   buildActiveAIWorkFilter,
   buildActiveHealthWorkFilter,
   buildActiveStandaloneTaskFilter,
+  buildCompletedAIWorkFilter,
+  buildCompletedHealthWorkFilter,
+  buildCompletedStandaloneTaskFilter,
   DUE_GATED_REPRODUCTIVE_TASK_TYPES,
   buildTechnicianWorkloadRows,
   loadTechnicianWorkloadSummary,
@@ -97,6 +100,30 @@ test("shared active filters preserve canonical and legacy Work Queue status rule
     tasks.$and[0].$or[1].$or[0].dueDate.$lte.getTime(),
     now.getTime(),
   );
+});
+
+test("shared completed filters preserve canonical My Work ownership and duplicate suppression", () => {
+  const technicianId = "technician-1";
+  const ai = buildCompletedAIWorkFilter({ technicianId });
+  const health = buildCompletedHealthWorkFilter({ technicianId });
+  const tasks = buildCompletedStandaloneTaskFilter({ technicianId });
+
+  assert.equal(ai.status, "done");
+  assert.equal(ai.deletedAt, null);
+  assert.deepEqual(ai.$or, [
+    { approvedBy: technicianId },
+    { status: "done", technicianId },
+  ]);
+  assert.deepEqual(health.status.$in, ["resolved", "done"]);
+  assert.deepEqual(health.$or, [
+    { handledBy: technicianId },
+    { assignedTechnicianId: technicianId },
+  ]);
+  assert.equal(tasks.status, "Completed");
+  assert.equal(tasks.technicianId, technicianId);
+  assert.deepEqual(tasks.$nor[1], {
+    relatedRecordType: { $in: ["insemination", "health"] },
+  });
 });
 
 test("workload rows use stable IDs and keep duplicate Technician names distinct", () => {

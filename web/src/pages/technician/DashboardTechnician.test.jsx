@@ -1,0 +1,128 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import axiosInstance from "../../lib/axios";
+import Dashboard from "./DashboardTechnician";
+
+vi.mock("../../lib/axios", () => ({
+  default: { get: vi.fn() },
+}));
+
+vi.mock("../../components/layout/Topbar", () => ({
+  default: ({ title, subtitle }) => (
+    <header>
+      <h1>{title}</h1>
+      <p>{subtitle}</p>
+    </header>
+  ),
+}));
+
+vi.mock("../../components/dialogs/AIServiceModal", () => ({
+  default: ({ isOpen }) => (isOpen ? <div role="dialog">Direct AI</div> : null),
+}));
+vi.mock("../../components/dialogs/WalkInHealthModal", () => ({
+  default: ({ isOpen }) =>
+    isOpen ? <div role="dialog">Walk-in Health</div> : null,
+}));
+vi.mock("../../components/dialogs/RegisterFarmerModal", () => ({
+  default: ({ isOpen }) =>
+    isOpen ? <div role="dialog">Register Farmer form</div> : null,
+}));
+vi.mock("../../components/dialogs/RegisterLivestockModal", () => ({
+  default: ({ isOpen }) =>
+    isOpen ? <div role="dialog">Register Animal form</div> : null,
+}));
+
+const dashboardResponse = {
+  stats: { urgentHealth: 2, completedToday: 3 },
+  pendingRequests: [{ id: "eligible-request", type: "health" }],
+  agendaItems: [
+    {
+      id: "today-health",
+      type: "health",
+      status: "scheduled",
+      handlingMethod: "farm_visit",
+      scheduledDate: new Date().toISOString().slice(0, 10),
+      visitPeriod: "morning",
+      farmer: "Farmer One",
+      animalTag: "COW-1",
+    },
+  ],
+};
+
+function renderDashboard(response = dashboardResponse) {
+  axiosInstance.get.mockImplementation(async (url) => {
+    if (url === "/technician/profile") {
+      return {
+        data: {
+          name: "Tech One",
+          phoneNumber: "09170000000",
+          address: { barangay: "Poblacion" },
+        },
+      };
+    }
+    return { data: response };
+  });
+
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("Technician Dashboard current-work hierarchy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows authoritative overview and canonical today's work without duplicating Requests", async () => {
+    renderDashboard();
+
+    expect(await screen.findByText("Scheduled Health Farm Visit")).toBeTruthy();
+    expect(screen.getByText("Urgent Health")).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("Scheduled Health Farm Visit")).toBeTruthy();
+    expect(screen.getByText("Morning")).toBeTruthy();
+    expect(screen.queryByText("Farmer Requests")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: /View Schedule/i }),
+    ).toHaveAttribute("href", "/technician/schedule");
+  });
+
+  it("keeps only genuine direct, walk-in, and registration quick actions", async () => {
+    renderDashboard();
+    await screen.findByText("Quick Actions");
+
+    fireEvent.click(screen.getByRole("button", { name: /Record AI Service/i }));
+    expect(screen.getByText("Direct AI")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Record Health Assistance/i }),
+    );
+    expect(screen.getByText("Walk-in Health")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pregnancy Check" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record Calving" })).toBeNull();
+  });
+
+  it("shows a useful empty state when no date-bound work is due today", async () => {
+    renderDashboard({
+      stats: { urgentHealth: 0, completedToday: 0 },
+      pendingRequests: [],
+      agendaItems: [],
+    });
+
+    expect(await screen.findByText("No work due today")).toBeTruthy();
+    expect(
+      screen.getByText("Future and overdue work remain available in Schedule."),
+    ).toBeTruthy();
+  });
+});

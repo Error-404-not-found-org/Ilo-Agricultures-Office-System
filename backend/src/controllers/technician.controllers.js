@@ -74,6 +74,9 @@ import {
   buildActiveAIWorkFilter,
   buildActiveHealthWorkFilter,
   buildActiveStandaloneTaskFilter,
+  buildCompletedAIWorkFilter,
+  buildCompletedHealthWorkFilter,
+  buildCompletedStandaloneTaskFilter,
 } from "../services/technician-workload-summary.service.js";
 import { getAIRequestPhotos } from "../domain/ai-request-attachments.js";
 
@@ -309,15 +312,43 @@ export const getTechnicianDashboardData = async (req, res) => {
       // 6. Total Completed Today
       Promise.all([
         Insemination.countDocuments({
-          status: "done",
+          ...buildCompletedAIWorkFilter({
+            technicianId: isAdmin ? null : req.user._id,
+          }),
           updatedAt: { $gte: todayStart, $lt: todayEnd },
-          ...assigneeFilterAI,
         }),
-        HealthRequest.countDocuments({
-          status: "resolved",
-          updatedAt: { $gte: todayStart, $lt: todayEnd },
-          ...assigneeFilterHealth,
-        }),
+        HealthRequest.countDocuments(
+          combineMongoFilters(
+            buildCompletedHealthWorkFilter({
+              technicianId: isAdmin ? null : req.user._id,
+            }),
+            {
+              $or: [
+                { resolvedAt: { $gte: todayStart, $lt: todayEnd } },
+                {
+                  resolvedAt: null,
+                  updatedAt: { $gte: todayStart, $lt: todayEnd },
+                },
+              ],
+            },
+          ),
+        ),
+        Task.countDocuments(
+          combineMongoFilters(
+            buildCompletedStandaloneTaskFilter({
+              technicianId: isAdmin ? null : req.user._id,
+            }),
+            {
+              $or: [
+                { completedAt: { $gte: todayStart, $lt: todayEnd } },
+                {
+                  completedAt: null,
+                  updatedAt: { $gte: todayStart, $lt: todayEnd },
+                },
+              ],
+            },
+          ),
+        ),
       ]),
       // Data Streams (Using .lean() for performance)
       Insemination.find({
@@ -915,6 +946,12 @@ export const getTechnicianDashboardData = async (req, res) => {
       (a, b) => getSortableTimestamp(b) - getSortableTimestamp(a),
     );
 
+    const urgentHealthCount = healthReqs.filter((request) =>
+      ["high", "emergency"].includes(
+        String(request.urgency || "").trim().toLowerCase(),
+      ),
+    ).length;
+
     const animalRegistry = animalRegistryData.map((a) => {
       const lastIns = a.lastIns || null;
       const lastPregnancy = a.lastPregnancy || null;
@@ -967,7 +1004,9 @@ export const getTechnicianDashboardData = async (req, res) => {
     res.status(200).json({
       stats: {
         todayActivities: todayVisitsArr[0] + todayVisitsArr[1],
-        completedToday: completedTodayArr[0] + completedTodayArr[1],
+        completedToday:
+          completedTodayArr[0] + completedTodayArr[1] + completedTodayArr[2],
+        urgentHealth: urgentHealthCount,
         pendingHealth: totalHealthPending,
         successRate,
         totalInsemMonth,
@@ -4489,60 +4528,26 @@ export const getWorkQueue = async (req, res) => {
 
     const aiStateQuery =
       workState === "completed"
-        ? {
-            status: AI_STATUS.DONE,
-            deletedAt: null,
-            ...(isAdmin
-              ? {}
-              : {
-                  declinedByTechnicianIds: { $ne: authenticatedUserId },
-                  $or: [
-                    { approvedBy: authenticatedUserId },
-                    { status: AI_STATUS.DONE, technicianId: authenticatedUserId },
-                  ],
-                }),
-          }
+        ? buildCompletedAIWorkFilter({
+            technicianId: isAdmin ? null : authenticatedUserId,
+          })
         : buildActiveAIWorkFilter({
             technicianId: isAdmin ? null : authenticatedUserId,
           });
 
     const healthStateQuery =
       workState === "completed"
-        ? {
-            status: { $in: ["resolved", "done"] },
-            deletedAt: null,
-            ...(isAdmin
-              ? {}
-              : {
-                  declinedByTechnicianIds: { $ne: authenticatedUserId },
-                  $or: [
-                    { handledBy: authenticatedUserId },
-                    { assignedTechnicianId: authenticatedUserId },
-                  ],
-                }),
-          }
+        ? buildCompletedHealthWorkFilter({
+            technicianId: isAdmin ? null : authenticatedUserId,
+          })
         : buildActiveHealthWorkFilter({
             technicianId: isAdmin ? null : authenticatedUserId,
           });
 
-    const taskStateQuery =
-      workState === "completed"
-        ? {
-            status: "Completed",
-            ...(isAdmin ? {} : { technicianId: authenticatedUserId }),
-          }
-        : null;
     const standaloneTaskQuery =
       workState === "completed"
-        ? combineMongoFilters(taskStateQuery, {
-            $nor: [
-              {
-                taskType: {
-                  $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
-                },
-              },
-              { relatedRecordType: { $in: ["insemination", "health"] } },
-            ],
+        ? buildCompletedStandaloneTaskFilter({
+            technicianId: isAdmin ? null : authenticatedUserId,
           })
         : buildActiveStandaloneTaskFilter({
             technicianId: isAdmin ? null : authenticatedUserId,

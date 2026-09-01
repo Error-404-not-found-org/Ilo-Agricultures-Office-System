@@ -321,4 +321,105 @@ describe("Technician Dashboard Regression Tests", () => {
     );
     assert.equal(response.body.stats.pendingHealth, 1);
   });
+
+  it("counts only explicit visible urgent Health reports as Urgent Health", async () => {
+    await Promise.all([
+      HealthRequest.create({
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "pending",
+        symptoms: "Urgent Farmer report",
+        urgency: "high",
+        dispatch: otonDispatch,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal2._id],
+        taskType: "PD",
+        category: "Emergency",
+        notes: "Overdue reproductive work",
+        status: "Pending",
+        dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      }),
+    ]);
+
+    const { req, res, response } = mockReqRes(techUser, { fullAgenda: "true" });
+    await getTechnicianDashboardData(req, res);
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.stats.urgentHealth, 1);
+    assert.ok(
+      response.body.agendaItems.some((item) => item.taskType === "PD"),
+      "The overdue Pregnancy task remains visible as due work",
+    );
+  });
+
+  it("counts canonical AI, Health, and standalone Task completions for this Technician today", async () => {
+    const otherTechnician = await User.create({
+      clerkId: "clerk-other-tech",
+      role: "technician",
+      status: "active",
+      email: "other-tech@example.com",
+      name: "Other Technician",
+      isVerified: true,
+      profileClaimStatus: "claimed",
+    });
+    const now = new Date();
+
+    await Promise.all([
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+      }),
+      HealthRequest.create({
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "resolved",
+        symptoms: "Resolved today",
+        handledBy: techUser._id,
+        resolvedAt: now,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "PD",
+        category: "Routine",
+        notes: "Pregnancy work completed",
+        status: "Completed",
+        completedAt: now,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "Health",
+        category: "Routine",
+        notes: "Execution task mirrors a Health request",
+        status: "Completed",
+        completedAt: now,
+        relatedRecordType: "health",
+      }),
+      Task.create({
+        technicianId: otherTechnician._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "CD",
+        category: "Routine",
+        notes: "Another Technician completed this",
+        status: "Completed",
+        completedAt: now,
+      }),
+    ]);
+
+    const { req, res, response } = mockReqRes(techUser);
+    await getTechnicianDashboardData(req, res);
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.stats.completedToday, 3);
+  });
 });

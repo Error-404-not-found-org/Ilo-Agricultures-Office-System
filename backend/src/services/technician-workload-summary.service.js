@@ -36,6 +36,47 @@ export const buildActiveHealthWorkFilter = ({ technicianId } = {}) => ({
     : {}),
 });
 
+export const buildCompletedAIWorkFilter = ({ technicianId } = {}) => ({
+  status: AI_STATUS.DONE,
+  deletedAt: null,
+  ...(technicianId
+    ? {
+        declinedByTechnicianIds: { $ne: technicianId },
+        $or: [
+          { approvedBy: technicianId },
+          { status: AI_STATUS.DONE, technicianId },
+        ],
+      }
+    : {}),
+});
+
+export const buildCompletedHealthWorkFilter = ({ technicianId } = {}) => ({
+  status: { $in: ["resolved", "done"] },
+  deletedAt: null,
+  ...(technicianId
+    ? {
+        declinedByTechnicianIds: { $ne: technicianId },
+        $or: [
+          { handledBy: technicianId },
+          { assignedTechnicianId: technicianId },
+        ],
+      }
+    : {}),
+});
+
+export const buildCompletedStandaloneTaskFilter = ({ technicianId } = {}) => ({
+  status: "Completed",
+  $nor: [
+    {
+      taskType: {
+        $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
+      },
+    },
+    { relatedRecordType: { $in: ["insemination", "health"] } },
+  ],
+  ...(technicianId ? { technicianId } : {}),
+});
+
 export const DUE_GATED_REPRODUCTIVE_TASK_TYPES = Object.freeze([
   "PD",
   "BreedingFollowUp",
