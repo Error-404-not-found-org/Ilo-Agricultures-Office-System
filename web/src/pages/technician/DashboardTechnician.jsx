@@ -34,29 +34,30 @@ function OverviewStat({
   value,
   description,
   toneClass,
+  borderClass,
   isLoading,
 }) {
   return (
-    <div className="stat min-w-0 gap-x-3 px-5 py-4">
-      <div
-        className={`stat-figure m-0 flex size-11 items-center justify-center rounded-box ${toneClass}`}
-      >
-        <Icon size={21} aria-hidden="true" />
+    <article
+      className={`stat min-h-28 rounded-box border border-base-300 border-l-4 ${borderClass} bg-base-100 p-4 shadow-sm`}
+    >
+      <div className={`stat-figure ml-3 flex size-10 shrink-0 items-center justify-center rounded-lg ${toneClass}`}>
+        <Icon size={19} aria-hidden="true" />
       </div>
-      <div className="stat-title text-xs font-bold text-base-content/65">
+      <div className="stat-title mt-1 text-sm font-semibold text-base-content/90">
         {label}
       </div>
-      <div className="stat-value text-2xl text-base-content">
+      <div className="stat-value text-3xl font-extrabold leading-none text-base-content">
         {isLoading ? (
-          <span className="loading loading-dots loading-sm" aria-label="Loading" />
+          <span className="skeleton mt-1 block h-8 w-20" aria-label={`Loading ${label}`} />
         ) : (
           value
         )}
       </div>
-      <div className="stat-desc whitespace-normal text-[11px] text-base-content/55">
+      <div className="stat-desc mt-1 text-xs text-base-content/75">
         {description}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -172,34 +173,42 @@ export default function Dashboard() {
           </div>
         )}
 
-        <section
-          aria-label="Current work overview"
-          className="stats stats-vertical mb-6 w-full border border-base-300 bg-base-100 shadow-sm sm:stats-horizontal"
-        >
-          <OverviewStat
-            icon={CalendarCheck}
-            label="Due"
-            value={metricValue(scheduleOverview.dueCount)}
-            description="Due or overdue date-bound work"
-            toneClass="bg-primary/10 text-primary"
-            isLoading={dashboardQuery.isLoading}
-          />
-          <OverviewStat
-            icon={HeartPulse}
-            label="Urgent Health"
-            value={metricValue(stats.urgentHealth)}
-            description="Farmer Health reports marked urgent"
-            toneClass="bg-error/10 text-error"
-            isLoading={dashboardQuery.isLoading}
-          />
-          <OverviewStat
-            icon={CheckCircle}
-            label="Completed Today"
-            value={metricValue(stats.completedToday)}
-            description="Work you completed today"
-            toneClass="bg-success/10 text-success"
-            isLoading={dashboardQuery.isLoading}
-          />
+        <section aria-labelledby="overview-heading" className="space-y-3">
+          <h2
+            id="overview-heading"
+            className="text-lg font-bold text-base-content"
+          >
+            Current Work Overview
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <OverviewStat
+              icon={CalendarCheck}
+              label="Due"
+              value={metricValue(scheduleOverview.dueCount)}
+              description="Due or overdue date-bound work"
+              toneClass="bg-primary/10 text-primary"
+              borderClass="border-l-primary"
+              isLoading={dashboardQuery.isLoading}
+            />
+            <OverviewStat
+              icon={HeartPulse}
+              label="Urgent Health"
+              value={metricValue(stats.urgentHealth)}
+              description="Farmer Health reports marked urgent"
+              toneClass="bg-error/10 text-error"
+              borderClass="border-l-error"
+              isLoading={dashboardQuery.isLoading}
+            />
+            <OverviewStat
+              icon={CheckCircle}
+              label="Completed Today"
+              value={metricValue(stats.completedToday)}
+              description="Work you completed today"
+              toneClass="bg-success/10 text-success"
+              borderClass="border-l-success"
+              isLoading={dashboardQuery.isLoading}
+            />
+          </div>
         </section>
 
         <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
