@@ -455,7 +455,7 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(request.attemptNumber, 2);
       assert.equal(request.previousAttemptId._id, "completed-attempt-1");
       const expectedKeys = [
-        "id", "workflowId", "workflowType", "type", "serviceType",
+        "id", "workflowId", "workflowType", "type", "serviceType", "attachments",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
         "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
         "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt", "farmer",
