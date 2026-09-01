@@ -920,6 +920,7 @@ test("Technician Work Queue backend contract", async (t) => {
           handledBy: ids.technician,
           assignedTechnicianId: ids.technician,
           status: "scheduled",
+          handlingMethod: "farm_visit",
           scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
           visitPeriod: "afternoon",
           requestType: "checkup",
@@ -972,12 +973,38 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.has(ids.linkedHealthTask), false);
       assert.equal(byId.get(ids.health).taskId, ids.linkedHealthTask);
       assert.equal(byId.get(ids.health).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.health).actionLabel, "Start Visit");
       assert.equal(byId.get(ids.health).schedule.visitPeriod, "afternoon");
       assert.equal(byId.get(ids.health).visitPeriod, "afternoon");
       assert.equal(byId.get(ids.pdTask).workflowType, "PD");
-      assert.equal(byId.get(ids.pdTask).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.pdTask).allowedAction, "RECORD_SERVICE");
+      assert.equal(
+        byId.get(ids.pdTask).actionLabel,
+        "Record Pregnancy Check",
+      );
       assert.equal(byId.get(ids.calvingTask).workflowType, "Calving");
-      assert.equal(byId.get(ids.calvingTask).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.calvingTask).allowedAction, "RECORD_SERVICE");
+      assert.equal(byId.get(ids.calvingTask).actionLabel, "Record Calving");
+
+      state.healthRequests[0] = {
+        ...state.healthRequests[0],
+        handlingMethod: null,
+        visitPeriod: null,
+      };
+      const inconsistentRecorder = responseRecorder();
+      await getWorkQueue(
+        { user: { _id: ids.technician, role: "technician" } },
+        inconsistentRecorder.response,
+      );
+      const inconsistentHealth = inconsistentRecorder.body.data.find(
+        (item) => item.id === ids.health,
+      );
+      assert.equal(inconsistentHealth.allowedAction, "VIEW_DETAILS");
+      assert.equal(inconsistentHealth.actionLabel, "Review Request");
+      assert.equal(
+        inconsistentHealth.stateIssue,
+        "INCOMPLETE_FARM_VISIT_SCHEDULE",
+      );
     },
   );
 

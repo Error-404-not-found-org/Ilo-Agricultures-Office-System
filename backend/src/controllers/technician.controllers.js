@@ -5170,7 +5170,14 @@ export const getWorkQueue = async (req, res) => {
 
       const farmLocationDetails = getFarmLocationDetails(req.farmerId);
       const scheduleDate = req.scheduledDate || null;
-      const terminal = ["resolved", "done"].includes(req.status);
+      const healthStatus = String(req.status || "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("_", "-");
+      const handlingMethod = String(req.handlingMethod || "").toLowerCase();
+      const terminal = ["resolved", "done", "completed"].includes(
+        healthStatus,
+      );
       const completedAt = terminal
         ? req.resolvedAt || req.updatedAt || null
         : null;
@@ -5179,24 +5186,33 @@ export const getWorkQueue = async (req, res) => {
 
       let allowedAction = null;
       let actionLabel = null;
+      let stateIssue = null;
       if (
-        req.status === "pending" ||
-        req.status === "triaged" ||
-        req.status === "assigned"
-      )
-        allowedAction = "CLAIM";
-      else if (req.status === "approved" || req.status === "scheduled")
-        allowedAction = "START_SERVICE";
-      else if (req.status === "in-progress" || req.status === "in_progress")
+        ["pending", "triaged", "assigned", "approved"].includes(healthStatus)
+      ) {
+        allowedAction = "HANDLE_REQUEST";
+        actionLabel = "Handle Request";
+      } else if (healthStatus === "scheduled") {
+        const hasCanonicalFarmVisit =
+          handlingMethod === "farm_visit" &&
+          Boolean(scheduleDate) &&
+          ["morning", "afternoon"].includes(String(req.visitPeriod || ""));
+        if (hasCanonicalFarmVisit) {
+          allowedAction = "START_SERVICE";
+          actionLabel = "Start Visit";
+        } else {
+          allowedAction = "VIEW_DETAILS";
+          actionLabel = "Review Request";
+          stateIssue = "INCOMPLETE_FARM_VISIT_SCHEDULE";
+        }
+      } else if (healthStatus === "in-progress") {
         allowedAction = "RECORD_SERVICE";
-      else if (terminal)
+        actionLabel = "Complete Visit";
+      } else if (terminal) {
         allowedAction = medicalRecordId ? "VIEW_RECORD" : "VIEW_RESPONSE";
+      }
 
-      if (allowedAction === "CLAIM") actionLabel = "Claim";
-      else if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
-      else if (allowedAction === "RECORD_SERVICE")
-        actionLabel = "Record Service";
-      else if (allowedAction === "VIEW_RECORD") actionLabel = "View Record";
+      if (allowedAction === "VIEW_RECORD") actionLabel = "View Record";
       else if (allowedAction === "VIEW_RESPONSE")
         actionLabel = "View Response";
 
@@ -5213,6 +5229,7 @@ export const getWorkQueue = async (req, res) => {
         medicalRecordId,
         allowedAction,
         actionLabel,
+        stateIssue,
         title: req.requestType || "Health Assistance",
         summary: req.handlingMethod
           ? `Handling: ${String(req.handlingMethod).replaceAll("_", " ")}`
@@ -5296,9 +5313,10 @@ export const getWorkQueue = async (req, res) => {
         wType = "Calving";
 
       if (["PD", "Calving"].includes(wType)) {
-        if (taskDoc.status === "Pending" && taskDoc.technicianId)
-          allowedAction = "START_SERVICE";
-        else if (taskDoc.status === "In Progress")
+        if (
+          ["Pending", "In Progress"].includes(taskDoc.status) &&
+          taskDoc.technicianId
+        )
           allowedAction = "RECORD_SERVICE";
         else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
         else if (taskDoc.status === "Completed") allowedAction = "VIEW_DETAILS";
@@ -5317,10 +5335,15 @@ export const getWorkQueue = async (req, res) => {
       }
 
       let actionLabel = null;
-      if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
-      else if (allowedAction === "RECORD_SERVICE")
-        actionLabel = "Record Service";
-      else if (allowedAction === "COMPLETE_TASK") actionLabel = "Complete Task";
+      if (allowedAction === "RECORD_SERVICE") {
+        actionLabel =
+          wType === "PD"
+            ? "Record Pregnancy Check"
+            : wType === "Calving"
+              ? "Record Calving"
+              : "Record Service";
+      } else if (allowedAction === "COMPLETE_TASK")
+        actionLabel = "Complete Task";
       else if (allowedAction === "CLAIM") actionLabel = "Claim";
       else if (allowedAction === "RECORD_BREEDING_OBSERVATION")
         actionLabel = "Record Follow-up";
