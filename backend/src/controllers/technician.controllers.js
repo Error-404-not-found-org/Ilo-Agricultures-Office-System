@@ -95,6 +95,18 @@ const appendMongoCondition = (query, condition) => {
   query.$and = [...(query.$and || []), condition];
 };
 
+export const getHealthRequestAttachmentUrls = (request = {}) => [
+  ...new Set(
+    [
+      ...(Array.isArray(request.photos) ? request.photos : []),
+      request.imageUrl,
+    ]
+      .filter((url) => typeof url === "string")
+      .map((url) => url.trim())
+      .filter(Boolean),
+  ),
+];
+
 const fetchBoundedPartitions = async ({
   Model,
   baseFilter,
@@ -4180,6 +4192,7 @@ export const getTechnicianRequests = async (req, res) => {
       const safeFarmerPhoneAlt = isUnassigned ? null : farmer.phone || null;
       const safeFarmerImageUrl = isUnassigned ? "" : farmer.imageUrl || "";
       const safeLocation = isUnassigned ? null : formatAddress(farmer.address);
+      const attachmentUrls = getHealthRequestAttachmentUrls(rec);
 
       let distanceKm = null;
       if (
@@ -4226,6 +4239,11 @@ export const getTechnicianRequests = async (req, res) => {
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
           scheduledDate: rec.scheduledDate || null,
+          attachments: {
+            primaryUrl: attachmentUrls[0] || null,
+            urls: attachmentUrls,
+            count: attachmentUrls.length,
+          },
           createdAt: rec.createdAt,
         };
       }
@@ -4267,6 +4285,11 @@ export const getTechnicianRequests = async (req, res) => {
         farmPinStatus: hasFarmPin ? "available" : "missing",
         preferredDate: rec.preferredDate || rec.createdAt,
         scheduledDate: rec.scheduledDate || null,
+        attachments: {
+          primaryUrl: attachmentUrls[0] || null,
+          urls: attachmentUrls,
+          count: attachmentUrls.length,
+        },
         assignedTechnician: rec.handledBy?.name || "",
         createdAt: rec.createdAt,
         raw: rec,

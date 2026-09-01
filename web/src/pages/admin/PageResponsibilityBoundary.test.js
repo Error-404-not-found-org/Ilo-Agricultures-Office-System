@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { shouldIncludeOperationalTasks } from "../../utils/requestBoardViews";
 
 const read = (path) => readFileSync(path, "utf8");
 
@@ -34,7 +33,7 @@ describe("Admin page responsibility composition", () => {
     );
 
     expect(requests).toContain("actionPolicy.canClaim");
-    expect(requests).toContain("actionPolicy.canComplete");
+    expect(requests).not.toContain("actionPolicy.canComplete");
     expect(requests).toContain("actionPolicy.canCancelOwnRequest");
     expect(requestDialog).toContain("<AdminRequestActions");
     expect(requestDialog).toContain("if (!actionPolicy.isTechnician) return;");
@@ -45,7 +44,7 @@ describe("Admin page responsibility composition", () => {
     expect(adminActions).not.toContain("Claim");
   });
 
-  it("keeps the Admin request list primary without changing Technician insights", () => {
+  it("keeps Admin oversight while simplifying Technician Requests", () => {
     const requests = read("src/pages/technician/Requests.jsx");
     const adminFilters = requests.slice(
       requests.indexOf("{/* Admin request filters */}"),
@@ -53,21 +52,17 @@ describe("Admin page responsibility composition", () => {
     );
     const technicianFilters = requests.slice(
       requests.indexOf("{/* Technician request filters */}"),
-      requests.indexOf("{/* Main items display grid/list"),
+      requests.indexOf("{/* Main request list */}"),
     );
 
-    expect(requests).toContain("enabled: !isAdmin");
-    expect(requests).toContain(
-      'isAdmin ? "" : "xl:grid-cols-[minmax(0,1fr)_280px]"',
-    );
-    expect(requests).toMatch(
-      /\{!isAdmin \? \([\s\S]*?<aside[\s\S]*?Request Summary[\s\S]*?Claimed Requests[\s\S]*?<\/aside>[\s\S]*?\) : null\}/,
-    );
+    expect(requests).not.toContain("requests-stats-background");
+    expect(requests).not.toContain("Request Summary");
+    expect(requests).not.toContain("Claimed Requests");
     expect(requests).toContain("<AdminRequestCards");
     expect(adminFilters).toContain('aria-label="Search service requests"');
     expect(adminFilters).toContain('aria-label="Request status"');
     expect(adminFilters).toContain('aria-label="Service type"');
-    expect(adminFilters).toContain('aria-label="Assigned Technician"');
+    expect(adminFilters).not.toContain('aria-label="Assigned Technician"');
     expect(adminFilters).toContain('lg:flex-[1_1_45%]');
     expect(adminFilters).not.toContain('aria-label="Urgency"');
     expect(adminFilters).not.toContain('aria-label="Municipality"');
@@ -75,29 +70,26 @@ describe("Admin page responsibility composition", () => {
     expect(adminFilters).not.toContain('aria-label="Sort order"');
     expect(adminFilters).not.toContain("Near me");
     expect(adminFilters).not.toContain("Filter requests");
-    expect(technicianFilters).toContain("Filter requests");
-    expect(technicianFilters).toContain('aria-label="Urgency"');
-    expect(technicianFilters).toContain('aria-label="Municipality"');
-    expect(technicianFilters).toContain('aria-label="Barangay"');
-    expect(technicianFilters).toContain('aria-label="Sort order"');
-    expect(technicianFilters).toContain("Near me");
+    expect(technicianFilters).toContain('aria-label="Request ownership"');
+    expect(technicianFilters).toContain('aria-label="Request type"');
+    expect(technicianFilters).toContain('aria-label="Health urgency"');
+    expect(technicianFilters).not.toContain('aria-label="Municipality"');
+    expect(technicianFilters).not.toContain('aria-label="Barangay"');
+    expect(technicianFilters).not.toContain('aria-label="Sort order"');
+    expect(technicianFilters).not.toContain("Near me");
     expect(requests).toContain("search: searchQuery || undefined");
     expect(requests).toContain("assignedTechnicianId:");
-    expect(requests).toContain("includeOperationalTasks: shouldIncludeOperationalTasks({ isAdmin })");
+    expect(requests).toContain("includeOperationalTasks: false");
     expect(requests).toContain(
       "queueData?.pagination?.total || requests.length",
     );
     expect(requests).toContain("onViewRequest={openRequest}");
   });
 
-  it("keeps operational Pregnancy tasks out of Admin Requests only", () => {
+  it("keeps operational Pregnancy tasks out of all Requests surfaces", () => {
     const requests = read("src/pages/technician/Requests.jsx");
 
-    expect(shouldIncludeOperationalTasks({ isAdmin: true })).toBe(false);
-    expect(shouldIncludeOperationalTasks({ isAdmin: false })).toBe(true);
-    expect(requests).toContain(
-      "includeOperationalTasks: shouldIncludeOperationalTasks({ isAdmin })",
-    );
+    expect(requests).toContain("includeOperationalTasks: false");
     expect(requests).toContain('isAdmin ? "admin" : "technician"');
     expect(requests).toContain('<option value="ai">AI Services</option>');
     expect(requests).toContain(
@@ -114,10 +106,11 @@ describe("Admin page responsibility composition", () => {
     expect(dashboard).not.toContain("reassignRequest");
     expect(dashboard).not.toContain("/health-request/");
     expect(dashboard).not.toContain("/ai-request/");
-    expect(dashboard).toContain("/admin/requests?requestId=");
-    expect(dashboard).toContain("/admin/requests?status=all");
+    expect(dashboard).not.toContain("/admin/requests?requestId=");
+    expect(dashboard).not.toContain("/admin/requests?status=all");
     expect(dashboard).toContain('to="/admin/work-queue"');
     expect(dashboard).toContain('to="/admin/audit-logs"');
+    expect(sidebar).toContain('path: "/admin/requests"');
     expect(dashboard).not.toContain('to="/admin/barangays"');
     expect(app).toContain('<Route path="barangays" element={<BarangayInsights />} />');
     expect(sidebar).toContain('path: "/admin/barangays"');

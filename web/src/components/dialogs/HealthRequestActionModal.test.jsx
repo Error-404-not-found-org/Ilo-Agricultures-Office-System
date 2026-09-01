@@ -94,6 +94,25 @@ describe("HealthRequestActionModal", () => {
     vi.useRealTimers();
   });
 
+  it("shows all unique Farmer request photos from the original Health request", async () => {
+    renderModal(
+      ownedRequest({
+        photos: [
+          "https://example.test/health-1.jpg",
+          "https://example.test/health-2.jpg",
+        ],
+        imageUrl: "https://example.test/health-1.jpg",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Farmer request photos (2)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("img", { name: /Farmer Health request photo/ }),
+    ).toHaveLength(2);
+  });
+
   it("claims the original request before exposing response methods", async () => {
     const unclaimed = ownedRequest({
       status: "pending",

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock3,
   HeartPulse,
+  Image as ImageIcon,
   Loader2,
   MessageSquareText,
   Stethoscope,
@@ -58,6 +59,18 @@ const unwrapDetail = (response) =>
 
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
+
+const getRequestPhotos = (request) => [
+  ...new Set(
+    [
+      ...(Array.isArray(request?.photos) ? request.photos : []),
+      request?.imageUrl,
+    ]
+      .filter((url) => typeof url === "string")
+      .map((url) => url.trim())
+      .filter(Boolean),
+  ),
+];
 
 const getInitialRequest = (task, requestId) => ({
   ...(task?.raw || {}),
@@ -141,6 +154,7 @@ export default function HealthRequestActionModal({
     () => detailQuery.data || getInitialRequest(task, requestId),
     [detailQuery.data, requestId, task],
   );
+  const requestPhotos = useMemo(() => getRequestPhotos(request), [request]);
   const status = normalizeHealthStatus(request?.status);
   const isOwned = isOwnedHealthRequest(request);
   const isScheduled = status === "scheduled";
@@ -514,6 +528,43 @@ export default function HealthRequestActionModal({
             </p>
           </div>
         </section>
+
+        {requestPhotos.length > 0 ? (
+          <section aria-labelledby="health-request-photos-title">
+            <div className="mb-2 flex items-center gap-2">
+              <ImageIcon
+                size={16}
+                className="text-primary"
+                aria-hidden="true"
+              />
+              <h4
+                id="health-request-photos-title"
+                className="text-sm font-semibold text-base-content"
+              >
+                Farmer request photos ({requestPhotos.length})
+              </h4>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {requestPhotos.map((photo, index) => (
+                <a
+                  key={photo}
+                  href={photo}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Open Farmer Health request photo ${index + 1}`}
+                  className="aspect-video overflow-hidden rounded-xl border border-base-300 bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <img
+                    src={photo}
+                    alt={`Farmer Health request photo ${index + 1}`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {detailQuery.isLoading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-base-content/65" role="status">

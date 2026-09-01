@@ -1,119 +1,223 @@
-import { Check, ChevronRight, Clock, Lock, MapPin, X } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  Clock3,
+  Images,
+  MapPin,
+  TriangleAlert,
+  XCircle,
+} from "lucide-react";
+import UserAvatar from "../../components/ui/UserAvatar";
 import { getTechnicianStatus } from "../../constants/technicianWorkflow";
+import {
+  getRequestAssigneeId,
+  getRequestStatusPresentation,
+} from "../../utils/requestBoardViews";
+
+const normalizedStatus = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
+
+const uniquePhotoCount = (request) => {
+  const urls = Array.isArray(request.attachments?.urls)
+    ? request.attachments.urls
+    : [];
+  const normalizedUrls = new Set(
+    urls
+      .filter((url) => typeof url === "string")
+      .map((url) => url.trim())
+      .filter(Boolean),
+  );
+  return Math.max(Number(request.attachments?.count || 0), normalizedUrls.size);
+};
 
 export default function RequestQueueCard({
   request,
   currentUserId,
   isUpdating,
+  canClaim,
+  canCancel,
   onOpen,
   onClaim,
-  onDecline,
+  onSchedule,
+  onCancel,
 }) {
-  const assignedId =
-    request.raw?.approvedBy?._id ||
-    request.raw?.approvedBy ||
-    request.raw?.handledBy?._id ||
-    request.raw?.handledBy ||
-    request.raw?.technicianId?._id ||
-    request.raw?.technicianId ||
-    null;
-  const assignedName =
-    request.raw?.approvedBy?.name ||
-    request.raw?.handledBy?.name ||
-    request.raw?.technicianId?.name ||
-    "another technician";
-  const isAssignedToMe =
-    assignedId && currentUserId && String(assignedId) === String(currentUserId);
-  const isAssignedToOther =
-    assignedId && currentUserId && String(assignedId) !== String(currentUserId);
-  const status = getTechnicianStatus(request.status);
-  const isUnassignedPending = request.status === "pending" && !assignedId;
-  const isClaimedVerification =
-    request.status === "pending" &&
-    request.type === "breeding_verification" &&
-    isAssignedToMe;
+  const assigneeId = getRequestAssigneeId(request);
+  const isMine =
+    assigneeId &&
+    currentUserId &&
+    String(assigneeId) === String(currentUserId);
+  const isAvailable =
+    normalizedStatus(request.status) === "pending" && !assigneeId;
+  const isAI =
+    request.workflowType === "AI" ||
+    request.type === "insemination" ||
+    request.serviceType === "ai";
+  const isUrgentHealth =
+    request.type === "health" && request.urgency === "urgent";
+  const photoCount = uniquePhotoCount(request);
+  const status =
+    getRequestStatusPresentation(request) ||
+    getTechnicianStatus(request.status);
+  const ownership = isMine
+    ? { label: "Claimed by You", badgeClass: "badge-success badge-soft" }
+    : status;
+  const animalLabel =
+    request.animalName && request.animalName !== request.animalTag
+      ? `${request.animalName} · Tag ${request.animalTag}`
+      : `Tag ${request.animalTag || "Not recorded"}`;
+  const animalContext = [request.species, request.breed]
+    .filter((value) => value && value !== "Not recorded")
+    .join(" · ");
+  const hasSchedule =
+    request.date &&
+    !["Not scheduled", "Date unavailable"].includes(request.date);
+
+  const handlePrimaryAction = () => {
+    if (isAvailable && isAI && canClaim) {
+      onSchedule(request);
+      return;
+    }
+    if (isAvailable && canClaim) {
+      onClaim(request);
+      return;
+    }
+    onOpen(request);
+  };
+
+  const primaryLabel =
+    isAvailable && canClaim
+      ? isAI
+        ? "Claim & Schedule"
+        : "Claim Request"
+      : "View Request";
 
   return (
-    <article className="card card-border bg-base-100 shadow-sm">
-      <div className="card-body gap-4 p-4">
+    <article className="card card-border bg-base-100">
+      <div className="card-body gap-4 p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`badge badge-sm ${request.badgeClass}`}>
-                {request.serviceBadge}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span
+              className={`badge badge-sm badge-soft ${isAI ? "badge-info" : "badge-error"}`}
+            >
+              {isAI ? "AI Request" : "Health Request"}
+            </span>
+            <span className={`badge badge-sm ${ownership.badgeClass}`}>
+              {ownership.label}
+            </span>
+            {isUrgentHealth ? (
+              <span className="badge badge-sm badge-error gap-1">
+                <TriangleAlert size={12} aria-hidden="true" />
+                Urgent
               </span>
-              <span className={`badge badge-sm badge-soft ${status.badgeClass}`}>
-                {status.label}
-              </span>
-            </div>
-            <h3 className="mt-2 font-semibold text-base-content">
-              {request.serviceLabel}
-            </h3>
-            <p className="mt-1 text-sm text-base-content/65">{request.task}</p>
+            ) : null}
           </div>
-          <span className="shrink-0 text-xs font-semibold text-base-content/45">
-            #{String(request.id).slice(0, 6).toUpperCase()}
-          </span>
+          {photoCount > 0 ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-base-content/65"
+              aria-label={`${photoCount} Farmer request photo${photoCount === 1 ? "" : "s"}`}
+            >
+              <Images size={15} aria-hidden="true" />
+              {photoCount}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <UserAvatar
+            name={request.farmer}
+            imageUrl={request.farmerImageUrl}
+            size={44}
+            sizeClass="h-11 w-11"
+            className="shrink-0"
+          />
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold text-base-content">
+              {request.farmer}
+            </h3>
+            <p className="mt-0.5 truncate text-sm text-base-content/65">
+              {animalLabel}
+            </p>
+          </div>
         </div>
 
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          {animalContext ? (
+            <div>
+              <dt className="text-xs text-base-content/55">Animal</dt>
+              <dd className="font-medium text-base-content/80">
+                {animalContext}
+              </dd>
+            </div>
+          ) : null}
           <div>
-            <dt className="text-xs text-base-content/50">Farmer</dt>
-            <dd className="font-semibold text-base-content">{request.farmer}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-base-content/50">Location</dt>
-            <dd className="flex items-start gap-1 font-medium text-base-content/75">
-              <MapPin size={14} className="mt-0.5 shrink-0 text-primary" />
-              {request.location}
+            <dt className="text-xs text-base-content/55">Location</dt>
+            <dd className="flex items-start gap-1.5 font-medium text-base-content/80">
+              <MapPin
+                size={14}
+                className="mt-0.5 shrink-0 text-base-content/55"
+                aria-hidden="true"
+              />
+              <span>{request.location}</span>
             </dd>
           </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs text-base-content/50">Requested or scheduled</dt>
-            <dd className="flex items-center gap-1 font-medium text-base-content/75">
-              <Clock size={14} className="text-primary" /> {request.date}
+          <div>
+            <dt className="text-xs text-base-content/55">Submitted</dt>
+            <dd className="flex items-start gap-1.5 font-medium text-base-content/80">
+              <Clock3
+                size={14}
+                className="mt-0.5 shrink-0 text-base-content/55"
+                aria-hidden="true"
+              />
+              <span>{request.formattedSentAt || "Date unavailable"}</span>
             </dd>
           </div>
+          {hasSchedule ? (
+            <div>
+              <dt className="text-xs text-base-content/55">Visit</dt>
+              <dd className="flex items-start gap-1.5 font-medium text-base-content/80">
+                <CalendarDays
+                  size={14}
+                  className="mt-0.5 shrink-0 text-base-content/55"
+                  aria-hidden="true"
+                />
+                <span>{request.date}</span>
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
-        {isAssignedToOther && (
-          <div className="alert alert-warning py-2 text-sm">
-            <Lock size={15} />
-            <span>Assigned to {assignedName}. You can open it in read-only mode.</span>
-          </div>
-        )}
+        {request.taskDetails ? (
+          <p className="line-clamp-2 text-sm leading-relaxed text-base-content/65">
+            {request.taskDetails}
+          </p>
+        ) : null}
 
-        <div className="card-actions justify-end border-t border-base-300 pt-3">
-          {isUnassignedPending && (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm text-error"
-                disabled={isUpdating}
-                onClick={() => onDecline(request)}
-              >
-                <X size={14} /> Decline for me
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={isUpdating}
-                onClick={() => onClaim(request)}
-              >
-                <Check size={14} /> Claim
-              </button>
-            </>
-          )}
-          {!isUnassignedPending && (
+        <div className="card-actions items-center justify-between border-t border-base-300 pt-3">
+          {canCancel && isMine ? (
             <button
               type="button"
-              className={`btn btn-sm ${isClaimedVerification ? "btn-primary" : ""}`}
-              onClick={() => onOpen(request)}
+              className="btn btn-ghost btn-sm text-error"
+              disabled={isUpdating}
+              onClick={() => onCancel(request)}
             >
-              {isClaimedVerification ? "Verify observation" : "Open details"}
-              <ChevronRight size={14} />
+              <XCircle size={15} aria-hidden="true" />
+              Cancel request
             </button>
+          ) : (
+            <span />
           )}
+          <button
+            type="button"
+            className={`btn btn-sm ${isAvailable && canClaim ? "btn-primary" : ""}`}
+            disabled={isUpdating}
+            onClick={handlePrimaryAction}
+          >
+            {primaryLabel}
+            <ChevronRight size={15} aria-hidden="true" />
+          </button>
         </div>
       </div>
     </article>

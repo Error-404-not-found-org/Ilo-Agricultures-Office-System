@@ -47,10 +47,6 @@ export function getRequestBoardViewSelection(view, { isAdmin = false } = {}) {
   };
 }
 
-export function shouldIncludeOperationalTasks({ isAdmin = false } = {}) {
-  return !isAdmin;
-}
-
 export function getRequestAssigneeId(request = {}) {
   const raw = request.raw || request;
   const assignee =
@@ -88,27 +84,4 @@ export function getRequestStatusPresentation(
   }
 
   return null;
-}
-
-export function isActiveRequestAssignedTo(request, technicianId) {
-  if (!technicianId) return false;
-
-  const assigneeId = getRequestAssigneeId(request);
-  const status = String(request.status || "")
-    .trim()
-    .toLowerCase()
-    .replaceAll("_", "-");
-  const isTerminal = [
-    "done",
-    "completed",
-    "resolved",
-    "rejected",
-    "cancelled",
-  ].includes(status);
-
-  return Boolean(
-    assigneeId &&
-      String(assigneeId) === String(technicianId) &&
-      !isTerminal,
-  );
 }
