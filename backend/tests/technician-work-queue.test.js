@@ -1091,6 +1091,23 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(visibleIds.has("calving-completed"), false);
       assert.equal(visibleIds.has("calving-cancelled"), false);
       assert.equal(visibleIds.has("general-future-pending"), true);
+
+      const completedRecorder = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "completed", type: "all" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        completedRecorder.response,
+      );
+      const completedById = new Map(
+        completedRecorder.body.data.map((item) => [item.id, item]),
+      );
+      assert.equal(completedById.get("pd-completed").allowedAction, "VIEW_DETAILS");
+      assert.equal(
+        completedById.get("calving-completed").allowedAction,
+        "VIEW_DETAILS",
+      );
     },
   );
 

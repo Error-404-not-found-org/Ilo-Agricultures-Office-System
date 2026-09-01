@@ -4667,7 +4667,7 @@ export const getWorkQueue = async (req, res) => {
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
-        .populate("animalId", "name animalId earTag imageUrl breed species")
+        .populate("animalId", "name animalId earTag imageUrl breed species gender")
         .populate(
           "previousAttemptId",
           "attemptNumber outcome isSuccess outcomeVerificationStatus reviewedBy status",
@@ -4678,14 +4678,14 @@ export const getWorkQueue = async (req, res) => {
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
-        .populate("animalId", "name animalId earTag imageUrl breed species");
+        .populate("animalId", "name animalId earTag imageUrl breed species gender");
     const populateTaskWork = (query) =>
       query
         .populate(
           "farmerId",
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
-        .populate("animalIds", "name animalId earTag imageUrl breed species");
+        .populate("animalIds", "name animalId earTag imageUrl breed species gender");
 
     const [inseminations, healthReqs, standaloneTasks] = await Promise.all([
       includeAI
@@ -4953,6 +4953,9 @@ export const getWorkQueue = async (req, res) => {
       id: idOf(animal),
       name: animal?.name || animal?.animalId || animal?.earTag || "Unknown",
       earTag: animal?.earTag || animal?.animalId || null,
+      species: animal?.species || null,
+      breed: animal?.breed || null,
+      sex: animal?.gender || null,
     });
 
     const taskLinkIds = (taskDoc) => {
@@ -5099,8 +5102,20 @@ export const getWorkQueue = async (req, res) => {
         allowedAction,
         actionLabel,
         stateIssue,
+        title: "Artificial Insemination",
+        summary: `Attempt ${ins.attemptNumber || 1}`,
         farmer: serializeFarmer(ins.farmerId),
         animal: serializeAnimal(ins.animalId),
+        timing: {
+          kind: terminal ? "completed" : "scheduled_visit",
+          date: terminal ? completedAt : scheduleDate,
+          visitPeriod: terminal ? null : ins.visitPeriod || null,
+        },
+        context: {
+          attemptNumber: ins.attemptNumber || 1,
+          sireBreed: ins.sireBreed || null,
+          sireCode: ins.sireCode || null,
+        },
         schedule: {
           date: scheduleDate,
           visitPeriod: ins.visitPeriod || null,
@@ -5198,8 +5213,22 @@ export const getWorkQueue = async (req, res) => {
         medicalRecordId,
         allowedAction,
         actionLabel,
+        title: req.requestType || "Health Assistance",
+        summary: req.handlingMethod
+          ? `Handling: ${String(req.handlingMethod).replaceAll("_", " ")}`
+          : "Farmer health request",
         farmer: serializeFarmer(req.farmerId),
         animal: serializeAnimal(req.animalId),
+        timing: {
+          kind: terminal ? "completed" : "scheduled_visit",
+          date: terminal ? completedAt : scheduleDate,
+          visitPeriod: terminal ? null : req.visitPeriod || null,
+        },
+        context: {
+          handlingMethod: req.handlingMethod || null,
+          urgency: req.urgency || null,
+          description: req.description || null,
+        },
         schedule: {
           date: scheduleDate,
           visitPeriod: req.visitPeriod || null,
@@ -5261,6 +5290,8 @@ export const getWorkQueue = async (req, res) => {
       let allowedAction = null;
       let wType = "StandaloneTask";
       if (taskDoc.taskType === "PD") wType = "PD";
+      if (taskDoc.taskType === "BreedingFollowUp")
+        wType = "BreedingFollowUp";
       if (taskDoc.taskType === "CD" || taskDoc.taskType === "Calving")
         wType = "Calving";
 
@@ -5270,8 +5301,19 @@ export const getWorkQueue = async (req, res) => {
         else if (taskDoc.status === "In Progress")
           allowedAction = "RECORD_SERVICE";
         else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
+        else if (taskDoc.status === "Completed") allowedAction = "VIEW_DETAILS";
+      } else if (wType === "BreedingFollowUp") {
+        if (["Pending", "In Progress"].includes(taskDoc.status)) {
+          allowedAction = taskDoc.technicianId
+            ? "RECORD_BREEDING_OBSERVATION"
+            : "CLAIM";
+        } else if (taskDoc.status === "Completed") {
+          allowedAction = "VIEW_DETAILS";
+        }
       } else if (["Pending", "In Progress"].includes(taskDoc.status)) {
         allowedAction = taskDoc.technicianId ? "COMPLETE_TASK" : "CLAIM";
+      } else if (taskDoc.status === "Completed") {
+        allowedAction = "VIEW_DETAILS";
       }
 
       let actionLabel = null;
@@ -5280,10 +5322,15 @@ export const getWorkQueue = async (req, res) => {
         actionLabel = "Record Service";
       else if (allowedAction === "COMPLETE_TASK") actionLabel = "Complete Task";
       else if (allowedAction === "CLAIM") actionLabel = "Claim";
+      else if (allowedAction === "RECORD_BREEDING_OBSERVATION")
+        actionLabel = "Record Follow-up";
+      else if (allowedAction === "VIEW_DETAILS") actionLabel = "View Details";
 
       const serviceType =
         wType === "PD"
           ? "Pregnancy Diagnosis"
+          : wType === "BreedingFollowUp"
+            ? "Breeding Follow-up"
           : wType === "Calving"
             ? "Calving Assistance"
             : taskDoc.taskType || "Task";
@@ -5299,8 +5346,24 @@ export const getWorkQueue = async (req, res) => {
         status: taskDoc.status,
         allowedAction,
         actionLabel,
+        title: serviceType,
+        summary: taskDoc.notes || null,
         farmer: serializeFarmer(taskDoc.farmerId),
         animal: serializeAnimal(firstAnimal),
+        timing: {
+          kind: terminal ? "completed" : "due",
+          date: terminal
+            ? taskDoc.completedAt || taskDoc.updatedAt || null
+            : taskDoc.dueDate || null,
+          visitPeriod: null,
+        },
+        context: {
+          notes: taskDoc.notes || null,
+          workflowStage: taskDoc.metadata?.workflowStage || null,
+          pregnancyId: idOf(taskDoc.metadata?.pregnancyId || taskDoc.relatedRecordId),
+          inseminationId: idOf(taskDoc.metadata?.inseminationId),
+          reportType: taskDoc.metadata?.reportType || null,
+        },
         schedule: {
           date: taskDoc.dueDate || null,
           visitPeriod: taskDoc.metadata?.visitPeriod || null,
