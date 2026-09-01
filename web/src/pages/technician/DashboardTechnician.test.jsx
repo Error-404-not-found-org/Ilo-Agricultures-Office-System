@@ -19,7 +19,12 @@ vi.mock("../../components/layout/Topbar", () => ({
 }));
 
 vi.mock("../../components/dialogs/AIServiceModal", () => ({
-  default: ({ isOpen }) => (isOpen ? <div role="dialog">Direct AI</div> : null),
+  default: ({ isOpen, existingOnly }) =>
+    isOpen ? (
+      <div role="dialog">
+        {existingOnly ? "Existing records only" : "Registration allowed"} · Record AI Now · Add Past Record
+      </div>
+    ) : null,
 }));
 vi.mock("../../components/dialogs/WalkInHealthModal", () => ({
   default: ({ isOpen }) =>
@@ -98,12 +103,13 @@ describe("Technician Dashboard current-work hierarchy", () => {
     ).toHaveAttribute("href", "/technician/schedule");
   });
 
-  it("keeps only genuine direct, walk-in, and registration quick actions", async () => {
+  it("uses the shared two-mode AI service modal for genuine direct and registration actions", async () => {
     renderDashboard();
     await screen.findByText("Quick Actions");
 
     fireEvent.click(screen.getByRole("button", { name: /Record AI Service/i }));
-    expect(screen.getByText("Direct AI")).toBeTruthy();
+    expect(screen.getByText(/Existing records only · Record AI Now · Add Past Record/)).toBeTruthy();
+    expect(screen.queryByText("Direct or walk-in service")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: /Record Health Assistance/i }),

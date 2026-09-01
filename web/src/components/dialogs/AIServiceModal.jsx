@@ -46,7 +46,7 @@ const idOf = (value) => value?._id || value?.id || null;
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
 
-const validatePerformedAt = (procedure) => {
+const validatePerformedAt = (procedure, { allowHistorical = false } = {}) => {
   const performedAt = new Date(
     `${procedure.inseminationDate}T${procedure.time}:00+08:00`,
   );
@@ -57,7 +57,10 @@ const validatePerformedAt = (procedure) => {
   if (performedAt.getTime() > now + 5 * 60 * 1000) {
     return { error: "The AI service time cannot be in the future." };
   }
-  if (performedAt.getTime() < now - 24 * 60 * 60 * 1000) {
+  if (
+    !allowHistorical &&
+    performedAt.getTime() < now - 24 * 60 * 60 * 1000
+  ) {
     return {
       error:
         "Use the authorized historical-record workflow for an older AI service.",
@@ -163,6 +166,10 @@ const AIServiceModal = ({
   const [procedure, setProcedure] = useState(initialProcedure);
   const [fieldErrors, setFieldErrors] = useState({});
   const [submissionError, setSubmissionError] = useState("");
+  const [recordMode, setRecordMode] = useState("now");
+  const [previousEntryMode, setPreviousEntryMode] = useState("history_only");
+
+  const isPastRecord = context === "walk-in" && recordMode === "past";
 
   const { data: config } = useQuery({
     queryKey: ["config"],
@@ -258,6 +265,7 @@ const AIServiceModal = ({
     enabled: Boolean(
       isOpen &&
       capabilities.fetchContext &&
+      !isPastRecord &&
       selectedFarmerId &&
       selectedAnimalId,
     ),
@@ -269,11 +277,23 @@ const AIServiceModal = ({
   // ==========================================
   const recordMutation = useMutation({
     mutationFn: async (payload) =>
-      (await axiosInstance.post("/technician/walk-in-insemination", payload))
-        .data,
+      (
+        await axiosInstance.post(
+          isPastRecord
+            ? "/technician/previous-insemination"
+            : "/technician/walk-in-insemination",
+          payload,
+        )
+      ).data,
     onSuccess: async (_result, variables) => {
       submittingRef.current = false;
-      toast.success("AI service recorded successfully.");
+      toast.success(
+        isPastRecord
+          ? previousEntryMode === "history_only"
+            ? "Past AI record added to history."
+            : "Past AI record added and tracking continued."
+          : "AI service recorded successfully.",
+      );
       const completedFarmerId = variables?.farmerId || selectedFarmerId;
       const completedAnimalId = variables?.animalId || selectedAnimalId;
       const invalidations = [
@@ -390,6 +410,8 @@ const AIServiceModal = ({
         setProcedure(initialProcedure());
         setFieldErrors({});
         setSubmissionError("");
+        setRecordMode("now");
+        setPreviousEntryMode("history_only");
         submittingRef.current = false;
       });
       return;
@@ -449,7 +471,11 @@ const AIServiceModal = ({
     setFieldErrors({});
     setSubmissionError("");
 
-    if (context !== "task" && serviceContext?.mode !== "walk_in") {
+    if (
+      context !== "task" &&
+      !isPastRecord &&
+      serviceContext?.mode !== "walk_in"
+    ) {
       toast.error("Resolve the active request or eligibility notice first.");
       return;
     }
@@ -489,7 +515,9 @@ const AIServiceModal = ({
       return;
     }
 
-    const performed = validatePerformedAt(procedure);
+    const performed = validatePerformedAt(procedure, {
+      allowHistorical: isPastRecord,
+    });
     if (performed.error) {
       setFieldErrors({ inseminationDate: performed.error });
       return;
@@ -511,6 +539,7 @@ const AIServiceModal = ({
       animalId: resolvedAnimalId,
       animalDetails: null,
       inseminationDetails,
+      ...(isPastRecord ? { entryMode: previousEntryMode } : {}),
       ...(context === "task" ? { requestId: workflowId } : {}),
       ...(taskId ? { taskId } : {}),
     });
@@ -523,9 +552,10 @@ const AIServiceModal = ({
   const procedureDisabled =
     context !== "task" &&
     (!hasDirectSelection ||
-      isLoadingContext ||
-      isContextError ||
-      serviceContext?.mode !== "walk_in");
+      (!isPastRecord &&
+        (isLoadingContext ||
+          isContextError ||
+          serviceContext?.mode !== "walk_in")));
   const taskFarmer = requestContext?.farmer || preSelectedFarmer || {};
   const taskAnimal = requestContext?.animal || preSelectedAnimal || {};
   const taskHeatSigns = Array.isArray(taskData?.heatSigns)
@@ -595,6 +625,91 @@ const AIServiceModal = ({
                   </div>
                 </div>
               </div>
+            )}
+
+            {context === "walk-in" && (
+              <section className="space-y-3" aria-labelledby="ai-record-mode-title">
+                <div>
+                  <h3 id="ai-record-mode-title" className="font-bold text-base-content">
+                    Recording method
+                  </h3>
+                  <p className="mt-1 text-sm text-base-content/60">
+                    Record today&apos;s service or add an AI service that happened earlier.
+                  </p>
+                </div>
+                <div role="tablist" aria-label="AI recording method" className="tabs tabs-box w-full bg-base-200 p-1">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={recordMode === "now"}
+                    className={`tab flex-1 ${recordMode === "now" ? "tab-active" : ""}`}
+                    onClick={() => {
+                      setRecordMode("now");
+                      setFieldErrors({});
+                      setSubmissionError("");
+                    }}
+                  >
+                    Record AI Now
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={recordMode === "past"}
+                    className={`tab flex-1 ${recordMode === "past" ? "tab-active" : ""}`}
+                    onClick={() => {
+                      setRecordMode("past");
+                      setFieldErrors({});
+                      setSubmissionError("");
+                    }}
+                  >
+                    Add Past Record
+                  </button>
+                </div>
+
+                {isPastRecord && (
+                  <div className="space-y-3 rounded-box border border-base-300 bg-base-200 p-4">
+                    <div role="alert" className="alert alert-info alert-soft">
+                      <History size={18} />
+                      <span>
+                        Enter the actual date and time of the earlier AI service. This does not create a Farmer request or a visit schedule.
+                      </span>
+                    </div>
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-bold text-base-content">After saving</legend>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-field border border-base-300 bg-base-100 p-3">
+                        <input
+                          type="radio"
+                          name="previous-ai-entry-mode"
+                          className="radio radio-primary radio-sm mt-0.5"
+                          checked={previousEntryMode === "history_only"}
+                          onChange={() => setPreviousEntryMode("history_only")}
+                        />
+                        <span>
+                          <span className="block font-semibold">Add to history only</span>
+                          <span className="block text-sm text-base-content/60">
+                            Keep the record in the animal&apos;s history without changing the current breeding cycle.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-field border border-base-300 bg-base-100 p-3">
+                        <input
+                          type="radio"
+                          name="previous-ai-entry-mode"
+                          className="radio radio-primary radio-sm mt-0.5"
+                          checked={previousEntryMode === "continue_tracking"}
+                          onChange={() => setPreviousEntryMode("continue_tracking")}
+                        />
+                        <span>
+                          <span className="block font-semibold">Continue tracking</span>
+                          <span className="block text-sm text-base-content/60">
+                            Start the current breeding follow-up cycle from the actual historical service date.
+                          </span>
+                        </span>
+                      </label>
+                    </fieldset>
+                  </div>
+                )}
+              </section>
             )}
 
             {/* ========================================== */}
@@ -931,6 +1046,7 @@ const AIServiceModal = ({
             {/* SERVICE CONTEXT */}
             {/* ========================================== */}
             {capabilities.showServiceContext &&
+              !isPastRecord &&
               selectedFarmerId &&
               selectedAnimalId && (
                 <section className="space-y-3">
@@ -975,11 +1091,11 @@ const AIServiceModal = ({
                       <BadgeCheck size={19} />
                       <div>
                         <div className="font-bold">
-                          Walk-in service available
+                          Direct service available
                         </div>
                         <div className="text-sm">
-                          No active AI request was found. Record this as a
-                          service performed during today&apos;s field visit.
+                          No active AI request was found. Record the current
+                          service directly for this farmer and animal.
                         </div>
                       </div>
                     </div>
@@ -1101,7 +1217,7 @@ const AIServiceModal = ({
                 <div className="flex items-center gap-2 border-b border-base-300 pb-3">
                   <History size={16} className="text-primary" />
                   <h3 className="font-bold text-base-content">
-                    AI procedure details
+                    {isPastRecord ? "Past AI service details" : "AI procedure details"}
                   </h3>
                 </div>
 
@@ -1312,7 +1428,7 @@ const AIServiceModal = ({
                 {recordMutation.isPending && (
                   <span className="loading loading-spinner loading-sm" />
                 )}
-                Save AI service
+                {isPastRecord ? "Add past record" : "Save AI service"}
               </button>
             )}
           </footer>

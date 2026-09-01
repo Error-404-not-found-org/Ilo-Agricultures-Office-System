@@ -296,7 +296,7 @@ export default function Dashboard() {
                 <QuickAction
                   icon={Syringe}
                   label="Record AI Service"
-                  description="Direct or walk-in service"
+                  description="Record AI now or add a past record"
                   onClick={() => setIsAIModalOpen(true)}
                 />
                 <QuickAction

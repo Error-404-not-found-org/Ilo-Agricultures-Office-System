@@ -42,6 +42,7 @@ const WalkInHealthModal = ({
   onClose,
   onSuccess,
   prefillData,
+  preSelectedFarmer,
   existingOnly = false,
 }) => {
   const queryClient = useQueryClient();
@@ -101,7 +102,7 @@ const WalkInHealthModal = ({
       const res = await axiosInstance.get("/user?role=farmer");
       return Array.isArray(res.data) ? res.data : res.data.data || [];
     },
-    enabled: isOpen,
+    enabled: isOpen && !preSelectedFarmer,
   });
 
   const {
@@ -136,7 +137,15 @@ const WalkInHealthModal = ({
         });
       }
     }
-    if (isOpen && prefillData) {
+    if (isOpen && preSelectedFarmer) {
+      Promise.resolve().then(() => {
+        setIsExistingRecord(true);
+        setSelectedFarmerId(preSelectedFarmer._id || preSelectedFarmer.id || "");
+        setSelectedAnimalId("");
+        setSearchFarmer(preSelectedFarmer.name || "");
+        setIsDropdownOpen(false);
+      });
+    } else if (isOpen && prefillData) {
       Promise.resolve().then(() => {
         setFormData((prev) => ({
           ...prev,
@@ -190,7 +199,7 @@ const WalkInHealthModal = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, prefillData, onClose, existingOnly]);
+  }, [isOpen, prefillData, preSelectedFarmer, onClose, existingOnly]);
 
   useEffect(() => {
     if (formData.animalDetails.species) {
@@ -274,14 +283,25 @@ const WalkInHealthModal = ({
         setFieldErrors(nextErrors);
         return;
       }
-      const farmer = farmers.find((f) => f._id === selectedFarmerId);
+      const farmer =
+        farmers.find((f) => f._id === selectedFarmerId) ||
+        ((preSelectedFarmer?._id || preSelectedFarmer?.id) === selectedFarmerId
+          ? preSelectedFarmer
+          : null);
       const animal = animals.find((a) => a._id === selectedAnimalId);
+      if (!farmer || !animal) {
+        setFieldErrors({
+          ...(!farmer ? { farmer: "The selected farmer is no longer available." } : {}),
+          ...(!animal ? { animal: "The selected animal is no longer available." } : {}),
+        });
+        return;
+      }
       submissionData = {
         ...formData,
         farmerId: selectedFarmerId,
         animalId: selectedAnimalId,
-        firstName: farmer.name.split(" ")[0],
-        lastName: farmer.name.split(" ").slice(1).join(" "),
+        firstName: (farmer.name || "").split(" ")[0],
+        lastName: (farmer.name || "").split(" ").slice(1).join(" "),
         phoneNumber: farmer.phoneNumber || "",
         address:
           typeof farmer.address === "string"
@@ -486,6 +506,7 @@ const WalkInHealthModal = ({
                         id="health-farmer-search"
                         aria-describedby={fieldErrors.farmer ? "health-farmer-error" : undefined}
                         value={searchFarmer}
+                        readOnly={Boolean(preSelectedFarmer)}
                         onChange={(e) => {
                           setSearchFarmer(e.target.value);
                           setSelectedFarmerId("");
@@ -497,14 +518,16 @@ const WalkInHealthModal = ({
                           }));
                           setIsDropdownOpen(true);
                         }}
-                        onFocus={() => setIsDropdownOpen(true)}
+                        onFocus={() => {
+                          if (!preSelectedFarmer) setIsDropdownOpen(true);
+                        }}
                         onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
                         placeholder="Type farmer name..."
                         className={`${inputClass} pl-11`}
                       />
 
                       <AnimatePresence>
-                        {isDropdownOpen && (
+                        {isDropdownOpen && !preSelectedFarmer && (
                           <motion.div
                             initial={{ opacity: 0, y: -5 }}
                             animate={{ opacity: 1, y: 0 }}

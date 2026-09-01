@@ -106,6 +106,36 @@ const fillRequiredFields = () => {
   });
 };
 
+const renderDirectModal = (serviceContext = { mode: "walk_in" }) => {
+  const farmer = defaultProps.preSelectedFarmer;
+  const animal = {
+    ...defaultProps.preSelectedAnimal,
+    gender: "Female",
+    birthDate: "2020-01-01",
+    reproductiveStatus: "Normal",
+  };
+  mocks.get.mockImplementation(async (url) => {
+    if (url === "/config") return { data: {} };
+    if (url === "/user?role=farmer") return { data: [farmer] };
+    if (url === `/animals/farmer/${farmerId}`) return { data: [animal] };
+    if (url === "/technician/ai-service-context") {
+      return { data: serviceContext };
+    }
+    throw new Error(`Unexpected GET ${url}`);
+  });
+
+  return renderModal({
+    context: "walk-in",
+    existingOnly: true,
+    workflowId: null,
+    taskId: null,
+    requestContext: null,
+    taskData: null,
+    preSelectedFarmer: farmer,
+    preSelectedAnimal: animal,
+  });
+};
+
 describe("request-linked AI recording modal", () => {
   beforeEach(() => {
     mocks.get.mockReset();
@@ -291,5 +321,76 @@ describe("request-linked AI recording modal", () => {
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: /register farmer/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /register animal/i })).not.toBeInTheDocument();
+  });
+
+  it("records current direct AI through the canonical direct endpoint", async () => {
+    mocks.post.mockResolvedValue({ data: { outcome: "direct_recorded" } });
+    renderDirectModal();
+
+    expect(screen.getByRole("tab", { name: "Record AI Now" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Add Past Record" })).toBeVisible();
+    fillRequiredFields();
+
+    const save = screen.getByRole("button", { name: "Save AI service" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+    const [url, payload] = mocks.post.mock.calls[0];
+    expect(url).toBe("/technician/walk-in-insemination");
+    expect(payload).toMatchObject({ farmerId, animalId });
+    expect(payload).not.toHaveProperty("entryMode");
+    expect(screen.queryByText(/walk-in service available/i)).not.toBeInTheDocument();
+  });
+
+  it("adds a past AI record with its actual historical date and entry mode", async () => {
+    mocks.post.mockResolvedValue({ data: { outcome: "history_added" } });
+    renderDirectModal();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Add Past Record" }));
+    fireEvent.click(screen.getByRole("radio", { name: /continue tracking/i }));
+    fireEvent.change(screen.getByLabelText("Actual insemination date"), {
+      target: { value: "2025-04-03" },
+    });
+    fireEvent.change(screen.getByLabelText("Actual insemination time"), {
+      target: { value: "09:15" },
+    });
+    fillRequiredFields();
+
+    const save = screen.getByRole("button", { name: "Add past record" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+    const [url, payload] = mocks.post.mock.calls[0];
+    expect(url).toBe("/technician/previous-insemination");
+    expect(payload.entryMode).toBe("continue_tracking");
+    expect(payload.inseminationDetails).toMatchObject({
+      inseminationDate: "2025-04-03",
+      time: "09:15",
+    });
+    expect(payload).not.toHaveProperty("requestId");
+    expect(payload).not.toHaveProperty("taskId");
+  });
+
+  it("keeps an active AI request linked to Requests for Record AI Now", async () => {
+    renderDirectModal({
+      mode: "blocked",
+      blockedReason: "Continue through the existing request.",
+      activeRequest: {
+        requestId: workflowId,
+        status: "approved",
+        assignment: "assigned_to_you",
+      },
+      allowedActions: ["open_request"],
+    });
+
+    expect(await screen.findByText("Active AI request found")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Schedule request" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save AI service" })).toBeDisabled();
+    expect(mocks.post).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,21 @@ const readRelative = (value: string) => {
   return readFileSync(platformPath, "utf8");
 };
 describe("Previous AI runtime UX wiring", () => {
+  it("uses the shared direct-AI terminology without changing mutation wiring", () => {
+    const screen = readRelative("../screens/RecordAIScreen.tsx");
+
+    assert.match(screen, /Record AI Now/);
+    assert.match(screen, /Add Past Record/);
+    assert.doesNotMatch(screen, /Current AI Service/);
+    assert.doesNotMatch(screen, /Previous AI Record/);
+    assert.match(screen, /useWalkInInseminationMutation/);
+    assert.match(screen, /usePreviousInseminationMutation/);
+    assert.match(screen, /useCompleteAIRequestMutation/);
+    assert.match(screen, /previousMutation\.mutateAsync/);
+    assert.match(screen, /walkInMutation\.mutateAsync/);
+    assert.match(screen, /requestMutation\.mutateAsync/);
+  });
+
   it("keeps domain errors inline without sending raw diagnostics to console.error", () => {
     const screen = readRelative("../screens/RecordAIScreen.tsx");
     const form = readRelative("../components/DirectAIRecordForm.tsx");
