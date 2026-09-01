@@ -3,10 +3,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
+  CalendarDays,
+  MapPin,
   Search,
   ChevronLeft,
   ChevronRight,
-  MoreVertical,
   PawPrint,
   UserRound,
 } from "lucide-react";
@@ -190,9 +191,6 @@ export default function WorkQueue({ embedded = false }) {
     total: Number(query.data?.pagination?.total) || 0,
     totalPages: Math.max(Number(query.data?.pagination?.totalPages) || 1, 1),
   };
-  const authoritativeWorkCount = Number(query.data?.counts?.all) || 0;
-  const workStateLabel =
-    workStateFilter === "completed" ? "Completed owned work" : "Active owned work";
   const pageStart = tasks.length
     ? (pagination.page - 1) * pagination.limit + 1
     : 0;
@@ -227,6 +225,13 @@ export default function WorkQueue({ embedded = false }) {
           toast.error(
             "This Health work item has an invalid request identifier.",
           );
+          return;
+        }
+        setSelectedTaskWrapper(task);
+        return;
+      case "HANDLE_REQUEST":
+        if (task.workflowType !== "Health" || !isMongoId(task.workflowId)) {
+          toast.error("This Health work item has an invalid request identifier.");
           return;
         }
         setSelectedTaskWrapper(task);
@@ -377,49 +382,24 @@ export default function WorkQueue({ embedded = false }) {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-base-content/65">
-              <span>
-                {workStateLabel}: {query.isLoading ? "—" : authoritativeWorkCount}
-              </span>
-              <span>
-                {query.isLoading ? "Loading matching work…" : `${pagination.total} matching item${pagination.total === 1 ? "" : "s"}`}
-              </span>
-            </div>
-
-            {/* TABLE SECTION */}
+            {/* ACTIONABLE WORK LIST */}
             {query.isLoading ? (
-              <div
-                className="overflow-hidden rounded-box border border-base-300"
-                aria-label="Loading work queue"
-              >
-                <table className="table table-pin-rows w-full text-left min-w-250">
-                  <thead>
-                    <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
-                      <th className="p-3.5 pl-6">Service</th>
-                      <th className="p-3.5">Farmer & Animal</th>
-                      <th className="p-3.5">Schedule</th>
-                      <th className="p-3.5">Status</th>
-                      <th className="p-3.5 w-40 text-right pr-6">Action</th>
-                      <th className="w-12"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[0, 1, 2, 3, 4].map((row) => (
-                      <tr key={row}>
-                        <td colSpan={6}>
-                          <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr_.2fr] gap-5 py-2">
-                            <span className="skeleton h-4" />
-                            <span className="skeleton h-4" />
-                            <span className="skeleton h-4" />
-                            <span className="skeleton h-4" />
-                            <span className="skeleton h-4" />
-                            <span className="skeleton h-4" />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-3" aria-label="Loading work queue">
+                {[0, 1, 2, 3].map((row) => (
+                  <div key={row} className="rounded-box border border-base-300 p-4">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+                      <div className="space-y-2">
+                        <span className="skeleton block h-4 w-40" />
+                        <span className="skeleton block h-3 w-56" />
+                      </div>
+                      <div className="space-y-2">
+                        <span className="skeleton block h-3 w-36" />
+                        <span className="skeleton block h-3 w-28" />
+                      </div>
+                      <span className="skeleton h-8 w-32" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : query.isError ? (
               <div className="rounded-box border border-error/30 bg-error/5 px-5 py-10 text-center">
@@ -464,221 +444,182 @@ export default function WorkQueue({ embedded = false }) {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto rounded-box border border-base-300">
-                  <table className="table table-pin-rows w-full text-left min-w-250">
-                    <thead>
-                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
-                        <th className="p-3.5 pl-6">Service</th>
-                        <th className="p-3.5">Farmer & Animal</th>
-                        <th className="p-3.5">Schedule</th>
-                        <th className="p-3.5">Status</th>
-                        <th className="p-3.5 w-40 text-right pr-6">Action</th>
-                        <th className="w-12"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-base-300">
-                      {tasks.map((task) => {
-                        const workflowStatus = normalizeWorkflowStatus(task);
-                        const statusPresentation = getWorkflowStatusPresentation(workflowStatus);
-                        const serviceType = normalizeServiceType(task);
-                        const servicePresentation = getServicePresentation(serviceType);
-                        const priority = task.urgent ? 1 : 0;
-                        const animalReference =
-                          task.animal?.earTag || "Not recorded";
-                        const readiness = getTaskReadiness(task.raw || task);
-                        const actionDisabled =
-                          !readiness.ready ||
-                          !task.allowedAction ||
-                          (task.workflowType === "AI" && !task.actionLabel);
-                        const animalId = task.animal?.id || null;
-                        const farmerId = task.farmer?.id || null;
-                        const timing = task.timing || {
-                          kind: ["AI", "Health"].includes(task.workflowType)
-                            ? "scheduled_visit"
-                            : "due",
-                          date: task.schedule?.date || task.displayDate || null,
-                          visitPeriod: task.schedule?.visitPeriod || null,
-                        };
-                        const timingLabel =
-                          timing.kind === "scheduled_visit"
-                            ? formatCanonicalVisitSchedule({
-                                date: timing.date,
-                                visitPeriod: timing.visitPeriod,
-                              })
-                            : timing.kind === "completed"
-                              ? `Completed ${formatRecordDate(timing.date)}`
-                              : `Due ${formatRelativeSchedule(timing.date)}`;
-                        const primaryActionLabel =
-                          ["VIEW_RECORD", "VIEW_RESPONSE", "VIEW_DETAILS"].includes(
-                            task.allowedAction,
-                          ) ||
-                          ["AI", "BreedingFollowUp"].includes(task.workflowType)
-                            ? task.actionLabel
-                            : getTaskPrimaryActionLabel(task);
-                        const menuId = `task-actions-${String(task.id).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-                        const menuAnchor = `--${menuId}`;
+                <div className="space-y-3" aria-label="My Work items">
+                  {tasks.map((task) => {
+                    const workflowStatus = normalizeWorkflowStatus(task);
+                    const statusPresentation =
+                      getWorkflowStatusPresentation(workflowStatus);
+                    const serviceType = normalizeServiceType(task);
+                    const servicePresentation =
+                      getServicePresentation(serviceType);
+                    const readiness = getTaskReadiness(task.raw || task);
+                    const actionDisabled =
+                      !readiness.ready ||
+                      !task.allowedAction ||
+                      (task.workflowType === "AI" && !task.actionLabel);
+                    const animalId = task.animal?.id || null;
+                    const farmerId = task.farmer?.id || null;
+                    const animalReference =
+                      task.animal?.earTag || "Not recorded";
+                    const timing = task.timing || {
+                      kind: ["AI", "Health"].includes(task.workflowType)
+                        ? "scheduled_visit"
+                        : "due",
+                      date: task.schedule?.date || task.displayDate || null,
+                      visitPeriod: task.schedule?.visitPeriod || null,
+                    };
+                    const timingLabel =
+                      timing.kind === "scheduled_visit"
+                        ? formatCanonicalVisitSchedule({
+                            date: timing.date,
+                            visitPeriod: timing.visitPeriod,
+                          })
+                        : timing.kind === "completed"
+                          ? `Completed ${formatRecordDate(timing.date)}`
+                          : `Due ${formatRelativeSchedule(timing.date)}`;
+                    const primaryActionLabel =
+                      task.actionLabel || getTaskPrimaryActionLabel(task);
+                    const isFocused =
+                      focusedTaskId === task.id ||
+                      focusedTaskId === task.taskId ||
+                      focusedWorkflowId === task.workflowId;
 
-                        return (
-                          <tr
-                            key={task.id}
-                            className={`hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85 ${
-                              focusedTaskId === task.id ||
-                              focusedTaskId === task.taskId ||
-                              focusedWorkflowId === task.workflowId
-                                ? "bg-primary/5"
-                                : ""
-                            }`}
-                          >
-                            {/* 1. SERVICE */}
-                            <td className="p-3.5 pl-6 align-top">
-                              <div className="flex flex-col gap-1.5 mt-0.5">
-                                <span className="font-bold text-xs text-base-content leading-tight">
-                                  {servicePresentation.label}
-                                </span>
-                                {priority === 1 && (
-                                  <span className="badge badge-error badge-xs badge-outline font-bold uppercase text-[9px]">
-                                    Emergency
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* 2. FARMER & ANIMAL */}
-                            <td className="p-3.5 align-top">
-                              <div className="flex flex-col gap-0.5">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="font-bold text-sm text-base-content leading-tight">
-                                    {toTitleCase(task.farmerName)}
-                                  </span>
-                                  <span className="font-mono text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold tracking-tight">
-                                    #
-                                    {animalReference.length > 12
-                                      ? animalReference.slice(0, 12) + "..."
-                                      : animalReference}
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] mt-0.5">
-                                  <span className="text-base-content/50 truncate max-w-30">
-                                    {task.location || "Location not set"}
-                                  </span>
-                                  <span className="text-base-content/30">
-                                    •
-                                  </span>
-                                  <span className="text-base-content/40 truncate max-w-24">
-                                    {task.animal?.species || "Livestock"}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* 3. CANONICAL TIMING */}
-                            <td className="p-3.5 align-top">
-                              <span
-                                className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
-                              >
-                                {timingLabel}
+                    return (
+                      <article
+                        key={task.id}
+                        className={`rounded-box border bg-base-100 p-4 transition-colors sm:p-5 ${
+                          isFocused
+                            ? "border-primary/50 bg-primary/5"
+                            : "border-base-300 hover:border-base-content/25"
+                        }`}
+                      >
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(13rem,.8fr)_auto] lg:items-center">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="badge badge-sm badge-primary badge-soft">
+                                {task.title || servicePresentation.label}
                               </span>
-                            </td>
-
-                            {/* 4. STATUS */}
-                            <td className="p-3.5 align-top">
                               <span
-                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] border ${statusPresentation.badgeClass}`}
+                                className={`badge badge-sm border ${statusPresentation.badgeClass}`}
                               >
                                 {statusPresentation.label}
                               </span>
-                            </td>
+                              {task.urgent ? (
+                                <span className="badge badge-sm badge-error badge-outline">
+                                  Urgent
+                                </span>
+                              ) : null}
+                            </div>
+                            <h3 className="mt-3 text-base font-bold text-base-content">
+                              {toTitleCase(
+                                task.farmer?.name ||
+                                  task.farmerName ||
+                                  "Farmer not recorded",
+                              )}
+                            </h3>
+                            <p className="mt-1 text-sm text-base-content/70">
+                              {task.animal?.name || "Animal not recorded"}
+                              {animalReference !== "Not recorded"
+                                ? ` · Tag ${animalReference}`
+                                : ""}
+                              {task.animal?.species
+                                ? ` · ${task.animal.species}`
+                                : ""}
+                              {task.animal?.breed
+                                ? ` · ${task.animal.breed}`
+                                : ""}
+                            </p>
+                            {task.summary ? (
+                              <p className="mt-2 line-clamp-2 text-sm text-base-content/60">
+                                {task.summary}
+                              </p>
+                            ) : null}
+                          </div>
 
-                            {/* 5. PRIMARY ACTION */}
-                            <td className="p-3.5 align-top pr-6 text-right">
+                          <dl className="grid gap-2 text-sm">
+                            <div>
+                              <dt className="text-xs font-semibold text-base-content/50">
+                                {timing.kind === "scheduled_visit"
+                                  ? "Visit"
+                                  : timing.kind === "completed"
+                                    ? "Completed"
+                                    : "Due"}
+                              </dt>
+                              <dd
+                                className={`mt-0.5 flex items-center gap-2 font-semibold ${
+                                  workflowStatus === "overdue"
+                                    ? "text-error"
+                                    : "text-base-content"
+                                }`}
+                              >
+                                <CalendarDays size={15} aria-hidden="true" />
+                                {timingLabel}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-xs font-semibold text-base-content/50">
+                                Location
+                              </dt>
+                              <dd className="mt-0.5 flex items-center gap-2 text-base-content/75">
+                                <MapPin size={15} aria-hidden="true" />
+                                {task.location || "Location not recorded"}
+                              </dd>
+                            </div>
+                          </dl>
+
+                          <div className="flex flex-wrap items-center gap-2 lg:max-w-70 lg:justify-end">
+                            {farmerId ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() =>
+                                  navigate(`/technician/farmers/${farmerId}`)
+                                }
+                              >
+                                <UserRound size={15} aria-hidden="true" />
+                                Farmer
+                              </button>
+                            ) : null}
+                            {animalId ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() =>
+                                  navigate(`/technician/animals/${animalId}`)
+                                }
+                              >
+                                <PawPrint size={15} aria-hidden="true" />
+                                Animal
+                              </button>
+                            ) : null}
+                            {task.allowedAction ? (
                               <div
                                 className={
-                                  !readiness.ready
-                                    ? "tooltip tooltip-left inline-block"
-                                    : "inline-block"
+                                  !readiness.ready ? "tooltip tooltip-left" : ""
                                 }
-                                data-tip={!readiness.ready ? readiness.reason : undefined}
+                                data-tip={
+                                  !readiness.ready ? readiness.reason : undefined
+                                }
                               >
                                 <button
                                   type="button"
+                                  className="btn btn-primary btn-sm"
                                   disabled={actionDisabled}
                                   onClick={() => openTask(task)}
-                                  className="btn btn-xs px-4 btn-primary"
                                 >
                                   {primaryActionLabel}
                                 </button>
                               </div>
-                            </td>
-
-                            {/* 6. ACTIONS MENU */}
-                            <td className="p-3.5 text-right align-top w-12 pr-6">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm btn-square"
-                                popoverTarget={menuId}
-                                style={{ anchorName: menuAnchor }}
-                              >
-                                <MoreVertical size={16} />
-                              </button>
-
-                              <div
-                                id={menuId}
-                                popover="auto"
-                                className="dropdown w-56 rounded-xl border border-base-200 bg-base-100 p-2 shadow-lg z-50 focus:outline-none"
-                                style={{
-                                  positionAnchor: menuAnchor,
-                                  margin: 0,
-                                }}
-                              >
-                                {(animalId || farmerId) && (
-                                  <div className="flex flex-col gap-1">
-                                    {animalId && (
-                                      <button
-                                        className="flex items-center gap-3 px-4 py-3 min-h-11 w-full text-left text-sm font-medium rounded-box hover:bg-base-200 transition-colors duration-150 cursor-pointer text-base-content"
-                                        onClick={() => {
-                                          document
-                                            .getElementById(menuId)
-                                            .hidePopover();
-                                          navigate(
-                                            `/technician/animals/${animalId}`,
-                                          );
-                                        }}
-                                      >
-                                        <PawPrint
-                                          size={18}
-                                          className="text-base-content/60"
-                                        />{" "}
-                                        View Animal Record
-                                      </button>
-                                    )}
-                                    {farmerId && (
-                                      <button
-                                        className="flex items-center gap-3 px-4 py-3 min-h-11 w-full text-left text-sm font-medium rounded-box hover:bg-base-200 transition-colors duration-150 cursor-pointer text-base-content"
-                                        onClick={() => {
-                                          document
-                                            .getElementById(menuId)
-                                            .hidePopover();
-                                          navigate(
-                                            `/technician/farmers/${farmerId}`,
-                                          );
-                                        }}
-                                      >
-                                        <UserRound
-                                          size={18}
-                                          className="text-base-content/60"
-                                        />{" "}
-                                        View Farmer Profile
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            ) : (
+                              <span className="text-xs font-medium text-base-content/55">
+                                Review required
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
 
                 {/* PAGINATION */}

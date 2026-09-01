@@ -141,13 +141,13 @@ describe("Work Queue owned Health workflow", () => {
         taskType: "Health",
         serviceType: "Health Assistance",
         allowedAction: "RECORD_SERVICE",
-        actionLabel: "Record Service",
+        actionLabel: "Complete Visit",
         raw: { _id: ids.health, status: "in-progress" },
       },
     ]);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Record Health" }),
+      await screen.findByRole("button", { name: "Complete Visit" }),
     );
 
     const dialog = screen.getByRole("dialog", {
@@ -171,13 +171,13 @@ describe("Work Queue owned Health workflow", () => {
         displayStatus: "scheduled",
         serviceType: "Health Assistance",
         allowedAction: "START_SERVICE",
-        actionLabel: "Start Service",
+        actionLabel: "Start Visit",
         raw: { _id: ids.health, status: "scheduled" },
       },
     ]);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Start Service" }),
+      await screen.findByRole("button", { name: "Start Visit" }),
     );
 
     const dialog = screen.getByRole("dialog", {
@@ -214,7 +214,7 @@ describe("Work Queue owned Health workflow", () => {
         taskType: "PD",
         serviceType: "Pregnancy",
         allowedAction: "RECORD_SERVICE",
-        actionLabel: "Record Diagnosis",
+        actionLabel: "Record Pregnancy Check",
         raw: { _id: ids.pregnancyTask, taskType: "PD" },
       },
       {
@@ -236,7 +236,9 @@ describe("Work Queue owned Health workflow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Record AI" }));
     expect(screen.getByRole("dialog", { name: `AI ${ids.ai}` })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Record Diagnosis" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Record Pregnancy Check" }),
+    );
     expect(
       screen.getByRole("dialog", { name: `Pregnancy ${ids.pregnancyTask}` }),
     ).toBeTruthy();
@@ -341,7 +343,7 @@ describe("My Work canonical server data", () => {
         },
       }),
     );
-    expect(screen.getByText("Active owned work: 24")).toBeTruthy();
+    expect(screen.queryByText("Active owned work: 24")).toBeNull();
     expect(screen.getByText("Showing 1–1 of 24")).toBeTruthy();
     expect(screen.getByText("Page 1 of 3")).toBeTruthy();
 
@@ -369,7 +371,7 @@ describe("My Work canonical server data", () => {
         },
       }),
     );
-    expect(await screen.findByText("Completed owned work: 24")).toBeTruthy();
+    expect(screen.queryByText("Completed owned work: 24")).toBeNull();
   });
 
   it("loads completed My Work directly from the canonical URL state", async () => {
@@ -387,7 +389,7 @@ describe("My Work canonical server data", () => {
         },
       }),
     );
-    expect(await screen.findByText("Completed owned work: 24")).toBeTruthy();
+    expect(screen.queryByText("Completed owned work: 24")).toBeNull();
   });
 
   it("sends service type and search to the backend and resets to page one", async () => {
