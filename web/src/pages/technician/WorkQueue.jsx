@@ -15,12 +15,6 @@ import {
   PhoneOff,
   MessageSquare,
   Phone,
-  Stethoscope,
-  Dna,
-  Hash,
-  Flame,
-  Droplets,
-  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
@@ -83,133 +77,46 @@ const formatInseminationDate = (value) => {
   return `${dateStr} at ${timeStr}`;
 };
 
-const CompletedAIViewRecord = ({ workDetails }) => {
-  const { data: record, isLoading } = useQuery({
-    queryKey: ["completedAI", workDetails?.animal?.id, workDetails?.workflowId],
-    queryFn: async () => {
-      const res = await axiosInstance.get(`/animals/${workDetails.animal.id}/records/insemination/${workDetails.workflowId}`);
-      return res.data?.data || res.data;
-    },
-    enabled: Boolean(workDetails?.animal?.id && workDetails?.workflowId),
-  });
+const getOfficialRecordIdentity = (task) => {
+  const animalId = task?.animal?.id;
+  if (!isMongoId(animalId)) return null;
 
-  if (isLoading) return <div className="p-4 text-center text-sm text-base-content/60">Loading canonical record...</div>;
-  if (!record) return <div className="p-4 text-center text-sm text-error">Record not found</div>;
+  if (task.workflowType === "AI" && isMongoId(task.workflowId)) {
+    return {
+      animalId,
+      recordKind: "insemination",
+      recordId: task.workflowId,
+    };
+  }
 
-  const animalName = workDetails.animal?.name || "Unknown";
-  const animalTag = record.animalId?.earTag || workDetails.animal?.earTag;
-  const species = record.animalId?.species || workDetails.animal?.species || "Unknown";
-  const breed = record.animalId?.breed || workDetails.animal?.breed || "Unknown";
+  if (task.workflowType === "Health" && isMongoId(task.medicalRecordId)) {
+    return {
+      animalId,
+      recordKind: "medical_record",
+      recordId: task.medicalRecordId,
+    };
+  }
 
-  const details = record.details || {};
-  const technicianName = record.technician?.name || details.technician;
-  const performedDate = details.serviceDate || record.date;
+  if (task.workflowType === "PD" && isMongoId(task.context?.pregnancyId)) {
+    return {
+      animalId,
+      recordKind: "pregnancy",
+      recordId: task.context.pregnancyId,
+    };
+  }
 
-  const renderMissing = () => (
-    <span className="text-base-content/40 font-normal flex items-center gap-1 mt-0.5">
-      <AlertCircle size={14} /> Not recorded
-    </span>
-  );
+  if (
+    task.workflowType === "Calving" &&
+    isMongoId(task.context?.calvingId)
+  ) {
+    return {
+      animalId,
+      recordKind: "calving",
+      recordId: task.context.calvingId,
+    };
+  }
 
-  return (
-    <div className="space-y-6 text-sm">
-      {/* ANIMAL CARD */}
-      <div>
-        <p className="text-[10px] font-bold text-base-content/50 mb-2 uppercase tracking-widest">Animal</p>
-        <div className="rounded-xl border border-base-200 bg-base-100 p-4 shadow-sm flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
-            <PawPrint size={24} />
-          </div>
-          <div>
-            <p className="font-bold text-base-content text-base">
-              {animalName}
-              {animalTag ? ` · Tag ${animalTag}` : ""}
-            </p>
-            <p className="text-xs text-base-content/60 mt-0.5">{breed} · {species}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* SERVICE DETAILS */}
-      <div>
-        <p className="text-[10px] font-bold text-base-content/50 mb-2 uppercase tracking-widest">Service Details</p>
-        <div className="rounded-xl border border-base-200 bg-base-100 shadow-sm divide-y divide-base-200">
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <CalendarDays size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">AI Performed At</p>
-              <div className="font-bold text-base-content">{performedDate ? formatInseminationDate(performedDate) : renderMissing()}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <Stethoscope size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Technician</p>
-              <div className="font-bold text-base-content">{technicianName || renderMissing()}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <Dna size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Sire Breed</p>
-              <div className="font-bold text-base-content">{details.sireBreed || renderMissing()}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <Hash size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Sire Code</p>
-              <div className="font-bold text-base-content">{details.sireCode || renderMissing()}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <Flame size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Estrus Type</p>
-              <div className="font-bold text-base-content">{details.estrus || renderMissing()}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <Droplets size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Semen Doses</p>
-              <div className="font-bold text-base-content">{details.semenDosesUsed || 1}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-              <Info size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">Status</p>
-              <div className="font-bold text-base-content">{details.status ? toTitleCase(details.status) : toTitleCase(record.status || "completed")}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* RECORD INFORMATION */}
-      <div>
-        <p className="text-[10px] font-bold text-base-content/50 mb-2 uppercase tracking-widest">Record Information</p>
-        <div className="rounded-xl border border-base-200 bg-base-50 p-4">
-          <p className="text-[10px] font-bold text-base-content/50">Official record ID</p>
-          <p className="font-mono text-xs text-base-content mt-1 border-b border-base-content/20 inline-block pb-0.5">{record.id || record.sourceId || record._id}</p>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 };
 
 export default function WorkQueue({ embedded = false }) {
@@ -436,10 +343,42 @@ export default function WorkQueue({ embedded = false }) {
         setSelectedTaskWrapper(task);
         return;
       case "VIEW_RECORD":
-      case "VIEW_RESPONSE":
-      case "VIEW_DETAILS":
+      {
+        const record = getOfficialRecordIdentity(task);
+        if (record) {
+          navigate(
+            "/technician/records?animalId=" +
+              encodeURIComponent(record.animalId) +
+              "&recordKind=" +
+              encodeURIComponent(record.recordKind) +
+              "&recordId=" +
+              encodeURIComponent(record.recordId),
+          );
+          return;
+        }
         setSelectedWorkDetails(task);
         return;
+      }
+      case "VIEW_RESPONSE":
+        setSelectedWorkDetails(task);
+        return;
+      case "VIEW_DETAILS":
+      {
+        const record = getOfficialRecordIdentity(task);
+        if (record) {
+          navigate(
+            "/technician/records?animalId=" +
+              encodeURIComponent(record.animalId) +
+              "&recordKind=" +
+              encodeURIComponent(record.recordKind) +
+              "&recordId=" +
+              encodeURIComponent(record.recordId),
+          );
+          return;
+        }
+        setSelectedWorkDetails(task);
+        return;
+      }
       case "RECORD_BREEDING_OBSERVATION": {
         const inseminationId = task.context?.inseminationId;
         if (!isMongoId(inseminationId)) {
@@ -1064,9 +1003,7 @@ export default function WorkQueue({ embedded = false }) {
           </button>
         }
       >
-        {selectedWorkDetails && selectedWorkDetails.workflowType === "AI" && workStateFilter === "completed" ? (
-          <CompletedAIViewRecord workDetails={selectedWorkDetails} />
-        ) : selectedWorkDetails && (
+        {selectedWorkDetails && (
           <div className="space-y-4 text-sm">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,6 +99,7 @@ const renderWorkQueue = (initialEntry = "/technician/requests?section=myWork") =
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <WorkQueue />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -131,6 +132,11 @@ const renderQueue = (tasks, { taskDetailsById = {} } = {}) => {
     });
   });
   renderWorkQueue();
+};
+
+const LocationProbe = () => {
+  const location = useLocation();
+  return <output data-testid="technician-location">{location.pathname}{location.search}</output>;
 };
 
 describe("Work Queue owned Health workflow", () => {
@@ -334,6 +340,35 @@ describe("Work Queue owned Health workflow", () => {
       expect(mocks.post).toHaveBeenCalledWith(
         `/ai-request/${ids.ai}/technician-observation`,
         { reportType: "possible_pregnancy", notes: "" },
+      ),
+    );
+  });
+
+  it("routes completed AI View Record to the canonical official record detail", async () => {
+    renderQueue([
+      {
+        ...baseTask,
+        id: ids.ai,
+        workflowId: ids.ai,
+        workflowType: "AI",
+        type: "insemination",
+        taskType: "AI",
+        serviceType: "Artificial Insemination",
+        allowedAction: "VIEW_RECORD",
+        actionLabel: "View Record",
+        animal: { id: ids.animal, name: "Test Animal", earTag: "TEST-1" },
+        raw: { _id: ids.ai, status: "done" },
+      },
+    ]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View Record" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("technician-location")).toHaveTextContent(
+        "/technician/records?animalId=" +
+          ids.animal +
+          "&recordKind=insemination&recordId=" +
+          ids.ai,
       ),
     );
   });

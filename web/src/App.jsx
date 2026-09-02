@@ -47,6 +47,7 @@ const TechnicianAnimals = lazy(() => import("./pages/technician/Animals"));
 const TechnicianInseminations = lazy(
   () => import("./pages/technician/Inseminations"),
 );
+const TechnicianRecords = lazy(() => import("./pages/technician/Records"));
 const TechnicianHealth = lazy(() => import("./pages/technician/Health"));
 const TechnicianHealthMap = lazy(() => import("./pages/technician/HealthMap"));
 const WalkInInsemination = lazy(
@@ -277,6 +278,7 @@ function App() {
                 path="inseminations"
                 element={<TechnicianInseminations />}
               />
+              <Route path="records" element={<TechnicianRecords />} />
               <Route path="newborns" element={<Newborns />} />
               <Route path="health" element={<TechnicianHealth />} />
               <Route path="health-map" element={<TechnicianHealthMap />} />

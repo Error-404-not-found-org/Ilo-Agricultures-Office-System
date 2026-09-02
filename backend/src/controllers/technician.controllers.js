@@ -5600,6 +5600,7 @@ export const getWorkQueue = async (req, res) => {
           pregnancyId: idOf(
             taskDoc.metadata?.pregnancyId || taskContext.pregnancy,
           ),
+          calvingId: idOf(taskDoc.calvingId || taskContext.calving),
           inseminationId: idOf(
             taskDoc.metadata?.inseminationId ||
               taskContext.insemination ||

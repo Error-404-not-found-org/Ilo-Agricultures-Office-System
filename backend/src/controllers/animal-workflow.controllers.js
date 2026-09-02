@@ -12,6 +12,7 @@ import {
   TASK_STATUS,
 } from "../domain/status-vocabulary.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
+import { buildAIRequestMutationOwnershipGuard } from "../policies/request.policy.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import {
   getAnimalTimeline as buildAnimalTimeline,
@@ -162,6 +163,11 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         ? "AI scheduled for"
         : "AI request submitted at";
     const attachments = uniqueRecordAttachments([
+      ...(record.photos || []).map((url, index) => ({
+        url,
+        category: "request_evidence",
+        label: `AI request photo ${index + 1}`,
+      })),
       ...(record.imageUrl
         ? [{
             url: record.imageUrl,
@@ -174,11 +180,16 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         category: "follow_up_evidence",
         label: `Follow-up evidence ${index + 1}`,
       })),
+      ...(record.farmerPregnancyPhotos || []).map((url, index) => ({
+        url,
+        category: "pregnancy_report_evidence",
+        label: `Pregnancy report evidence ${index + 1}`,
+      })),
     ]);
     return {
       ...common,
       type: "ai",
-      title: `AI Attempt #${record.attemptNumber || 1}`,
+      title: "Insemination record",
       description: record.outcome || "Artificial insemination completed",
       date: eventDate,
       dateLabel,
@@ -370,7 +381,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
   return {
     ...common,
     type: "health",
-    title: record.type || "Health Assistance",
+    title: record.type === "General Note" ? "General Note" : "Health record",
     description:
       record.details?.diagnosis ||
       record.details?.treatment ||
@@ -535,24 +546,34 @@ export const getOfficialRecords = async (req, res) => {
       requestedType,
     );
     const windowLimit = search ? null : pageInfo.skip + pageInfo.limit;
+    const technicianId =
+      req.user.role === "technician" ? req.user._id : null;
     const inseminationFilter = {
       ...scope,
       status: "done",
       deletedAt: null,
+      ...(technicianId
+        ? buildAIRequestMutationOwnershipGuard({ technicianId })
+        : {}),
       ...(hasDateRange ? { inseminationDate: dateRange } : {}),
     };
     const pregnancyFilter = {
       ...scope,
       deletedAt: null,
+      ...(technicianId
+        ? { "confirmation.confirmedBy": technicianId }
+        : {}),
       ...(hasDateRange ? { "pregnancyDiagnosis.date": dateRange } : {}),
     };
     const calvingFilter = {
       ...scope,
       deletedAt: null,
+      ...(technicianId ? { technicianId } : {}),
       ...(hasDateRange ? { date: dateRange } : {}),
     };
     const medicalRecordFilter = {
       ...scope,
+      ...(technicianId ? { technicianId } : {}),
       ...(hasDateRange ? { date: dateRange } : {}),
       ...(!includeHealth && includeNotes
         ? { type: "General Note" }
@@ -579,7 +600,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("technicianId approvedBy", "name role"),
               { inseminationDate: -1, createdAt: -1 },
               windowLimit,
@@ -592,7 +613,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("inseminationId", "attemptNumber sireBreed sireCode")
               .populate("confirmation.confirmedBy", "name role"),
               { "pregnancyDiagnosis.date": -1, createdAt: -1 },
@@ -606,7 +627,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("technicianId", "name role"),
               { date: -1, createdAt: -1 },
               windowLimit,
@@ -619,7 +640,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("technicianId", "name role")
               .populate(
                 "healthRequestId",
@@ -648,7 +669,7 @@ export const getOfficialRecords = async (req, res) => {
         category: "AI",
         recordDate: item.inseminationDate,
         enteredAt: item.createdAt,
-        title: `AI Attempt #${item.attemptNumber || 1}`,
+        title: "Insemination record",
         summary: item.outcome || "Artificial insemination completed",
         status: "completed",
         farmerId: item.farmerId,
@@ -698,7 +719,7 @@ export const getOfficialRecords = async (req, res) => {
           category: isGeneralNote ? "General Note" : "Health",
           recordDate: item.date || item.createdAt,
           enteredAt: item.createdAt,
-          title: item.type || "Health Record",
+          title: isGeneralNote ? "General Note" : "Health record",
           summary:
             item.details?.diagnosis ||
             item.details?.treatment ||

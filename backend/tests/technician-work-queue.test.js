@@ -1386,6 +1386,10 @@ test("Technician Work Queue backend contract", async (t) => {
         completedById.get("completed-calving").completedAt,
         calvingCompletedAt,
       );
+      assert.equal(
+        completedById.get("completed-calving").context.calvingId,
+        ids.calving,
+      );
       assert.equal(completedById.get("completed-standalone").completedAt, null);
       for (const item of completedRecorder.body.data) {
         assert.equal(item.overdue, false);

@@ -160,7 +160,14 @@ export default function Modal({
         </div>
       </div>
       {closeOnBackdropClick ? (
-        <form method="dialog" className="modal-backdrop bg-neutral/60">
+        <form
+          method="dialog"
+          className="modal-backdrop bg-neutral/60"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onClose?.();
+          }}
+        >
           <button type="submit" aria-label="Close dialog">
             close
           </button>

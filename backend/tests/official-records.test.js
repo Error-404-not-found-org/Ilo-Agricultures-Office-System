@@ -499,10 +499,17 @@ test("Official record detail: AI exposes canonical service and follow-up context
         },
         confirmation: { methodCode: "ultrasound" },
       },
+      photos: [
+        "https://example.test/request-1.jpg",
+        "https://example.test/request.jpg",
+      ],
       imageUrl: "https://example.test/request.jpg",
       evidencePhotos: [
         "https://example.test/follow-up.jpg",
         "https://example.test/request.jpg",
+      ],
+      farmerPregnancyPhotos: [
+        "https://example.test/pregnancy-report.jpg",
       ],
     });
 
@@ -583,8 +590,10 @@ test("Official record detail: AI exposes canonical service and follow-up context
     assert.deepEqual(
       recorder.body.data.attachments.map((attachment) => attachment.url),
       [
+        "https://example.test/request-1.jpg",
         "https://example.test/request.jpg",
         "https://example.test/follow-up.jpg",
+        "https://example.test/pregnancy-report.jpg",
       ],
     );
   } finally {
@@ -941,4 +950,222 @@ test("Official record detail rejects raw HealthRequest identifiers", async () =>
 
   assert.equal(recorder.statusCode, 400);
   assert.equal(recorder.body.code, "OFFICIAL_RECORD_KIND_INVALID");
+});
+
+test("official records response includes farmer imageUrl for all types", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    insemination: Insemination.find,
+    pregnancy: Pregnancy.find,
+    calving: Calving.find,
+    medical: MedicalRecord.find,
+    inseminationCount: Insemination.countDocuments,
+    pregnancyCount: Pregnancy.countDocuments,
+    calvingCount: Calving.countDocuments,
+    medicalCount: MedicalRecord.countDocuments,
+  };
+
+  Animal.findOne = async () => ({ _id: "animal-1", farmerId: "farmer-1" });
+  Insemination.find = () => queryResult([{ _id: "insem-1", farmerId: { _id: "farmer-1", name: "Bob", imageUrl: "https://example.com/bob.jpg" }, inseminationDate: new Date(), createdAt: new Date() }]);
+  Pregnancy.find = () => queryResult([{ _id: "preg-1", farmerId: { _id: "farmer-1", name: "Bob", imageUrl: "https://example.com/bob.jpg" }, "pregnancyDiagnosis": { date: new Date() }, createdAt: new Date() }]);
+  Calving.find = () => queryResult([{ _id: "calv-1", farmerId: { _id: "farmer-1", name: "Bob", imageUrl: "https://example.com/bob.jpg" }, date: new Date(), createdAt: new Date() }]);
+  MedicalRecord.find = () => queryResult([{ _id: "med-1", farmerId: { _id: "farmer-1", name: "Bob", imageUrl: "https://example.com/bob.jpg" }, date: new Date(), type: "Consultation", createdAt: new Date() }]);
+
+  Insemination.countDocuments = async () => 1;
+  Pregnancy.countDocuments = async () => 1;
+  Calving.countDocuments = async () => 1;
+  MedicalRecord.countDocuments = async () => 1;
+
+  const req = { user: { role: "admin" }, query: {} };
+  const res = responseRecorder();
+
+  try {
+    await getOfficialRecords(req, res.response);
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(res.body.data.length === 4);
+
+    res.body.data.forEach(record => {
+      assert.equal(record.farmerId.imageUrl, "https://example.com/bob.jpg");
+    });
+  } finally {
+    Animal.findOne = originals.animal;
+    Insemination.find = originals.insemination;
+    Pregnancy.find = originals.pregnancy;
+    Calving.find = originals.calving;
+    MedicalRecord.find = originals.medical;
+    Insemination.countDocuments = originals.inseminationCount;
+    Pregnancy.countDocuments = originals.pregnancyCount;
+    Calving.countDocuments = originals.calvingCount;
+    MedicalRecord.countDocuments = originals.medicalCount;
+  }
+});
+
+test("Official records: Technicians receive only their completed official record history", async () => {
+  const originals = {
+    insemination: Insemination.find,
+    pregnancy: Pregnancy.find,
+    calving: Calving.find,
+    medical: MedicalRecord.find,
+    inseminationCount: Insemination.countDocuments,
+    pregnancyCount: Pregnancy.countDocuments,
+    calvingCount: Calving.countDocuments,
+    medicalCount: MedicalRecord.countDocuments,
+  };
+  const ownId = (value) => String(value?._id || value || "");
+  const pathValue = (record, path) =>
+    path.split(".").reduce((value, key) => value?.[key], record);
+  const matchesValue = (value, condition) => {
+    if (condition && typeof condition === "object" && !Array.isArray(condition)) {
+      if (Object.hasOwn(condition, "$exists")) {
+        return condition.$exists ? value !== undefined : value === undefined;
+      }
+      if (Object.hasOwn(condition, "$in")) {
+        return condition.$in.some((candidate) => ownId(value) === ownId(candidate));
+      }
+      if (Object.hasOwn(condition, "$ne")) {
+        return ownId(value) !== ownId(condition.$ne);
+      }
+    }
+    return condition === null ? value == null : ownId(value) === ownId(condition);
+  };
+  const matchesFilter = (record, filter = {}) => {
+    if (filter.$and && !filter.$and.every((entry) => matchesFilter(record, entry))) {
+      return false;
+    }
+    if (filter.$or && !filter.$or.some((entry) => matchesFilter(record, entry))) {
+      return false;
+    }
+    return Object.entries(filter)
+      .filter(([key]) => !key.startsWith("$"))
+      .every(([key, condition]) => matchesValue(pathValue(record, key), condition));
+  };
+  const queryFor = (records) => (filter) =>
+    queryResult(records.filter((record) => matchesFilter(record, filter)));
+  const countFor = (records) => async (filter) =>
+    records.filter((record) => matchesFilter(record, filter)).length;
+  const recordIds = (records) => records.map((record) => String(record.id)).sort();
+  const date = new Date("2026-08-20T00:00:00.000Z");
+  const inseminations = [
+    {
+      _id: "ai-a",
+      status: "done",
+      deletedAt: null,
+      approvedBy: "tech-a",
+      technicianId: "tech-a",
+      inseminationDate: date,
+      createdAt: date,
+    },
+    {
+      _id: "ai-b",
+      status: "done",
+      deletedAt: null,
+      approvedBy: "tech-b",
+      technicianId: "tech-b",
+      inseminationDate: date,
+      createdAt: date,
+    },
+  ];
+  const pregnancies = [
+    {
+      _id: "pregnancy-a",
+      deletedAt: null,
+      confirmation: { confirmedBy: "tech-a" },
+      pregnancyDiagnosis: { date, result: "Pregnant" },
+      createdAt: date,
+    },
+    {
+      _id: "pregnancy-b",
+      deletedAt: null,
+      confirmation: { confirmedBy: "tech-b" },
+      pregnancyDiagnosis: { date, result: "Pregnant" },
+      createdAt: date,
+    },
+  ];
+  const calvings = [
+    {
+      _id: "calving-a",
+      deletedAt: null,
+      technicianId: "tech-a",
+      date,
+      createdAt: date,
+    },
+    {
+      _id: "calving-b",
+      deletedAt: null,
+      technicianId: "tech-b",
+      date,
+      createdAt: date,
+    },
+  ];
+  const medicalRecords = [
+    {
+      _id: "medical-a",
+      technicianId: "tech-a",
+      type: "Treatment",
+      date,
+      createdAt: date,
+    },
+    {
+      _id: "medical-b",
+      technicianId: "tech-b",
+      type: "Treatment",
+      date,
+      createdAt: date,
+    },
+  ];
+
+  Insemination.find = queryFor(inseminations);
+  Pregnancy.find = queryFor(pregnancies);
+  Calving.find = queryFor(calvings);
+  MedicalRecord.find = queryFor(medicalRecords);
+  Insemination.countDocuments = countFor(inseminations);
+  Pregnancy.countDocuments = countFor(pregnancies);
+  Calving.countDocuments = countFor(calvings);
+  MedicalRecord.countDocuments = countFor(medicalRecords);
+
+  try {
+    for (const [user, expected] of [
+      [{ _id: "tech-a", role: "technician" }, ["ai-a", "medical-a", "pregnancy-a", "calving-a"]],
+      [{ _id: "tech-b", role: "technician" }, ["ai-b", "medical-b", "pregnancy-b", "calving-b"]],
+      [{ _id: "admin-1", role: "admin" }, ["ai-a", "ai-b", "medical-a", "medical-b", "pregnancy-a", "pregnancy-b", "calving-a", "calving-b"]],
+    ]) {
+      const recorder = responseRecorder();
+      await getOfficialRecords(
+        { user, query: { page: "1", limit: "25" } },
+        recorder.response,
+      );
+      assert.equal(recorder.statusCode, 200);
+      assert.deepEqual(recordIds(recorder.body.data), expected.sort());
+      assert.equal(recorder.body.total, expected.length);
+    }
+
+    for (const [type, expectedId] of [
+      ["ai", "ai-a"],
+      ["health", "medical-a"],
+      ["pregnancy", "pregnancy-a"],
+      ["calving", "calving-a"],
+    ]) {
+      const recorder = responseRecorder();
+      await getOfficialRecords(
+        {
+          user: { _id: "tech-a", role: "technician" },
+          query: { type, page: "1", limit: "25" },
+        },
+        recorder.response,
+      );
+      assert.equal(recorder.statusCode, 200);
+      assert.deepEqual(recordIds(recorder.body.data), [expectedId]);
+      assert.equal(recorder.body.total, 1);
+    }
+  } finally {
+    Insemination.find = originals.insemination;
+    Pregnancy.find = originals.pregnancy;
+    Calving.find = originals.calving;
+    MedicalRecord.find = originals.medical;
+    Insemination.countDocuments = originals.inseminationCount;
+    Pregnancy.countDocuments = originals.pregnancyCount;
+    Calving.countDocuments = originals.calvingCount;
+    MedicalRecord.countDocuments = originals.medicalCount;
+  }
 });

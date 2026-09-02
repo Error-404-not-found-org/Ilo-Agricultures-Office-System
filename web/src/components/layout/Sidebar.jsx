@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   ClipboardList,
   Syringe,
-  HeartPulse,
   Users,
   Tractor,
   CalendarDays,
@@ -197,25 +196,10 @@ export default function Sidebar() {
     refetchInterval: 1000 * 30,
   });
 
-  const { data: calvingsData } = useQuery({
-    queryKey: ["calvings-badge"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/technician/calvings?limit=100");
-      return res.data || {};
-    },
-    enabled: normalizedRole !== "admin",
-    refetchInterval: 1000 * 30,
-  });
-
   // Compute live cumulative pending matrix values safely
   const livePendingCount = React.useMemo(() => {
     return operationalQueue?.pagination?.total || 0;
   }, [operationalQueue]);
-
-  const unseenCalvingsCount = React.useMemo(() => {
-    const list = Array.isArray(calvingsData?.data) ? calvingsData.data : [];
-    return list.filter((c) => !c.isSeen).length;
-  }, [calvingsData]);
 
   // ---- MASTER SIDEBAR CONFIGURATION MATRICES ----
   const TECH_GROUPS = React.useMemo(
@@ -237,7 +221,7 @@ export default function Sidebar() {
         label: "Requests",
         badge: livePendingCount > 0 ? String(livePendingCount) : null,
       },
-      { type: "label", label: "Records" },
+      { type: "label", label: "Directory" },
       {
         path: "/technician/farmers",
         icon: <Users size={16} />,
@@ -248,27 +232,14 @@ export default function Sidebar() {
         icon: <Tractor size={16} />,
         label: "Animals",
       },
-
       {
-        path: "/technician/health",
-        icon: <HeartPulse size={16} />,
-        label: "Animal Health",
+        type: "label",
+        label: "Records",
       },
       {
-        path: "/technician/inseminations",
-        icon: <Syringe size={16} />,
-        label: "Insemination",
-      },
-      {
-        path: "/technician/ledger",
-        icon: <BookOpen size={16} />,
-        label: "Pregnancy",
-      },
-      {
-        path: "/technician/newborns",
-        icon: <Tractor size={16} />,
-        label: "Calving",
-        badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
+        path: "/technician/records",
+        icon: <FileText size={16} />,
+        label: "Records",
       },
       { type: "label", label: "System" },
       {
@@ -282,7 +253,7 @@ export default function Sidebar() {
         label: "Settings",
       },
     ],
-    [livePendingCount, unseenCalvingsCount],
+    [livePendingCount],
   );
 
   const ADMIN_GROUPS = React.useMemo(
