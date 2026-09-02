@@ -40,6 +40,34 @@ describe("Technician Requests responsibility", () => {
     expect(requestsSource).not.toContain("Near me");
   });
 
+  it("keeps the Technician toolbar as a left-aligned search-first cluster", () => {
+    const technicianToolbar = requestsSource.indexOf(
+      "{/* Technician request filters */}",
+    );
+    const technicianSearch = requestsSource.indexOf(
+      'aria-label="Search service requests"',
+      technicianToolbar,
+    );
+    const technicianType = requestsSource.indexOf(
+      'aria-label="Request type"',
+      technicianSearch,
+    );
+    const technicianUrgency = requestsSource.indexOf(
+      'aria-label="Health urgency"',
+      technicianType,
+    );
+
+    expect(technicianToolbar).toBeGreaterThan(-1);
+    expect(technicianSearch).toBeGreaterThan(technicianToolbar);
+    expect(technicianType).toBeGreaterThan(technicianSearch);
+    expect(technicianUrgency).toBeGreaterThan(technicianType);
+    expect(requestsSource).toContain(
+      "sm:flex-row sm:flex-wrap sm:items-end",
+    );
+    expect(requestsSource).toContain("sm:max-w-sm lg:w-80");
+    expect(requestsSource).not.toContain("lg:w-1/2 lg:mr-auto");
+  });
+
   it("maps Available to the canonical unclaimed backend query contract", () => {
     expect(
       getRequestBoardViewSelection(REQUEST_BOARD_VIEWS.AVAILABLE),

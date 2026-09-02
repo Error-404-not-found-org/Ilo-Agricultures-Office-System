@@ -14,14 +14,18 @@ describe("Technician Requests and My Work navigation", () => {
     expect(requests).not.toContain('aria-label="Request ownership"');
   });
 
-  it("keeps canonical server-side My Work state and pagination", () => {
+  it("keeps canonical active My Work state and server-side pagination", () => {
     const workQueue = read("src/pages/technician/WorkQueue.jsx");
+    const requests = read("src/pages/technician/Requests.jsx");
 
     expect(workQueue).toContain('axiosInstance.get("/technician/work-queue"');
-    expect(workQueue).toContain("workState: workStateFilter");
+    expect(workQueue).toContain('workState: "active"');
     expect(workQueue).toContain("page: currentPage");
-    expect(workQueue).toContain('next.set("section", "myWork")');
-    expect(workQueue).toContain('next.set("workState", workState)');
+    expect(workQueue).not.toContain('label: "Active"');
+    expect(workQueue).not.toContain('label: "Completed"');
+    expect(workQueue).not.toContain('next.set("workState"');
+    expect(requests).toContain("View completed records");
+    expect(requests).toContain('to="/technician/records"');
   });
 
   it("redirects the legacy route and removes the duplicate sidebar item", () => {
@@ -30,6 +34,7 @@ describe("Technician Requests and My Work navigation", () => {
 
     expect(app).toContain("function LegacyTechnicianWorkQueueRedirect()");
     expect(app).toContain('params.set("section", "myWork")');
+    expect(app).toContain('params.delete("workState")');
     expect(app).toContain("<LegacyTechnicianWorkQueueRedirect />");
     expect(app).toContain(
       '"/technician/requests?section=myWork"',

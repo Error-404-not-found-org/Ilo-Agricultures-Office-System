@@ -122,16 +122,10 @@ const getOfficialRecordIdentity = (task) => {
 export default function WorkQueue({ embedded = false }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [typeFilter, setTypeFilter] = useState(
     () => searchParams.get("typeFilter") || "all",
-  );
-  const [workStateFilter, setWorkStateFilter] = useState(
-    () =>
-      searchParams.get("workState") ||
-      searchParams.get("workStateFilter") ||
-      "active",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
@@ -193,7 +187,7 @@ export default function WorkQueue({ embedded = false }) {
       {
         page: currentPage,
         limit: itemsPerPage,
-        workState: workStateFilter,
+        workState: "active",
         type: typeFilter,
         search: search.trim(),
       },
@@ -203,7 +197,7 @@ export default function WorkQueue({ embedded = false }) {
         params: {
           page: currentPage,
           limit: itemsPerPage,
-          workState: workStateFilter,
+          workState: "active",
           type: typeFilter,
           ...(search.trim() ? { search: search.trim() } : {}),
         },
@@ -285,7 +279,10 @@ export default function WorkQueue({ embedded = false }) {
       ),
   });
 
-  const tasks = Array.isArray(query.data?.data) ? query.data.data : [];
+  const tasks = (Array.isArray(query.data?.data) ? query.data.data : []).filter(
+    (task) =>
+      !["completed", "cancelled"].includes(normalizeWorkflowStatus(task)),
+  );
   const pagination = {
     page: Number(query.data?.pagination?.page) || currentPage,
     limit: Number(query.data?.pagination?.limit) || itemsPerPage,
@@ -440,21 +437,7 @@ export default function WorkQueue({ embedded = false }) {
     }
   };
 
-  const focusedTaskId = searchParams.get("taskId");
-  const focusedWorkflowId = searchParams.get("requestId");
   const ContentContainer = embedded ? "div" : "main";
-
-  const selectWorkState = (workState) => {
-    setWorkStateFilter(workState);
-    setCurrentPage(1);
-    setSearchParams((previous) => {
-      const next = new URLSearchParams(previous);
-      next.set("section", "myWork");
-      next.set("workState", workState);
-      next.delete("workStateFilter");
-      return next;
-    });
-  };
 
   return (
     <div className={embedded ? "contents" : ui.page}>
@@ -470,43 +453,19 @@ export default function WorkQueue({ embedded = false }) {
         <section className="card card-border bg-base-100 shadow-sm">
           {/* FILTER BAR */}
           <div className="card-body gap-4 p-4 md:p-5">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="join w-full sm:w-auto overflow-x-auto">
-                {[
-                  { id: "active", label: "Active" },
-                  { id: "completed", label: "Completed" },
-                ].map((status) => (
-                  <button
-                    type="button"
-                    key={status.id}
-                    onClick={() => selectWorkState(status.id)}
-                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${workStateFilter === status.id ? "bg-primary/15 text-primary border-primary/30 hover:bg-primary/20" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
-                  >
-                    {status.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <select
-                  aria-label="Service type"
-                  value={typeFilter}
-                  onChange={(e) => {
-                    setTypeFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="select select-sm select-bordered w-full sm:w-36 bg-base-100 border-base-300 font-medium"
-                >
-                  {MY_WORK_FILTERS.map((filter) => (
-                    <option key={filter.value} value={filter.value}>
-                      {filter.value === "all" ? "All Services" : filter.label}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="relative w-full sm:w-64">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="form-control w-full sm:max-w-sm">
+                <span className="label text-sm font-semibold text-base-content/65">
+                  Search
+                </span>
+                <span className="input input-sm input-bordered flex w-full items-center gap-2 bg-base-100 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+                  <Search
+                    size={14}
+                    className="shrink-0 text-base-content/40"
+                    aria-hidden="true"
+                  />
                   <input
-                    type="text"
+                    type="search"
                     aria-label="Search My Work"
                     value={search}
                     onChange={(e) => {
@@ -514,14 +473,31 @@ export default function WorkQueue({ embedded = false }) {
                       setCurrentPage(1);
                     }}
                     placeholder="Search farmer, animal..."
-                    className="input input-sm input-bordered w-full pl-8 bg-base-100 border-base-300 font-medium"
+                    className="min-w-0 grow font-medium placeholder:text-base-content/50"
                   />
-                  <Search
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40"
-                  />
-                </div>
-              </div>
+                </span>
+              </label>
+
+              <label className="form-control w-full sm:w-44">
+                <span className="label text-sm font-semibold text-base-content/65">
+                  Service type
+                </span>
+                <select
+                  aria-label="Service type"
+                  value={typeFilter}
+                  onChange={(e) => {
+                    setTypeFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="select select-sm select-bordered w-full bg-base-100 border-base-300 font-medium"
+                >
+                  {MY_WORK_FILTERS.map((filter) => (
+                    <option key={filter.value} value={filter.value}>
+                      {filter.value === "all" ? "All Services" : filter.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             {/* ACTIONABLE WORK LIST */}
@@ -569,20 +545,15 @@ export default function WorkQueue({ embedded = false }) {
                 />
                 <h2 className="font-bold">No tasks found</h2>
                 <p className="mt-1 text-sm text-base-content/60">
-                  {search ||
-                  typeFilter !== "all" ||
-                  workStateFilter !== "active"
+                  {search || typeFilter !== "all"
                     ? "Try adjusting your filters to see more tasks."
                     : "You're all caught up! No tasks assigned to you right now."}
                 </p>
-                {(search ||
-                  typeFilter !== "all" ||
-                  workStateFilter !== "active") && (
+                {(search || typeFilter !== "all") && (
                   <button
                     onClick={() => {
                       setSearch("");
                       setTypeFilter("all");
-                      selectWorkState("active");
                       setCurrentPage(1);
                     }}
                     className="btn btn-sm mt-4"
@@ -628,19 +599,10 @@ export default function WorkQueue({ embedded = false }) {
                           : `Due ${formatRelativeSchedule(timing.date)}`;
                     const primaryActionLabel =
                       task.actionLabel || getTaskPrimaryActionLabel(task);
-                    const isFocused =
-                      focusedTaskId === task.id ||
-                      focusedTaskId === task.taskId ||
-                      focusedWorkflowId === task.workflowId;
-
                     return (
                       <article
                         key={task.id}
-                        className={`rounded-box border bg-base-100 p-4 transition-colors sm:p-5 ${
-                          isFocused
-                            ? "border-primary/50 bg-primary/5"
-                            : "border-base-300 hover:border-base-content/25"
-                        }`}
+                        className="rounded-box border border-base-300 bg-base-100 p-4 transition-colors hover:border-base-content/25 sm:p-5"
                       >
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(13rem,.8fr)_auto] lg:items-center">
                           <div className="min-w-0">

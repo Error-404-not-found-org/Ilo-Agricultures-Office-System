@@ -88,12 +88,10 @@ function LegacyTechnicianRequestDetailsRedirect() {
 function LegacyTechnicianWorkQueueRedirect() {
   const { search } = useLocation();
   const params = new URLSearchParams(search);
-  const legacyWorkState = params.get("workStateFilter");
 
   params.set("section", "myWork");
-  if (!params.has("workState") && legacyWorkState) {
-    params.set("workState", legacyWorkState);
-  }
+  params.delete("workflowState");
+  params.delete("workState");
   params.delete("workStateFilter");
   params.delete("scope");
   params.delete("statusFilter");

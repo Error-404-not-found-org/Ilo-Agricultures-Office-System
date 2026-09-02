@@ -269,11 +269,9 @@ export const sanitizeReturnTo = (path) => {
   if (basePath === "/technician/work-queue") {
     const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
     const params = new URLSearchParams(query);
-    const legacyWorkState = params.get("workStateFilter");
     params.set("section", "myWork");
-    if (!params.has("workState") && legacyWorkState) {
-      params.set("workState", legacyWorkState);
-    }
+    params.delete("workflowState");
+    params.delete("workState");
     params.delete("workStateFilter");
     params.delete("scope");
     params.delete("statusFilter");

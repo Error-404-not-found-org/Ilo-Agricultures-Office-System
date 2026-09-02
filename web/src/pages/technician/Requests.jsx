@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Search,
   ChevronLeft,
@@ -188,18 +188,37 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
     requestedSection === REQUEST_SECTIONS.MY_WORK
       ? REQUEST_SECTIONS.MY_WORK
       : REQUEST_SECTIONS.AVAILABLE;
+  const hasObsoleteWorkState = [
+    "workflowState",
+    "workState",
+    "workStateFilter",
+  ].some((key) => searchParams.has(key));
 
   useEffect(() => {
-    if (!isTechnician || requestedSection === activeSection) return;
+    if (
+      !isTechnician ||
+      (requestedSection === activeSection && !hasObsoleteWorkState)
+    ) {
+      return;
+    }
     setSearchParams(
       (previous) => {
         const next = new URLSearchParams(previous);
         next.set("section", activeSection);
+        next.delete("workflowState");
+        next.delete("workState");
+        next.delete("workStateFilter");
         return next;
       },
       { replace: true },
     );
-  }, [activeSection, isTechnician, requestedSection, setSearchParams]);
+  }, [
+    activeSection,
+    hasObsoleteWorkState,
+    isTechnician,
+    requestedSection,
+    setSearchParams,
+  ]);
 
   const selectSection = (section) => {
     setSearchParams((previous) => {
@@ -210,9 +229,10 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
         next.delete("status");
       } else {
         next.delete("taskId");
-        next.delete("workState");
-        next.delete("workStateFilter");
       }
+      next.delete("workflowState");
+      next.delete("workState");
+      next.delete("workStateFilter");
       return next;
     });
   };
@@ -233,11 +253,19 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
             activeSection={activeSection}
             onSelect={selectSection}
           />
-          <div>
-            <h2 className="text-lg font-semibold text-base-content">My Work</h2>
-            <p className="mt-1 text-sm text-base-content/65">
-              Work currently assigned to you.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-base-content">My Work</h2>
+              <p className="mt-1 text-sm text-base-content/65">
+                Work currently assigned to you and ready for action.
+              </p>
+            </div>
+            <Link
+              to="/technician/records"
+              className="link link-hover w-fit text-sm font-semibold text-primary"
+            >
+              View completed records
+            </Link>
           </div>
           <WorkQueue embedded />
         </main>
@@ -819,8 +847,8 @@ function RequestBoard({ role, onSelectSection }) {
                     </p>
                   </div>
 
-                  <div className="flex flex-col lg:flex-row gap-3 border-t border-base-300 pt-3 lg:items-end">
-                    <label className="form-control w-full lg:w-1/2 lg:mr-auto">
+                  <div className="flex flex-col gap-3 border-t border-base-300 pt-3 sm:flex-row sm:flex-wrap sm:items-end">
+                    <label className="form-control w-full sm:max-w-sm lg:w-80">
                       <span className="label text-sm font-semibold text-base-content/65">
                         Search
                       </span>

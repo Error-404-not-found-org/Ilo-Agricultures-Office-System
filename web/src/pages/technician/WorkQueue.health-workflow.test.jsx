@@ -463,7 +463,7 @@ describe("My Work canonical server data", () => {
     });
   });
 
-  it("uses backend pagination and totals, including the completed state", async () => {
+  it("uses backend pagination and totals for actionable My Work", async () => {
     renderWorkQueue();
 
     expect(await screen.findByRole("heading", { name: "My Work" })).toBeTruthy();
@@ -494,21 +494,11 @@ describe("My Work canonical server data", () => {
     );
     expect(await screen.findByText("Page 2 of 3")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Completed" }));
-    await waitFor(() =>
-      expect(mocks.get).toHaveBeenLastCalledWith("/technician/work-queue", {
-        params: {
-          page: 1,
-          limit: 8,
-          workState: "completed",
-          type: "all",
-        },
-      }),
-    );
-    expect(screen.queryByText("Completed owned work: 24")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Active" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Completed" })).toBeNull();
   });
 
-  it("loads completed My Work directly from the canonical URL state", async () => {
+  it("treats legacy completed URLs as active My Work without exposing old tabs", async () => {
     renderWorkQueue(
       "/technician/requests?section=myWork&workState=completed",
     );
@@ -518,12 +508,63 @@ describe("My Work canonical server data", () => {
         params: {
           page: 1,
           limit: 8,
-          workState: "completed",
+          workState: "active",
           type: "all",
         },
       }),
     );
-    expect(screen.queryByText("Completed owned work: 24")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Completed" })).toBeNull();
+  });
+
+  it("does not render completed items as actionable My Work cards", async () => {
+    mocks.get.mockResolvedValue({
+      data: {
+        data: [
+          {
+            ...baseTask,
+            id: "active-task",
+            title: "Actionable farm visit",
+            workflowType: "Health",
+            type: "health",
+            status: "scheduled",
+            displayStatus: "scheduled",
+            allowedAction: "START_SERVICE",
+            actionLabel: "Start Visit",
+            raw: { _id: "active-task", status: "scheduled" },
+          },
+          {
+            ...baseTask,
+            id: "completed-task",
+            title: "Completed farm visit",
+            workflowType: "Health",
+            type: "health",
+            status: "resolved",
+            displayStatus: "resolved",
+            allowedAction: "VIEW_RECORD",
+            actionLabel: "View Record",
+            raw: { _id: "completed-task", status: "resolved" },
+          },
+        ],
+        pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+        counts: { all: 1, ai: 0, health: 1, pregnancy: 0, calving: 0 },
+      },
+    });
+
+    renderWorkQueue();
+
+    expect(await screen.findByText("Actionable farm visit")).toBeTruthy();
+    expect(screen.queryByText("Completed farm visit")).toBeNull();
+  });
+
+  it("groups the My Work search before its service filter", async () => {
+    renderWorkQueue();
+    await screen.findByText("Page 1 of 3");
+
+    const search = screen.getByLabelText("Search My Work");
+    const serviceType = screen.getByLabelText("Service type");
+    expect(
+      search.compareDocumentPosition(serviceType) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("sends service type and search to the backend and resets to page one", async () => {
