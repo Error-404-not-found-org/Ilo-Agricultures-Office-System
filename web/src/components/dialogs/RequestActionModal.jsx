@@ -519,7 +519,7 @@ const RequestActionModal = ({
     }
     if (isInProgress && isAI && (!sireBreed || !sireCode.trim())) {
       toast.error(
-        "Select the sire breed and enter the sire code before completing AI service.",
+        "Enter or select the sire breed and enter the sire code before completing AI service.",
       );
       return;
     }
@@ -1010,28 +1010,28 @@ const RequestActionModal = ({
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <label className={labelClass}>Sire breed</label>
-                        <div className="relative">
-                          <select
-                            disabled={isReadOnly}
-                            value={sireBreed}
-                            onChange={(e) => {
-                              const breed = e.target.value;
-                              setSireBreed(breed);
-                              const code = getSireCodeByBreed(breed);
-                              if (code) setSireCode(code);
-                            }}
-                            className={`${selectClass} cursor-pointer`}
-                          >
-                            <option value="" disabled>
-                              Select breed
-                            </option>
-                            {CATTLE_BREEDS.map((b) => (
-                              <option key={b} value={b}>
-                                {b}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <input
+                          type="text"
+                          list="sire-breed-options"
+                          disabled={isReadOnly}
+                          value={sireBreed}
+                          onChange={(e) => {
+                            const breed = e.target.value;
+                            setSireBreed(breed);
+                            const code = getSireCodeByBreed(breed);
+                            if (code) setSireCode(code);
+                          }}
+                          placeholder="Select or enter a breed"
+                          className={inputClass}
+                        />
+                        <datalist id="sire-breed-options">
+                          {CATTLE_BREEDS.map((breed) => (
+                            <option key={breed} value={breed} />
+                          ))}
+                        </datalist>
+                        <p className="text-[11px] text-base-content/55">
+                          Choose a listed breed or type a custom one.
+                        </p>
                       </div>
 
                       <div className="space-y-1.5">

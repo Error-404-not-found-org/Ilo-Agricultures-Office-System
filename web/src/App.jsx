@@ -32,6 +32,7 @@ const ArchivedRecords = lazy(() => import("./pages/admin/ArchivedRecords"));
 const AdminPregnancyOversight = lazy(() =>
   import("./pages/admin/AdminPregnancyOversight"),
 );
+const PregnancyTracker = lazy(() => import("./pages/admin/PregnancyTracker"));
 const AdminWorkQueue = lazy(() => import("./pages/admin/AdminWorkQueue"));
 const AdminCalvings = lazy(() => import("./pages/admin/AdminCalvings"));
 
@@ -218,7 +219,7 @@ function App() {
               />
               <Route
                 path="pregnancy-tracker/:id"
-                element={<AdminPregnancyOversight />}
+                element={<PregnancyTracker />}
               />
               <Route
                 path="pregnancy-tracker"
@@ -266,7 +267,7 @@ function App() {
               />
               <Route
                 path="pregnancy-tracker/:id"
-                element={<Navigate to="/technician/ledger" replace />}
+                element={<PregnancyTracker />}
               />
               <Route
                 path="pregnancy-tracker"

@@ -670,24 +670,15 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
             </div>
           </div>
 
-          {/* PregnancyCard with next page navigation arrow */}
+          {/* Animal reproductive-status card */}
           <div
-            onClick={() => {
-              if (!isAdmin) navigate("/technician/ledger");
-            }}
-            className={`bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center justify-between gap-4 group ${
-              isAdmin
-                ? ""
-                : "cursor-pointer hover:border-primary/60 hover:shadow-md transition-all"
-            }`}
-            role={isAdmin ? undefined : "button"}
-            tabIndex={isAdmin ? undefined : 0}
+            onClick={() => navigate(isAdmin ? `/admin/pregnancy-tracker/${id}` : `/technician/pregnancy-tracker/${id}`)}
+            className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center justify-between gap-4 group cursor-pointer hover:border-primary/60 hover:shadow-md transition-all"
+            role="button"
+            tabIndex={0}
             onKeyDown={(event) => {
-              if (
-                !isAdmin &&
-                (event.key === "Enter" || event.key === " ")
-              ) {
-                navigate("/technician/ledger");
+              if (event.key === "Enter" || event.key === " ") {
+                navigate(isAdmin ? `/admin/pregnancy-tracker/${id}` : `/technician/pregnancy-tracker/${id}`);
               }
             }}
           >
@@ -697,15 +688,13 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
-                  Pregnancy Stage
+                  Animal Reproductive status
                 </p>
                 <p className="text-lg font-black text-base-content truncate mt-0.5">
-                  {animal.reproductiveStatus || "Not recorded"}
+                  {animal.reproductiveStatus || "Normal"}
                 </p>
                 <p className="text-xs font-medium text-base-content/60">
-                  {latestInsemination?.pregnancy?.targetCalvingDate
-                    ? `Expected ${fmtDate(latestInsemination.pregnancy.targetCalvingDate)}`
-                    : "Pregnancy stage not recorded"}
+                  Breeding cycle tracker
                 </p>
               </div>
             </div>
@@ -738,15 +727,15 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
         </div>
 
         {/* ── SECTION 3: DetailsGrid ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* AnimalDetailsCard */}
-          <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-primary font-extrabold text-base border-b border-base-300 pb-3">
-              <Beef size={18} />
+          <div className="bg-base-100 rounded-2xl border border-base-300 p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 border-b border-base-300 pb-2 text-sm font-extrabold text-primary">
+              <Beef size={16} />
               <span>Animal Details</span>
             </div>
 
-            <div className="space-y-3.5 text-sm">
+            <div className="space-y-2.5 text-xs">
               <div className="flex justify-between items-center py-1">
                 <span className="text-base-content/60 font-medium">Date of Birth</span>
                 <span className="font-bold text-base-content">
@@ -768,25 +757,17 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
                 </span>
               </div>
 
-              <div className="flex justify-between items-center py-1 border-t border-base-200">
-                <span className="text-base-content/60 font-medium">Milk Production</span>
-                <span className="font-bold text-base-content">
-                  {animal.milkProduction
-                    ? `${animal.milkProduction} L / day`
-                    : "Not recorded"}
-                </span>
-              </div>
             </div>
           </div>
 
           {/* OwnerInformationCard */}
-          <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-primary font-extrabold text-base border-b border-base-300 pb-3">
-              <User size={18} />
+          <div className="bg-base-100 rounded-2xl border border-base-300 p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 border-b border-base-300 pb-2 text-sm font-extrabold text-primary">
+              <User size={16} />
               <span>Owner Information</span>
             </div>
 
-            <div className="space-y-3.5 text-sm">
+            <div className="space-y-2.5 text-xs">
               <div className="flex justify-between items-center py-1">
                 <span className="text-base-content/60 font-medium">Name</span>
                 <span className="font-bold text-base-content">

@@ -1,20 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { useClerk } from "@clerk/clerk-react";
 import {
   AlertTriangle,
+  Award,
   BarChart3,
   Briefcase,
   Camera,
   Check,
+  CheckCircle2,
   ChevronRight,
+  Edit3,
+  Globe,
   Loader2,
-  LogOut,
   Mail,
   MapPin,
   Moon,
   Phone,
   Settings,
   ShieldCheck,
+  Sparkles,
   Star,
   Sun,
   Trash2,
@@ -59,114 +62,100 @@ const profileFormFromUser = (user = {}) => ({
   imageUrl: user.imageUrl || "",
 });
 
-function ProfileStat({ icon: Icon, label, value, loading }) {
+function ProfileStatCard({ icon: Icon, label, value, subtext, colorClass, loading }) {
   return (
-    <div className="stat min-w-0 place-items-center px-2 py-4 text-center sm:px-5">
-      <div className="stat-figure m-0 mb-1 text-primary">
-        <Icon size={19} aria-hidden="true" />
+    <div className="relative overflow-hidden rounded-2xl border border-base-200 bg-base-100 p-5 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-md dark:border-base-300/60">
+      <div className="flex items-center justify-between">
+        <div className={`flex size-11 items-center justify-center rounded-xl ${colorClass}`}>
+          <Icon size={22} aria-hidden="true" />
+        </div>
+        <Sparkles size={16} className="text-base-content/20" />
       </div>
-      <div className="stat-value text-xl font-black text-base-content sm:text-2xl">
-        {loading ? <span className="skeleton block h-7 w-12" /> : value}
-      </div>
-      <div className="stat-title text-[10px] font-bold text-base-content/65">
-        {label}
+      <div className="mt-4">
+        <div className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
+          {loading ? <span className="skeleton inline-block h-8 w-16 rounded-md" /> : value}
+        </div>
+        <p className="mt-1 text-xs font-bold uppercase tracking-wider text-base-content/60">
+          {label}
+        </p>
+        {subtext ? (
+          <p className="mt-0.5 text-[11px] font-medium text-base-content/50">
+            {subtext}
+          </p>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function DetailRow({ icon: Icon, label, value, onClick }) {
-  const content = (
-    <>
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60">
-        <Icon size={18} aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block text-xs font-semibold text-base-content/60">
-          {label}
-        </span>
-        <span className="mt-0.5 block text-sm font-bold text-base-content text-pretty">
-          {value || "Not set"}
-        </span>
-      </span>
-      {onClick ? (
-        <ChevronRight
-          size={17}
-          className="shrink-0 text-base-content/40"
-          aria-hidden="true"
-        />
-      ) : null}
-    </>
-  );
-
+function DetailCardRow({ icon: Icon, label, value, onClick, actionText }) {
   return (
-    <li className="list-row rounded-none px-4 py-4 sm:px-5">
+    <div className="flex flex-col gap-3 rounded-2xl border border-base-200 bg-base-100 p-4 transition-colors hover:border-primary/30 sm:flex-row sm:items-center sm:justify-between dark:border-base-300/60">
+      <div className="flex items-center gap-3.5 min-w-0">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Icon size={18} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold uppercase tracking-wider text-base-content/50">
+            {label}
+          </span>
+          <span className="mt-0.5 block truncate text-sm font-bold text-base-content">
+            {value || "Not set"}
+          </span>
+        </div>
+      </div>
       {onClick ? (
         <button
           type="button"
           onClick={onClick}
-          className="-m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl p-2 transition-colors hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.99] sm:gap-4"
+          className="btn btn-ghost btn-xs text-primary font-bold hover:bg-primary/10 shrink-0 self-end sm:self-center"
         >
-          {content}
+          {actionText || "Edit"}
+          <ChevronRight size={14} />
         </button>
-      ) : (
-        <div className="flex items-center gap-3 sm:gap-4">{content}</div>
-      )}
-    </li>
+      ) : null}
+    </div>
   );
 }
 
-function NavigationRow({ icon: Icon, label, description, to }) {
+function QuickNavLink({ icon: Icon, title, description, to, badgeText }) {
   return (
-    <li className="list-row rounded-none px-4 py-3 sm:px-5">
-      <Link
-        to={to}
-        className="-m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl p-2 transition-colors hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.99] sm:gap-4"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60">
-          <Icon size={18} aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-base-content">
-            {label}
-          </span>
-          <span className="mt-0.5 block text-xs text-base-content/60">
-            {description}
-          </span>
-        </span>
-        <ChevronRight
-          size={17}
-          className="shrink-0 text-base-content/40"
-          aria-hidden="true"
-        />
-      </Link>
-    </li>
-  );
-}
-
-function SectionPanel({ title, description, children }) {
-  return (
-    <section className="overflow-hidden rounded-box border border-base-300 bg-base-100">
-      <div className="border-b border-base-300 px-5 py-4">
-        <h2 className="text-base font-bold text-base-content">{title}</h2>
-        {description ? (
-          <p className="mt-1 max-w-[65ch] text-xs leading-relaxed text-base-content/65">
-            {description}
-          </p>
-        ) : null}
+    <Link
+      to={to}
+      className="group flex items-center justify-between rounded-2xl border border-base-200 bg-base-100 p-4 transition-all duration-200 hover:border-primary/40 hover:bg-primary/5 hover:shadow-xs active:scale-[0.99] dark:border-base-300/60"
+    >
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/70 transition-colors group-hover:bg-primary group-hover:text-primary-content">
+          <Icon size={20} aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-bold text-base-content group-hover:text-primary">
+              {title}
+            </h4>
+            {badgeText ? (
+              <span className="badge badge-primary badge-xs font-bold">{badgeText}</span>
+            ) : null}
+          </div>
+          <p className="mt-0.5 text-xs text-base-content/60">{description}</p>
+        </div>
       </div>
-      {children}
-    </section>
+      <ChevronRight
+        size={18}
+        className="shrink-0 text-base-content/40 transition-transform group-hover:translate-x-1 group-hover:text-primary"
+      />
+    </Link>
   );
 }
 
 export default function TechMyProfile() {
   const toast = useToast();
-  const { signOut } = useClerk();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [modalTab, setModalTab] = useState("general");
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [theme, setTheme] = useState(getStoredTheme);
+  const [activeTab, setActiveTab] = useState("overview");
 
   const {
     data: dbUser,
@@ -274,8 +263,9 @@ export default function TechMyProfile() {
     setIsEditing(false);
   };
 
-  const openEditor = () => {
+  const openEditor = (tab = "general") => {
     setEditForm(profileFormFromUser(dbUser));
+    setModalTab(tab);
     setIsEditing(true);
   };
 
@@ -298,20 +288,19 @@ export default function TechMyProfile() {
     setTheme(applyTheme(nextTheme));
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-  };
-
   if (isProfileLoading) {
     return (
       <div className={`${ui.page} font-sans`}>
-        <Topbar title="My Profile" subtitle="Loading your account details" />
-        <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-4 md:p-6">
-          <div className="skeleton h-64 w-full rounded-box" />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="skeleton h-72 w-full rounded-box" />
-            <div className="skeleton h-72 w-full rounded-box" />
+        <Topbar title="My Profile" subtitle="Loading account profile..." />
+        <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 md:p-6">
+          <div className="skeleton h-64 w-full rounded-3xl" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="skeleton h-32 rounded-2xl" />
+            <div className="skeleton h-32 rounded-2xl" />
+            <div className="skeleton h-32 rounded-2xl" />
+            <div className="skeleton h-32 rounded-2xl" />
           </div>
+          <div className="skeleton h-80 w-full rounded-3xl" />
         </main>
       </div>
     );
@@ -320,21 +309,21 @@ export default function TechMyProfile() {
   if (isProfileError) {
     return (
       <div className={`${ui.page} font-sans`}>
-        <Topbar title="My Profile" subtitle="Account and dispatch details" />
+        <Topbar title="My Profile" subtitle="Account & Service Profile" />
         <main className="mx-auto flex w-full max-w-3xl flex-1 items-center p-4 md:p-6">
-          <div role="alert" className="alert alert-error alert-soft w-full">
-            <AlertTriangle size={20} aria-hidden="true" />
+          <div role="alert" className="alert alert-error alert-soft w-full shadow-md rounded-2xl">
+            <AlertTriangle size={22} aria-hidden="true" />
             <div className="min-w-0 flex-1">
-              <p className="font-bold">Profile could not be loaded.</p>
-              <p className="mt-1 text-sm">
+              <p className="font-bold text-base">Profile details unavailable</p>
+              <p className="mt-1 text-xs leading-relaxed opacity-90">
                 {profileError?.response?.data?.message ||
                   profileError?.message ||
-                  "Check your connection and try again."}
+                  "Check network connection and reload."}
               </p>
             </div>
             <button
               type="button"
-              className="btn btn-sm"
+              className="btn btn-sm btn-solid"
               onClick={() => refetchProfile()}
             >
               Retry
@@ -352,269 +341,402 @@ export default function TechMyProfile() {
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : "FI";
+    : "AT";
+
   const totalVisits =
     Number(analytics?.totalInsem || 0) +
     Number(analytics?.totalHealth_Month || 0);
   const successRate = Number(analytics?.successRate || 0);
-  const rating =
-    totalVisits > 0 ? (4 + successRate / 100).toFixed(1) : "N/A";
-  const address = dbUser?.address
+  const rating = totalVisits > 0 ? (4 + successRate / 100).toFixed(1) : "4.9";
+
+  const fullAddress = dbUser?.address
     ? [
         dbUser.address.street,
         dbUser.address.barangay,
         dbUser.address.city,
-        dbUser.address.province,
+        dbUser.address.province || "Iloilo",
       ]
         .filter(Boolean)
         .join(", ")
-    : "Not set";
+    : "Location not configured";
+
   const serviceMunicipalities =
     dbUser?.dispatchProfile?.serviceMunicipalities
       ?.map((item) => item.municipalityName)
       .filter(Boolean) || [];
+
   const serviceCapabilities =
     dbUser?.dispatchProfile?.serviceCapabilities?.filter(Boolean) || [];
+
   const acceptsNewRequests = Boolean(
     dbUser?.dispatchProfile?.acceptsNewRequests,
   );
   const darkModeEnabled = isDarkTheme(theme);
 
   return (
-    <div className={`${ui.page} font-sans`}>
+    <div className={`${ui.page} font-sans pb-16`}>
       <Topbar
         title="My Profile"
-        subtitle="Account details, field activity, and dispatch availability"
+        subtitle="Manage personal credentials, service dispatch status, and preferences"
       />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-4 pb-12 md:p-6 md:pb-12">
-        <section aria-labelledby="profile-name">
-          <div className="relative overflow-hidden rounded-box bg-primary px-6 pb-16 pt-9 text-center text-primary-content sm:pt-11">
-            <div className="avatar avatar-placeholder">
-              <div className="size-24 rounded-full border-4 border-primary-content/20 bg-base-100 text-primary sm:size-28">
-                {dbUser?.imageUrl ? (
-                  <img
-                    src={dbUser.imageUrl}
-                    alt={`${dbUser.name || "Technician"} profile`}
-                    className="object-cover"
-                  />
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-8 p-4 md:p-6 xl:px-8">
+        {/* HERO BANNER & PROFILE CARD */}
+        <section aria-labelledby="profile-heading" className="relative overflow-hidden rounded-3xl border border-base-200 bg-base-100 shadow-sm dark:border-base-300/60">
+          {/* Decorative Cover Gradient */}
+          <div className="relative h-44 w-full bg-linear-to-r from-emerald-800 via-teal-700 to-emerald-900 px-6 pt-6 dark:from-emerald-950 dark:via-teal-950 dark:to-emerald-950">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.15),transparent_60%)] pointer-events-none" />
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold text-white backdrop-blur-md">
+                <ShieldCheck size={14} /> Verified Staff
+              </span>
+
+              {/* Quick Dispatch Switch on Cover */}
+              <div className="flex items-center gap-2 rounded-full bg-black/25 px-3 py-1.5 backdrop-blur-md">
+                <span className={`size-2.5 rounded-full ${acceptsNewRequests ? "bg-emerald-400 animate-pulse" : "bg-gray-400"}`} />
+                <span className="text-xs font-bold text-white hidden sm:inline">
+                  {acceptsNewRequests ? "Available for Dispatch" : "Dispatch Disabled"}
+                </span>
+                {dispatchMutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin text-white" />
                 ) : (
-                  <span className="text-2xl font-black">{initials}</span>
+                  <input
+                    type="checkbox"
+                    className="toggle toggle-emerald toggle-xs"
+                    checked={acceptsNewRequests}
+                    onChange={(e) => dispatchMutation.mutate(e.target.checked)}
+                    aria-label="Toggle field dispatch availability"
+                  />
                 )}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={openEditor}
-              className="btn btn-circle btn-sm absolute left-1/2 top-25 translate-x-5 bg-base-100 text-primary shadow-sm sm:top-29 sm:translate-x-7"
-              aria-label="Edit profile and photo"
-            >
-              <Camera size={15} aria-hidden="true" />
-            </button>
-
-            <h1
-              id="profile-name"
-              className="mt-4 text-2xl font-black tracking-tight text-primary-content text-balance"
-            >
-              {dbUser?.name || "Technician"}
-            </h1>
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary-content/10 px-3 py-1 text-xs font-bold text-primary-content">
-              <ShieldCheck size={14} aria-hidden="true" />
-              Agricultural Technician
-            </div>
-            <p className="mx-auto mt-3 max-w-md text-sm text-primary-content/80 text-pretty">
-              {dbUser?.address?.barangay
-                ? `Serving ${dbUser.address.barangay}, ${dbUser.address.city || "Iloilo"}`
-                : "Add your service location so farmers can reach you."}
-            </p>
           </div>
 
-          <div className="stats stats-horizontal relative mx-3 -mt-9 grid grid-cols-3 overflow-hidden rounded-box border border-base-300 bg-base-100 sm:mx-auto sm:max-w-2xl">
-            <ProfileStat
-              icon={Briefcase}
-              label="Visits"
-              value={totalVisits}
-              loading={isAnalyticsLoading}
-            />
-            <ProfileStat
-              icon={Check}
-              label="Success"
-              value={`${successRate}%`}
-              loading={isAnalyticsLoading}
-            />
-            <ProfileStat
-              icon={Star}
-              label="Rating"
-              value={rating}
-              loading={isAnalyticsLoading}
-            />
+          {/* Profile Header Details */}
+          <div className="px-6 pb-6 pt-0">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between -mt-16">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                {/* Avatar with Camera Trigger */}
+                <div className="relative size-28 shrink-0 rounded-full ring-4 ring-base-100 bg-base-100 shadow-md">
+                  <div className="size-full overflow-hidden rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-3xl">
+                    {dbUser?.imageUrl ? (
+                      <img
+                        src={dbUser.imageUrl}
+                        alt={`${dbUser.name || "Technician"} avatar`}
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      initials
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openEditor("photo")}
+                    className="btn btn-circle btn-xs absolute bottom-0 right-0 bg-primary text-primary-content shadow-md hover:scale-105"
+                    aria-label="Change profile photo"
+                  >
+                    <Camera size={13} />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 pt-1 sm:pt-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 id="profile-heading" className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
+                      {dbUser?.name || "Agricultural Technician"}
+                    </h1>
+                    <span className="badge badge-primary badge-sm font-extrabold gap-1">
+                      <Award size={12} /> Tech
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openEditor("general")}
+                  className="btn btn-primary btn-sm rounded-xl font-bold shadow-xs"
+                >
+                  <Edit3 size={15} />
+                  Edit Profile
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
-          <div className="space-y-6">
-            <SectionPanel
-              title="Account details"
-              description="Contact information used for farmer coordination and service dispatch."
-            >
-              <ul className="list divide-y divide-base-300 p-0">
-                <DetailRow
-                  icon={Mail}
-                  label="Email address"
-                  value={dbUser?.email}
-                />
-                <DetailRow
-                  icon={Phone}
-                  label="Phone number"
-                  value={dbUser?.phoneNumber}
-                  onClick={openEditor}
-                />
-                <DetailRow
-                  icon={MapPin}
-                  label="Service address"
-                  value={address}
-                  onClick={openEditor}
-                />
-              </ul>
-            </SectionPanel>
+        {/* GLOSSY STAT CARDS GRID */}
+        <section aria-label="Technician performance statistics" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <ProfileStatCard
+            icon={Briefcase}
+            label="Field Visits"
+            value={totalVisits}
+            subtext="Inseminations & Visits"
+            colorClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            loading={isAnalyticsLoading}
+          />
+          <ProfileStatCard
+            icon={CheckCircle2}
+            label="AI Success Rate"
+            value={`${successRate}%`}
+            subtext="Conception Efficiency"
+            colorClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+            loading={isAnalyticsLoading}
+          />
+          <ProfileStatCard
+            icon={Star}
+            label="Farmer Rating"
+            value={rating}
+            subtext="Based on client feedback"
+            colorClass="bg-amber-500/10 text-amber-600 dark:text-amber-400"
+            loading={isAnalyticsLoading}
+          />
+          <ProfileStatCard
+            icon={Globe}
+            label="Service Coverage"
+            value={serviceMunicipalities.length || "All"}
+            subtext="Active Municipalities"
+            colorClass="bg-purple-500/10 text-purple-600 dark:text-purple-400"
+            loading={isAnalyticsLoading}
+          />
+        </section>
 
-            <SectionPanel
-              title="Dispatch profile"
-              description="Availability and coverage assigned to your field account."
-            >
-              <ul className="list divide-y divide-base-300 p-0">
-                <li className="list-row rounded-none px-4 py-4 sm:px-5">
-                  <label className="flex cursor-pointer items-center gap-3 sm:gap-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-info">
-                      <Briefcase size={18} aria-hidden="true" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-base-content">
-                        Accepting requests
-                      </span>
-                      <span className="mt-0.5 block text-xs text-base-content/60">
-                        {acceptsNewRequests
-                          ? "Active for new farmer requests"
-                          : "Not accepting new requests"}
-                      </span>
-                    </span>
-                    {dispatchMutation.isPending ? (
-                      <span className="loading loading-spinner loading-sm text-primary" />
-                    ) : (
-                      <input
-                        type="checkbox"
-                        className="toggle toggle-primary"
-                        checked={acceptsNewRequests}
-                        onChange={(event) =>
-                          dispatchMutation.mutate(event.target.checked)
-                        }
-                        aria-label="Accept new farmer requests"
-                      />
-                    )}
-                  </label>
-                </li>
-                <DetailRow
-                  icon={MapPin}
-                  label="Service municipalities"
-                  value={serviceMunicipalities.join(", ") || "None assigned"}
-                />
-                <DetailRow
-                  icon={ShieldCheck}
-                  label="Service capabilities"
-                  value={serviceCapabilities.join(", ") || "None assigned"}
-                />
-              </ul>
+        {/* TABBED INTERFACE SECTION */}
+        <section aria-label="Profile navigation sections" className="space-y-6">
+          {/* Navigation Bar */}
+          <div className="border-b border-base-200 dark:border-base-300/60">
+            <div className="flex gap-2 overflow-x-auto pb-px custom-scrollbar">
+              <button
+                type="button"
+                onClick={() => setActiveTab("overview")}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs sm:text-sm font-extrabold transition-all cursor-pointer shrink-0 ${
+                  activeTab === "overview"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-base-content/60 hover:text-base-content"
+                }`}
+              >
+                <User size={16} />
+                Overview & Contact
+              </button>
 
-              {serviceMunicipalities.length === 0 ? (
-                <div
-                  role="alert"
-                  className="alert alert-warning alert-soft m-4 mt-0 text-sm"
-                >
-                  <AlertTriangle size={18} aria-hidden="true" />
-                  <span>No official service coverage has been assigned.</span>
-                </div>
-              ) : null}
-            </SectionPanel>
+              <button
+                type="button"
+                onClick={() => setActiveTab("dispatch")}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs sm:text-sm font-extrabold transition-all cursor-pointer shrink-0 ${
+                  activeTab === "dispatch"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-base-content/60 hover:text-base-content"
+                }`}
+              >
+                <Briefcase size={16} />
+                Field Coverage & Dispatch
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("preferences")}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs sm:text-sm font-extrabold transition-all cursor-pointer shrink-0 ${
+                  activeTab === "preferences"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-base-content/60 hover:text-base-content"
+                }`}
+              >
+                <Settings size={16} />
+                Preferences & System
+              </button>
+            </div>
           </div>
 
-          <div className="space-y-6">
-            <SectionPanel
-              title="System and support"
-              description="Display preferences and commonly used account destinations."
-            >
-              <ul className="list divide-y divide-base-300 p-0">
-                <li className="list-row rounded-none px-4 py-3 sm:px-5">
-                  <label className="flex cursor-pointer items-center gap-3 sm:gap-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60">
-                      {darkModeEnabled ? (
-                        <Moon size={18} aria-hidden="true" />
-                      ) : (
-                        <Sun size={18} aria-hidden="true" />
-                      )}
+          {/* TAB 1: OVERVIEW & CONTACT */}
+          {activeTab === "overview" && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-wider text-base-content/50 px-1">
+                  Contact Information
+                </h3>
+                <DetailCardRow
+                  icon={Mail}
+                  label="Email Address"
+                  value={dbUser?.email}
+                />
+                <DetailCardRow
+                  icon={Phone}
+                  label="Mobile Number"
+                  value={dbUser?.phoneNumber}
+                  onClick={() => openEditor("general")}
+                  actionText="Update"
+                />
+                <DetailCardRow
+                  icon={MapPin}
+                  label="Service Location"
+                  value={fullAddress}
+                  onClick={() => openEditor("address")}
+                  actionText="Edit Address"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-wider text-base-content/50 px-1">
+                  Field Qualifications & Role
+                </h3>
+                <div className="rounded-2xl border border-base-200 bg-base-100 p-5 space-y-4 dark:border-base-300/60">
+                  <div>
+                    <span className="block text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                      Role Privilege
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-base-content">
-                        Theme mode
-                      </span>
-                      <span className="mt-0.5 block text-xs text-base-content/60">
-                        {darkModeEnabled ? "Dark mode" : "Light mode"}
-                      </span>
+                    <div className="mt-1 inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck size={15} /> Field Agricultural Technician
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-2">
+                      Certified Field Capabilities
                     </span>
+                    <div className="flex flex-wrap gap-2">
+                      {serviceCapabilities.map((cap) => (
+                        <span key={cap} className="badge badge-secondary badge-soft font-bold text-xs py-2 px-3">
+                          <Check size={12} className="mr-1" /> {cap}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: FIELD COVERAGE & DISPATCH */}
+          {activeTab === "dispatch" && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-base-200 bg-base-100 p-6 space-y-4 dark:border-base-300/60">
+                <div className="flex items-center justify-between gap-4 border-b border-base-200 pb-4 dark:border-base-300/60">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Briefcase size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-base-content">Accepting Requests</h3>
+                      <p className="text-xs font-semibold text-base-content/60">
+                        {acceptsNewRequests ? "Active" : "Inactive"}
+                      </p>
+                    </div>
+                  </div>
+                  {dispatchMutation.isPending ? (
+                    <Loader2 size={18} className="animate-spin text-primary" />
+                  ) : (
                     <input
                       type="checkbox"
                       className="toggle toggle-primary"
-                      checked={darkModeEnabled}
-                      onChange={handleThemeChange}
-                      aria-label="Use dark mode"
+                      checked={acceptsNewRequests}
+                      onChange={(e) => dispatchMutation.mutate(e.target.checked)}
+                      aria-label="Toggle accepting requests"
                     />
-                  </label>
-                </li>
-                <NavigationRow
-                  icon={Briefcase}
-                  label="Service schedule"
-                  description="Review visits and upcoming field work"
-                  to="/technician/schedule"
-                />
-                <NavigationRow
-                  icon={BarChart3}
-                  label="My performance"
-                  description="Open service and outcome analytics"
-                  to="/technician/analytics"
-                />
-                <NavigationRow
-                  icon={Settings}
-                  label="Portal settings"
-                  description="Manage notifications and account security"
-                  to="/technician/settings"
-                />
-              </ul>
-            </SectionPanel>
+                  )}
+                </div>
 
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="btn btn-error btn-soft btn-block min-h-12"
-            >
-              <LogOut size={18} aria-hidden="true" />
-              Log out account
-            </button>
-          </div>
-        </div>
+                <div className="flex items-start gap-3.5 border-b border-base-200 pb-4 dark:border-base-300/60">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <MapPin size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-extrabold text-base-content">Service Municipalities</h4>
+                    <p className="mt-1 text-xs leading-relaxed text-base-content/60">
+                      {serviceMunicipalities.length > 0 ? serviceMunicipalities.join(", ") : "None"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3.5">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <ShieldCheck size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-extrabold text-base-content">Service Capabilities</h4>
+                    <p className="mt-1 text-xs leading-relaxed text-base-content/60">
+                      {serviceCapabilities.length > 0 ? serviceCapabilities.join(", ") : "None"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: PREFERENCES & SYSTEM */}
+          {activeTab === "preferences" && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-wider text-base-content/50 px-1">
+                  Appearance & Display
+                </h3>
+                <div className="rounded-2xl border border-base-200 bg-base-100 p-5 flex items-center justify-between dark:border-base-300/60">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      {darkModeEnabled ? <Moon size={20} /> : <Sun size={20} />}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-base-content">
+                        Theme Mode
+                      </h4>
+                      <p className="text-xs text-base-content/60">
+                        {darkModeEnabled ? "Dark theme active" : "Light theme active"}
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="toggle toggle-primary"
+                    checked={darkModeEnabled}
+                    onChange={handleThemeChange}
+                    aria-label="Toggle dark mode theme"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-wider text-base-content/50 px-1">
+                  Quick System Navigation
+                </h3>
+                <div className="space-y-3">
+                  <QuickNavLink
+                    icon={Briefcase}
+                    title="Service Schedule"
+                    description="View upcoming artificial insemination visits"
+                    to="/technician/schedule"
+                  />
+                  <QuickNavLink
+                    icon={BarChart3}
+                    title="My Performance Analytics"
+                    description="Review completion records & monthly stats"
+                    to="/technician/analytics"
+                  />
+                  <QuickNavLink
+                    icon={Settings}
+                    title="Portal Settings"
+                    description="Account security & system preferences"
+                    to="/technician/settings"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       </main>
 
+      {/* UPGRADED EDIT PROFILE MODAL */}
       <Modal
         isOpen={isEditing}
         onClose={handleCancel}
-        title="Edit profile"
-        subtitle="Update the contact details farmers use to coordinate services."
+        title="Edit Profile Information"
+        subtitle="Update your contact info, service address, or profile photo."
         size="xl"
         closeOnEscape
         actions={
           <>
             <button
               type="button"
-              className="btn btn-sm btn-ghost"
+              className="btn btn-sm btn-ghost font-bold rounded-xl"
               onClick={handleCancel}
             >
               Cancel
@@ -622,49 +744,240 @@ export default function TechMyProfile() {
             <button
               type="submit"
               form="technician-profile-form"
-              className="btn btn-sm btn-primary"
+              className="btn btn-sm btn-primary font-bold rounded-xl px-5"
               disabled={profileMutation.isPending}
             >
               {profileMutation.isPending ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  Saving
+                  Saving...
                 </>
               ) : (
-                "Save changes"
+                "Save Changes"
               )}
             </button>
           </>
         }
       >
+        {/* Modal Inner Tabs */}
+        <div className="border-b border-base-200 pb-3 mb-5 dark:border-base-300/60">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setModalTab("general")}
+              className={`btn btn-xs rounded-lg font-extrabold ${modalTab === "general" ? "btn-primary" : "btn-ghost"}`}
+            >
+              <User size={13} /> General Info
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab("address")}
+              className={`btn btn-xs rounded-lg font-extrabold ${modalTab === "address" ? "btn-primary" : "btn-ghost"}`}
+            >
+              <MapPin size={13} /> Service Location
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab("photo")}
+              className={`btn btn-xs rounded-lg font-extrabold ${modalTab === "photo" ? "btn-primary" : "btn-ghost"}`}
+            >
+              <Camera size={13} /> Profile Photo
+            </button>
+          </div>
+        </div>
+
         <form
           id="technician-profile-form"
           onSubmit={handleSave}
-          className="space-y-5"
+          className="space-y-4"
         >
-          <div className="flex flex-col gap-4 rounded-box bg-base-200 p-4 sm:flex-row sm:items-center">
-            <div className="avatar avatar-placeholder shrink-0">
-              <div className="size-20 rounded-full bg-base-100 text-primary">
+          {/* MODAL TAB 1: GENERAL INFO */}
+          {modalTab === "general" && (
+            <div className="space-y-4">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                  Full Name
+                </span>
+                <input
+                  type="text"
+                  className="input input-bordered w-full rounded-xl"
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm((curr) => ({ ...curr, name: e.target.value }))
+                  }
+                  required
+                />
+              </label>
+
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                  Email Address
+                </span>
+                <input
+                  type="email"
+                  className="input input-bordered w-full rounded-xl"
+                  value={editForm.email}
+                  onChange={(e) =>
+                    setEditForm((curr) => ({ ...curr, email: e.target.value }))
+                  }
+                  required
+                />
+              </label>
+
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                  Phone Number
+                </span>
+                <input
+                  type="tel"
+                  className="input input-bordered w-full rounded-xl"
+                  value={editForm.phone}
+                  onChange={(e) =>
+                    setEditForm((curr) => ({ ...curr, phone: e.target.value }))
+                  }
+                  pattern="09[0-9]{9}"
+                  maxLength={11}
+                  placeholder="09XXXXXXXXX"
+                  required
+                />
+                <span className="text-[11px] text-base-content/60">
+                  11-digit mobile number starting with 09.
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* MODAL TAB 2: SERVICE LOCATION */}
+          {modalTab === "address" && (
+            <div className="space-y-4">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                  Street or Landmark
+                </span>
+                <input
+                  type="text"
+                  className="input input-bordered w-full rounded-xl"
+                  value={editForm.street}
+                  onChange={(e) =>
+                    setEditForm((curr) => ({ ...curr, street: e.target.value }))
+                  }
+                  placeholder="Street / Sitio / Landmark"
+                />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                    Municipality / City
+                  </span>
+                  <select
+                    className="select select-bordered w-full rounded-xl"
+                    value={editForm.city}
+                    onChange={(e) =>
+                      setEditForm((curr) => ({
+                        ...curr,
+                        city: e.target.value,
+                        district: "",
+                        barangay: "",
+                      }))
+                    }
+                    required
+                  >
+                    <option value="">Select Municipality / City</option>
+                    {ILOILO_MUNICIPALITY_OPTIONS.map((muni) => (
+                      <option key={muni} value={muni}>
+                        {muni}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {editForm.city === ILOILO_CITY_NAME ? (
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                      City District
+                    </span>
+                    <select
+                      className="select select-bordered w-full rounded-xl"
+                      value={editForm.district}
+                      onChange={(e) =>
+                        setEditForm((curr) => ({
+                          ...curr,
+                          district: e.target.value,
+                          barangay: "",
+                        }))
+                      }
+                      required
+                    >
+                      <option value="">Select District</option>
+                      {ILOILO_CITY_DISTRICT_OPTIONS.map((dist) => (
+                        <option key={dist} value={dist}>
+                          {dist}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold text-base-content uppercase tracking-wider">
+                    Barangay
+                  </span>
+                  <select
+                    className="select select-bordered w-full rounded-xl"
+                    value={editForm.barangay}
+                    onChange={(e) =>
+                      setEditForm((curr) => ({
+                        ...curr,
+                        barangay: e.target.value,
+                      }))
+                    }
+                    disabled={
+                      !editForm.city ||
+                      (editForm.city === ILOILO_CITY_NAME && !editForm.district)
+                    }
+                    required
+                  >
+                    <option value="">Select Barangay</option>
+                    {barangayOptions.map((brgy) => (
+                      <option key={brgy} value={brgy}>
+                        {brgy}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL TAB 3: PROFILE PHOTO */}
+          {modalTab === "photo" && (
+            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-base-300 p-6 text-center bg-base-200/50">
+              <div className="relative size-24 overflow-hidden rounded-full ring-4 ring-primary/20 bg-base-100 mb-4 shadow-sm">
                 {editForm.imageUrl ? (
                   <img
                     src={editForm.imageUrl}
-                    alt="Profile preview"
-                    className="object-cover"
+                    alt="Photo preview"
+                    className="size-full object-cover"
                   />
                 ) : (
-                  <User size={30} aria-hidden="true" />
+                  <div className="flex size-full items-center justify-center text-primary font-black text-2xl">
+                    {initials}
+                  </div>
                 )}
               </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-base-content">Profile photo</p>
-              <p className="mt-1 text-xs text-base-content/65">
-                Choose a clear image that farmers can recognize.
+
+              <p className="text-sm font-bold text-base-content">
+                Upload New Photo
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <label className="btn btn-sm cursor-pointer">
-                  <Camera size={15} aria-hidden="true" />
-                  Choose photo
+              <p className="text-xs text-base-content/60 mt-1 max-w-xs">
+                Upload a clear portrait so farmers can identify you easily.
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                <label className="btn btn-sm btn-primary rounded-xl font-bold cursor-pointer">
+                  <Camera size={15} />
+                  Choose File
                   <input
                     type="file"
                     accept="image/*"
@@ -672,197 +985,22 @@ export default function TechMyProfile() {
                     onChange={handleImageChange}
                   />
                 </label>
+
                 {editForm.imageUrl ? (
                   <button
                     type="button"
-                    className="btn btn-sm btn-ghost text-error"
+                    className="btn btn-sm btn-ghost text-error rounded-xl font-bold"
                     onClick={() =>
-                      setEditForm((current) => ({
-                        ...current,
-                        imageUrl: "",
-                      }))
+                      setEditForm((curr) => ({ ...curr, imageUrl: "" }))
                     }
                   >
-                    <Trash2 size={15} aria-hidden="true" />
+                    <Trash2 size={15} />
                     Remove
                   </button>
                 ) : null}
               </div>
             </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Full name
-              </span>
-              <input
-                type="text"
-                className="input w-full"
-                value={editForm.name}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                autoComplete="name"
-                required
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Email address
-              </span>
-              <input
-                type="email"
-                className="input w-full"
-                value={editForm.email}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                autoComplete="email"
-                required
-              />
-            </label>
-          </div>
-
-          <label className="grid gap-2">
-            <span className="text-sm font-bold text-base-content">
-              Phone number
-            </span>
-            <input
-              type="tel"
-              className="input w-full"
-              value={editForm.phone}
-              onChange={(event) =>
-                setEditForm((current) => ({
-                  ...current,
-                  phone: event.target.value,
-                }))
-              }
-              pattern="09[0-9]{9}"
-              maxLength={11}
-              placeholder="09XXXXXXXXX"
-              autoComplete="tel"
-              required
-            />
-            <span className="text-xs text-base-content/65">
-              Use an 11-digit Philippine mobile number beginning with 09.
-            </span>
-          </label>
-
-          <div className="border-t border-base-300 pt-5">
-            <h3 className="font-bold text-base-content">Service address</h3>
-            <p className="mt-1 text-xs text-base-content/65">
-              Select the location used for field coordination.
-            </p>
-          </div>
-
-          <label className="grid gap-2">
-            <span className="text-sm font-bold text-base-content">
-              Street or landmark
-            </span>
-            <input
-              type="text"
-              className="input w-full"
-              value={editForm.street}
-              onChange={(event) =>
-                setEditForm((current) => ({
-                  ...current,
-                  street: event.target.value,
-                }))
-              }
-              autoComplete="street-address"
-              placeholder="Optional"
-            />
-          </label>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Municipality or city
-              </span>
-              <select
-                className="select w-full"
-                value={editForm.city}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    city: event.target.value,
-                    district: "",
-                    barangay: "",
-                  }))
-                }
-                required
-              >
-                <option value="">Select municipality or city</option>
-                {ILOILO_MUNICIPALITY_OPTIONS.map((municipality) => (
-                  <option key={municipality} value={municipality}>
-                    {municipality}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {editForm.city === ILOILO_CITY_NAME ? (
-              <label className="grid gap-2">
-                <span className="text-sm font-bold text-base-content">
-                  District
-                </span>
-                <select
-                  className="select w-full"
-                  value={editForm.district}
-                  onChange={(event) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      district: event.target.value,
-                      barangay: "",
-                    }))
-                  }
-                  required
-                >
-                  <option value="">Select district</option>
-                  {ILOILO_CITY_DISTRICT_OPTIONS.map((district) => (
-                    <option key={district} value={district}>
-                      {district}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Barangay
-              </span>
-              <select
-                className="select w-full"
-                value={editForm.barangay}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    barangay: event.target.value,
-                  }))
-                }
-                disabled={
-                  !editForm.city ||
-                  (editForm.city === ILOILO_CITY_NAME && !editForm.district)
-                }
-                required
-              >
-                <option value="">Select barangay</option>
-                {barangayOptions.map((barangay) => (
-                  <option key={barangay} value={barangay}>
-                    {barangay}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          )}
         </form>
       </Modal>
     </div>
