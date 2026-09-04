@@ -35,16 +35,42 @@ const labelClass = `text-xs font-semibold text-base-content/70`;
 const sectionHeadingClass = `text-xs font-bold text-base-content/75`;
 const sectionClass = `min-w-0 space-y-3 rounded-xl border border-base-300 bg-base-200/20 p-4 sm:p-5`;
 
-const getAdditionalNotesOnly = (fullComment) => {
-  if (!fullComment) return "";
-  const parts = fullComment.split("Additional Notes:\n");
-  if (parts.length > 1) {
-    return parts[1].trim();
-  }
-  if (fullComment.includes("Observed Heat Signs:\n")) {
+const getAdditionalNotesOnly = (fullComment, heatSigns = []) => {
+  if (!fullComment || typeof fullComment !== "string") return "";
+  let text = fullComment.trim();
+  if (text.includes("Additional Notes:\n")) {
+    text = text.split("Additional Notes:\n").slice(1).join("Additional Notes:\n").trim();
+  } else if (text.includes("Additional Notes:")) {
+    text = text.split("Additional Notes:").slice(1).join("Additional Notes:").trim();
+  } else if (
+    text.startsWith("Observed Heat Signs:") ||
+    text.startsWith("Observed Heat Signs\n") ||
+    text.startsWith("Observed Heat Signs")
+  ) {
     return "";
   }
-  return fullComment;
+  const normalizedText = text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizedSigns = (heatSigns || [])
+    .map((s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, ""))
+    .join("");
+  if (normalizedText && normalizedSigns && normalizedText === normalizedSigns) {
+    return "";
+  }
+  if (
+    !text ||
+    [
+      "none",
+      "n/a",
+      "na",
+      "null",
+      "undefined",
+      "no additional notes",
+      "no additional comments",
+    ].includes(text.toLowerCase())
+  ) {
+    return "";
+  }
+  return text;
 };
 
 const humanizeValue = (value, fallback = "Not recorded") => {
@@ -839,49 +865,81 @@ const RequestActionModal = ({
                   </div>
 
                   {isHealth ? (
-                    <div className="grid grid-cols-1 divide-y divide-base-300 rounded-xl bg-base-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-                      <div className="p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
-                          Symptoms reported
-                        </p>
-                        <p className="mt-2 text-sm font-semibold leading-relaxed text-base-content">
-                          {taskData.raw?.symptoms ||
-                            "No specific symptoms described"}
-                        </p>
-                      </div>
-                      <div className="p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
-                          Farmer notes
-                        </p>
-                        <p className="mt-2 text-sm leading-relaxed text-base-content/70">
-                          {taskData.raw?.farmerNotes || "No additional notes"}
-                        </p>
-                      </div>
-                    </div>
+                    (() => {
+                      const symptoms = taskData.raw?.symptoms || taskData.symptoms || "";
+                      const farmerNotes = (taskData.raw?.farmerNotes || taskData.farmerNotes || "").trim();
+                      const hasUniqueNotes =
+                        farmerNotes &&
+                        farmerNotes.toLowerCase() !== symptoms.toLowerCase() &&
+                        ![
+                          "none",
+                          "n/a",
+                          "na",
+                          "no additional notes",
+                          "no additional comments",
+                        ].includes(farmerNotes.toLowerCase());
+
+                      return (
+                        <div
+                          className={`grid grid-cols-1 rounded-xl bg-base-100 ${hasUniqueNotes ? "divide-y divide-base-300 sm:grid-cols-2 sm:divide-x sm:divide-y-0" : ""}`}
+                        >
+                          <div className="p-4">
+                            <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
+                              Symptoms reported
+                            </p>
+                            <p className="mt-2 text-sm font-semibold leading-relaxed text-base-content">
+                              {symptoms || "No specific symptoms described"}
+                            </p>
+                          </div>
+                          {hasUniqueNotes && (
+                            <div className="p-4">
+                              <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
+                                Farmer notes
+                              </p>
+                              <p className="mt-2 text-sm leading-relaxed text-base-content/70">
+                                {farmerNotes}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
                   ) : (
-                    <div className="grid grid-cols-1 divide-y divide-base-300 rounded-xl bg-base-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-                      <div className="p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
-                          Observed heat signs
-                        </p>
-                        <p className="mt-2 text-sm font-semibold leading-relaxed text-base-content">
-                          {taskData.raw?.heatSigns?.length
-                            ? taskData.raw.heatSigns
-                                .map((sign) => humanizeValue(sign))
-                                .join(", ")
-                            : "No specific heat signs listed"}
-                        </p>
-                      </div>
-                      <div className="p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
-                          Farmer comments
-                        </p>
-                        <p className="mt-2 text-sm leading-relaxed text-base-content/70">
-                          {getAdditionalNotesOnly(taskData.raw?.comment) ||
-                            "No additional comments"}
-                        </p>
-                      </div>
-                    </div>
+                    (() => {
+                      const uniqueNotes = getAdditionalNotesOnly(
+                        taskData.raw?.comment || taskData.comment,
+                        taskData.raw?.heatSigns || taskData.heatSigns,
+                      );
+
+                      return (
+                        <div
+                          className={`grid grid-cols-1 rounded-xl bg-base-100 ${uniqueNotes ? "divide-y divide-base-300 sm:grid-cols-2 sm:divide-x sm:divide-y-0" : ""}`}
+                        >
+                          <div className="p-4">
+                            <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
+                              Observed heat signs
+                            </p>
+                            <p className="mt-2 text-sm font-semibold leading-relaxed text-base-content">
+                              {taskData.raw?.heatSigns?.length
+                                ? taskData.raw.heatSigns
+                                    .map((sign) => humanizeValue(sign))
+                                    .join(", ")
+                                : "No specific heat signs listed"}
+                            </p>
+                          </div>
+                          {uniqueNotes && (
+                            <div className="p-4">
+                              <p className="text-xs font-bold uppercase tracking-wide text-base-content/60">
+                                Farmer remarks
+                              </p>
+                              <p className="mt-2 text-sm leading-relaxed text-base-content/70 whitespace-pre-wrap">
+                                {uniqueNotes}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
                   )}
 
                   {requestPhotos.length > 0 && (

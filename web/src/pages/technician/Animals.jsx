@@ -82,7 +82,7 @@ function MetricCard({ icon, value, label, note }) {
   );
 }
 
-function GridAnimalCard({ animal, onOpen, onEdit }) {
+function GridAnimalCard({ animal, onOpen, onEdit, onFilterFarmer }) {
   return (
     <div className="group relative flex flex-col sm:flex-row overflow-hidden rounded-2xl border border-base-200 bg-base-100 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-md dark:border-base-300/60">
       {/* LEFT SIDE: Picture / Icon Container with Animal ID Badge */}
@@ -129,10 +129,23 @@ function GridAnimalCard({ animal, onOpen, onEdit }) {
           {/* Details Box */}
           <div className="space-y-1 rounded-xl bg-base-200/50 p-2.5 text-xs font-semibold text-base-content/75">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-base-content/70 truncate">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (animal.farmer && animal.farmer !== "Farmer not available") {
+                    onFilterFarmer?.(animal.farmer);
+                  }
+                }}
+                className="flex items-center gap-1.5 text-base-content/70 truncate hover:text-primary transition-colors cursor-pointer text-left py-0.5"
+                title={`Filter animals by farmer: ${animal.farmer}`}
+                aria-label={`Filter animals by farmer ${animal.farmer}`}
+              >
                 <UserRound size={13} className="text-primary shrink-0" />
-                {animal.farmer}
-              </span>
+                <span className="underline decoration-dotted decoration-base-content/30 hover:decoration-primary">
+                  {animal.farmer}
+                </span>
+              </button>
               <span className="badge badge-ghost badge-xs font-bold shrink-0">{animal.gender}</span>
             </div>
 
@@ -547,6 +560,7 @@ export default function AnimalRegistry() {
                       <thead>
                         <tr>
                           <th>Animal ID</th>
+                          <th>Farmer</th>
                           <th>Breed / Species</th>
                           <th>Location</th>
                           <th>Status</th>
@@ -557,8 +571,9 @@ export default function AnimalRegistry() {
                       <tbody>
                         {[0, 1, 2, 3, 4].map((row) => (
                           <tr key={row}>
-                            <td colSpan={6}>
-                              <div className="grid grid-cols-6 gap-4 py-2">
+                            <td colSpan={7}>
+                              <div className="grid grid-cols-7 gap-4 py-2">
+                                <span className="skeleton h-4" />
                                 <span className="skeleton h-4" />
                                 <span className="skeleton h-4" />
                                 <span className="skeleton h-4" />
@@ -604,6 +619,7 @@ export default function AnimalRegistry() {
                         animal={animal}
                         onOpen={openAnimal}
                         onEdit={editAnimal}
+                        onFilterFarmer={(farmerName) => updateParams({ search: farmerName })}
                       />
                     ))}
                   </div>
@@ -614,6 +630,7 @@ export default function AnimalRegistry() {
                       <thead>
                         <tr className="bg-base-200/80 border-b border-base-200 text-base-content/60 text-[11px] font-extrabold uppercase tracking-wider dark:border-base-300/60">
                           <th className="p-3.5 pl-6">Animal ID</th>
+                          <th className="p-3.5">Farmer</th>
                           <th className="p-3.5">Breed / Species</th>
                           <th className="p-3.5">Location</th>
                           <th className="p-3.5">Status</th>
@@ -641,14 +658,35 @@ export default function AnimalRegistry() {
                                   >
                                     {animal.tag}
                                   </TableNameLink>
-                                  <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
-                                    {animal.farmer}
-                                  </span>
                                 </div>
                               </div>
                             </td>
 
-                            {/* 2. BREED / SPECIES */}
+                            {/* 2. FARMER */}
+                            <td className="p-3.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (animal.farmer && animal.farmer !== "Farmer not available") {
+                                    updateParams({ search: animal.farmer });
+                                  }
+                                }}
+                                className="group/farmer inline-flex items-center gap-1.5 text-left text-xs font-bold text-base-content/85 hover:text-primary transition-colors cursor-pointer py-1 px-1.5 -ml-1.5 rounded-lg hover:bg-primary/10"
+                                title={`Filter animals by farmer: ${animal.farmer}`}
+                                aria-label={`Filter animals by farmer ${animal.farmer}`}
+                              >
+                                <UserRound
+                                  size={13}
+                                  className="text-primary/70 group-hover/farmer:text-primary shrink-0 transition-colors"
+                                />
+                                <span className="underline decoration-dotted decoration-base-content/30 group-hover/farmer:decoration-primary">
+                                  {animal.farmer}
+                                </span>
+                              </button>
+                            </td>
+
+                            {/* 3. BREED / SPECIES */}
                             <td className="p-3.5">
                               <span className="font-extrabold text-xs text-base-content block leading-tight">
                                 {animal.breed}

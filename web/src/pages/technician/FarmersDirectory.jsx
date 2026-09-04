@@ -321,7 +321,7 @@ export default function ClientRegistry() {
             ) : (
               <>
                 <div className="grid gap-3 lg:hidden">{farmers.map((farmer) => <FarmerCard key={farmer.id} farmer={farmer} onOpen={openFarmer} onEdit={editFarmer} />)}</div>
-                <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
+                <div className="hidden overflow-visible rounded-box border border-base-300 lg:block">
                   <table className="table table-pin-rows w-full text-left min-w-250">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">

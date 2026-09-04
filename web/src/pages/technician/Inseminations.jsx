@@ -206,7 +206,7 @@ function RecordCard({ record, onOpen, onOpenObservationInfo, onNavigateWorkQueue
             <button
               type="button"
               data-testid="confirm-outcome-btn"
-              className="btn btn-xs btn-info text-white font-bold rounded-lg"
+              className="btn btn-xs btn-primary text-white font-bold rounded-lg"
               onClick={() => onConfirmOutcome?.(record)}
               title="Determine/confirm pregnancy outcome"
             >
@@ -323,7 +323,17 @@ export default function InseminationLog() {
 
   const handleConfirmOutcomeFormChange = (field, value) => {
     setConfirmOutcomeError("");
-    setConfirmOutcomeForm((prev) => ({ ...prev, [field]: value }));
+    setConfirmOutcomeForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === "result") {
+        if (value === "pregnant" && ["visual_observation", "farmer_interview"].includes(prev.checkMethod)) {
+          next.checkMethod = "rectal_palpation";
+        } else if (value === "return_to_heat" && ["ultrasound"].includes(prev.checkMethod)) {
+          next.checkMethod = "visual_observation";
+        }
+      }
+      return next;
+    });
   };
 
   const handleSubmitConfirmOutcome = () => {
@@ -443,6 +453,7 @@ export default function InseminationLog() {
           tag: item.animalId?.earTag || item.animalId?.animalId || "Unassigned tag",
           animal: item.animalId,
           animalId: item.animalId?._id || item.animalId?.id || null,
+          animalImageUrl: item.animalId?.imageUrl || item.animalId?.photo || null,
           farmerId: item.farmerId?._id || item.farmerId?.id || null,
           farmer: item.farmerId?.name || "Farmer not available",
           farmerImageUrl: item.farmerId?.imageUrl || null,
@@ -675,8 +686,8 @@ export default function InseminationLog() {
                             <td className="p-3.5 pl-6">
                               <div className="flex items-center gap-3">
                                 <UserAvatar
-                                  name={record.farmer}
-                                  imageUrl={record.farmerImageUrl}
+                                  name={record.tag}
+                                  imageUrl={record.animalImageUrl}
                                   size={36}
                                   sizeClass="h-9 w-9"
                                 />
@@ -757,7 +768,7 @@ export default function InseminationLog() {
                                   <button
                                     type="button"
                                     data-testid="confirm-outcome-table-btn"
-                                    className="btn btn-xs btn-info text-white font-bold rounded-lg shrink-0 whitespace-nowrap"
+                                    className="btn btn-xs btn-primary text-white font-bold rounded-lg shrink-0 whitespace-nowrap"
                                     onClick={() => handleOpenConfirmOutcomeModal(record)}
                                     title="Determine/confirm pregnancy outcome"
                                   >
@@ -824,7 +835,7 @@ export default function InseminationLog() {
                                           try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                           handleOpenConfirmOutcomeModal(record);
                                         }}
-                                        className="text-xs font-extrabold text-info"
+                                        className="text-xs font-extrabold text-primary"
                                       >
                                         <ClipboardCheck size={13} className="mr-1" /> Confirm Outcome
                                       </button>
@@ -1288,7 +1299,7 @@ export default function InseminationLog() {
             <div className="flex w-full items-center justify-end gap-2">
               <button
                 type="button"
-                className="btn btn-sm btn-ghost font-bold"
+                className="btn btn-sm btn-ghost font-bold rounded-xl"
                 onClick={() => setConfirmOutcomeRecord(null)}
                 disabled={confirmOutcomeMutation.isPending}
               >
@@ -1296,7 +1307,7 @@ export default function InseminationLog() {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-info text-white font-bold rounded-xl px-5"
+                className="btn btn-sm btn-primary text-white font-bold rounded-xl px-5 shadow-sm"
                 onClick={handleSubmitConfirmOutcome}
                 disabled={confirmOutcomeMutation.isPending}
               >
@@ -1315,7 +1326,7 @@ export default function InseminationLog() {
           <div className="space-y-4 p-1">
             {confirmOutcomeSuccess ? (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <div className="p-3 rounded-full bg-success/15 text-success">
+                <div className="p-3 rounded-full bg-primary/15 text-primary">
                   <CheckCircle2 size={32} />
                 </div>
                 <div>
@@ -1324,8 +1335,8 @@ export default function InseminationLog() {
                     Outcome for <strong>{confirmOutcomeRecord.tag}</strong> has been updated to{" "}
                     <strong>
                       {confirmOutcomeForm.result === "pregnant"
-                        ? "Pregnant"
-                        : "Return to Heat / Failed"}
+                        ? "Confirmed Pregnant"
+                        : "Failed / Return to Heat"}
                     </strong>.
                   </p>
                 </div>
@@ -1355,12 +1366,12 @@ export default function InseminationLog() {
                         type="button"
                         className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-left transition-all ${
                           confirmOutcomeForm.result === "pregnant"
-                            ? "border-success bg-success/10 text-success font-extrabold"
+                            ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/30 font-extrabold shadow-sm"
                             : "border-base-300 hover:border-base-400 text-base-content/75"
                         }`}
                         onClick={() => handleConfirmOutcomeFormChange("result", "pregnant")}
                       >
-                        <Sparkles size={20} className={confirmOutcomeForm.result === "pregnant" ? "text-success" : "text-base-content/50"} />
+                        <Sparkles size={20} className={confirmOutcomeForm.result === "pregnant" ? "text-primary" : "text-base-content/50"} />
                         <span className="text-xs">Confirmed Pregnant</span>
                         <span className="text-[10px] opacity-75 font-normal text-center">Registers pregnancy & transfers to Pregnancy tab</span>
                       </button>
@@ -1369,12 +1380,12 @@ export default function InseminationLog() {
                         type="button"
                         className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-left transition-all ${
                           confirmOutcomeForm.result === "return_to_heat"
-                            ? "border-warning bg-warning/10 text-warning font-extrabold"
+                            ? "border-amber-600 bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-2 ring-amber-500/30 font-extrabold shadow-sm"
                             : "border-base-300 hover:border-base-400 text-base-content/75"
                         }`}
                         onClick={() => handleConfirmOutcomeFormChange("result", "return_to_heat")}
                       >
-                        <RotateCcw size={20} className={confirmOutcomeForm.result === "return_to_heat" ? "text-warning" : "text-base-content/50"} />
+                        <RotateCcw size={20} className={confirmOutcomeForm.result === "return_to_heat" ? "text-amber-600" : "text-base-content/50"} />
                         <span className="text-xs">Failed / Return to Heat</span>
                         <span className="text-[10px] opacity-75 font-normal text-center">Enables Re-Insemination for attempt #{confirmOutcomeRecord.attempt + 1}</span>
                       </button>
@@ -1383,7 +1394,9 @@ export default function InseminationLog() {
 
                   <div className="space-y-1">
                     <label className="text-xs font-extrabold uppercase tracking-wider text-base-content/55">
-                      Diagnosis Method
+                      {confirmOutcomeForm.result === "pregnant"
+                        ? "Diagnosis Method"
+                        : "Verification / Determination Method"}
                     </label>
                     <select
                       className="select select-sm w-full rounded-xl border-base-300"
@@ -1391,10 +1404,22 @@ export default function InseminationLog() {
                       onChange={(e) => handleConfirmOutcomeFormChange("checkMethod", e.target.value)}
                       disabled={confirmOutcomeMutation.isPending}
                     >
-                      <option value="rectal_palpation">Rectal Palpation</option>
-                      <option value="ultrasound">Ultrasound Examination</option>
-                      <option value="clinical_examination">Clinical Examination / Visual</option>
-                      <option value="other_approved">Other Approved Method</option>
+                      {confirmOutcomeForm.result === "pregnant" ? (
+                        <>
+                          <option value="rectal_palpation">Rectal Palpation (Uterine & Fetal Assessment)</option>
+                          <option value="ultrasound">Ultrasound Examination</option>
+                          <option value="clinical_examination">Clinical Examination / Visual Assessment</option>
+                          <option value="other_approved">Other Approved Diagnostic Method</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="visual_observation">Visual Observation (Standing Heat, Mucus, Mounting)</option>
+                          <option value="farmer_interview">Farmer Report & Heat Observation Verification</option>
+                          <option value="rectal_palpation">Rectal Palpation (Open / Non-Pregnant Assessment)</option>
+                          <option value="clinical_examination">Clinical Examination / Return to Estrus</option>
+                          <option value="other_approved">Other Clinical Assessment Method</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -1405,7 +1430,11 @@ export default function InseminationLog() {
                     <textarea
                       className="textarea textarea-sm w-full rounded-xl border-base-300 resize-none"
                       rows={2}
-                      placeholder="Examination notes, fetus size, uterine condition..."
+                      placeholder={
+                        confirmOutcomeForm.result === "pregnant"
+                          ? "Examination notes, fetus size, uterine condition..."
+                          : "Observed heat signs, farmer interview notes, non-pregnant uterine condition..."
+                      }
                       value={confirmOutcomeForm.technicianNotes}
                       onChange={(e) => handleConfirmOutcomeFormChange("technicianNotes", e.target.value)}
                       disabled={confirmOutcomeMutation.isPending}

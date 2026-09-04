@@ -9,9 +9,11 @@ import {
   Heart,
   ChevronRight,
   X,
+  AlertCircle,
 } from "lucide-react";
 import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
-
+import { useQuery } from "@tanstack/react-query";
+import axiosInstance from "../../lib/axios";
 export default function PregnancyTracker() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -23,59 +25,72 @@ export default function PregnancyTracker() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // Mock Animal Pregnancy Data
+  const { data: realAnimal } = useQuery({
+    queryKey: ["animal-profile", id],
+    queryFn: async () => {
+      const endpoint = window.location.pathname.startsWith("/admin") 
+        ? `/admin/animals/${id}` 
+        : `/technician/animals/${id}`;
+      const res = await axiosInstance.get(endpoint);
+      return res.data;
+    },
+  });
+
+  const isConfirmedPregnant = realAnimal?.reproductiveStatus === "Pregnant";
+
+  // Mock Animal Pregnancy Data (augmented with real data if available)
   const animal = {
     id: id || "BS-2456",
-    name: "Bella",
-    earTag: "78459",
-    animalId: "BS-2456",
-    species: "Holstein Friesian",
-    gender: "Female",
-    age: "4 Years",
-    status: "In Calf",
-    sire: "Maximus (HF-1023)",
-    dam: "Daisy (HF-5567)",
-    breedingDate: "Apr 18, 2024",
-    dueDate: "Jan 25, 2025",
-    currentWeek: 31,
+    name: realAnimal?.name || "Bella",
+    earTag: realAnimal?.earTag || "78459",
+    animalId: realAnimal?.animalId || "BS-2456",
+    species: realAnimal?.species || "Holstein Friesian",
+    gender: realAnimal?.gender || "Female",
+    age: realAnimal?.age || "4 Years",
+    status: realAnimal?.reproductiveStatus || "In Calf",
+    sire: "Maximus (HF-1023)", // Mock
+    dam: "Daisy (HF-5567)", // Mock
+    breedingDate: "Apr 18, 2024", // Mock
+    dueDate: "Jan 25, 2025", // Mock
+    currentWeek: isConfirmedPregnant ? 31 : 0,
     totalWeeks: 40,
-    progressPercent: 77,
-    weeksRemaining: 8,
+    progressPercent: isConfirmedPregnant ? 77 : 0,
+    weeksRemaining: isConfirmedPregnant ? 8 : 40,
   };
 
   const timelineSteps = [
     {
       id: 1,
       title: "Breeding Confirmed",
-      date: "Apr 18, 2024",
-      subtext: "AI Breeding • Sire: Maximus (HF-1023)",
-      completed: true,
+      date: isConfirmedPregnant ? "Apr 18, 2024" : "Pending",
+      subtext: isConfirmedPregnant ? "AI Breeding • Sire: Maximus (HF-1023)" : "Awaiting pregnancy confirmation.",
+      completed: isConfirmedPregnant,
     },
     {
       id: 2,
       title: "Pregnancy Confirmed",
-      date: "May 18, 2024 (Week 4)",
-      subtext: "Confirmed by vet (Ultrasound diagnosis)",
-      completed: true,
+      date: isConfirmedPregnant ? "May 18, 2024 (Week 4)" : "Pending",
+      subtext: isConfirmedPregnant ? "Confirmed by vet (Ultrasound diagnosis)" : "Requires field diagnosis.",
+      completed: isConfirmedPregnant,
     },
     {
       id: 3,
       title: "Mid Pregnancy Check",
-      date: "Jul 18, 2024 (Week 14)",
-      subtext: "Completed (Fetal heartbeat & growth normal)",
-      completed: true,
+      date: isConfirmedPregnant ? "Jul 18, 2024 (Week 14)" : "Pending",
+      subtext: isConfirmedPregnant ? "Completed (Fetal heartbeat & growth normal)" : "Scheduled after confirmation.",
+      completed: isConfirmedPregnant,
     },
     {
       id: 4,
       title: "Pre-Calving Check",
-      date: "Dec 28, 2024 (Week 36)",
+      date: isConfirmedPregnant ? "Dec 28, 2024 (Week 36)" : "Pending",
       subtext: "Upcoming (Scheduled physical evaluation)",
       completed: false,
     },
     {
       id: 5,
       title: "Expected Calving",
-      date: "Jan 25, 2025 (Week 40)",
+      date: isConfirmedPregnant ? "Jan 25, 2025 (Week 40)" : "Pending",
       subtext: "Upcoming (Estimated due date)",
       completed: false,
     },
@@ -106,12 +121,12 @@ export default function PregnancyTracker() {
           </button>
           <div className="min-w-0">
             <h1 className="text-lg font-black text-base-content tracking-tight">
-              Pregnancy Tracker
+              Animal Reproductive Status
             </h1>
             <p className="text-xs text-base-content/60 font-medium truncate flex items-center gap-1.5">
               <span>Home</span>
               <span>&rsaquo;</span>
-              <span>Pregnancy Tracker</span>
+              <span>Animal Reproductive Status</span>
               <span>&rsaquo;</span>
               <span className="font-bold text-primary">{animal.name}</span>
             </p>
@@ -204,11 +219,11 @@ export default function PregnancyTracker() {
           </div>
         </div>
 
-        {/* ── CARD 2: Compact Pregnancy Progress ── */}
+        {/* ── CARD 2: Compact Breeding Cycle Progress ── */}
         <div className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-extrabold text-base-content tracking-tight">
-              Pregnancy Progress
+              Breeding Cycle Progress
             </h3>
             <span className="text-sm font-black text-primary">
               {animal.progressPercent}%
@@ -229,19 +244,22 @@ export default function PregnancyTracker() {
           </div>
 
           {/* Advice Alert Banner */}
-          <div className="alert alert-success rounded-2xl text-xs font-medium flex items-center gap-2.5 py-2.5">
-            <CheckCircle2 size={16} className="shrink-0" />
+          <div className={`alert ${isConfirmedPregnant ? 'alert-success' : 'alert-warning'} rounded-2xl text-xs font-medium flex items-center gap-2.5 py-2.5`}>
+            {isConfirmedPregnant ? <CheckCircle2 size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
             <div>
-              <span className="font-bold">{animal.name} is progressing well.</span> Monitor her nutrition and ensure regular exercise for a healthy pregnancy.
+              {isConfirmedPregnant 
+                ? <><span className="font-bold">{animal.name} is progressing well.</span> Monitor her nutrition and ensure regular exercise for a healthy pregnancy.</>
+                : <><span className="font-bold">{animal.name} is not confirmed pregnant yet.</span> The pregnancy progress will begin once you confirm the pregnancy via a field visit diagnosis.</>
+              }
             </div>
           </div>
         </div>
 
-        {/* ── CARD 3: Compact Full-Width Pregnancy Timeline ── */}
+        {/* ── CARD 3: Compact Full-Width Breeding Cycle Timeline ── */}
         <div className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-base-200 pb-3">
             <h3 className="text-base font-extrabold text-base-content tracking-tight">
-              Pregnancy Timeline
+              Breeding Cycle Timeline
             </h3>
             <span className="text-xs font-semibold text-base-content/60">
               5 Total Milestones

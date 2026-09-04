@@ -285,10 +285,10 @@ export default function Livestock() {
               .filter(Boolean)
               .join(", ") || "Location not provided",
           barangay: address.barangay || "Not recorded",
-          species: animal.species || animal.type || "Livestock",
-          breed: animal.breed || "Crossbreed",
+          species: animal.species || animal.type || "Not recorded",
+          breed: animal.breed || "Not recorded",
           color: animal.color || "Not recorded",
-          gender: animal.gender || "Female",
+          gender: animal.gender || "Not recorded",
           reproductiveStatus: animal.reproductiveStatus || "Normal",
           imageUrl: animal.imageUrl || "",
           registered: animal.createdAt
@@ -658,21 +658,10 @@ export default function Livestock() {
                   </button>
                 )}
               </div>
-            ) : viewMode === "grid" ? (
-              /* Minimal Grid Layout */
-              <div className="grid gap-3.5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {animals.map((animal) => (
-                  <MinimalAnimalCard
-                    key={animal.id}
-                    animal={animal}
-                    onOpen={openAnimal}
-                  />
-                ))}
-              </div>
             ) : (
               /* Desktop Pin-Rows Table */
               <div className="overflow-x-auto rounded-box border border-base-300">
-                <table className="table table-pin-rows w-full text-left min-w-237.5">
+                <table aria-label="Municipal livestock registry" className="table table-pin-rows w-full text-left min-w-237.5">
                   <thead>
                     <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                       <th className="p-3.5 pl-6">Animal</th>
@@ -709,7 +698,7 @@ export default function Livestock() {
                               <div>
                                 <TableNameLink
                                   to={`/admin/livestock/${animal.id}`}
-                                  ariaLabel={`Open profile for ${animal.tag}`}
+                                  ariaLabel={`Open livestock profile for animal ${animal.tag}`}
                                 >
                                   {animal.tag}
                                 </TableNameLink>

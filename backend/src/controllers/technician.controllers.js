@@ -3655,6 +3655,7 @@ export const getTechnicianRequests = async (req, res) => {
 
       const attachmentUrls = [
         rec.imageUrl,
+        ...(Array.isArray(rec.photos) ? rec.photos : []),
         ...(Array.isArray(rec.evidencePhotos) ? rec.evidencePhotos : []),
       ].filter(Boolean);
 
@@ -3674,44 +3675,6 @@ export const getTechnicianRequests = async (req, res) => {
             farmLoc.longitude,
           ).toFixed(2),
         );
-      }
-
-      if (isUnassigned) {
-        return {
-          id: rec._id,
-          workflowId: rec._id,
-          workflowType: "AI",
-          type: "ai",
-          serviceType: "Artificial Insemination",
-          requestKind,
-          attemptNumber: rec.attemptNumber || 1,
-          previousAttemptId: previousAttemptContext,
-          previousAttemptOutcome: previousAttempt?.outcome || null,
-          previousAttemptVerified,
-          status: rec.status,
-          allowedAction,
-          actionLabel,
-          farmer: farmer.name || "Unknown Farmer",
-          isReadyToday: !!isReady,
-          displayStatus: isReady
-            ? "Ready Today"
-            : rec.status === "approved"
-              ? "Assigned"
-              : rec.status,
-          urgency: "normal",
-          animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
-          earTag: rec.animalId?.earTag || "",
-          breed: rec.animalId?.breed || "",
-          species: rec.animalId?.species || "",
-          municipality: city,
-          barangay: barangay,
-          preferredDate: rec.preferredDate || rec.createdAt,
-          scheduledDate: rec.scheduledDate || null,
-          visitPeriod: rec.visitPeriod,
-          heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
-          requestSubmissionDate: rec.createdAt,
-          createdAt: rec.createdAt,
-        };
       }
 
       return {
@@ -3739,19 +3702,24 @@ export const getTechnicianRequests = async (req, res) => {
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
         farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
-        farmerPhone: farmer.phoneNumber || "",
-        phone: farmer.phone || null,
+        farmerPhone: farmer.phoneNumber || farmer.phone || "",
+        phone: farmer.phone || farmer.phoneNumber || null,
         farmerDetails: {
           id: farmer._id || null,
           name: farmer.name || "Unknown Farmer",
-          phone: farmer.phoneNumber || "",
+          phone: farmer.phoneNumber || farmer.phone || "",
           location: formatAddress(farmer.address),
+          address: farmer.address || null,
+          farmLocation: farmer.farmLocation || null,
         },
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
         animalId: rec.animalId?._id || rec.animalId,
+        animalTag: rec.animalId?.earTag || rec.animalId?.animalId || "",
         earTag: rec.animalId?.earTag || "",
         breed: rec.animalId?.breed || "",
         species: rec.animalId?.species || "",
+        gender: rec.animalId?.gender || "",
+        reproductiveStatus: rec.animalId?.reproductiveStatus || "",
         location: formatAddress(farmer.address),
         locationLabel:
           barangay && city
@@ -3770,12 +3738,16 @@ export const getTechnicianRequests = async (req, res) => {
           visitPeriod: rec.visitPeriod || null,
         },
         heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
+        comment: rec.comment || rec.farmerNotes || "",
+        farmerNotes: rec.farmerNotes || rec.comment || "",
         requestSubmissionDate: rec.createdAt,
         attachments: {
           primaryUrl: rec.imageUrl || attachmentUrls[0] || null,
           urls: attachmentUrls,
           count: attachmentUrls.length,
         },
+        photos: attachmentUrls,
+        imageUrl: rec.imageUrl || attachmentUrls[0] || "",
         assignedTechnician: rec.approvedBy?.name || "",
         createdAt: rec.createdAt,
         raw: rec,
@@ -3801,10 +3773,16 @@ export const getTechnicianRequests = async (req, res) => {
       const assignedTechnicianId = rec.handledBy?._id || rec.handledBy || null;
       const isUnassigned = !assignedTechnicianId;
 
-      const safeFarmerPhone = isUnassigned ? null : farmer.phoneNumber || "";
-      const safeFarmerPhoneAlt = isUnassigned ? null : farmer.phone || null;
-      const safeFarmerImageUrl = isUnassigned ? "" : farmer.imageUrl || "";
-      const safeLocation = isUnassigned ? null : formatAddress(farmer.address);
+      const safeFarmerPhone = farmer.phoneNumber || farmer.phone || "";
+      const safeFarmerPhoneAlt = farmer.phone || farmer.phoneNumber || null;
+      const safeFarmerImageUrl = farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "";
+      const safeLocation = formatAddress(farmer.address);
+
+      const healthAttachmentUrls = [
+        rec.imageUrl,
+        ...(Array.isArray(rec.photos) ? rec.photos : []),
+        ...(Array.isArray(rec.evidencePhotos) ? rec.evidencePhotos : []),
+      ].filter(Boolean);
 
       let distanceKm = null;
       if (
@@ -3824,39 +3802,11 @@ export const getTechnicianRequests = async (req, res) => {
         );
       }
 
-      if (isUnassigned) {
-        return {
-          id: rec._id,
-          type: "health",
-          serviceType: rec.requestType || "health",
-          requestType: rec.requestType || "health",
-          status: rec.status,
-          farmer: farmer.name || "Unknown Farmer",
-          farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
-          isReadyToday: !!isReady,
-          displayStatus: isReady
-            ? "Ready Today"
-            : rec.status === "approved"
-              ? "Assigned"
-              : rec.status,
-          urgency:
-            rec.urgency === "high" || rec.urgency === "emergency"
-              ? "urgent"
-              : "normal",
-          animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
-          earTag: rec.animalId?.earTag || "",
-          breed: rec.animalId?.breed || "",
-          species: rec.animalId?.species || "",
-          municipality: city,
-          barangay: barangay,
-          preferredDate: rec.preferredDate || rec.createdAt,
-          scheduledDate: rec.scheduledDate || null,
-          createdAt: rec.createdAt,
-        };
-      }
-
       return {
         id: rec._id,
+        workflowId: rec._id,
+        taskId: null,
+        workflowType: "Health",
         type: "health",
         serviceType: rec.requestType || "health",
         requestType: rec.requestType || "health",
@@ -3873,25 +3823,50 @@ export const getTechnicianRequests = async (req, res) => {
             : "normal",
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
-        farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
-        farmerPhone: farmer.phoneNumber || "",
+        farmerImageUrl: safeFarmerImageUrl,
+        farmerPhone: safeFarmerPhone,
+        phone: safeFarmerPhoneAlt,
+        farmerDetails: {
+          id: farmer._id || null,
+          name: farmer.name || "Unknown Farmer",
+          phone: safeFarmerPhone,
+          location: safeLocation,
+          address: farmer.address || null,
+          farmLocation: farmer.farmLocation || null,
+        },
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
         animalId: rec.animalId?._id || rec.animalId,
+        animalTag: rec.animalId?.earTag || rec.animalId?.animalId || "",
         earTag: rec.animalId?.earTag || "",
         breed: rec.animalId?.breed || "",
         species: rec.animalId?.species || "",
-        location: formatAddress(farmer.address),
+        gender: rec.animalId?.gender || "",
+        reproductiveStatus: rec.animalId?.reproductiveStatus || "",
+        location: safeLocation,
         locationLabel:
           barangay && city
             ? `${barangay}, ${city}`
-            : formatAddress(farmer.address) || "Unknown Location",
+            : safeLocation || "Unknown Location",
         municipality: city,
         barangay: barangay,
         hasFarmPin,
         distanceKm,
         farmPinStatus: hasFarmPin ? "available" : "missing",
+        symptoms: rec.symptoms || "",
+        description: rec.description || rec.issueDescription || "",
+        notes: rec.notes || rec.farmerNotes || "",
+        farmerNotes: rec.farmerNotes || rec.notes || "",
+        comment: rec.comment || "",
         preferredDate: rec.preferredDate || rec.createdAt,
+        preferredTime: rec.preferredTime || "",
         scheduledDate: rec.scheduledDate || null,
+        attachments: {
+          primaryUrl: rec.imageUrl || healthAttachmentUrls[0] || null,
+          urls: healthAttachmentUrls,
+          count: healthAttachmentUrls.length,
+        },
+        photos: healthAttachmentUrls,
+        imageUrl: rec.imageUrl || healthAttachmentUrls[0] || "",
         assignedTechnician: rec.handledBy?.name || "",
         createdAt: rec.createdAt,
         raw: rec,

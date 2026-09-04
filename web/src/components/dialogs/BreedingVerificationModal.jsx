@@ -11,13 +11,31 @@ const resultOptions = [
   { value: "needs_recheck", label: "Needs another check" },
 ];
 
-const methodOptions = [
-  { value: "palpation", label: "Palpation" },
-  { value: "ultrasound", label: "Ultrasound" },
-  { value: "visual_observation", label: "Visual observation" },
-  { value: "farmer_interview", label: "Farmer interview" },
-  { value: "other", label: "Other method" },
-];
+const getMethodOptionsFor = (result) => {
+  if (result === "pregnant") {
+    return [
+      { value: "palpation", label: "Rectal Palpation (Uterine & Fetal Assessment)" },
+      { value: "ultrasound", label: "Ultrasound Examination" },
+      { value: "visual_observation", label: "Clinical Examination / Visual" },
+      { value: "other", label: "Other Approved Method" },
+    ];
+  }
+  if (result === "return_to_heat") {
+    return [
+      { value: "visual_observation", label: "Visual Heat Signs Observation (Standing Heat, Mucus)" },
+      { value: "farmer_interview", label: "Farmer Report & Heat Observation Verification" },
+      { value: "palpation", label: "Rectal Palpation (Open / Non-Pregnant Assessment)" },
+      { value: "other", label: "Other Clinical Method" },
+    ];
+  }
+  return [
+    { value: "palpation", label: "Palpation" },
+    { value: "ultrasound", label: "Ultrasound" },
+    { value: "visual_observation", label: "Visual observation" },
+    { value: "farmer_interview", label: "Farmer interview" },
+    { value: "other", label: "Other method" },
+  ];
+};
 
 const toLocalDateTime = (date = new Date()) => {
   const offset = date.getTimezoneOffset();
@@ -143,7 +161,15 @@ export default function BreedingVerificationModal({
             <select
               className="select select-bordered w-full"
               value={verificationResult}
-              onChange={(event) => setVerificationResult(event.target.value)}
+              onChange={(event) => {
+                const nextResult = event.target.value;
+                setVerificationResult(nextResult);
+                if (nextResult === "pregnant" && ["visual_observation", "farmer_interview"].includes(checkMethod)) {
+                  setCheckMethod("palpation");
+                } else if (nextResult === "return_to_heat" && ["ultrasound"].includes(checkMethod)) {
+                  setCheckMethod("visual_observation");
+                }
+              }}
             >
               <option value="">Select result</option>
               {resultOptions.map((option) => (
@@ -155,14 +181,20 @@ export default function BreedingVerificationModal({
           </label>
 
           <label className="form-control gap-2">
-            <span className="label-text font-semibold">Verification method</span>
+            <span className="label-text font-semibold">
+              {verificationResult === "pregnant"
+                ? "Diagnosis method"
+                : verificationResult === "return_to_heat"
+                  ? "Verification method"
+                  : "Method"}
+            </span>
             <select
               className="select select-bordered w-full"
               value={checkMethod}
               onChange={(event) => setCheckMethod(event.target.value)}
             >
               <option value="">Select method</option>
-              {methodOptions.map((option) => (
+              {getMethodOptionsFor(verificationResult).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

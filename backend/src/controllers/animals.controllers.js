@@ -135,6 +135,7 @@ export const getAllAnimals = async (req, res) => {
       page,
       limit,
       search,
+      farmerId,
       barangay,
       city,
       species,
@@ -146,6 +147,10 @@ export const getAllAnimals = async (req, res) => {
       sortOrder = "desc",
     } = req.query;
     let query = { deletedAt: null };
+
+    if (farmerId) {
+      query.farmerId = farmerId;
+    }
 
     if (city || barangay) {
       const locationQuery = {

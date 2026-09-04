@@ -667,7 +667,7 @@ export default function LivestockProfile() {
             </div>
           </div>
 
-          {/* PregnancyCard with next page navigation arrow */}
+          {/* Reproductive Status Card with next page navigation arrow */}
           <div
             onClick={() =>
               navigate(
@@ -695,17 +695,13 @@ export default function LivestockProfile() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
-                  Pregnancy Stage
+                  Animal Reproductive status
                 </p>
                 <p className="text-lg font-black text-base-content truncate mt-0.5">
-                  {animal.reproductiveStatus === "Pregnant"
-                    ? "7.5 months"
-                    : "7.5 months"}
+                  {animal.reproductiveStatus || "Normal"}
                 </p>
                 <p className="text-xs font-medium text-base-content/60">
-                  {animal.reproductiveStatus === "Pregnant"
-                    ? "Late Pregnancy"
-                    : "Late Pregnancy"}
+                  Breeding cycle tracker
                 </p>
               </div>
             </div>

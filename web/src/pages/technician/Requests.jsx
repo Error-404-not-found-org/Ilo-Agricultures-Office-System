@@ -24,7 +24,6 @@ import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
 import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import RequestActionModal from "../../components/dialogs/RequestActionModal";
-import AIClaimScheduleAction from "../../components/dialogs/AIClaimScheduleAction";
 import { ui } from "../../components/ui/uiClasses";
 import Modal from "../../components/ui/Modal";
 import {
@@ -294,10 +293,7 @@ export default function OperationalInbox() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [aiRequestModal, setAIRequestModal] = useState({
-    request: null,
-    view: "details",
-  });
+
   const [isUpdating, setIsUpdating] = useState(false);
 
   const itemsPerPage = 6;
@@ -534,10 +530,36 @@ export default function OperationalInbox() {
         visitDate: isCanonicalAI
           ? canonicalSchedule.date
           : req.scheduledDate || req.preferredDate || null,
-        heatSigns: Array.isArray(req.heatSigns) ? req.heatSigns : [],
+        heatSigns: Array.isArray(req.heatSigns) && req.heatSigns.length
+          ? req.heatSigns
+          : Array.isArray(req.raw?.heatSigns)
+            ? req.raw.heatSigns
+            : [],
+        comment:
+          req.comment ||
+          req.farmerNotes ||
+          req.raw?.comment ||
+          req.raw?.farmerNotes ||
+          "",
+        farmerNotes:
+          req.farmerNotes ||
+          req.comment ||
+          req.raw?.farmerNotes ||
+          req.raw?.comment ||
+          "",
         requestSubmissionDate:
           req.requestSubmissionDate || req.createdAt || null,
-        attachments: req.attachments || { count: 0, urls: [] },
+        attachments: req.attachments || {
+          count:
+            (req.raw?.photos?.length || 0) + (req.raw?.imageUrl ? 1 : 0),
+          urls: [
+            req.raw?.imageUrl,
+            ...(Array.isArray(req.raw?.photos) ? req.raw.photos : []),
+            ...(Array.isArray(req.raw?.evidencePhotos)
+              ? req.raw.evidencePhotos
+              : []),
+          ].filter(Boolean),
+        },
         urgency: req.urgency,
         previousTechnician,
         raw: req.raw || req,
@@ -656,13 +678,6 @@ export default function OperationalInbox() {
 
   // Action Handlers
   const handleClaimRequest = async (request) => {
-    if (
-      !isAdmin &&
-      request.workflowType === "AI" &&
-      request.allowedAction === "CLAIM_AND_SCHEDULE"
-    ) {
-      return;
-    }
     if (isUpdating) return;
     const claimType = getClaimType(request.queueType || request.type);
     if (!claimType) {
@@ -882,19 +897,9 @@ export default function OperationalInbox() {
     );
   };
 
-  const openAIRequest = (request, view = "details") => {
-    setAIRequestModal({ request, view });
-  };
 
-  const closeAIRequest = () => {
-    setAIRequestModal({ request: null, view: "details" });
-  };
 
   const openRequest = (request) => {
-    if (!isAdmin && request.workflowType === "AI") {
-      openAIRequest(request, "details");
-      return;
-    }
     setSelectedTask(request);
     setIsTaskModalOpen(true);
   };
@@ -1772,15 +1777,7 @@ export default function OperationalInbox() {
         </p>
       </Modal>
 
-      <AIClaimScheduleAction
-        key={aiRequestModal.request?.workflowId || "closed-ai-request"}
-        modalState={aiRequestModal}
-        requestQueryKey={requestsQueryKey}
-        onClose={closeAIRequest}
-        onViewChange={(view) =>
-          setAIRequestModal((current) => ({ ...current, view }))
-        }
-      />
+
 
       {/* ===== TASK ACTION DIALOG MODAL ===== */}
       <RequestActionModal
