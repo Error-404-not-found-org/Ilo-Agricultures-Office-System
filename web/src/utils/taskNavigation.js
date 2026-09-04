@@ -64,6 +64,8 @@ export const getTaskPrimaryActionLabel = (task = {}) => {
       return "Claim Task";
     case "SCHEDULE_VISIT":
       return "Schedule Visit";
+    case "HANDLE_REQUEST":
+      return "Handle Request";
     case "START_SERVICE":
       return "Start Service";
     case "RECORD_SERVICE": {

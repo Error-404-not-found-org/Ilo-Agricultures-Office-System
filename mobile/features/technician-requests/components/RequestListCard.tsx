@@ -97,6 +97,9 @@ function getStatusLabel(item: WorkCardItem) {
   if (status === "overdue") return "Overdue";
   if (status === "due_today") return "Today";
   if (status === "completed") return "Completed";
+  if (status === "needs_response") return "Needs response";
+  if (status === "needs_scheduling") return "Needs scheduling";
+  if (status === "scheduled") return "Scheduled";
   return "Open";
 }
 
@@ -118,8 +121,23 @@ function getActionLabel(item: WorkCardItem): string {
     return item.actionLabel;
   }
   const status = String(item.status || "").toLowerCase();
+  const serviceType = normalizeServiceType(item);
+  const rawHandlingMethod =
+    (item as any).handlingMethod ||
+    (item as any).raw?.handlingMethod ||
+    (item as any).triage?.handlingMethod;
+  const handlingMethod = String(rawHandlingMethod || "").toLowerCase().trim();
+
   if (["pending"].includes(status)) return "Claim";
-  if (["approved", "assigned", "triaged"].includes(status)) return "Schedule";
+  if (["approved", "assigned", "triaged"].includes(status)) {
+    if (serviceType === "health") {
+      if (handlingMethod === "farm_visit") return "Set Visit";
+      if (handlingMethod === "advice") return "Send Advice";
+      if (handlingMethod === "office_pickup") return "Office Pickup";
+      return "Handle Request";
+    }
+    return "Schedule";
+  }
   if (["scheduled"].includes(status)) return "Start";
   if (["done", "resolved", "completed"].includes(status)) return "View Record";
   return "Review Request";

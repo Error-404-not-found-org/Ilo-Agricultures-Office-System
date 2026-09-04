@@ -1018,6 +1018,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         todayActivities: todayVisitsArr[0] + todayVisitsArr[1],
         completedToday:
           completedTodayArr[0] + completedTodayArr[1] + completedTodayArr[2],
+        aiCompletedToday: completedTodayArr[0],
         urgentHealth: urgentHealthCount,
         pendingHealth: totalHealthPending,
         successRate,
@@ -1344,6 +1345,14 @@ export const getAIServiceContext = async (req, res) => {
   }
 };
 
+export const requiresHistoricalAIWorkflow = ({
+  requestId,
+  serviceDate,
+  now = Date.now(),
+}) =>
+  !requestId &&
+  serviceDate.getTime() < now - 24 * 60 * 60 * 1000;
+
 export const walkInInsemination = async (req, res) => {
   try {
     if (req.user?.role !== "technician") {
@@ -1447,7 +1456,12 @@ export const walkInInsemination = async (req, res) => {
         .status(400)
         .json({ message: "AI service date cannot be in the future." });
     }
-    if (entryDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+    if (
+      requiresHistoricalAIWorkflow({
+        requestId,
+        serviceDate: entryDate,
+      })
+    ) {
       return res.status(400).json({
         code: "HISTORICAL_AI_WORKFLOW_REQUIRED",
         message:
@@ -4074,6 +4088,16 @@ export const getTechnicianRequests = async (req, res) => {
           allowedAction,
           actionLabel,
           farmer: farmer.name || "Unknown Farmer",
+          farmerId: farmer._id || farmer,
+          farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
+          farmerPhone: farmer.phoneNumber || "",
+          phone: farmer.phone || null,
+          farmerDetails: {
+            id: farmer._id || null,
+            name: farmer.name || "Unknown Farmer",
+            phone: farmer.phoneNumber || "",
+            location: formatAddress(farmer.address),
+          },
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -4085,6 +4109,14 @@ export const getTechnicianRequests = async (req, res) => {
           earTag: rec.animalId?.earTag || "",
           breed: rec.animalId?.breed || "",
           species: rec.animalId?.species || "",
+          location: formatAddress(farmer.address),
+          locationLabel:
+            barangay && city
+              ? `${barangay}, ${city}`
+              : formatAddress(farmer.address) || "Unknown Location",
+          hasFarmPin,
+          distanceKm,
+          farmPinStatus: hasFarmPin ? "available" : "missing",
           municipality: city,
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
@@ -4098,6 +4130,7 @@ export const getTechnicianRequests = async (req, res) => {
             count: attachmentUrls.length,
           },
           createdAt: rec.createdAt,
+          raw: rec,
         };
       }
 
@@ -4220,7 +4253,16 @@ export const getTechnicianRequests = async (req, res) => {
           requestType: rec.requestType || "health",
           status: rec.status,
           farmer: farmer.name || "Unknown Farmer",
+          farmerId: farmer._id || farmer,
           farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
+          farmerPhone: farmer.phoneNumber || "",
+          phone: farmer.phone || null,
+          farmerDetails: {
+            id: farmer._id || null,
+            name: farmer.name || "Unknown Farmer",
+            phone: farmer.phoneNumber || "",
+            location: formatAddress(farmer.address),
+          },
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -4235,6 +4277,14 @@ export const getTechnicianRequests = async (req, res) => {
           earTag: rec.animalId?.earTag || "",
           breed: rec.animalId?.breed || "",
           species: rec.animalId?.species || "",
+          location: formatAddress(farmer.address),
+          locationLabel:
+            barangay && city
+              ? `${barangay}, ${city}`
+              : formatAddress(farmer.address) || "Unknown Location",
+          hasFarmPin,
+          distanceKm,
+          farmPinStatus: hasFarmPin ? "available" : "missing",
           municipality: city,
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
@@ -4245,6 +4295,7 @@ export const getTechnicianRequests = async (req, res) => {
             count: attachmentUrls.length,
           },
           createdAt: rec.createdAt,
+          raw: rec,
         };
       }
 
@@ -4521,6 +4572,8 @@ export const getWorkQueue = async (req, res) => {
       workState = "active",
       type = "all",
       search = "",
+      taskId = "",
+      requestId = "",
     } = req.query || {};
     const page = Math.max(Number.parseInt(req.query?.page, 10) || 1, 1);
     const limit = Math.min(
@@ -4633,9 +4686,9 @@ export const getWorkQueue = async (req, res) => {
         })
       : standaloneTaskQuery;
 
-    const includeAI = type === "all" || type === "ai";
-    const includeHealth = type === "all" || type === "health";
-    const includeTasks = ["all", "pregnancy", "calving"].includes(type);
+    let includeAI = type === "all" || type === "ai";
+    let includeHealth = type === "all" || type === "health";
+    let includeTasks = ["all", "pregnancy", "calving"].includes(type);
     const typedTaskQuery =
       type === "pregnancy"
         ? combineMongoFilters(taskQuery, {
@@ -4646,6 +4699,50 @@ export const getWorkQueue = async (req, res) => {
               taskType: { $in: ["CD", "Calving"] },
             })
           : taskQuery;
+
+    const targetedRequestId =
+      requestId && mongoose.Types.ObjectId.isValid(requestId)
+        ? String(requestId)
+        : null;
+    const targetedTaskId =
+      taskId && mongoose.Types.ObjectId.isValid(taskId)
+        ? String(taskId)
+        : null;
+
+    let targetedAiQuery = aiQuery;
+    let targetedHealthQuery = healthQuery;
+    let targetedTaskQuery = typedTaskQuery;
+
+    if (targetedRequestId) {
+      includeAI = true;
+      includeHealth = true;
+      includeTasks = true;
+      targetedAiQuery = combineMongoFilters(aiQuery, { _id: targetedRequestId });
+      targetedHealthQuery = combineMongoFilters(healthQuery, {
+        _id: targetedRequestId,
+      });
+      targetedTaskQuery = combineMongoFilters(typedTaskQuery, {
+        $or: [
+          { relatedRecordId: targetedRequestId },
+          { requestId: targetedRequestId },
+          { sourceId: targetedRequestId },
+          { inseminationId: targetedRequestId },
+          { "metadata.relatedRecordId": targetedRequestId },
+          { "metadata.requestId": targetedRequestId },
+          { "metadata.sourceId": targetedRequestId },
+          { "metadata.inseminationId": targetedRequestId },
+          { "metadata.healthRequestId": targetedRequestId },
+        ],
+      });
+    } else if (targetedTaskId) {
+      includeAI = false;
+      includeHealth = false;
+      includeTasks = true;
+      targetedTaskQuery = combineMongoFilters(typedTaskQuery, {
+        _id: targetedTaskId,
+      });
+    }
+
     const aiPartitions = workQueueDatePartitions(
       workState === "completed"
         ? ["completedAt", "inseminationDate", "createdAt"]
@@ -4700,7 +4797,7 @@ export const getWorkQueue = async (req, res) => {
       includeAI
         ? fetchBoundedPartitions({
             Model: Insemination,
-            baseFilter: aiQuery,
+            baseFilter: targetedAiQuery,
             partitions: aiPartitions,
             windowLimit: candidateLimit,
             populate: populateAIWork,
@@ -4709,7 +4806,7 @@ export const getWorkQueue = async (req, res) => {
       includeHealth
         ? fetchBoundedPartitions({
             Model: HealthRequest,
-            baseFilter: healthQuery,
+            baseFilter: targetedHealthQuery,
             partitions: healthPartitions,
             windowLimit: candidateLimit,
             populate: populateHealthWork,
@@ -4718,7 +4815,7 @@ export const getWorkQueue = async (req, res) => {
       includeTasks
         ? fetchBoundedPartitions({
             Model: Task,
-            baseFilter: typedTaskQuery,
+            baseFilter: targetedTaskQuery,
             partitions: taskPartitions,
             windowLimit: candidateLimit,
             populate: populateTaskWork,

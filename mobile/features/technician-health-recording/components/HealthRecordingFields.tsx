@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   Text,
   TextInput,
@@ -15,7 +15,7 @@ interface HealthRecordingFieldsProps {
     withdrawalPeriodDays: string;
     advice: string;
     followUpDate: Date | null;
-    resolutionNotes: string;
+    resolutionNotes?: string;
   };
   onDiagnosisChange: (value: string) => void;
   onTreatmentChange: (value: string) => void;
@@ -23,7 +23,7 @@ interface HealthRecordingFieldsProps {
   onDosageChange: (value: string) => void;
   onWithdrawalPeriodDaysChange: (value: string) => void;
   onAdviceChange: (value: string) => void;
-  onResolutionNotesChange: (value: string) => void;
+  onResolutionNotesChange?: (value: string) => void;
   disabled?: boolean;
 }
 
@@ -144,21 +144,6 @@ export function HealthRecordingFields({
           multiline
           textAlignVertical="top"
           placeholder="Advice for the farmer"
-          placeholderTextColor={colors.textMuted}
-          style={[inputStyle, { minHeight: 90, paddingTop: 14 }]}
-        />
-      </View>
-
-      <View>
-        <FieldLabel>Resolution Notes (Optional)</FieldLabel>
-        <TextInput
-          editable={!disabled}
-          value={values.resolutionNotes}
-          onChangeText={onResolutionNotesChange}
-          maxLength={150}
-          multiline
-          textAlignVertical="top"
-          placeholder="Any other observations..."
           placeholderTextColor={colors.textMuted}
           style={[inputStyle, { minHeight: 90, paddingTop: 14 }]}
         />

@@ -312,7 +312,7 @@ const createContinueTrackingRecord = async ({
         },
       ],
     },
-    { session },
+    { session, completedAt: eventDate },
   );
 
   const updatedAnimal = await Animal.findByIdAndUpdate(

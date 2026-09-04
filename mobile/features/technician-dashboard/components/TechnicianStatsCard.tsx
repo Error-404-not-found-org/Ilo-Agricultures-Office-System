@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -6,56 +6,46 @@ import { SectionHeader } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
 import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
-import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
-import { summarizeTechnicianWork } from "@/features/technician-requests/utils/requestWorkPresentation";
+import type { TechnicianDashboardStats } from "../utils/dashboardStats";
 
 interface TechnicianStatsCardProps {
-  /**
-   * Must contain the technician's full assigned My Work dataset.
-   * Do not pass an already filtered or paginated chip result.
-   */
-  workItems?: TechnicianWorkItem[];
+  stats: TechnicianDashboardStats;
   loading?: boolean;
 }
 
 interface MetricItem {
   label: string;
-  value: number;
+  value: number | string;
   icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
   color: string;
   tint: string;
 }
 
 export function TechnicianStatsCard({
-  workItems = [],
+  stats,
   loading = false,
 }: TechnicianStatsCardProps) {
   const { colors } = useTheme();
 
-  const summary = useMemo(
-    () => summarizeTechnicianWork(workItems),
-    [workItems],
-  );
-
   const todayMetrics: MetricItem[] = [
     {
-      label: "Due today",
-      value: summary.dueToday,
-      icon: "calendar-today-outline",
+      label: "Inseminated today",
+      value: stats.aiCompletedToday ?? stats.completedToday ?? 0,
+      icon: "needle",
       color: colors.primary,
       tint: colors.tint,
     },
     {
-      label: "Needs attention",
-      value: summary.needsAttention,
-      icon: "alert-circle-outline",
-      color: colors.errorForeground,
-      tint: colors.errorContainer,
+      label: "This month",
+      value: stats.totalInsemMonth ?? 0,
+      icon: "calendar-month-outline",
+      color: colors.infoForeground || "#1d4ed8",
+      tint: colors.infoContainer || "#eff6ff",
     },
     {
-      label: "Completed today",
-      value: summary.completedToday,
-      icon: "check-circle-outline",
+      label: "Success (90d)",
+      value: stats.successRate ?? "0%",
+      icon: "trophy-outline",
       color: colors.successForeground,
       tint: colors.successContainer,
     },
@@ -68,8 +58,8 @@ export function TechnicianStatsCard({
         style={{ padding: 16 }}
       >
         <SectionHeader
-          title="Today's work"
-          subtitle="Your assigned field workload"
+          title="Insemination & Breeding"
+          subtitle="Your AI performance and monthly progress"
         />
 
         <View

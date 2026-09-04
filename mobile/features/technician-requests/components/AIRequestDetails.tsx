@@ -149,8 +149,7 @@ export function AIRequestDetails({
   const [updating, setUpdating] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [earlyStartVisible, setEarlyStartVisible] = useState(false);
-  const [skipConfirmationVisible, setSkipConfirmationVisible] =
-    useState(false);
+  const [skipConfirmationVisible, setSkipConfirmationVisible] = useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
   const submittingRef = useRef(false);
@@ -546,9 +545,7 @@ export function AIRequestDetails({
       await invalidateWorkflow();
       await onRefresh();
       toast.success(
-        approved
-          ? "Cancellation approved"
-          : "Cancellation request declined",
+        approved ? "Cancellation approved" : "Cancellation request declined",
         approved
           ? undefined
           : { description: "The request remains scheduled." },
@@ -578,6 +575,7 @@ export function AIRequestDetails({
           gap: 12,
         }}
       >
+        {/* Header Card with Submitted Date at Top */}
         <View style={cardStyle}>
           <View
             style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}
@@ -612,6 +610,27 @@ export function AIRequestDetails({
               compact
             />
           </View>
+
+          {/* Submitted Date - Moved here */}
+          {submittedAt ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                marginTop: 12,
+                paddingTop: 12,
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <Send size={15} color={colors.textMuted} />
+              <Text textRole="caption" style={{ color: colors.textMuted }}>
+                Submitted {submittedAt}
+              </Text>
+            </View>
+          ) : null}
+
           {isAvailable ? (
             attemptNumber > 1 ? (
               <View
@@ -773,12 +792,6 @@ export function AIRequestDetails({
 
           {farmerNotes ? (
             <DetailRow label="Farmer notes" value={farmerNotes} />
-          ) : null}
-
-          {submittedAt ? (
-            <View style={{ marginTop: 8 }}>
-              <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
-            </View>
           ) : null}
 
           <Text

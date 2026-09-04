@@ -131,6 +131,12 @@ const InseminationSchema = new mongoose.Schema(
     serviceStartedAt: {
       type: Date,
     },
+    // Immutable lifecycle evidence for the transition to a performed AI
+    // service. Historical rows may legitimately omit this field.
+    completedAt: {
+      type: Date,
+      default: null,
+    },
     earlyStartMinutes: {
       type: Number,
       min: 0,

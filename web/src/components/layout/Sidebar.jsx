@@ -188,7 +188,12 @@ export default function Sidebar() {
     queryKey: ["technician-requests-badge"],
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/requests", {
-        params: { status: "pending", limit: 1 },
+        params: {
+          assignment: "unassigned",
+          includeOperationalTasks: false,
+          includeCounts: true,
+          limit: 1,
+        },
       });
       return res.data || {};
     },
@@ -196,8 +201,15 @@ export default function Sidebar() {
     refetchInterval: 1000 * 30,
   });
 
-  // Compute live cumulative pending matrix values safely
+  // Compute live cumulative available count strictly from unclaimed AI + Health
   const livePendingCount = React.useMemo(() => {
+    if (!operationalQueue) return 0;
+    if (operationalQueue.counts) {
+      return (
+        (operationalQueue.counts.ai || 0) +
+        (operationalQueue.counts.health || 0)
+      );
+    }
     return operationalQueue?.pagination?.total || 0;
   }, [operationalQueue]);
 

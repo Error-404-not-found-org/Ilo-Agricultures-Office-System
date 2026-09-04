@@ -40,7 +40,13 @@ vi.mock("../../components/dialogs/RegisterLivestockModal", () => ({
 }));
 
 const dashboardResponse = {
-  stats: { urgentHealth: 2, completedToday: 3 },
+  stats: {
+    urgentHealth: 2,
+    completedToday: 3,
+    aiCompletedToday: 3,
+    totalInsemMonth: 12,
+    successRate: "75.0%",
+  },
   pendingRequests: [{ id: "eligible-request", type: "health" }],
   agendaItems: [
     {
@@ -48,7 +54,7 @@ const dashboardResponse = {
       type: "health",
       status: "scheduled",
       handlingMethod: "farm_visit",
-      scheduledDate: new Date().toISOString().slice(0, 10),
+      scheduledDate: getPhilippineTodayKey(),
       visitPeriod: "morning",
       farmer: "Farmer One",
       animalTag: "COW-1",
@@ -92,9 +98,12 @@ describe("Technician Dashboard current-work hierarchy", () => {
     renderDashboard();
 
     expect(await screen.findByText("Scheduled Health Farm Visit")).toBeTruthy();
-    expect(screen.getByText("Urgent Health")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("Inseminated Today")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("Monthly Inseminations")).toBeTruthy();
+    expect(screen.getByText("12")).toBeTruthy();
+    expect(screen.getByText("Success Rate")).toBeTruthy();
+    expect(screen.getByText("75.0%")).toBeTruthy();
     expect(screen.getByText("Scheduled Health Farm Visit")).toBeTruthy();
     expect(screen.getByText("Morning")).toBeTruthy();
     expect(screen.queryByText("Farmer Requests")).toBeNull();

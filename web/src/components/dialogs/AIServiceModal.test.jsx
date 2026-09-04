@@ -106,6 +106,15 @@ const fillRequiredFields = () => {
   });
 };
 
+const setPerformedAt = (date, time = "09:00") => {
+  fireEvent.change(screen.getByLabelText("Actual insemination date"), {
+    target: { value: date },
+  });
+  fireEvent.change(screen.getByLabelText("Actual insemination time"), {
+    target: { value: time },
+  });
+};
+
 const renderDirectModal = (serviceContext = { mode: "walk_in" }) => {
   const farmer = defaultProps.preSelectedFarmer;
   const animal = {
@@ -167,10 +176,6 @@ describe("request-linked AI recording modal", () => {
     mocks.post.mockResolvedValue({ data: { outcome: "request_completed" } });
     const { invalidate } = renderModal();
     fillRequiredFields();
-    fireEvent.change(screen.getByLabelText("Technician notes"), {
-      target: { value: "  Service completed normally.  " },
-    });
-
     const save = screen.getByRole("button", { name: "Save AI service" });
     fireEvent.click(save);
     fireEvent.click(save);
@@ -187,7 +192,6 @@ describe("request-linked AI recording modal", () => {
       sireCode: "H-42",
       semenDosesUsed: 1,
       estrus: "Natural",
-      technicianNote: "Service completed normally.",
     });
     expect(mocks.post.mock.calls).toHaveLength(1);
 
@@ -218,10 +222,88 @@ describe("request-linked AI recording modal", () => {
     expect(payload).not.toHaveProperty("taskId");
   });
 
-  it("accepts a manually entered sire breed and requires a nonblank sire code", async () => {
+  it.each([
+    [
+      "a visit due yesterday that was performed yesterday",
+      "2026-09-03T04:00:00.000Z",
+      "2026-09-03",
+    ],
+    [
+      "a visit due two days ago that was performed yesterday",
+      "2026-09-02T04:00:00.000Z",
+      "2026-09-03",
+    ],
+    [
+      "an overdue visit that was performed today",
+      "2026-09-02T04:00:00.000Z",
+      "2026-09-04",
+    ],
+    [
+      "a visit due today that was performed today",
+      "2026-09-04T04:00:00.000Z",
+      "2026-09-04",
+    ],
+  ])("allows request-linked completion for %s", async (_label, scheduledDate, serviceDate) => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-09-04T04:00:00.000Z").getTime());
+    mocks.post.mockResolvedValue({ data: { outcome: "request_completed" } });
+
+    try {
+      renderModal({
+        requestContext: {
+          ...requestContext,
+          schedule: { date: scheduledDate, visitPeriod: "afternoon" },
+        },
+      });
+      fillRequiredFields();
+      setPerformedAt(serviceDate);
+
+      fireEvent.click(screen.getByRole("button", { name: "Save AI service" }));
+
+      await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+      expect(mocks.post.mock.calls[0][1]).toMatchObject({
+        requestId: workflowId,
+        inseminationDetails: {
+          inseminationDate: serviceDate,
+          time: "09:00",
+        },
+      });
+      expect(
+        screen.queryByText(
+          "Use the authorized historical-record workflow for an older AI service.",
+        ),
+      ).not.toBeInTheDocument();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("still blocks a future service date for request-linked work", async () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-09-04T04:00:00.000Z").getTime());
+
+    try {
+      renderModal();
+      fillRequiredFields();
+      setPerformedAt("2026-09-05");
+
+      fireEvent.click(screen.getByRole("button", { name: "Save AI service" }));
+
+      expect(
+        await screen.findByText("The AI service time cannot be in the future."),
+      ).toBeInTheDocument();
+      expect(mocks.post).not.toHaveBeenCalled();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("accepts a selected sire breed and requires a nonblank sire code", async () => {
     renderModal();
     fireEvent.change(screen.getByLabelText("Sire breed"), {
-      target: { value: "Locally recorded crossbreed" },
+      target: { value: "Brahman" },
     });
     fireEvent.change(screen.getByLabelText("Sire code"), {
       target: { value: "   " },
@@ -230,9 +312,7 @@ describe("request-linked AI recording modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save AI service" }));
 
     expect(await screen.findByText("Enter the sire code.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Sire breed")).toHaveValue(
-      "Locally recorded crossbreed",
-    );
+    expect(screen.getByLabelText("Sire breed")).toHaveValue("Brahman");
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
@@ -313,11 +393,8 @@ describe("request-linked AI recording modal", () => {
     expect(screen.getByLabelText("Sire breed")).toBeVisible();
     expect(screen.getByLabelText("Sire breed")).toBeDisabled();
     expect(screen.getByLabelText("Number of semen doses used")).toBeVisible();
-    expect(screen.getByLabelText("Technician notes")).toBeVisible();
     expect(
-      screen.getByText(
-        "Select a registered farmer and animal to enable the AI service fields.",
-      ),
+      screen.getByText(/Select a registered farmer and animal/i),
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: /register farmer/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /register animal/i })).not.toBeInTheDocument();
@@ -327,7 +404,7 @@ describe("request-linked AI recording modal", () => {
     mocks.post.mockResolvedValue({ data: { outcome: "direct_recorded" } });
     renderDirectModal();
 
-    expect(screen.getByRole("tab", { name: "Record AI Now" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Record Insemination" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -344,6 +421,31 @@ describe("request-linked AI recording modal", () => {
     expect(payload).toMatchObject({ farmerId, animalId });
     expect(payload).not.toHaveProperty("entryMode");
     expect(screen.queryByText(/walk-in service available/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps an older standalone service on the Previous AI workflow", async () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-09-04T04:00:00.000Z").getTime());
+
+    try {
+      renderDirectModal();
+      fillRequiredFields();
+      setPerformedAt("2026-09-02");
+
+      const save = screen.getByRole("button", { name: "Save AI service" });
+      await waitFor(() => expect(save).toBeEnabled());
+      fireEvent.click(save);
+
+      expect(
+        await screen.findByText(
+          "Use the authorized historical-record workflow for an older AI service.",
+        ),
+      ).toBeInTheDocument();
+      expect(mocks.post).not.toHaveBeenCalled();
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("adds a past AI record with its actual historical date and entry mode", async () => {
@@ -388,7 +490,9 @@ describe("request-linked AI recording modal", () => {
       allowedActions: ["open_request"],
     });
 
-    expect(await screen.findByText("Active AI request found")).toBeVisible();
+    expect(
+      await screen.findByText(/Active (Insemination|AI) request found/i),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "Schedule request" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Save AI service" })).toBeDisabled();
     expect(mocks.post).not.toHaveBeenCalled();

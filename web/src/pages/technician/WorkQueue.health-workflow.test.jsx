@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,35 +34,39 @@ vi.mock("../../components/layout/Topbar", () => ({
 }));
 
 vi.mock("../../components/dialogs/HealthRequestActionModal", () => ({
-  default: ({ isOpen, task }) =>
+  default: ({ isOpen, task, onClose }) =>
     isOpen ? (
       <div
         role="dialog"
         aria-label="Owned Health request"
         data-request-id={task?.id}
         data-workflow-id={task?.workflowId}
-      />
+      >
+        <button type="button" onClick={onClose}>Close Health</button>
+      </div>
     ) : null,
 }));
 
 vi.mock("../../components/dialogs/AIServiceModal", () => ({
-  default: ({ isOpen, workflowId }) =>
-    isOpen ? <div role="dialog" aria-label={`AI ${workflowId}`} /> : null,
+  default: ({ isOpen, workflowId, onClose, onSuccess }) =>
+    isOpen ? <div role="dialog" aria-label={`AI ${workflowId}`}><button type="button" onClick={onClose}>Close AI</button><button type="button" onClick={onSuccess}>Complete AI</button></div> : null,
 }));
 
 vi.mock("../../components/dialogs/PregnancyDiagnosisModal", () => ({
-  default: ({ isOpen, taskId }) =>
-    isOpen ? <div role="dialog" aria-label={`Pregnancy ${taskId}`} /> : null,
+  default: ({ isOpen, taskId, onClose }) =>
+    isOpen ? <div role="dialog" aria-label={`Pregnancy ${taskId}`}><button type="button" onClick={onClose}>Close Pregnancy</button></div> : null,
 }));
 
 vi.mock("../../components/dialogs/RecordCalvingModal", () => ({
-  default: ({ isOpen, taskId, pregnancyData }) =>
+  default: ({ isOpen, taskId, pregnancyData, onClose }) =>
     isOpen ? (
       <div
         role="dialog"
         aria-label={`Calving ${taskId}`}
         data-pregnancy-id={pregnancyData?._id}
-      />
+      >
+        <button type="button" onClick={onClose}>Close Calving</button>
+      </div>
     ) : null,
 }));
 
@@ -136,7 +140,8 @@ const renderQueue = (tasks, { taskDetailsById = {} } = {}) => {
 
 const LocationProbe = () => {
   const location = useLocation();
-  return <output data-testid="technician-location">{location.pathname}{location.search}</output>;
+  const navigate = useNavigate();
+  return <><output data-testid="technician-location">{location.pathname}{location.search}</output><button type="button" onClick={() => navigate(`/technician/requests?section=myWork&taskId=${ids.pregnancyTask}`)}>Open next deep link</button></>;
 };
 
 describe("Work Queue owned Health workflow", () => {
@@ -429,6 +434,257 @@ describe("Work Queue owned Health workflow", () => {
     );
     expect(dashboardSource).toContain("<WalkInHealthModal");
     expect(dashboardSource).toContain("existingOnly");
+  });
+});
+
+describe("My Work Schedule deep links", () => {
+  const empty = {
+    data: [],
+    pagination: { page: 1, limit: 8, total: 0, totalPages: 1 },
+    counts: { all: 0, ai: 0, health: 0, pregnancy: 0, calving: 0 },
+  };
+
+  const renderDeepLink = ({ parameter, id, target }) => {
+    mocks.get.mockImplementation((_url, config) =>
+      Promise.resolve({
+        data: config?.params?.[parameter] === id
+          ? { ...empty, data: target ? [target] : [], pagination: { ...empty.pagination, total: target ? 1 : 0 } }
+          : empty,
+      }),
+    );
+    renderWorkQueue(`/technician/requests?section=myWork&${parameter}=${id}`);
+  };
+
+  const futureTask = (overrides = {}) => ({
+    ...baseTask,
+    schedule: { date: "2099-10-11", visitPeriod: null },
+    timing: { kind: "due", date: "2099-10-11", visitPeriod: null },
+    location: "Poblacion, Oton",
+    ...overrides,
+  });
+
+  const dueTodayKey = () =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+  it.each([
+    ["AI", "requestId", ids.ai, { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } }],
+    ["Health", "requestId", ids.health, { ...baseTask, id: ids.health, workflowId: ids.health, taskId: ids.healthTask, workflowType: "Health", type: "health", allowedAction: "RECORD_SERVICE", raw: { _id: ids.health } }],
+    ["Pregnancy", "taskId", ids.pregnancyTask, { ...baseTask, id: ids.pregnancyTask, taskId: ids.pregnancyTask, workflowType: "PD", type: "task", allowedAction: "RECORD_SERVICE", raw: { _id: ids.pregnancyTask, taskType: "PD" } }],
+    ["Calving", "taskId", ids.calvingTask, { ...baseTask, id: ids.calvingTask, taskId: ids.calvingTask, workflowType: "Calving", type: "task", allowedAction: "RECORD_SERVICE", context: { pregnancyId: "507f1f77bcf86cd799439091" }, raw: { _id: ids.calvingTask, taskType: "CD" } }],
+  ])("resolves an off-page %s target through the owner-scoped lookup", async (label, parameter, id, target) => {
+    renderDeepLink({ parameter, id, target });
+    expect(await screen.findByRole("dialog", { name: new RegExp(label) })).toBeTruthy();
+    expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
+      params: expect.objectContaining({ [parameter]: id, page: 1, limit: 1, workState: "active" }),
+    });
+  });
+
+  it.each([
+    [
+      "AI",
+      "requestId",
+      ids.ai,
+      {
+        id: ids.ai,
+        workflowId: ids.ai,
+        taskId: ids.aiTask,
+        workflowType: "AI",
+        type: "insemination",
+        serviceType: "Artificial Insemination",
+        allowedAction: "RECORD_SERVICE",
+        timing: { kind: "scheduled_visit", date: "2099-10-11", visitPeriod: "morning" },
+        schedule: { date: "2099-10-11", visitPeriod: "morning" },
+      },
+    ],
+    [
+      "Health",
+      "requestId",
+      ids.health,
+      {
+        id: ids.health,
+        workflowId: ids.health,
+        taskId: ids.healthTask,
+        workflowType: "Health",
+        type: "health",
+        serviceType: "Health Assistance",
+        allowedAction: "START_SERVICE",
+        timing: { kind: "scheduled_visit", date: "2099-10-11", visitPeriod: "afternoon" },
+        schedule: { date: "2099-10-11", visitPeriod: "afternoon" },
+      },
+    ],
+    [
+      "Pregnancy",
+      "taskId",
+      ids.pregnancyTask,
+      {
+        id: ids.pregnancyTask,
+        taskId: ids.pregnancyTask,
+        workflowType: "PD",
+        type: "task",
+        serviceType: "Pregnancy Diagnosis",
+        allowedAction: "RECORD_SERVICE",
+      },
+    ],
+    [
+      "Calving",
+      "taskId",
+      ids.calvingTask,
+      {
+        id: ids.calvingTask,
+        taskId: ids.calvingTask,
+        workflowType: "Calving",
+        type: "task",
+        serviceType: "Calving Assistance",
+        allowedAction: "RECORD_SERVICE",
+        context: { pregnancyId: "507f1f77bcf86cd799439091" },
+      },
+    ],
+  ])("opens future %s work as read-only context instead of execution", async (label, parameter, id, details) => {
+    const target = futureTask({
+      ...details,
+      title: details.serviceType,
+      farmer: { name: "Test Farmer", location: "Poblacion, Oton" },
+      animal: { name: "Test Animal", earTag: "TEST-1" },
+    });
+    renderDeepLink({ parameter, id, target });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: details.serviceType,
+    });
+    expect(dialog).toHaveTextContent(/scheduled for a future date/i);
+    expect(dialog).toHaveTextContent("Test Farmer");
+    expect(dialog).toHaveTextContent("Test Animal");
+    expect(dialog).toHaveTextContent("Poblacion, Oton");
+    const actionDialogName =
+      label === "Health"
+        ? "Owned Health request"
+        : new RegExp("^" + label + " " + id);
+    expect(
+      screen.queryByRole("dialog", { name: actionDialogName }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["AI", "requestId", ids.ai, { workflowType: "AI", type: "insemination", serviceType: "Artificial Insemination", workflowId: ids.ai, taskId: ids.aiTask, allowedAction: "RECORD_SERVICE" }],
+    ["Health", "requestId", ids.health, { workflowType: "Health", type: "health", serviceType: "Health Assistance", workflowId: ids.health, taskId: ids.healthTask, allowedAction: "START_SERVICE" }],
+    ["Pregnancy", "taskId", ids.pregnancyTask, { workflowType: "PD", type: "task", serviceType: "Pregnancy Diagnosis", taskId: ids.pregnancyTask, allowedAction: "RECORD_SERVICE" }],
+    ["Calving", "taskId", ids.calvingTask, { workflowType: "Calving", type: "task", serviceType: "Calving Assistance", taskId: ids.calvingTask, allowedAction: "RECORD_SERVICE", context: { pregnancyId: "507f1f77bcf86cd799439091" } }],
+  ])("opens due %s work through its canonical action", async (label, parameter, id, details) => {
+    const today = dueTodayKey();
+    const target = {
+      ...baseTask,
+      ...details,
+      id,
+      timing: {
+        kind: details.type === "task" ? "due" : "scheduled_visit",
+        date: today,
+        visitPeriod: details.type === "task" ? null : "morning",
+      },
+      schedule: {
+        date: today,
+        visitPeriod: details.type === "task" ? null : "morning",
+      },
+      raw: { _id: id, taskType: details.workflowType === "Calving" ? "CD" : details.workflowType },
+    };
+    renderDeepLink({ parameter, id, target });
+    expect(await screen.findByRole("dialog", { name: new RegExp(label) })).toBeTruthy();
+  });
+
+  it("keeps overdue Schedule work actionable", async () => {
+    const target = {
+      ...baseTask,
+      id: ids.pregnancyTask,
+      taskId: ids.pregnancyTask,
+      workflowType: "PD",
+      type: "task",
+      allowedAction: "RECORD_SERVICE",
+      timing: { kind: "due", date: "2000-01-01", visitPeriod: null },
+      schedule: { date: "2000-01-01", visitPeriod: null },
+      raw: { _id: ids.pregnancyTask, taskType: "PD" },
+    };
+    renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
+    expect(await screen.findByRole("dialog", { name: /Pregnancy/ })).toBeTruthy();
+  });
+
+  it("clears an upcoming preview deep link when its backdrop closes", async () => {
+    const target = futureTask({
+      id: ids.pregnancyTask,
+      taskId: ids.pregnancyTask,
+      workflowType: "PD",
+      type: "task",
+      title: "Pregnancy Diagnosis",
+      serviceType: "Pregnancy Diagnosis",
+      allowedAction: "RECORD_SERVICE",
+    });
+    renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
+    fireEvent.click(await screen.findByRole("button", { name: "Close dialog" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="),
+    );
+  });
+
+  it("can reopen the same Schedule item after closing its upcoming preview", async () => {
+    const target = futureTask({
+      id: ids.pregnancyTask,
+      taskId: ids.pregnancyTask,
+      workflowType: "PD",
+      type: "task",
+      title: "Pregnancy Diagnosis",
+      serviceType: "Pregnancy Diagnosis",
+      allowedAction: "RECORD_SERVICE",
+    });
+    renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open next deep link" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Pregnancy Diagnosis" }),
+    ).toHaveTextContent(/scheduled for a future date/i);
+  });
+
+  it("clears the identifier when the opened workflow closes", async () => {
+    const target = { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } };
+    renderDeepLink({ parameter: "requestId", id: ids.ai, target });
+    fireEvent.click(await screen.findByRole("button", { name: "Close AI" }));
+    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("requestId="));
+  });
+
+  it("clears the identifier after successful completion", async () => {
+    const target = { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } };
+    renderDeepLink({ parameter: "requestId", id: ids.ai, target });
+    fireEvent.click(await screen.findByRole("button", { name: "Complete AI" }));
+    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("requestId="));
+  });
+
+  it("fails closed and clears an unavailable or foreign identifier", async () => {
+    renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target: null });
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+    expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId=");
+  });
+
+  it("can open a different deep link immediately after closing the first", async () => {
+    const aiTarget = { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } };
+    const pregnancyTarget = { ...baseTask, id: ids.pregnancyTask, taskId: ids.pregnancyTask, workflowType: "PD", type: "task", allowedAction: "RECORD_SERVICE", raw: { _id: ids.pregnancyTask, taskType: "PD" } };
+    mocks.get.mockImplementation((_url, config) => {
+      const target = config?.params?.requestId === ids.ai
+        ? aiTarget
+        : config?.params?.taskId === ids.pregnancyTask
+          ? pregnancyTarget
+          : null;
+      return Promise.resolve({ data: { data: target ? [target] : [], pagination: { page: 1, limit: 1, total: target ? 1 : 0, totalPages: 1 }, counts: empty.counts } });
+    });
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.ai}`);
+    fireEvent.click(await screen.findByRole("button", { name: "Close AI" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open next deep link" }));
+    expect(await screen.findByRole("dialog", { name: new RegExp("Pregnancy") })).toBeTruthy();
   });
 });
 

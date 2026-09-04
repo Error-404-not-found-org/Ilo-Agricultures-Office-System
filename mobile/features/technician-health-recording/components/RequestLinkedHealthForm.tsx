@@ -32,7 +32,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
   const [treatment, setTreatment] = useState("");
   const [medicineGiven, setMedicineGiven] = useState("");
   const [dosage, setDosage] = useState("");
-  const [resolutionNotes, setResolutionNotes] = useState("");
   const [withdrawalPeriodDays, setWithdrawalPeriodDays] = useState("");
   const [advice, setAdvice] = useState("");
 
@@ -43,7 +42,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
       treatment,
       medicineGiven,
       dosage,
-      resolutionNotes,
       withdrawalPeriodDays: withdrawalPeriodDays ? Number(withdrawalPeriodDays) : undefined,
       advice,
       followUpDate: null,
@@ -183,7 +181,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
                 withdrawalPeriodDays,
                 advice,
                 followUpDate: null,
-                resolutionNotes,
               }}
               onDiagnosisChange={setDiagnosis}
               onTreatmentChange={setTreatment}
@@ -191,7 +188,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
               onDosageChange={setDosage}
               onWithdrawalPeriodDaysChange={setWithdrawalPeriodDays}
               onAdviceChange={setAdvice}
-              onResolutionNotesChange={setResolutionNotes}
               disabled={saving}
             />
           </SectionCard>

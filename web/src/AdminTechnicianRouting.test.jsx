@@ -25,8 +25,8 @@ vi.mock("./components/layout/AppLayout", () => ({
 vi.mock("./pages/admin/Users", () => ({
   default: () => <div>Canonical Users directory</div>,
 }));
-vi.mock("./pages/admin/TechnicianProfile", () => ({
-  default: () => <div>Technician detail profile</div>,
+vi.mock("./pages/admin/UserDetails", () => ({
+  default: () => <div>Generic user details</div>,
 }));
 vi.mock("./pages/admin/Dashboard", () => ({
   default: () => <div>Admin dashboard</div>,
@@ -78,13 +78,22 @@ describe("legacy Admin Technician roster routing", () => {
     });
   });
 
-  it("keeps Technician detail URLs on the Technician profile route", async () => {
+  it("keeps legacy Technician detail URLs compatible with generic details", async () => {
     renderApp(["/admin/technicians/technician-1"]);
 
-    expect(await screen.findByText("Technician detail profile")).toBeInTheDocument();
+    expect(await screen.findByText("Generic user details")).toBeInTheDocument();
     expect(screen.getByTestId("route")).toHaveTextContent(
       "/admin/technicians/technician-1",
     );
     expect(screen.queryByText("Canonical Users directory")).not.toBeInTheDocument();
+  });
+
+  it("registers the canonical generic User Details route", async () => {
+    renderApp(["/admin/users/farmer-1"]);
+
+    expect(await screen.findByText("Generic user details")).toBeInTheDocument();
+    expect(screen.getByTestId("route")).toHaveTextContent(
+      "/admin/users/farmer-1",
+    );
   });
 });

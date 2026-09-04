@@ -933,6 +933,56 @@ test("Official record detail: linked MedicalRecord exposes the Health report act
   }
 });
 
+test("Official record detail: standalone direct Health uses service wording and date precision", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    medical: MedicalRecord.findOne,
+  };
+  const animal = {
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    earTag: "TAG-001",
+  };
+
+  Animal.findOne = async () => animal;
+  MedicalRecord.findOne = () =>
+    queryResult({
+      _id: "medical-direct-1",
+      animalId: animal,
+      technicianId: { _id: "tech-1", name: "Tech One" },
+      type: "Treatment",
+      date: new Date("2026-08-08T00:00:00.000Z"),
+      details: {
+        serviceType: "medicine",
+        diagnosis: "Bacterial infection",
+      },
+      createdAt: new Date("2026-08-08T04:30:00.000Z"),
+    });
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-1",
+          recordKind: "medical_record",
+          recordId: "medical-direct-1",
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data.datePrecision, "date");
+    assert.equal(recorder.body.data.details.isDirectHealthService, true);
+    assert.equal(recorder.body.data.details.serviceType, "medicine");
+  } finally {
+    Animal.findOne = originals.animal;
+    MedicalRecord.findOne = originals.medical;
+  }
+});
+
 test("Official record detail rejects raw HealthRequest identifiers", async () => {
   const recorder = responseRecorder();
 

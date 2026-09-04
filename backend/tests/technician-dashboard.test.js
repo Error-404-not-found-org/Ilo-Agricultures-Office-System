@@ -5,8 +5,14 @@ import { getTechnicianDashboardData } from "../src/controllers/technician.contro
 import { Insemination } from "../src/models/insemination.model.js";
 import { HealthRequest } from "../src/models/health-request.model.js";
 import { Task } from "../src/models/task.model.js";
+import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { User } from "../src/models/user.model.js";
+import {
+  buildDirectHealthCompletedInRangeFilter,
+  getManilaDayBounds,
+  loadTechnicianDashboardMetrics,
+} from "../src/services/technician-workload-summary.service.js";
 
 describe("Technician Dashboard Regression Tests", () => {
   const otonDispatch = {
@@ -44,7 +50,8 @@ describe("Technician Dashboard Regression Tests", () => {
       Animal.deleteMany({}),
       Insemination.deleteMany({}),
       HealthRequest.deleteMany({}),
-      Task.deleteMany({})
+      Task.deleteMany({}),
+      MedicalRecord.deleteMany({}),
     ]);
 
     techUser = new User({
@@ -374,6 +381,7 @@ describe("Technician Dashboard Regression Tests", () => {
         status: "done",
         technicianId: techUser._id,
         approvedBy: techUser._id,
+        completedAt: now,
       }),
       HealthRequest.create({
         farmerId: farmerUser._id,
@@ -421,5 +429,306 @@ describe("Technician Dashboard Regression Tests", () => {
 
     assert.equal(response.statusCode, 200);
     assert.equal(response.body.stats.completedToday, 3);
+  });
+
+  it("counts due-today and overdue owned work from canonical date fields", async () => {
+    const otherTechnician = await User.create({
+      clerkId: "clerk-dashboard-other",
+      role: "technician",
+      status: "active",
+      email: "dashboard-other@example.com",
+      name: "Dashboard Other",
+      isVerified: true,
+      profileClaimStatus: "claimed",
+    });
+    const { start, end } = getManilaDayBounds(new Date());
+    const today = new Date(start.getTime() + 60 * 60 * 1000);
+    const yesterday = new Date(start.getTime() - 60 * 60 * 1000);
+    const tomorrow = new Date(end.getTime() + 60 * 60 * 1000);
+
+    await Promise.all([
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "scheduled",
+        approvedBy: techUser._id,
+        scheduledDate: today,
+      }),
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "in-progress",
+        approvedBy: techUser._id,
+        scheduledDate: yesterday,
+      }),
+      HealthRequest.create({
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "scheduled",
+        handledBy: techUser._id,
+        handlingMethod: "farm_visit",
+        scheduledDate: today,
+        symptoms: "Scheduled today",
+      }),
+      HealthRequest.create({
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "in-progress",
+        handledBy: techUser._id,
+        handlingMethod: "farm_visit",
+        scheduledDate: yesterday,
+        symptoms: "Overdue visit",
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "PD",
+        category: "Follow-up",
+        notes: "Due today",
+        status: "Pending",
+        dueDate: today,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "Calving",
+        category: "Follow-up",
+        notes: "Overdue calving",
+        status: "In Progress",
+        dueDate: yesterday,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "PD",
+        category: "Follow-up",
+        notes: "Future work",
+        status: "Pending",
+        dueDate: tomorrow,
+      }),
+      Task.create({
+        technicianId: otherTechnician._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "Other",
+        category: "Routine",
+        notes: "Another technician due today",
+        status: "Pending",
+        dueDate: today,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "Other",
+        category: "Routine",
+        notes: "Completed task is not active",
+        status: "Completed",
+        dueDate: yesterday,
+        completedAt: today,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "Health",
+        category: "Routine",
+        notes: "Mirrored execution task",
+        status: "Pending",
+        dueDate: today,
+        relatedRecordType: "health",
+      }),
+    ]);
+
+    const { req, res, response } = mockReqRes(techUser, {
+      fullAgenda: "true",
+    });
+    await getTechnicianDashboardData(req, res);
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.stats.dueToday, 3);
+    assert.equal(response.body.stats.overdue, 3);
+    assert.equal(
+      response.body.agendaItems.filter((item) => item.isReadyToday).length,
+      response.body.stats.dueToday,
+    );
+    assert.ok(
+      !response.body.agendaItems.some(
+        (item) => item.raw?.notes === "Mirrored execution task",
+      ),
+    );
+  });
+
+  it("uses lifecycle evidence, not updatedAt, for completed-today AI", async () => {
+    const { start } = getManilaDayBounds(new Date());
+    const today = new Date(start.getTime() + 60 * 60 * 1000);
+    const oldCompletion = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const [oldRecord, legacyTransition, importedHistory] = await Promise.all([
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        completedAt: oldCompletion,
+      }),
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        completedAt: null,
+        statusHistory: [{ status: "done", createdAt: today }],
+      }),
+      Insemination.create({
+        farmerId: farmerUser._id,
+        animalId: animal3._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        entryMode: "history_only",
+        inseminationDate: oldCompletion,
+        completedAt: null,
+        statusHistory: [{ status: "done", createdAt: today }],
+      }),
+    ]);
+    await Insemination.collection.updateOne(
+      { _id: oldRecord._id },
+      { $set: { updatedAt: today } },
+    );
+
+    const { req, res, response } = mockReqRes(techUser);
+    await getTechnicianDashboardData(req, res);
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.stats.completedToday, 1);
+    assert.ok(legacyTransition);
+    assert.ok(importedHistory);
+  });
+
+  it("counts standalone direct Health by service date without double-counting linked records", async () => {
+    const now = new Date("2026-09-04T04:00:00.000Z");
+    const { start, end } = getManilaDayBounds(now);
+    const today = new Date(start.getTime() + 60 * 60 * 1000);
+    const oldServiceDate = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const otherTechnician = await User.create({
+      clerkId: "clerk-direct-health-other",
+      role: "technician",
+      status: "active",
+      email: "direct-health-other@example.com",
+      name: "Other Direct Health Technician",
+      isVerified: true,
+      profileClaimStatus: "claimed",
+    });
+    const linkedRequest = await HealthRequest.create({
+      farmerId: farmerUser._id,
+      animalId: animal1._id,
+      status: "resolved",
+      symptoms: "Resolved request-linked Health work",
+      handledBy: techUser._id,
+      resolvedAt: today,
+    });
+
+    const records = await MedicalRecord.create([
+      {
+        animalId: animal1._id,
+        farmerId: farmerUser._id,
+        technicianId: techUser._id,
+        type: "Treatment",
+        date: today,
+        details: { serviceType: "medicine", diagnosis: "Direct today" },
+      },
+      {
+        animalId: animal1._id,
+        farmerId: farmerUser._id,
+        technicianId: techUser._id,
+        healthRequestId: linkedRequest._id,
+        type: "Treatment",
+        date: today,
+        details: { diagnosis: "Linked request record" },
+      },
+      {
+        animalId: animal2._id,
+        farmerId: farmerUser._id,
+        technicianId: techUser._id,
+        type: "Check-up",
+        date: oldServiceDate,
+        isHistoricalEntry: true,
+        entrySource: "historical_entry",
+        lateEntryReason: "Historical record entered later",
+        details: { serviceType: "checkup", diagnosis: "Historical" },
+      },
+      {
+        animalId: animal2._id,
+        farmerId: farmerUser._id,
+        technicianId: otherTechnician._id,
+        type: "Check-up",
+        date: today,
+        details: { serviceType: "checkup", diagnosis: "Other technician" },
+      },
+      {
+        animalId: animal3._id,
+        farmerId: farmerUser._id,
+        technicianId: techUser._id,
+        type: "Treatment",
+        date: today,
+        details: { serviceType: "injury", diagnosis: "Deleted record" },
+      },
+      {
+        animalId: animal3._id,
+        farmerId: farmerUser._id,
+        technicianId: techUser._id,
+        type: "Check-up",
+        date: start,
+        details: { serviceType: "checkup", diagnosis: "Boundary start" },
+      },
+      {
+        animalId: animal3._id,
+        farmerId: farmerUser._id,
+        technicianId: techUser._id,
+        type: "Check-up",
+        date: end,
+        details: { serviceType: "checkup", diagnosis: "Boundary end" },
+      },
+    ]);
+    await MedicalRecord.collection.updateOne(
+      { _id: records[4]._id },
+      { $set: { deletedAt: today } },
+    );
+    await MedicalRecord.collection.updateOne(
+      { _id: records[2]._id },
+      { $set: { createdAt: today, updatedAt: today } },
+    );
+
+    assert.equal(
+      await MedicalRecord.countDocuments(
+        buildDirectHealthCompletedInRangeFilter({
+          technicianId: techUser._id,
+          start,
+          end,
+        }),
+      ),
+      2,
+    );
+
+    const metrics = await loadTechnicianDashboardMetrics({
+      technicianId: techUser._id,
+      now,
+    });
+    assert.equal(metrics.completedToday, 3);
+  });
+
+  it("uses the Asia/Manila calendar boundary at 00:01", () => {
+    const { start, end } = getManilaDayBounds(
+      new Date("2026-09-03T16:01:00.000Z"),
+    );
+
+    assert.equal(start.toISOString(), "2026-09-03T16:00:00.000Z");
+    assert.equal(end.toISOString(), "2026-09-04T16:00:00.000Z");
   });
 });

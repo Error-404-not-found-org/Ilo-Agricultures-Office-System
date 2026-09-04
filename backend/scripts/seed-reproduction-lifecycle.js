@@ -586,6 +586,8 @@ const baseTask = ({
 
   completedAt = null,
 
+  priority = 2,
+
   inseminationId,
 
   seedBatch,
@@ -608,7 +610,7 @@ const baseTask = ({
 
   category: "Follow-up",
 
-  priority: 2,
+  priority,
 
   notes: notes || `${type} lifecycle seed task (${seedBatch}).`,
 
@@ -1438,25 +1440,31 @@ export const buildReproductionLifecyclePlan = ({
     outcomeConfirmationSource: "farmer_return_to_heat",
   });
 
-  const s5task = s5data.scenario.tasks[0];
+  const s5pdTask = s5data.scenario.tasks[0];
 
-  Object.assign(s5task, {
-    technicianId: undefined,
+  const s5task = addTask(s5data.scenario, {
+    type: "BreedingFollowUp",
+
+    dueDate: now,
 
     sourceType: "farmer_requested_verification",
 
     priority: 1,
 
+    relatedRecordType: "insemination",
+
+    relatedRecordId: s5data.insemination._id,
+
+    inseminationId: s5data.insemination._id,
+
     notes: `Farmer reported a return to heat for ${s5data.scenario.earTag}. Technician review is required before the AI attempt can be marked unsuccessful.`,
 
     metadata: {
-      ...s5task.metadata,
-
       reportType: "return_to_heat",
     },
   });
 
-  s5data.insemination.verificationTaskId = s5task._id;
+  s5data.insemination.verificationTaskId = s5pdTask._id;
 
   addObservationNotification(s5data.scenario, {
     insemination: s5data.insemination,
@@ -1469,7 +1477,7 @@ export const buildReproductionLifecyclePlan = ({
   });
 
   s5data.scenario.expectedResult =
-    "Provisional return-to-heat report; unassigned technician review task available";
+    "Assigned return-to-heat review; Day-60 pregnancy diagnosis remains distinct";
 
   // ============================================================
   // RC26-06 — LIKELY PREGNANT
@@ -1507,9 +1515,7 @@ export const buildReproductionLifecyclePlan = ({
   const s6task = s6data.scenario.tasks[0];
 
   Object.assign(s6task, {
-    sourceType: "farmer_requested_verification",
-
-    notes: `Farmer-requested pregnancy verification (${seedBatch}).`,
+    notes: `Farmer reported possible pregnancy signs; assigned Day-60 pregnancy diagnosis remains scheduled (${seedBatch}).`,
 
     metadata: {
       ...s6task.metadata,

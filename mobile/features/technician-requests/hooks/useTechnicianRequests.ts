@@ -5,10 +5,10 @@ import { useAuth } from "@clerk/clerk-expo";
 import { getTechnicianRequests } from "../services/technicianRequests.service";
 import type { RequestWorkFilterOption } from "../utils/requestWorkPresentation";
 
-type OpenRequestFilter = RequestWorkFilterOption["value"];
-
-const toRequestApiType = (value: OpenRequestFilter) =>
-  value === "pregnancy" ? "breeding_verification" : value;
+type OpenRequestFilter = Extract<
+  RequestWorkFilterOption["value"],
+  "all" | "ai" | "health"
+>;
 
 export function useTechnicianRequests() {
   const api = useApi();
@@ -65,7 +65,7 @@ export function useTechnicianRequests() {
     ],
     queryFn: () =>
       getTechnicianRequests(api, {
-        type: toRequestApiType(type),
+        type,
         status,
         urgency,
         assignment,
@@ -77,6 +77,7 @@ export function useTechnicianRequests() {
         sortBy,
         municipality: municipality || undefined,
         barangay: barangay || undefined,
+        includeOperationalTasks: false,
         includeCounts: true,
       }),
     enabled: isEnabled,

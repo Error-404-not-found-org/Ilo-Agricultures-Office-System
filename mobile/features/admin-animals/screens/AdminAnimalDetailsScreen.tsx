@@ -5,7 +5,6 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
-  Image,
   Alert,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +22,7 @@ const PRIMARY = "#1e3a5f";
 const TABS = ["Info", "Timeline", "Medical"];
 
 export default function AdminAnimalDetailsScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const api = useApi();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -36,7 +35,6 @@ export default function AdminAnimalDetailsScreen() {
   const {
     data: animal,
     isLoading: isDetailsLoading,
-    refetch: refetchDetails,
   } = useQuery<any>({
     queryKey: ["admin-animal-details", id],
     queryFn: async () => {
@@ -50,7 +48,6 @@ export default function AdminAnimalDetailsScreen() {
   const {
     data: medicalRecords = [],
     isLoading: isMedicalLoading,
-    refetch: refetchMedical,
   } = useQuery<any[]>({
     queryKey: ["admin-animal-medical", id],
     queryFn: async () => {
@@ -91,10 +88,6 @@ export default function AdminAnimalDetailsScreen() {
         { text: "Archive", style: "destructive", onPress: () => archiveMutation.mutate() },
       ]
     );
-  };
-
-  const handleRefresh = async () => {
-    await Promise.all([refetchDetails(), refetchMedical()]);
   };
 
   if (isDetailsLoading) {
@@ -339,7 +332,7 @@ export default function AdminAnimalDetailsScreen() {
                     <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
                       {rec.recordKind || rec.requestType || "Medical Treatment"}
                     </Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
                       {new Date(rec.recordDate || rec.createdAt).toLocaleDateString()}
                     </Text>
                   </View>

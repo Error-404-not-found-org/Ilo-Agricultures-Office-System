@@ -287,11 +287,28 @@ test("Reproduction seeder: farmer observation scenarios cover the technician han
   assert.equal(day21.inseminations[0].outcome, "Pending");
   assert.notEqual(day21.inseminations[0].isSuccess, false);
   assert.equal(day21.inseminations[0].outcomeVerificationStatus, "reported");
-  assert.equal(day21.tasks[0].sourceType, "farmer_requested_verification");
-  assert.equal(day21.tasks[0].technicianId, undefined);
+  const day21PdTask = day21.tasks.find((task) => task.taskType === "PD");
+  const day21ReturnToHeatTask = day21.tasks.find(
+    (task) => task.taskType === "BreedingFollowUp",
+  );
+  assert.ok(day21PdTask);
+  assert.ok(day21ReturnToHeatTask);
+  assert.equal(
+    day21ReturnToHeatTask.sourceType,
+    "farmer_requested_verification",
+  );
+  assert.equal(day21ReturnToHeatTask.metadata.reportType, "return_to_heat");
+  assert.equal(
+    String(day21ReturnToHeatTask.technicianId),
+    String(plan.technician._id),
+  );
+  assert.equal(
+    String(day21PdTask.technicianId),
+    String(plan.technician._id),
+  );
   assert.equal(
     String(day21.inseminations[0].verificationTaskId),
-    String(day21.tasks[0]._id),
+    String(day21PdTask._id),
   );
 
   assert.equal(
@@ -302,6 +319,22 @@ test("Reproduction seeder: farmer observation scenarios cover the technician han
   assert.ok(likelyPregnant.inseminations[0].evidencePhotos.length > 0);
   assert.equal(
     String(likelyPregnant.tasks[0].technicianId),
+    String(plan.technician._id),
+  );
+  assert.equal(likelyPregnant.tasks[0].taskType, "PD");
+  assert.equal(
+    likelyPregnant.tasks[0].sourceType,
+    "automatic_pd_followup",
+  );
+
+  const day60 = plan.scenarios.find(
+    (item) => item.scenario === "RC26-07-PD-DUE",
+  );
+  assert.equal(day60.tasks.length, 1);
+  assert.equal(day60.tasks[0].taskType, "PD");
+  assert.equal(day60.tasks[0].sourceType, "automatic_pd_followup");
+  assert.equal(
+    String(day60.tasks[0].technicianId),
     String(plan.technician._id),
   );
 

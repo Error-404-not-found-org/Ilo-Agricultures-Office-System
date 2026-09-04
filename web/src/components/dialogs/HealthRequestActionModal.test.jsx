@@ -35,6 +35,7 @@ import HealthRequestActionModal from "./HealthRequestActionModal";
 
 const requestId = "507f1f77bcf86cd799439051";
 const technicianId = "507f1f77bcf86cd799439052";
+const taskId = "507f1f77bcf86cd799439053";
 
 const ownedRequest = (overrides = {}) => ({
   _id: requestId,
@@ -52,6 +53,7 @@ const ownedRequest = (overrides = {}) => ({
 const task = {
   id: "visible-task-wrapper-id",
   workflowId: requestId,
+  taskId,
   workflowType: "Health",
   type: "health",
   status: "approved",
@@ -339,9 +341,75 @@ describe("HealthRequestActionModal", () => {
           status: "resolved",
           diagnosis: "Digestive infection",
           treatment: "Supportive treatment",
+          taskId,
         },
       ),
     );
     expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it("preserves same-request input and resets it when the request identity changes", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const onClose = vi.fn();
+    const firstTask = { ...task, raw: ownedRequest() };
+    mocks.get.mockResolvedValue({ data: { data: ownedRequest() } });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <HealthRequestActionModal
+          isOpen
+          onClose={onClose}
+          task={firstTask}
+          onSuccess={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Give Advice/ }),
+    );
+    fireEvent.change(screen.getByLabelText("Advice for Farmer"), {
+      target: { value: "Keep this advice" },
+    });
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <HealthRequestActionModal
+          isOpen
+          onClose={onClose}
+          task={{ ...firstTask, raw: { ...firstTask.raw } }}
+          onSuccess={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByLabelText("Advice for Farmer")).toHaveValue(
+      "Keep this advice",
+    );
+
+    const nextRequestId = "507f1f77bcf86cd799439054";
+    const nextRequest = ownedRequest({
+      _id: nextRequestId,
+      id: nextRequestId,
+    });
+    mocks.get.mockResolvedValue({ data: { data: nextRequest } });
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <HealthRequestActionModal
+          isOpen
+          onClose={onClose}
+          task={{
+            ...firstTask,
+            workflowId: nextRequestId,
+            raw: nextRequest,
+          }}
+          onSuccess={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByRole("button", { name: /^Give Advice/ }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /^Give Advice/ }));
+    expect(screen.getByLabelText("Advice for Farmer")).toHaveValue("");
   });
 });

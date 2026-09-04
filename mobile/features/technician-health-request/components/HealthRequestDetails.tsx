@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Linking,
   Modal,
   Platform,
@@ -208,8 +209,7 @@ export function HealthRequestDetails({
     "advice" | "office_pickup" | null
   >(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [skipConfirmationVisible, setSkipConfirmationVisible] =
-    useState(false);
+  const [skipConfirmationVisible, setSkipConfirmationVisible] = useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
   const [selectedHandlingMethod, setSelectedHandlingMethod] =
@@ -244,6 +244,14 @@ export function HealthRequestDetails({
   const isResolved = ["resolved", "done", "completed"].includes(
     normalizedStatus,
   );
+  const currentHandlingMethod = cleanText(
+    request?.handlingMethod ||
+      request?.triage?.handlingMethod ||
+      request?.resolution?.handlingMethod,
+  ).toLowerCase();
+  const isFarmVisit = currentHandlingMethod === "farm_visit";
+  const isAdvice = currentHandlingMethod === "advice";
+  const isOfficePickup = currentHandlingMethod === "office_pickup";
   const resolvedHandlingMethod = cleanText(
     request?.handlingMethod,
   ).toLowerCase();
@@ -268,7 +276,9 @@ export function HealthRequestDetails({
   const status = isAvailable
     ? { label: "Available", variant: "available" }
     : isClaimedUnscheduled
-      ? { label: "Claimed", variant: "assigned" }
+      ? isFarmVisit
+        ? { label: "Needs scheduling", variant: "warning" }
+        : { label: "Needs response", variant: "assigned" }
       : isScheduled
         ? { label: "Scheduled", variant: "scheduled" }
         : isInProgress
@@ -328,7 +338,8 @@ export function HealthRequestDetails({
   ).toLowerCase() as VisitPeriod;
   const adviceEligible = isHealthAdviceEligible(request);
   const officePickupEligible = isHealthOfficePickupEligible(request);
-  const canChooseHandlingMethod = adviceEligible || officePickupEligible;
+  const canChooseHandlingMethod =
+    isClaimedUnscheduled && (adviceEligible || officePickupEligible);
   const pickupResponse = request?.technicianResponse?.pickup || {};
   const pickupInstructions = cleanText(pickupResponse.instructions);
   const pickupFarmerMessage = cleanText(request?.advice);
@@ -343,6 +354,41 @@ export function HealthRequestDetails({
     borderColor: colors.border,
     backgroundColor: colors.card,
   } as const;
+
+  // Section component for better layout consistency
+  const Section = ({
+    children,
+    title,
+    icon,
+    iconColor,
+  }: {
+    children: React.ReactNode;
+    title?: string;
+    icon?: React.ReactNode;
+    iconColor?: string;
+  }) => (
+    <View style={cardStyle}>
+      {title && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 14,
+          }}
+        >
+          {icon && <View style={{ marginRight: 4 }}>{icon}</View>}
+          <Text
+            textRole="title"
+            style={{ color: colors.textPrimary, fontSize: 16 }}
+          >
+            {title}
+          </Text>
+        </View>
+      )}
+      {children}
+    </View>
+  );
 
   const invalidateHealthWorkflow = async () => {
     await Promise.all([
@@ -613,13 +659,44 @@ export function HealthRequestDetails({
     });
   };
 
-  const handlePrimaryAction = () => {
+  const handlePrimaryAction = async () => {
     if (isAvailable) {
-      openSchedule("accept");
+      if (!(await requireOnline())) return;
+      setUpdating(true);
+      setActionNotice(null);
+      try {
+        await claimTechnicianRequest(api, "health", requestId);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        await invalidateHealthWorkflow();
+        await onRefresh();
+        toast.success("Health request claimed");
+      } catch (error: any) {
+        setActionNotice(
+          getErrorMessage(error, "The Health request could not be claimed."),
+        );
+      } finally {
+        setUpdating(false);
+      }
       return;
     }
     if (isClaimedUnscheduled) {
-      openSchedule("schedule");
+      if (isFarmVisit) {
+        openSchedule("schedule");
+        return;
+      }
+      if (isAdvice) {
+        setAdviceDraft(EMPTY_ADVICE_DRAFT);
+        setAdviceError(null);
+        setAdviceVisible(true);
+        return;
+      }
+      if (isOfficePickup) {
+        setOfficePickupDraft(EMPTY_OFFICE_PICKUP_DRAFT);
+        setOfficePickupError(null);
+        setOfficePickupVisible(true);
+        return;
+      }
+      setSelectedHandlingMethod(null);
       return;
     }
     if (isScheduled || isInProgress) {
@@ -632,9 +709,15 @@ export function HealthRequestDetails({
   };
 
   const primaryLabel = isAvailable
-    ? "Accept & Set Visit"
+    ? "Claim Request"
     : isClaimedUnscheduled
-      ? "Set Visit"
+      ? isFarmVisit
+        ? "Set Visit"
+        : isAdvice
+          ? "Send Advice"
+          : isOfficePickup
+            ? "Confirm Pickup"
+            : "Handle Request"
       : isScheduled
         ? "Record Health Assistance"
         : isInProgress
@@ -704,9 +787,7 @@ export function HealthRequestDetails({
       await invalidateHealthWorkflow();
       await onRefresh();
       toast.success(
-        approved
-          ? "Cancellation approved"
-          : "Cancellation request declined",
+        approved ? "Cancellation approved" : "Cancellation request declined",
         approved
           ? undefined
           : { description: "The request remains scheduled." },
@@ -727,20 +808,19 @@ export function HealthRequestDetails({
   const resolvedResponseCards =
     isAdviceResolved || isOfficePickupResolved ? (
       <>
-        <View style={cardStyle}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            {isAdviceResolved ? (
+        <Section
+          title={isAdviceResolved ? "Advice provided" : "Office pickup"}
+          icon={
+            isAdviceResolved ? (
               <MessageSquare size={20} color={colors.primary} />
             ) : (
               <PackageCheck size={20} color={colors.primary} />
-            )}
-            <Text textRole="title" style={{ color: colors.textPrimary }}>
-              {isAdviceResolved ? "Advice provided" : "Office pickup"}
-            </Text>
-          </View>
+            )
+          }
+        >
           <Text
             textRole="body"
-            style={{ color: colors.textSecondary, marginTop: 6 }}
+            style={{ color: colors.textSecondary, marginBottom: 12 }}
           >
             {isAdviceResolved
               ? "Farmer-visible guidance sent for this request. No farm visit or medical treatment was recorded."
@@ -823,21 +903,18 @@ export function HealthRequestDetails({
               ) : null}
             </>
           )}
-        </View>
+        </Section>
 
         {internalTechnicianNote ? (
-          <View style={cardStyle}>
-            <Text textRole="title" style={{ color: colors.textPrimary }}>
-              Internal note
-            </Text>
+          <Section title="Internal note">
             <Text
               textRole="caption"
-              style={{ color: colors.textSecondary, marginTop: 3 }}
+              style={{ color: colors.textSecondary, marginBottom: 3 }}
             >
               Visible only to technicians and administrators.
             </Text>
             <DetailRow label="Technician note" value={internalTechnicianNote} />
-          </View>
+          </Section>
         ) : null}
       </>
     ) : null;
@@ -857,7 +934,8 @@ export function HealthRequestDetails({
       >
         {resolvedResponseCards}
 
-        <View style={cardStyle}>
+        {/* Request Header Card */}
+        <Section>
           <View
             style={{
               flexDirection: "row",
@@ -881,12 +959,12 @@ export function HealthRequestDetails({
               <Text textRole="title" style={{ color: colors.textPrimary }}>
                 {requestCategoryLabel}
               </Text>
-              {submittedDate ? (
+              {submittedAt ? (
                 <Text
                   textRole="caption"
                   style={{ color: colors.textMuted, marginTop: 2 }}
                 >
-                  Submitted {submittedDate}
+                  Submitted {submittedAt}
                 </Text>
               ) : null}
             </View>
@@ -897,12 +975,17 @@ export function HealthRequestDetails({
               compact
             />
           </View>
+
+          {/* Urgency Row */}
           <View
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
               gap: 12,
               marginTop: 16,
+              paddingTop: 12,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
             }}
           >
             <Text textRole="label" style={{ color: colors.textMuted }}>
@@ -941,6 +1024,8 @@ export function HealthRequestDetails({
               ) : null}
             </View>
           </View>
+
+          {/* Status Message */}
           {isAvailable ? (
             <Text
               textRole="body"
@@ -949,19 +1034,30 @@ export function HealthRequestDetails({
               Visit not scheduled
             </Text>
           ) : isClaimedUnscheduled ? (
-            <Text
-              textRole="bodyStrong"
-              style={{ color: colors.warningForeground, marginTop: 8 }}
-            >
-              Needs scheduling
-            </Text>
+            isFarmVisit ? (
+              <Text
+                textRole="bodyStrong"
+                style={{ color: colors.warningForeground, marginTop: 8 }}
+              >
+                Needs scheduling
+              </Text>
+            ) : (
+              <Text
+                textRole="body"
+                style={{ color: colors.textSecondary, marginTop: 8 }}
+              >
+                {isAdvice
+                  ? "Advice requested"
+                  : isOfficePickup
+                    ? "Office pickup"
+                    : "Response required"}
+              </Text>
+            )
           ) : null}
-        </View>
+        </Section>
 
-        <View style={cardStyle}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
-            Farmer and location
-          </Text>
+        {/* Farmer and Location Section */}
+        <Section title="Farmer and location">
           {farmerName ? <InfoLine icon={UserRound} text={farmerName} /> : null}
           {farmerPhone ? (
             <TouchableOpacity
@@ -1014,13 +1110,11 @@ export function HealthRequestDetails({
               </Text>
             </TouchableOpacity>
           ) : null}
-        </View>
+        </Section>
 
-        <View style={cardStyle}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
-            Animal
-          </Text>
-          <View style={{ flexDirection: "row", gap: 12, marginTop: 14 }}>
+        {/* Animal Section */}
+        <Section title="Animal">
+          <View style={{ flexDirection: "row", gap: 12 }}>
             {cleanText(animal?.imageUrl) ? (
               <Image
                 source={{ uri: animal.imageUrl }}
@@ -1065,12 +1159,10 @@ export function HealthRequestDetails({
               ) : null}
             </View>
           </View>
-        </View>
+        </Section>
 
-        <View style={cardStyle}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
-            Farmer request
-          </Text>
+        {/* Farmer Request Section */}
+        <Section title="Farmer request">
           <DetailRow label="Request type" value={requestCategoryLabel} />
           <DetailRow
             label="Farmer observations and description"
@@ -1080,73 +1172,67 @@ export function HealthRequestDetails({
             <DetailRow label="Additional farmer note" value={farmerNotes} />
           ) : null}
 
-          {submittedAt ? (
-            <View style={{ marginTop: 8 }}>
-              <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
-            </View>
-          ) : null}
-
-          <Text
-            textRole="title"
-            style={{ color: colors.textPrimary, marginTop: 24 }}
-          >
-            Attachments
-          </Text>
-          {photos.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingTop: 12 }}
-            >
-              {galleryImages.map((photo, index) => (
-                <TouchableOpacity
-                  key={`${photo.fileName}-${index}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`View ${photo.accessibilityLabel}`}
-                  onPress={() => {
-                    setGalleryInitialIndex(index);
-                    setGalleryVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                  style={{
-                    width: 112,
-                    height: 88,
-                    overflow: "hidden",
-                    borderRadius: 12,
-                    backgroundColor: colors.surfaceSubtle,
-                  }}
-                >
-                  <Image
-                    source={{ uri: photo.uri }}
-                    resizeMode="cover"
-                    accessibilityLabel={photo.accessibilityLabel}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : (
+          {/* Attachments Section */}
+          <View style={{ marginTop: 24 }}>
             <Text
-              textRole="body"
-              style={{ color: colors.textSecondary, marginTop: 8 }}
+              textRole="title"
+              style={{ color: colors.textPrimary, marginBottom: 12 }}
             >
-              No attachments submitted.
+              Attachments
             </Text>
-          )}
-        </View>
+            {photos.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8 }}
+              >
+                {galleryImages.map((photo, index) => (
+                  <TouchableOpacity
+                    key={`${photo.fileName}-${index}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${photo.accessibilityLabel}`}
+                    onPress={() => {
+                      setGalleryInitialIndex(index);
+                      setGalleryVisible(true);
+                    }}
+                    activeOpacity={0.8}
+                    style={{
+                      width: 112,
+                      height: 88,
+                      overflow: "hidden",
+                      borderRadius: 12,
+                      backgroundColor: colors.surfaceSubtle,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: photo.uri }}
+                      resizeMode="cover"
+                      accessibilityLabel={photo.accessibilityLabel}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text textRole="body" style={{ color: colors.textSecondary }}>
+                No attachments submitted.
+              </Text>
+            )}
+          </View>
+        </Section>
 
-        {isClaimedUnscheduled || isScheduled || isInProgress ? (
-          <View style={cardStyle}>
-            <Text textRole="title" style={{ color: colors.textPrimary }}>
-              {isClaimedUnscheduled ? "Visit" : "Scheduled Visit"}
-            </Text>
+        {/* Visit Section */}
+        {isScheduled ||
+        isInProgress ||
+        (isClaimedUnscheduled && isFarmVisit) ? (
+          <Section title={isClaimedUnscheduled ? "Visit" : "Scheduled Visit"}>
             {scheduledDate ? (
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 10,
-                  marginTop: 12,
+                  marginTop: 4,
                 }}
               >
                 <CalendarDays size={18} color={colors.primary} />
@@ -1168,9 +1254,10 @@ export function HealthRequestDetails({
                 Needs scheduling
               </Text>
             )}
-          </View>
+          </Section>
         ) : null}
 
+        {/* Action Notice */}
         {actionNotice ? (
           <View
             accessibilityRole="alert"
@@ -1195,6 +1282,7 @@ export function HealthRequestDetails({
           </View>
         ) : null}
 
+        {/* Cancellation Review */}
         {cancellationRequested ? (
           <CancellationReviewPanel
             reason={request?.cancellationReason}
@@ -1204,6 +1292,7 @@ export function HealthRequestDetails({
           />
         ) : null}
 
+        {/* Action Buttons */}
         {!cancellationRequested && (canChooseHandlingMethod || primaryLabel) ? (
           <View style={cardStyle}>
             {canChooseHandlingMethod ? (
@@ -1243,29 +1332,6 @@ export function HealthRequestDetails({
                 )}
               </TouchableOpacity>
             )}
-
-            {isAvailable ? (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel="Skip Request"
-                disabled={updating}
-                onPress={() => setSkipConfirmationVisible(true)}
-                style={{
-                  minHeight: 48,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginTop: 32,
-                  borderWidth: 1,
-                  borderColor: colors.error,
-                  borderRadius: 12,
-                  backgroundColor: colors.error,
-                }}
-              >
-                <Text textRole="bodyStrong" style={{ color: "#ffffff" }}>
-                  Skip Request
-                </Text>
-              </TouchableOpacity>
-            ) : null}
 
             {isScheduled ? (
               <TouchableOpacity
@@ -1314,6 +1380,7 @@ export function HealthRequestDetails({
         ) : null}
       </ScrollView>
 
+      {/* Modals remain the same */}
       <HealthVisitScheduleModal
         visible={scheduleVisible}
         mode={scheduleMode}
@@ -1354,6 +1421,7 @@ export function HealthRequestDetails({
         onClose={() => setGalleryVisible(false)}
       />
 
+      {/* Office Pickup Modal */}
       <Modal
         visible={officePickupVisible}
         transparent
@@ -1500,6 +1568,7 @@ export function HealthRequestDetails({
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Advice Modal */}
       <Modal
         visible={adviceVisible}
         transparent
@@ -1642,6 +1711,7 @@ export function HealthRequestDetails({
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Cancel Reason Modal */}
       <Modal
         visible={reasonVisible}
         transparent

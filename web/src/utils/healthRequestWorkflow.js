@@ -47,7 +47,7 @@ export const isHealthAdviceEligible = (request = {}) => {
   }
 
   if (status === "pending") return hasOwner;
-  return hasOwner && ["triaged", "assigned", "approved"].includes(status);
+  return hasOwner && ["triaged", "assigned", "approved", "claimed"].includes(status);
 };
 
 export const isHealthOfficePickupEligible = (request = {}) => {
@@ -74,7 +74,7 @@ export const isHealthOfficePickupEligible = (request = {}) => {
   }
 
   if (status === "pending") return hasOwner;
-  return hasOwner && ["triaged", "assigned", "approved"].includes(status);
+  return hasOwner && ["triaged", "assigned", "approved", "claimed"].includes(status);
 };
 
 export const isHealthFarmVisitEligible = (request = {}) => {
@@ -82,7 +82,7 @@ export const isHealthFarmVisitEligible = (request = {}) => {
   const handlingMethod = text(request.handlingMethod).toLowerCase();
   if (!isOwnedHealthRequest(request)) return false;
   if (request.scheduledDate || request.visitPeriod || handlingMethod) return false;
-  return ["pending", "triaged", "assigned", "approved"].includes(status);
+  return ["pending", "triaged", "assigned", "approved", "claimed"].includes(status);
 };
 
 export const buildHealthAdvicePayload = ({

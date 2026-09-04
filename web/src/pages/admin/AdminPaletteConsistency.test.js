@@ -14,6 +14,7 @@ const normalizedAdminFiles = [
   "src/pages/admin/Settings.jsx",
   "src/pages/admin/SupportTickets.jsx",
   "src/pages/admin/TechnicianProfile.jsx",
+  "src/pages/admin/UserDetails.jsx",
   "src/pages/admin/Users.jsx",
   "src/components/layout/Sidebar.jsx",
   "src/components/layout/Topbar.jsx",
@@ -70,8 +71,8 @@ describe("Admin semantic palette consistency", () => {
     expect(users).toContain("UserDirectoryTable");
     expect(cards).toContain("UserAvatar");
     expect(table).toContain("UserAvatar");
-    expect(cards).toContain("/admin/technicians/");
-    expect(table).toContain("/admin/technicians/");
+    expect(cards).toContain("/admin/users/");
+    expect(table).toContain("/admin/users/");
   });
 
   it("preserves the Dashboard and Sidebar structures", () => {

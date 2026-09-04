@@ -17,6 +17,8 @@ export type RequestWorkService =
 
 export type RequestWorkStatus =
   | "open"
+  | "needs_response"
+  | "needs_scheduling"
   | "scheduled"
   | "due_today"
   | "overdue"
@@ -34,7 +36,6 @@ export const OPEN_REQUEST_FILTERS: RequestWorkFilterOption[] = [
   { value: "all", label: "All" },
   { value: "ai", label: "AI" },
   { value: "health", label: "Health" },
-  { value: "pregnancy", label: "Pregnancy" },
 ];
 
 export const MY_WORK_FILTERS: RequestWorkFilterOption[] = [
@@ -221,6 +222,7 @@ const titleFor = (workType: TechnicianWorkType, attemptNumber: number | null) =>
 
 const statusLabelFor = (state: TechnicianWorkState) =>
   ({
+    needs_response: "Needs response",
     needs_scheduling: "Needs scheduling",
     scheduled: "Scheduled",
     needs_confirmation: "Needs confirmation",
@@ -299,8 +301,16 @@ export function normalizeTechnicianWorkItem(
   else if (completedAt || terminalStatuses.has(status)) state = "completed";
   else if (["in_progress", "inprogress"].includes(status) || serviceStartedAt) {
     state = "in_progress";
-  } else if (workType === "ai" || workType === "health") {
+  } else if (workType === "ai") {
     state = scheduledDate ? "scheduled" : "needs_scheduling";
+  } else if (workType === "health") {
+    if (handlingMethod === "farm_visit") {
+      state = scheduledDate ? "scheduled" : "needs_scheduling";
+    } else if (["advice", "office_pickup"].includes(String(handlingMethod))) {
+      state = "needs_response";
+    } else {
+      state = "needs_response";
+    }
   } else if (workType === "pregnancy_check") {
     state = hasExplicitTaskVisit ? "scheduled" : "needs_confirmation";
   } else if (workType === "calving") {
@@ -350,10 +360,18 @@ export function normalizeTechnicianWorkItem(
         : "View Record"
       : state === "in_progress"
         ? "Continue Service"
-        : state === "needs_scheduling"
-          ? "Set Visit"
-          : workType === "health" && state === "scheduled"
-            ? "Record Health Assistance"
+        : workType === "health"
+          ? handlingMethod === "farm_visit"
+            ? scheduledDate
+              ? "Record Health Assistance"
+              : "Set Visit"
+            : handlingMethod === "advice"
+              ? "Send Advice"
+              : handlingMethod === "office_pickup"
+                ? "Office Pickup"
+                : "Handle Request"
+          : state === "needs_scheduling"
+            ? "Set Visit"
             : workType === "pregnancy_check"
               ? readiness?.isEligible === false
                 ? "Review"
@@ -490,6 +508,7 @@ export function summarizeTechnicianWork(
 
 export function getTechnicianWorkStatePresentation(state: TechnicianWorkState) {
   const tone: Record<TechnicianWorkState, RequestWorkTone> = {
+    needs_response: "blue",
     needs_scheduling: "amber",
     scheduled: "blue",
     needs_confirmation: "violet",
@@ -511,10 +530,47 @@ export function normalizeWorkflowStatus(
     return "cancelled";
   }
 
+  const serviceType = normalizeServiceType(item);
   const scheduleState = deriveScheduleState(
     item.schedule?.date || item.scheduledDate || item.dueDate,
     now,
   );
+
+  if (serviceType === "health") {
+    const rawHandlingMethod =
+      item.handlingMethod ||
+      item.raw?.handlingMethod ||
+      item.triage?.handlingMethod ||
+      item.resolution?.handlingMethod;
+    const handlingMethod = normalizedValue(rawHandlingMethod);
+
+    if (handlingMethod === "farm_visit") {
+      if (scheduleState) return scheduleState;
+      return "needs_scheduling";
+    }
+
+    if (["advice", "office_pickup"].includes(handlingMethod)) {
+      return "needs_response";
+    }
+
+    // No handling method chosen yet
+    if (scheduleState) return scheduleState;
+    if (
+      [
+        "scheduled",
+        "approved",
+        "assigned",
+        "triaged",
+        "claimed",
+        "in_progress",
+        "ready_today",
+      ].includes(status)
+    ) {
+      return "needs_response";
+    }
+    return "open";
+  }
+
   if (scheduleState) return scheduleState;
 
   if (
@@ -531,19 +587,24 @@ export function normalizeWorkflowStatus(
   return "open";
 }
 
-export function getWorkflowStatusPresentation(status: RequestWorkStatus) {
+export function getWorkflowStatusPresentation(
+  status: RequestWorkStatus | string,
+) {
   const presentations: Record<
-    RequestWorkStatus,
+    string,
     { label: string; tone: RequestWorkTone }
   > = {
     open: { label: "Open", tone: "amber" },
+    needs_response: { label: "Needs response", tone: "blue" },
+    needs_scheduling: { label: "Needs scheduling", tone: "amber" },
     scheduled: { label: "Scheduled", tone: "blue" },
     due_today: { label: "Due Today", tone: "amber" },
     overdue: { label: "Overdue", tone: "red" },
     completed: { label: "Completed", tone: "green" },
     cancelled: { label: "Cancelled", tone: "slate" },
+    triaged: { label: "Needs response", tone: "blue" },
   };
-  return presentations[status];
+  return presentations[status] || { label: "Open", tone: "amber" };
 }
 
 export function matchesServiceFilter(

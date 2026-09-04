@@ -9,7 +9,10 @@ import {
   getEarlyStartTiming,
 } from "../src/domain/service-timing.js";
 import { updateRequestStatus } from "../src/controllers/ai-request.controllers.js";
-import { walkInInsemination } from "../src/controllers/technician.controllers.js";
+import {
+  requiresHistoricalAIWorkflow,
+  walkInInsemination,
+} from "../src/controllers/technician.controllers.js";
 import { Insemination } from "../src/models/insemination.model.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -35,11 +38,13 @@ test("AI service timing only requires confirmation outside the start grace perio
 
 test("AI status endpoint rejects an unconfirmed early start with a readable contract", async (t) => {
   const originalFindById = Insemination.findById;
-  Insemination.findById = async () => ({
-    _id: "request-1",
-    status: "scheduled",
-    scheduledDate: new Date(Date.now() + 60 * 60 * 1000),
-    approvedBy: "technician-1",
+  Insemination.findById = () => ({
+    populate: async () => ({
+      _id: "request-1",
+      status: "scheduled",
+      scheduledDate: new Date(Date.now() + 60 * 60 * 1000),
+      approvedBy: "technician-1",
+    }),
   });
   t.after(() => {
     Insemination.findById = originalFindById;
@@ -101,6 +106,46 @@ test("walk-in AI rejects a non-string technician note before recording", async (
 
   assert.equal(statusCode, 400);
   assert.equal(responseBody.code, "INVALID_TECHNICIAN_NOTE");
+});
+
+test("older AI service dates require Previous AI only without an active request", () => {
+  const now = new Date("2026-09-04T04:00:00.000Z").getTime();
+  const yesterday = new Date("2026-09-03T01:00:00.000Z");
+  const older = new Date("2026-09-02T01:00:00.000Z");
+  const today = new Date("2026-09-04T01:00:00.000Z");
+
+  assert.equal(
+    requiresHistoricalAIWorkflow({
+      requestId: "request-1",
+      serviceDate: yesterday,
+      now,
+    }),
+    false,
+  );
+  assert.equal(
+    requiresHistoricalAIWorkflow({
+      requestId: "request-1",
+      serviceDate: older,
+      now,
+    }),
+    false,
+  );
+  assert.equal(
+    requiresHistoricalAIWorkflow({
+      requestId: "request-1",
+      serviceDate: today,
+      now,
+    }),
+    false,
+  );
+  assert.equal(
+    requiresHistoricalAIWorkflow({
+      requestId: null,
+      serviceDate: older,
+      now,
+    }),
+    true,
+  );
 });
 
 test("technician request starts and AI completion stay responsive and visible", () => {

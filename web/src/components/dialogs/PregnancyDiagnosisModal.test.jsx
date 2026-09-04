@@ -25,6 +25,7 @@ vi.mock("sonner", () => ({
 }));
 
 import PregnancyDiagnosisModal from "./PregnancyDiagnosisModal";
+import { getPregnancyReadinessFallback } from "../../utils/pregnancyReadinessFallback";
 
 const taskDetail = {
   _id: ids.task,
@@ -63,7 +64,7 @@ const renderModal = (detail = taskDetail) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <PregnancyDiagnosisModal
         isOpen
@@ -74,6 +75,20 @@ const renderModal = (detail = taskDetail) => {
       />
     </QueryClientProvider>,
   );
+  return {
+    rerenderModal: (nextTaskId, nextTaskData = { taskType: "PD" }) =>
+      view.rerender(
+        <QueryClientProvider client={client}>
+          <PregnancyDiagnosisModal
+            isOpen
+            onClose={vi.fn()}
+            onSuccess={vi.fn()}
+            taskData={nextTaskData}
+            taskId={nextTaskId}
+          />
+        </QueryClientProvider>,
+      ),
+  };
 };
 
 const chooseMethodAndDate = async () => {
@@ -179,5 +194,67 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
       await screen.findByText(/already been finalized/i),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Finalize Diagnosis" })).toBeNull();
+  });
+
+  it("uses signed, fail-closed legacy readiness when backend readiness is absent", () => {
+    expect(
+      getPregnancyReadinessFallback(
+        "2026-06-01T00:00:00.000Z",
+        new Date("2026-08-01T00:00:00.000Z"),
+      ),
+    ).toMatchObject({ isEligible: true, daysPostAI: 61 });
+    expect(
+      getPregnancyReadinessFallback(
+        "2026-09-01T00:00:00.000Z",
+        new Date("2026-08-01T00:00:00.000Z"),
+      ),
+    ).toMatchObject({ isEligible: false, daysPostAI: -31 });
+    expect(getPregnancyReadinessFallback("not-a-date")).toMatchObject({
+      isEligible: false,
+      daysPostAI: null,
+    });
+    expect(getPregnancyReadinessFallback(null)).toMatchObject({
+      isEligible: false,
+      daysPostAI: null,
+    });
+  });
+
+  it("shows backend mutation errors inline instead of behind the modal", async () => {
+    mocks.post.mockRejectedValue({
+      response: { data: { message: "The diagnosis window changed." } },
+    });
+    renderModal();
+    fireEvent.click(await screen.findByRole("button", { name: /^Pregnant/ }));
+    await chooseMethodAndDate();
+    fireEvent.click(screen.getByRole("button", { name: "Finalize Diagnosis" }));
+
+    expect(
+      (await screen.findByText("The diagnosis window changed.")).closest(
+        '[role="alert"]',
+      ),
+    ).not.toBeNull();
+    expect(mocks.error).not.toHaveBeenCalled();
+  });
+
+  it("preserves same-task input and resets it when the Task identity changes", async () => {
+    const { rerenderModal } = renderModal();
+    await screen.findByText("Aug 26, 2024");
+    fireEvent.change(screen.getByLabelText("Technician Notes"), {
+      target: { value: "Keep this finding" },
+    });
+
+    rerenderModal(ids.task, { taskType: "PD", raw: { status: "Pending" } });
+    expect(screen.getByLabelText("Technician Notes")).toHaveValue(
+      "Keep this finding",
+    );
+
+    const nextTaskId = "507f1f77bcf86cd799439032";
+    mocks.get.mockResolvedValue({
+      data: { ...taskDetail, _id: nextTaskId },
+    });
+    rerenderModal(nextTaskId);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Technician Notes")).toHaveValue(""),
+    );
   });
 });

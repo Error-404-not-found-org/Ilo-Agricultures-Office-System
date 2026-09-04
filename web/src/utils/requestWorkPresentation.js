@@ -43,9 +43,7 @@ export const formatCanonicalVisitSchedule = (schedule = {}) => {
 };
 
 export const isDateOnlyWorkflowType = (workflowType) =>
-  ["pd", "pregnancy", "cd", "calving"].includes(
-    normalizedValue(workflowType),
-  );
+  ["pd", "pregnancy", "cd", "calving"].includes(normalizedValue(workflowType));
 
 export const normalizeServiceType = (itemOrValue) => {
   if (itemOrValue && typeof itemOrValue === "object") {
@@ -164,6 +162,16 @@ export const deriveScheduleState = (scheduleDate, now = new Date()) => {
   return "scheduled";
 };
 
+const getHandlingMethod = (item) => {
+  const value =
+    item?.handlingMethod ||
+    item?.raw?.handlingMethod ||
+    item?.context?.handlingMethod ||
+    item?.triage?.handlingMethod ||
+    item?.resolution?.handlingMethod;
+  return normalizedValue(value);
+};
+
 export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
   const status = normalizedValue(item.status || item.displayStatus);
   if (["completed", "done", "resolved"].includes(status)) return "completed";
@@ -171,15 +179,51 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
     return "cancelled";
   }
 
+  const serviceType = normalizeServiceType(item);
   const scheduleState = deriveScheduleState(
     item.schedule?.date || item.scheduledDate || item.dueDate,
     now,
   );
+
+  if (serviceType === "health") {
+    const handlingMethod = getHandlingMethod(item);
+
+    if (handlingMethod === "farm_visit") {
+      if (scheduleState) return scheduleState;
+      return "needs_scheduling";
+    }
+
+    if (["advice", "office_pickup"].includes(handlingMethod)) {
+      return "needs_response";
+    }
+
+    // No handling method chosen yet
+    if (scheduleState) return scheduleState;
+    if (
+      [
+        "scheduled",
+        "approved",
+        "assigned",
+        "triaged",
+        "claimed",
+        "in_progress",
+        "ready_today",
+      ].includes(status)
+    ) {
+      return "needs_response";
+    }
+    return "open";
+  }
+
   if (scheduleState) return scheduleState;
   if (
-    ["scheduled", "approved", "assigned", "in_progress", "ready_today"].includes(
-      status,
-    )
+    [
+      "scheduled",
+      "approved",
+      "assigned",
+      "in_progress",
+      "ready_today",
+    ].includes(status)
   ) {
     return "scheduled";
   }
@@ -189,11 +233,39 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
 export const getWorkflowStatusPresentation = (status) =>
   ({
     open: { label: "Open", tone: "amber", badgeClass: "badge-warning" },
+    needs_response: {
+      label: "Needs response",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
+    claimed: {
+      label: "Claimed",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
+    needs_scheduling: {
+      label: "Needs scheduling",
+      tone: "amber",
+      badgeClass: "badge-warning",
+    },
     scheduled: { label: "Scheduled", tone: "blue", badgeClass: "badge-info" },
-    due_today: { label: "Due Today", tone: "amber", badgeClass: "badge-warning" },
+    due_today: {
+      label: "Due Today",
+      tone: "amber",
+      badgeClass: "badge-warning",
+    },
     overdue: { label: "Overdue", tone: "red", badgeClass: "badge-error" },
-    completed: { label: "Completed", tone: "green", badgeClass: "badge-success" },
+    completed: {
+      label: "Completed",
+      tone: "green",
+      badgeClass: "badge-success",
+    },
     cancelled: { label: "Cancelled", tone: "slate", badgeClass: "badge-ghost" },
+    triaged: {
+      label: "Needs response",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
   })[status] || { label: "Open", tone: "amber", badgeClass: "badge-warning" };
 
 export const matchesServiceFilter = (item, filter) =>

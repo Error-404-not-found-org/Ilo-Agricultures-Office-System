@@ -188,8 +188,10 @@ const RecordDetails = ({
         )}
         {record.type === "health" && (
           <>
-            <Value label="Request type">
-              {valueOrRecorded(details.requestType)}
+            <Value
+              label={details.isDirectHealthService ? "Service type" : "Request type"}
+            >
+              {humanize(details.serviceType || details.requestType)}
             </Value>
             <Value label="Treatment or service">
               {details.treatment || details.advice || "Not recorded"}

@@ -114,6 +114,20 @@ describe("technician Schedule presentation", () => {
     expect(target.search).toContain(search);
   });
 
+  it.each([
+    [task({ taskId: "pd-future", taskType: "PD" }), "task", "previewTaskId=pd-future"],
+    [task({ taskId: "calving-future", taskType: "CD" }), "task", "previewTaskId=calving-future"],
+    [visit({ id: "ai-future" }), "request", "previewRequestId=ai-future"],
+    [visit({ id: "health-future", type: "health", handlingMethod: "farm_visit" }), "request", "previewRequestId=health-future"],
+  ])("routes upcoming %o to read-only Schedule preview", (item, kind, search) => {
+    const target = getScheduleNavigationTarget(item, "upcoming");
+    expect(target.kind).toBe(kind);
+    expect(target.path).toBe("/technician/schedule");
+    expect(target.action).toBe("preview");
+    expect(target.isUpcoming).toBe(true);
+    expect(target.search).toContain(search);
+  });
+
   it("keeps overdue timing separate from urgent Health", () => {
     const overdue = visit({
       id: "health-overdue",
@@ -143,6 +157,18 @@ describe("technician Schedule presentation", () => {
     expect(getScheduleTimingState(task(), NOW)).toBe("upcoming");
   });
 
+  it("keeps completed work out of the active Schedule", () => {
+    expect(
+      buildScheduleItems(
+        [
+          visit({ status: "done" }),
+          task({ id: "completed-task", status: "Completed" }),
+        ],
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
   it("suppresses duplicate AI/Health execution Tasks", () => {
     const request = visit({ id: "ai-1" });
     const duplicateTask = task({
@@ -152,5 +178,48 @@ describe("technician Schedule presentation", () => {
       raw: { metadata: { inseminationId: "ai-1" } },
     });
     expect(buildScheduleItems([request, duplicateTask], NOW)).toHaveLength(1);
+  });
+
+  it("keeps the authoritative Health Farm Visit when its mirrored execution Task is present", () => {
+    const request = visit({
+      id: "health-request-1",
+      type: "health",
+      handlingMethod: "farm_visit",
+      title: "Scheduled Health Farm Visit",
+    });
+    const mirroredTask = task({
+      id: "health-task-1",
+      taskId: "health-task-1",
+      taskType: "Health",
+      title: "Unrelated presentation text",
+      raw: { metadata: { healthRequestId: "health-request-1" } },
+    });
+
+    const items = buildScheduleItems([mirroredTask, request], NOW);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: "health-request-1",
+      scheduleKind: "health",
+      handlingMethod: "farm_visit",
+    });
+  });
+
+  it("does not revive resolved Health mirror work or schedule Advice and Office Pickup", () => {
+    expect(
+      buildScheduleItems(
+        [
+          visit({ id: "resolved-health", type: "health", status: "resolved", handlingMethod: "farm_visit" }),
+          task({
+            id: "resolved-health-task",
+            taskType: "Health",
+            status: "Completed",
+            raw: { metadata: { healthRequestId: "resolved-health" } },
+          }),
+          visit({ id: "advice", type: "health", handlingMethod: "advice" }),
+          visit({ id: "pickup", type: "health", handlingMethod: "office_pickup" }),
+        ],
+        NOW,
+      ),
+    ).toEqual([]);
   });
 });

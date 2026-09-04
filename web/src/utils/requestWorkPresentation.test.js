@@ -83,4 +83,105 @@ describe("request and work presentation", () => {
       "scheduled",
     );
   });
+
+  describe("canonical Health handling method state matrix", () => {
+    it("1. claimed Health without handling method returns needs_response (no false scheduled or needs_scheduling)", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_response");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs response",
+      );
+    });
+
+    it("2. Health with advice returns needs_response without visit scheduling", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+        handlingMethod: "advice",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_response");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs response",
+      );
+    });
+
+    it("3. Health with office_pickup returns needs_response without visit scheduling", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+        handlingMethod: "office_pickup",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_response");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs response",
+      );
+    });
+
+    it("4. Health with farm_visit and NO schedule date returns needs_scheduling", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+        handlingMethod: "farm_visit",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_scheduling");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs scheduling",
+      );
+    });
+
+    it("5. Health with farm_visit and scheduledDate uses temporal presentation", () => {
+      const now = new Date(2026, 7, 4, 10, 0);
+      const future = normalizeWorkflowStatus(
+        {
+          workflowType: "Health",
+          status: "assigned",
+          handlingMethod: "farm_visit",
+          scheduledDate: "2026-08-05",
+        },
+        now,
+      );
+      expect(future).toBe("scheduled");
+      expect(getWorkflowStatusPresentation(future).label).toBe("Scheduled");
+
+      const today = normalizeWorkflowStatus(
+        {
+          workflowType: "Health",
+          status: "assigned",
+          handlingMethod: "farm_visit",
+          scheduledDate: "2026-08-04",
+        },
+        now,
+      );
+      expect(today).toBe("due_today");
+      expect(getWorkflowStatusPresentation(today).label).toBe("Due Today");
+
+      const overdue = normalizeWorkflowStatus(
+        {
+          workflowType: "Health",
+          status: "assigned",
+          handlingMethod: "farm_visit",
+          scheduledDate: "2026-08-03",
+        },
+        now,
+      );
+      expect(overdue).toBe("overdue");
+      expect(getWorkflowStatusPresentation(overdue).label).toBe("Overdue");
+    });
+
+    it("never exposes user-facing 'triaged' label", () => {
+      expect(getWorkflowStatusPresentation("triaged").label).toBe(
+        "Needs response",
+      );
+      expect(getWorkflowStatusPresentation("triaged").label).not.toMatch(
+        /triage/i,
+      );
+    });
+  });
 });

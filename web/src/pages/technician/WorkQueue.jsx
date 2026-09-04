@@ -681,53 +681,15 @@ export default function WorkQueue({ embedded = false }) {
                                   className="shrink-0 text-base-content/40 transition-colors group-hover:text-primary"
                                   aria-hidden="true"
                                 />
-                                {task.animal?.name ? (
-                                  <span className="font-medium text-base-content/75 transition-colors group-hover:text-primary">
-                                    {task.animal.name}
-                                  </span>
-                                ) : null}
-                                {animalReference !== "Not recorded" ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="opacity-40">·</span>
-                                    Tag {animalReference}
-                                  </span>
-                                ) : null}
-                                {task.animal?.species ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="opacity-40">·</span>
-                                    {task.animal.species}
-                                  </span>
-                                ) : null}
-                                {task.animal?.breed ? (
-                                  <span className="truncate italic">
-                                    {task.animal.breed}
-                                  </span>
-                                ) : null}
+                                <span className="font-medium text-base-content/75 transition-colors group-hover:text-primary">
+                                  Tag {animalReference !== "Not recorded" ? animalReference : "Unknown"}
+                                </span>
                               </button>
                             ) : (
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-base-content/60">
-                                {task.animal?.name ? (
-                                  <span className="font-medium text-base-content/75">
-                                    {task.animal.name}
-                                  </span>
-                                ) : null}
-                                {animalReference !== "Not recorded" ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="opacity-40">·</span>
-                                    Tag {animalReference}
-                                  </span>
-                                ) : null}
-                                {task.animal?.species ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="opacity-40">·</span>
-                                    {task.animal.species}
-                                  </span>
-                                ) : null}
-                                {task.animal?.breed ? (
-                                  <span className="truncate italic">
-                                    {task.animal.breed}
-                                  </span>
-                                ) : null}
+                                <span className="font-medium text-base-content/75">
+                                  Tag {animalReference !== "Not recorded" ? animalReference : "Unknown"}
+                                </span>
                               </div>
                             )}
 

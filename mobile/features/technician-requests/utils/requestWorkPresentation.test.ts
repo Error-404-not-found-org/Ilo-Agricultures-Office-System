@@ -58,12 +58,12 @@ test("mixed Work Queue item arrays remain normalized", () => {
   );
 });
 
-test("Farmer return-to-heat task is presented as an update review in My Work", () => {
+test("Farmer return-to-heat BreedingFollowUp is presented as an update review in My Work", () => {
   const item = normalizeTechnicianWorkItem({
     id: "task-1",
     taskId: "task-1",
-    workflowType: "PD",
-    taskType: "PD",
+    workflowType: "BreedingFollowUp",
+    taskType: "BreedingFollowUp",
     status: "Pending",
     dueDate: "2026-08-15T08:00:00.000Z",
     raw: {
@@ -72,8 +72,8 @@ test("Farmer return-to-heat task is presented as an update review in My Work", (
     },
   } as any);
 
-  assert.equal(item.title, "Return-to-Heat Review");
-  assert.equal(item.actionLabel, "Review Farmer Update");
+  assert.equal(item.title, "Breeding Follow-up");
+  assert.equal(item.actionLabel, "Review Update");
   assert.equal(item.requestKind, "breeding_observation_review");
   assert.doesNotMatch(item.timingLabel || "", /Pregnancy confirmation/);
 });
@@ -149,3 +149,121 @@ test("completed non-clinical Health responses do not imply a MedicalRecord", () 
   assert.equal(clinical.statusLabel, "Completed");
   assert.equal(legacyWithoutRecord.actionLabel, "View Response");
 });
+
+test("State 1: Claimed Health without handling method is Needs response with Handle Request action", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-claimed-1",
+    workflowId: "health-claimed-1",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "assigned",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.state, "needs_response");
+  assert.equal(item.statusLabel, "Needs response");
+  assert.equal(item.actionLabel, "Handle Request");
+  assert.equal(item.timingLabel, null);
+});
+
+test("State 2: Claimed Health with advice handling method is response flow without scheduling", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-advice-flow",
+    workflowId: "health-advice-flow",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "assigned",
+    handlingMethod: "advice",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.state, "needs_response");
+  assert.equal(item.statusLabel, "Needs response");
+  assert.equal(item.actionLabel, "Send Advice");
+  assert.equal(item.timingLabel, null);
+});
+
+test("State 3: Claimed Health with office_pickup handling method is response flow without scheduling", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-pickup-flow",
+    workflowId: "health-pickup-flow",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "assigned",
+    handlingMethod: "office_pickup",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.state, "needs_response");
+  assert.equal(item.statusLabel, "Needs response");
+  assert.equal(item.actionLabel, "Office Pickup");
+  assert.equal(item.timingLabel, null);
+});
+
+test("State 4: Claimed Health with farm_visit handling method and no schedule is Needs scheduling", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-visit-unscheduled",
+    workflowId: "health-visit-unscheduled",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "assigned",
+    handlingMethod: "farm_visit",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.state, "needs_scheduling");
+  assert.equal(item.statusLabel, "Needs scheduling");
+  assert.equal(item.actionLabel, "Set Visit");
+  assert.equal(item.timingLabel, null);
+});
+
+test("State 5: Claimed Health with farm_visit handling method and scheduled date retains temporal presentation", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-visit-scheduled",
+    workflowId: "health-visit-scheduled",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "scheduled",
+    handlingMethod: "farm_visit",
+    scheduledDate: "2026-09-10T08:00:00.000Z",
+    schedule: {
+      date: "2026-09-10T08:00:00.000Z",
+      visitPeriod: "morning",
+    },
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.state, "scheduled");
+  assert.equal(item.actionLabel, "Record Health Assistance");
+});
+
+test("AI claimed without schedule remains Needs scheduling with Set Visit", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "ai-claimed-unscheduled",
+    workflowId: "ai-claimed-unscheduled",
+    workflowType: "AI",
+    type: "ai",
+    status: "assigned",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.state, "needs_scheduling");
+  assert.equal(item.statusLabel, "Needs scheduling");
+  assert.equal(item.actionLabel, "Set Visit");
+});
+
+test("Internal triaged status never exposes user-facing 'triaged' label", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-triaged",
+    workflowId: "health-triaged",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "triaged",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.notEqual(item.statusLabel?.toLowerCase(), "triaged");
+  assert.doesNotMatch(item.statusLabel || "", /triage/i);
+  assert.equal(item.statusLabel, "Needs response");
+});
+

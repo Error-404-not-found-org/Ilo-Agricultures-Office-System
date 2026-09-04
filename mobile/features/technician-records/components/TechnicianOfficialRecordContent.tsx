@@ -620,10 +620,10 @@ export function TechnicianOfficialRecordContent({
   ];
 
   const healthRows: (DisplayRow | null)[] = [
-    hasValue(details.requestType)
+    hasValue(details.serviceType || details.requestType)
       ? {
-          label: "Request type",
-          value: humanize(details.requestType),
+          label: details.isDirectHealthService ? "Service type" : "Request type",
+          value: humanize(details.serviceType || details.requestType),
           icon: <HeartPulse size={18} color={colors.primary} />,
         }
       : null,

@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Modal, ScrollView, Text, View } from "react-native";
 import { CheckCircle2 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -159,10 +159,6 @@ export default function HealthReviewModal({
                 value={snapshot.details.withdrawalPeriodDays ? `${snapshot.details.withdrawalPeriodDays} days` : "None"}
               />
               <ReviewRow label="Advice" value={snapshot.details.advice || "None"} />
-              <ReviewRow
-                label="Resolution Notes"
-                value={snapshot.details.resolutionNotes || "None"}
-              />
             </View>
           </ScrollView>
 

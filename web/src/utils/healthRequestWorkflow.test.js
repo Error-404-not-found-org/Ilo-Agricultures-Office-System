@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getManilaDateKey,
   buildHealthAdvicePayload,
   buildHealthOfficePickupPayload,
   getHealthRequestId,
@@ -10,6 +11,20 @@ import {
   validateHealthAdvice,
   validateHealthOfficePickup,
 } from "./healthRequestWorkflow";
+
+describe("Manila clinical date keys", () => {
+  it("uses the current Philippine date just after Manila midnight", () => {
+    expect(getManilaDateKey(new Date("2026-09-01T16:01:00.000Z"))).toBe(
+      "2026-09-02",
+    );
+  });
+
+  it("uses the same Philippine date during normal daytime hours", () => {
+    expect(getManilaDateKey(new Date("2026-09-02T04:00:00.000Z"))).toBe(
+      "2026-09-02",
+    );
+  });
+});
 
 const owned = {
   status: "approved",

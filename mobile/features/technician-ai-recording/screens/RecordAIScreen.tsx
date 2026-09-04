@@ -302,7 +302,7 @@ export default function RecordAIScreen() {
     mode.kind === "direct"
       ? isHistoricalMode
         ? "Add Past Record"
-        : "Record AI Service"
+        : "Record Insemination Service"
       : "Record Insemination";
   const blockingError =
     mode.kind === "invalid" ? mode.message : requestError || contextError;
@@ -433,7 +433,7 @@ export default function RecordAIScreen() {
                   color: !isHistoricalMode ? "#FFFFFF" : colors.textSecondary,
                 }}
               >
-                Record AI Now
+                Record Insemination
               </Text>
             </TouchableOpacity>
             <TouchableOpacity

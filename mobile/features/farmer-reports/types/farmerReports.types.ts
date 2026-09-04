@@ -103,6 +103,8 @@ export interface ActivityFeedItem {
     lateEntryReason?: string;
 
     requestType?: string;
+    serviceType?: string;
+    isDirectHealthService?: boolean;
     requestDetails?: {
       version?: number;
       assistanceRequested?: string;

@@ -98,8 +98,9 @@ describe("Technician Requests responsibility", () => {
   it("keeps the Requests badge scoped to the canonical eligible Available total", () => {
     const sidebarSource = readFileSync("src/components/layout/Sidebar.jsx", "utf8");
     expect(sidebarSource).toContain('axiosInstance.get("/technician/requests"');
-    expect(sidebarSource).toContain('params: { status: "pending", limit: 1 }');
-    expect(sidebarSource).toContain("operationalQueue?.pagination?.total || 0");
+    expect(sidebarSource).toContain('assignment: "unassigned"');
+    expect(sidebarSource).toContain("includeOperationalTasks: false");
+    expect(sidebarSource).toContain("includeCounts: true");
     expect(sidebarSource).not.toContain(
       'queryKey: ["technician-requests-badge", "work-queue"]',
     );

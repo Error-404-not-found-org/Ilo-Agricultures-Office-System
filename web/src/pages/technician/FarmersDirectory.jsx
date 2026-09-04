@@ -85,14 +85,14 @@ function FarmerCard({ farmer, onOpen, onEdit }) {
         <div className="card-actions grid grid-cols-2 border-t border-base-300 pt-3">
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-primary btn-sm"
             onClick={() => onOpen(farmer)}
           >
             View Profile
           </button>
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost text-info btn-sm hover:bg-info/10 hover:text-info"
             onClick={() => onEdit(farmer)}
           >
             <Edit size={15} /> Edit
@@ -322,7 +322,7 @@ export default function FarmersDirectory() {
                 >
                   <table className="table w-full text-left">
                     <thead>
-                      <tr className="bg-base-200">
+                      <tr className="bg-base-200 uppercase text-xs">
                         <th>Farmer</th>
                         <th>Contact</th>
                         <th>Location</th>
@@ -381,7 +381,7 @@ export default function FarmersDirectory() {
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
                   <table className="table w-full min-w-225 text-left">
                     <thead>
-                      <tr className="bg-base-200">
+                      <tr className="bg-base-200 uppercase text-xs">
                         <th>Farmer</th>
                         <th>Contact</th>
                         <th>Location</th>
@@ -435,14 +435,14 @@ export default function FarmersDirectory() {
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
-                                className="btn btn-sm"
+                                className="btn btn-primary btn-sm"
                                 onClick={() => openFarmer(farmer)}
                               >
                                 View Profile
                               </button>
                               <button
                                 type="button"
-                                className="btn btn-ghost btn-sm"
+                                className="btn btn-ghost text-info btn-sm hover:bg-info/10 hover:text-info"
                                 aria-label={`Edit ${farmer.name}`}
                                 onClick={() => editFarmer(farmer)}
                               >

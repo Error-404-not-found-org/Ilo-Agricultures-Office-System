@@ -1031,6 +1031,73 @@ test("Technician Work Queue backend contract", async (t) => {
   );
 
   await t.test(
+    "targeted deep-link lookup remains active-work and owner scoped",
+    async () => {
+      state.inseminations = [
+        aiRecord({ _id: ids.scheduled }),
+        aiRecord({
+          _id: ids.otherScheduled,
+          approvedBy: ids.otherTechnician,
+          technicianId: ids.otherTechnician,
+        }),
+      ];
+      state.healthRequests = [];
+      state.tasks = [
+        taskRecord({
+          _id: ids.pdTask,
+          taskType: "PD",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        }),
+        taskRecord({
+          _id: ids.calvingTask,
+          taskType: "Calving",
+          technicianId: ids.otherTechnician,
+        }),
+      ];
+
+      const ownedRequest = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", requestId: ids.scheduled, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        ownedRequest.response,
+      );
+      assert.deepEqual(ownedRequest.body.data.map((item) => item.id), [ids.scheduled]);
+
+      const foreignRequest = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", requestId: ids.otherScheduled, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        foreignRequest.response,
+      );
+      assert.deepEqual(foreignRequest.body.data, []);
+
+      const ownedTask = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", taskId: ids.pdTask, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        ownedTask.response,
+      );
+      assert.deepEqual(ownedTask.body.data.map((item) => item.id), [ids.pdTask]);
+
+      const foreignTask = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", taskId: ids.calvingTask, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        foreignTask.response,
+      );
+      assert.deepEqual(foreignTask.body.data, []);
+    },
+  );
+
+  await t.test(
     "Pregnancy and Calving tasks follow canonical actionable-date visibility",
     async () => {
       state.inseminations = [];

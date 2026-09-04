@@ -189,34 +189,57 @@ export const getSchedulePeriodLabel = (item = {}) => {
   return "Visit period not recorded";
 };
 
-export const getScheduleNavigationTarget = (item = {}) => {
+export const getScheduleNavigationTarget = (item = {}, timingState) => {
   const kind = getScheduleEntityKind(item);
+  const resolvedTiming = timingState || item.timingState;
+  const isUpcoming = resolvedTiming === "upcoming";
+
   if (["pregnancy", "breeding_follow_up", "calving", "task"].includes(kind)) {
     const taskId = idOf(item.taskId || item.id || item._id || item.raw?._id);
-    return taskId
-        ? {
+    if (!taskId) return null;
+    return isUpcoming
+      ? {
           kind: "task",
+          action: "preview",
+          isUpcoming: true,
+          label: "View Task",
+          path: "/technician/schedule",
+          search: "?previewTaskId=" + encodeURIComponent(taskId),
+        }
+      : {
+          kind: "task",
+          action: "execute",
+          isUpcoming: false,
           path: "/technician/requests",
           search:
             "?section=myWork&taskId=" + encodeURIComponent(taskId),
           label: "View Task",
-        }
-      : null;
+        };
   }
 
   if (kind === "ai" || kind === "health") {
     const requestId = idOf(
       item.workflowId || item.requestId || item.id || item._id || item.raw?._id,
     );
-    return requestId
+    if (!requestId) return null;
+    return isUpcoming
       ? {
           kind: "request",
+          action: "preview",
+          isUpcoming: true,
+          label: "View Work",
+          path: "/technician/schedule",
+          search: "?previewRequestId=" + encodeURIComponent(requestId),
+        }
+      : {
+          kind: "request",
+          action: "execute",
+          isUpcoming: false,
           path: "/technician/requests",
           search:
             "?section=myWork&requestId=" + encodeURIComponent(requestId),
           label: "View Work",
-        }
-      : null;
+        };
   }
   return null;
 };
@@ -238,6 +261,7 @@ export const buildScheduleItems = (items = [], now = new Date()) =>
     .filter(isCanonicalScheduleItem)
     .map((item) => {
       const date = getScheduleDateValue(item);
+      const timingState = getScheduleTimingState(item, now);
       return {
         ...item,
         scheduleKind: getScheduleEntityKind(item),
@@ -245,8 +269,8 @@ export const buildScheduleItems = (items = [], now = new Date()) =>
         scheduleDateKey: getPhilippineDateKey(date),
         scheduleLabel: getScheduleWorkLabel(item),
         periodLabel: getSchedulePeriodLabel(item),
-        timingState: getScheduleTimingState(item, now),
-        navigationTarget: getScheduleNavigationTarget(item),
+        timingState,
+        navigationTarget: getScheduleNavigationTarget(item, timingState),
       };
     })
     .sort(

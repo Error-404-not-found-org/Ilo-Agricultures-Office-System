@@ -539,7 +539,7 @@ export default function TaskDetailsScreen() {
     const taskType = task?.taskType;
     if (taskType === "AI") {
       return {
-        label: "Record AI Service",
+        label: "Record Insemination Service",
         pathname: "/(technician)/record-ai",
       };
     }

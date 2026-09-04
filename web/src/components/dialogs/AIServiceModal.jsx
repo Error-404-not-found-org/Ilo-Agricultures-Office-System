@@ -6,8 +6,11 @@ import {
   AlertCircle,
   BadgeCheck,
   CalendarClock,
+  Check,
+  ChevronDown,
   ClipboardList,
   History,
+  InfoIcon,
   Plus,
   Search,
   Syringe,
@@ -20,6 +23,8 @@ import { useToast } from "../../contexts/ToastContext";
 import { getAIRequestErrorMessage } from "../../utils/aiRequestErrors";
 import RegisterFarmerModal from "./RegisterFarmerModal";
 import RegisterLivestockModal from "./RegisterLivestockModal";
+import UserAvatar from "../ui/UserAvatar";
+import { CATTLE_BREEDS } from "../../constants/breeds";
 
 const pad = (value) => String(value).padStart(2, "0");
 
@@ -46,7 +51,10 @@ const idOf = (value) => value?._id || value?.id || null;
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
 
-const validatePerformedAt = (procedure, { allowHistorical = false } = {}) => {
+const validatePerformedAt = (
+  procedure,
+  { allowEarlierServiceDate = false } = {},
+) => {
   const performedAt = new Date(
     `${procedure.inseminationDate}T${procedure.time}:00+08:00`,
   );
@@ -58,7 +66,7 @@ const validatePerformedAt = (procedure, { allowHistorical = false } = {}) => {
     return { error: "The AI service time cannot be in the future." };
   }
   if (
-    !allowHistorical &&
+    !allowEarlierServiceDate &&
     performedAt.getTime() < now - 24 * 60 * 60 * 1000
   ) {
     return {
@@ -94,18 +102,36 @@ const requestStatusLabel = (status) =>
     in_progress: "In progress",
   })[String(status || "").toLowerCase()] || "Active request";
 
-const formatVisit = (value) => {
+const formatVisit = (value, visitPeriod) => {
   if (!value) return "Not scheduled";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Not scheduled";
-  return new Intl.DateTimeFormat("en-PH", {
+  const dateLabel = new Intl.DateTimeFormat("en-PH", {
     timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   }).format(date);
+
+  const normalizedPeriod = String(visitPeriod || "")
+    .trim()
+    .toLowerCase();
+  const periodLabel = ["morning", "afternoon"].includes(normalizedPeriod)
+    ? normalizedPeriod === "morning"
+      ? "Morning"
+      : "Afternoon"
+    : parseInt(
+          new Intl.DateTimeFormat("en-PH", {
+            timeZone: "Asia/Manila",
+            hour: "numeric",
+            hour12: false,
+          }).format(date),
+          10,
+        ) < 12
+      ? "Morning"
+      : "Afternoon";
+
+  return [dateLabel, periodLabel].filter(Boolean).join(" · ");
 };
 
 const farmerAddress = (farmer) =>
@@ -154,10 +180,26 @@ const AIServiceModal = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const workflowIdentity = [
+    context,
+    workflowId || "",
+    taskId || "",
+    idOf(preSelectedFarmer) || "",
+    idOf(preSelectedAnimal) || "",
+  ].join(":");
   const submittingRef = useRef(false);
-  const [selectedFarmerId, setSelectedFarmerId] = useState("");
-  const [selectedAnimalId, setSelectedAnimalId] = useState("");
-  const [searchFarmer, setSearchFarmer] = useState("");
+  const activeWorkflowIdentityRef = useRef(isOpen ? workflowIdentity : null);
+  const [selectedFarmerId, setSelectedFarmerId] = useState(
+    () => idOf(preSelectedFarmer) || "",
+  );
+  const [selectedAnimalId, setSelectedAnimalId] = useState(
+    () => idOf(preSelectedAnimal) || "",
+  );
+  const [isAnimalDropdownOpen, setIsAnimalDropdownOpen] = useState(false);
+  const animalDropdownRef = useRef(null);
+  const [searchFarmer, setSearchFarmer] = useState(
+    () => preSelectedFarmer?.name || "",
+  );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isRegisterFarmerOpen, setIsRegisterFarmerOpen] = useState(false);
   const [isRegisterAnimalOpen, setIsRegisterAnimalOpen] = useState(false);
@@ -238,7 +280,10 @@ const AIServiceModal = ({
     [animals, createdAnimal],
   );
 
-
+  const selectedAnimal =
+    availableAnimals.find((animal) => idOf(animal) === selectedAnimalId) ||
+    (idOf(createdAnimal) === selectedAnimalId ? createdAnimal : null) ||
+    (idOf(preSelectedAnimal) === selectedAnimalId ? preSelectedAnimal : null);
 
   const {
     data: serviceContext,
@@ -287,13 +332,11 @@ const AIServiceModal = ({
       ).data,
     onSuccess: async (_result, variables) => {
       submittingRef.current = false;
-      toast.success(
-        isPastRecord
-          ? previousEntryMode === "history_only"
-            ? "Past AI record added to history."
-            : "Past AI record added and tracking continued."
-          : "AI service recorded successfully.",
-      );
+      const successMessage = isPastRecord
+        ? previousEntryMode === "history_only"
+          ? "Past AI record added to history."
+          : "Past AI record added and tracking continued."
+        : "AI service recorded successfully.";
       const completedFarmerId = variables?.farmerId || selectedFarmerId;
       const completedAnimalId = variables?.animalId || selectedAnimalId;
       const invalidations = [
@@ -305,6 +348,12 @@ const AIServiceModal = ({
         }),
         queryClient.invalidateQueries({
           queryKey: ["technician", "inseminations-list"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["technician", "schedule"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["technician", "official-records"],
         }),
       ];
       if (completedFarmerId) {
@@ -330,6 +379,7 @@ const AIServiceModal = ({
       await Promise.allSettled(invalidations);
       onSuccess?.();
       onClose();
+      toast.success(successMessage);
     },
     onError: (error) => {
       submittingRef.current = false;
@@ -381,15 +431,15 @@ const AIServiceModal = ({
       (await axiosInstance.patch(`/technician/requests/ai/${requestId}/claim`))
         .data,
     onSuccess: (_result, requestId) => {
-      toast.success("Request claimed. Choose the visit date and time.");
       queryClient.invalidateQueries({ queryKey: ["technician"] });
       onClose();
+      toast.success("Request claimed. Choose the visit date and time.");
       navigate(
         `/technician/requests?section=myWork&requestId=${encodeURIComponent(requestId)}`,
       );
     },
     onError: (error) => {
-      toast.error(
+      setSubmissionError(
         error.response?.data?.message || "The request could not be claimed.",
       );
       refetchContext();
@@ -398,6 +448,7 @@ const AIServiceModal = ({
 
   useEffect(() => {
     if (!isOpen) {
+      activeWorkflowIdentityRef.current = null;
       Promise.resolve().then(() => {
         setSelectedFarmerId("");
         setSelectedAnimalId("");
@@ -417,19 +468,38 @@ const AIServiceModal = ({
       return;
     }
 
+    if (activeWorkflowIdentityRef.current === workflowIdentity) return;
+    activeWorkflowIdentityRef.current = workflowIdentity;
     Promise.resolve().then(() => {
+      setSelectedFarmerId("");
+      setSelectedAnimalId("");
+      setSearchFarmer("");
+      setIsDropdownOpen(false);
+      setIsRegisterFarmerOpen(false);
+      setIsRegisterAnimalOpen(false);
+      setCreatedFarmer(null);
+      setCreatedAnimal(null);
+      setProcedure(initialProcedure());
+      setFieldErrors({});
+      setSubmissionError("");
+      setRecordMode("now");
+      setPreviousEntryMode("history_only");
+      submittingRef.current = false;
       if (preSelectedFarmer) {
         setSelectedFarmerId(idOf(preSelectedFarmer));
         setSearchFarmer(preSelectedFarmer.name || "");
       }
       if (preSelectedAnimal) setSelectedAnimalId(idOf(preSelectedAnimal));
     });
-  }, [isOpen, preSelectedAnimal, preSelectedFarmer]);
+  }, [isOpen, workflowIdentity, preSelectedAnimal, preSelectedFarmer]);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
     const handleKeyDown = (event) => {
       if (
         event.key === "Escape" &&
+        !submittingRef.current &&
+        !recordMutation.isPending &&
         !isRegisterFarmerOpen &&
         !isRegisterAnimalOpen
       ) {
@@ -438,15 +508,47 @@ const AIServiceModal = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isRegisterAnimalOpen, isRegisterFarmerOpen, onClose]);
+  }, [
+    isOpen,
+    isRegisterAnimalOpen,
+    isRegisterFarmerOpen,
+    onClose,
+    recordMutation.isPending,
+  ]);
+
+  useEffect(() => {
+    if (!isAnimalDropdownOpen) return undefined;
+    const handleClickOutside = (event) => {
+      if (
+        animalDropdownRef.current &&
+        !animalDropdownRef.current.contains(event.target)
+      ) {
+        setIsAnimalDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isAnimalDropdownOpen]);
 
   if (!isOpen) return null;
 
   const selectFarmer = (farmer) => {
     setSelectedFarmerId(farmer._id);
     setSelectedAnimalId("");
+    setIsAnimalDropdownOpen(false);
     setCreatedAnimal(null);
     setSearchFarmer(farmer.name || "");
+    setIsDropdownOpen(false);
+    setProcedure(initialProcedure());
+  };
+
+  const clearFarmer = () => {
+    setSelectedFarmerId("");
+    setSelectedAnimalId("");
+    setIsAnimalDropdownOpen(false);
+    setCreatedFarmer(null);
+    setCreatedAnimal(null);
+    setSearchFarmer("");
     setIsDropdownOpen(false);
     setProcedure(initialProcedure());
   };
@@ -475,12 +577,16 @@ const AIServiceModal = ({
       !isPastRecord &&
       serviceContext?.mode !== "walk_in"
     ) {
-      toast.error("Resolve the active request or eligibility notice first.");
+      setSubmissionError(
+        "Resolve the active request or eligibility notice first.",
+      );
       return;
     }
 
     if (context === "task" && !isMongoId(workflowId)) {
-      setSubmissionError("This AI work item has an invalid workflow identifier.");
+      setSubmissionError(
+        "This AI work item has an invalid workflow identifier.",
+      );
       return;
     }
     if (taskId && !isMongoId(taskId)) {
@@ -515,7 +621,10 @@ const AIServiceModal = ({
     }
 
     const performed = validatePerformedAt(procedure, {
-      allowHistorical: isPastRecord,
+      // Earlier actual service dates are valid for an existing request-linked
+      // workflow. They are historical entries only when no active workflow
+      // exists, which remains the dedicated Previous AI path.
+      allowEarlierServiceDate: isPastRecord || context === "task",
     });
     if (performed.error) {
       setFieldErrors({ inseminationDate: performed.error });
@@ -562,10 +671,14 @@ const AIServiceModal = ({
     : [];
   const taskAttachments = [
     taskData?.imageUrl,
-    ...(Array.isArray(taskData?.evidencePhotos)
-      ? taskData.evidencePhotos
-      : []),
+    ...(Array.isArray(taskData?.evidencePhotos) ? taskData.evidencePhotos : []),
   ].filter(Boolean);
+  const isScheduled = Boolean(
+    activeRequest &&
+    (Boolean(activeRequest.scheduledDate) ||
+      isWorkQueueStatus(activeRequest.status)),
+  );
+  const isOverdue = Boolean(serviceContext?.timing?.isOverdue);
   const opensInWorkQueue = Boolean(
     activeRequest &&
     isWorkQueueStatus(activeRequest.status) &&
@@ -580,7 +693,7 @@ const AIServiceModal = ({
         aria-modal="true"
         aria-labelledby="record-ai-title"
       >
-        <div className="modal-box flex h-[88vh] w-11/12 max-w-3xl flex-col overflow-hidden p-0">
+        <div className="modal-box flex h-[88vh] w-11/12 max-w-3xl flex-col overflow-hidden p-0 ">
           <header className="flex items-center justify-between border-b border-base-300 px-5 py-4">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-box bg-primary/10 text-primary">
@@ -591,7 +704,7 @@ const AIServiceModal = ({
                   id="record-ai-title"
                   className="truncate text-lg font-bold text-base-content"
                 >
-                  Record AI Service
+                  Record Insemination Service
                 </h2>
                 <p className="truncate text-sm text-base-content/55">
                   {selectedAnimalId
@@ -627,34 +740,63 @@ const AIServiceModal = ({
             )}
 
             {context === "walk-in" && (
-              <section className="space-y-3" aria-labelledby="ai-record-mode-title">
+              <section
+                className="space-y-3"
+                aria-labelledby="ai-record-mode-title"
+              >
                 <div>
-                  <h3 id="ai-record-mode-title" className="font-bold text-base-content">
+                  <h3
+                    id="ai-record-mode-title"
+                    className="font-bold text-base-content"
+                  >
                     Recording method
                   </h3>
                   <p className="mt-1 text-sm text-base-content/60">
-                    Record today&apos;s service or add an AI service that happened earlier.
+                    Record today&apos;s service or add an AI service that
+                    happened earlier.
                   </p>
                 </div>
-                <div role="tablist" aria-label="AI recording method" className="tabs tabs-box w-full bg-base-200 p-1">
+
+                <div
+                  role="tablist"
+                  aria-label="AI recording method"
+                  className="tabs tabs-box relative grid grid-cols-2 w-full bg-base-200 p-1 select-none"
+                >
+                  {/* Smooth sliding indicator pill */}
+                  <div
+                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-field bg-primary/15 transition-transform duration-300 ease-in-out pointer-events-none ${
+                      recordMode === "now"
+                        ? "left-1 translate-x-0"
+                        : "left-1 translate-x-full"
+                    }`}
+                  />
+
                   <button
                     type="button"
                     role="tab"
                     aria-selected={recordMode === "now"}
-                    className={`tab flex-1 ${recordMode === "now" ? "tab-active" : ""}`}
+                    className={`tab relative z-10 w-full transition-colors duration-200 ${
+                      recordMode === "now"
+                        ? "font-bold! text-primary! bg-transparent!"
+                        : "text-base-content/70 hover:text-base-content bg-transparent!"
+                    }`}
                     onClick={() => {
                       setRecordMode("now");
                       setFieldErrors({});
                       setSubmissionError("");
                     }}
                   >
-                    Record AI Now
+                    Record Insemination
                   </button>
                   <button
                     type="button"
                     role="tab"
                     aria-selected={recordMode === "past"}
-                    className={`tab flex-1 ${recordMode === "past" ? "tab-active" : ""}`}
+                    className={`tab relative z-10 w-full transition-colors duration-200 ${
+                      recordMode === "past"
+                        ? "font-bold! text-primary! bg-transparent!"
+                        : "text-base-content/70 hover:text-base-content bg-transparent!"
+                    }`}
                     onClick={() => {
                       setRecordMode("past");
                       setFieldErrors({});
@@ -667,14 +809,10 @@ const AIServiceModal = ({
 
                 {isPastRecord && (
                   <div className="space-y-3 rounded-box border border-base-300 bg-base-200 p-4">
-                    <div role="alert" className="alert alert-info alert-soft">
-                      <History size={18} />
-                      <span>
-                        Enter the actual date and time of the earlier AI service. This does not create a Farmer request or a visit schedule.
-                      </span>
-                    </div>
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-bold text-base-content">After saving</legend>
+                      <legend className="text-sm font-bold text-base-content">
+                        After saving
+                      </legend>
                       <label className="flex cursor-pointer items-start gap-3 rounded-field border border-base-300 bg-base-100 p-3">
                         <input
                           type="radio"
@@ -684,9 +822,12 @@ const AIServiceModal = ({
                           onChange={() => setPreviousEntryMode("history_only")}
                         />
                         <span>
-                          <span className="block font-semibold">Add to history only</span>
+                          <span className="block font-semibold">
+                            Add to history only
+                          </span>
                           <span className="block text-sm text-base-content/60">
-                            Keep the record in the animal&apos;s history without changing the current breeding cycle.
+                            Keep the record in the animal&apos;s history without
+                            changing the current breeding cycle.
                           </span>
                         </span>
                       </label>
@@ -696,12 +837,17 @@ const AIServiceModal = ({
                           name="previous-ai-entry-mode"
                           className="radio radio-primary radio-sm mt-0.5"
                           checked={previousEntryMode === "continue_tracking"}
-                          onChange={() => setPreviousEntryMode("continue_tracking")}
+                          onChange={() =>
+                            setPreviousEntryMode("continue_tracking")
+                          }
                         />
                         <span>
-                          <span className="block font-semibold">Continue tracking</span>
+                          <span className="block font-semibold">
+                            Continue tracking
+                          </span>
                           <span className="block text-sm text-base-content/60">
-                            Start the current breeding follow-up cycle from the actual historical service date.
+                            Start the current breeding follow-up cycle from the
+                            actual historical service date.
                           </span>
                         </span>
                       </label>
@@ -723,21 +869,54 @@ const AIServiceModal = ({
                   </h3>
                 </div>
 
+                {context === "walk-in" && !hasDirectSelection && (
+                  <div role="status" className="alert alert-info alert-soft">
+                    <InfoIcon size={18} />
+                    <span>Select a registered farmer and animal.</span>
+                  </div>
+                )}
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <fieldset className="fieldset">
                     <legend className="fieldset-legend">Farmer</legend>
                     {preSelectedFarmer ? (
                       <div className="flex h-12 items-center gap-3 rounded-field border border-base-300 bg-base-200 px-4">
-                        <User size={16} className="text-primary" />
+                        <UserAvatar
+                          name={preSelectedFarmer.name}
+                          imageUrl={
+                            preSelectedFarmer.imageUrl ||
+                            preSelectedFarmer.avatarUrl ||
+                            preSelectedFarmer.avatar
+                          }
+                          size={28}
+                          sizeClass="h-7 w-7"
+                        />
                         <span className="truncate font-semibold">
                           {preSelectedFarmer.name}
                         </span>
                       </div>
                     ) : (
                       <div className="relative">
-                        <label className="input w-full">
-                          <Search size={16} className="text-base-content/40" />
+                        <label className="input w-full flex items-center gap-2">
+                          {selectedFarmer ? (
+                            <UserAvatar
+                              name={selectedFarmer.name}
+                              imageUrl={
+                                selectedFarmer.imageUrl ||
+                                selectedFarmer.avatarUrl ||
+                                selectedFarmer.avatar
+                              }
+                              size={22}
+                              sizeClass="h-5.5 w-5.5"
+                            />
+                          ) : (
+                            <Search
+                              size={16}
+                              className="shrink-0 text-base-content/40"
+                            />
+                          )}
                           <input
+                            className="grow min-w-0"
                             value={searchFarmer}
                             onChange={(event) => {
                               setSearchFarmer(event.target.value);
@@ -754,6 +933,19 @@ const AIServiceModal = ({
                             }
                             placeholder="Name, phone, or barangay"
                           />
+                          {Boolean(searchFarmer || selectedFarmerId) && (
+                            <button
+                              type="button"
+                              aria-label="Clear farmer selection"
+                              className="btn btn-ghost btn-circle btn-xs shrink-0 text-base-content/50 hover:text-base-content"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                clearFarmer();
+                              }}
+                            >
+                              <X size={14} aria-hidden="true" />
+                            </button>
+                          )}
                         </label>
                         {isDropdownOpen && (
                           <div
@@ -805,17 +997,22 @@ const AIServiceModal = ({
                                   aria-selected={
                                     selectedFarmerId === farmer._id
                                   }
-                                  className="flex w-full items-center gap-3 rounded-field px-3 py-2.5 text-left hover:bg-base-200"
+                                  className="flex w-full cursor-pointer items-center gap-3 rounded-field px-3 py-2.5 text-left hover:bg-base-200"
                                   onMouseDown={(event) =>
                                     event.preventDefault()
                                   }
                                   onClick={() => selectFarmer(farmer)}
                                 >
-                                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                                    {(farmer.name || "F")
-                                      .slice(0, 2)
-                                      .toUpperCase()}
-                                  </span>
+                                  <UserAvatar
+                                    name={farmer.name}
+                                    imageUrl={
+                                      farmer.imageUrl ||
+                                      farmer.avatarUrl ||
+                                      farmer.avatar
+                                    }
+                                    size={36}
+                                    sizeClass="h-9 w-9"
+                                  />
                                   <span className="min-w-0">
                                     <span className="block truncate font-semibold">
                                       {farmer.name}
@@ -898,49 +1095,250 @@ const AIServiceModal = ({
                           )}
                         </div>
                       ) : (
-                        <>
-                          <select
-                            className="select w-full"
-                            disabled={!selectedFarmerId || isLoadingAnimals || isAnimalsError}
-                            value={selectedAnimalId}
-                            onChange={(event) => {
-                              setSelectedAnimalId(event.target.value);
-                              setProcedure(initialProcedure());
-                            }}
+                        <div className="relative" ref={animalDropdownRef}>
+                          <button
+                            type="button"
+                            disabled={
+                              !selectedFarmerId ||
+                              isLoadingAnimals ||
+                              isAnimalsError
+                            }
+                            onClick={() =>
+                              setIsAnimalDropdownOpen((prev) => !prev)
+                            }
+                            className={`input w-full flex items-center justify-between gap-2 text-left ${
+                              !selectedFarmerId ||
+                              isLoadingAnimals ||
+                              isAnimalsError
+                                ? "opacity-60 cursor-not-allowed bg-base-200/50"
+                                : "cursor-pointer hover:border-primary/50"
+                            }`}
                           >
-                            <option value="">
-                              {isLoadingAnimals
-                                ? "Loading registered animals…"
-                                : selectedFarmerId
-                                  ? "Select animal"
-                                  : "Select a farmer first"}
-                            </option>
-                            {availableAnimals.map((animal) => (
-                              <option
-                                key={animal._id}
-                                value={animal._id}
-                                disabled={
-                                  String(animal.gender || "").toLowerCase() ===
-                                  "male"
-                                }
+                            {selectedAnimal ? (
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="badge badge-sm font-mono font-bold bg-base-200 text-base-content border border-base-300 shrink-0">
+                                  #
+                                  {String(selectedAnimal.earTag || "").replace(
+                                    /^#/,
+                                    "",
+                                  )}
+                                </span>
+                                <span className="font-semibold text-sm text-base-content truncate">
+                                  {selectedAnimal.name
+                                    ? `${selectedAnimal.name} · `
+                                    : ""}
+                                  {selectedAnimal.breed ||
+                                    selectedAnimal.species}
+                                </span>
+                                <span className="badge badge-xs badge-success badge-soft font-semibold shrink-0">
+                                  {selectedAnimal.gender || "Female"}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-base-content/50">
+                                {isLoadingAnimals
+                                  ? "Loading registered animals…"
+                                  : selectedFarmerId
+                                    ? "Select animal"
+                                    : "Select a farmer first"}
+                              </span>
+                            )}
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {Boolean(selectedAnimalId) && (
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label="Clear animal selection"
+                                  className="btn btn-ghost btn-circle btn-xs text-base-content/50 hover:text-base-content"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedAnimalId("");
+                                    setProcedure(initialProcedure());
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (
+                                      event.key === "Enter" ||
+                                      event.key === " "
+                                    ) {
+                                      event.stopPropagation();
+                                      setSelectedAnimalId("");
+                                      setProcedure(initialProcedure());
+                                    }
+                                  }}
+                                >
+                                  <X size={14} aria-hidden="true" />
+                                </span>
+                              )}
+                              <ChevronDown
+                                size={16}
+                                className={`text-base-content/50 transition-transform ${
+                                  isAnimalDropdownOpen ? "rotate-180" : ""
+                                }`}
+                                aria-hidden="true"
+                              />
+                            </div>
+                          </button>
+
+                          {isAnimalDropdownOpen && (
+                            <div
+                              role="listbox"
+                              aria-label="Registered animals"
+                              className="absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1.5 shadow-xl space-y-1"
+                            >
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={!selectedAnimalId}
+                                onClick={() => {
+                                  setSelectedAnimalId("");
+                                  setIsAnimalDropdownOpen(false);
+                                  setProcedure(initialProcedure());
+                                }}
+                                className={`flex w-full items-center justify-between rounded-field px-3 py-2 text-xs font-medium text-left transition-colors ${
+                                  !selectedAnimalId
+                                    ? "bg-base-200 text-base-content font-bold"
+                                    : "text-base-content/60 hover:bg-base-200"
+                                }`}
                               >
-                                Tag #{animal.earTag} ·{" "}
-                                {animal.breed || animal.species}
-                                {String(animal.gender || "").toLowerCase() ===
-                                "male"
-                                  ? " · Male"
-                                  : ""}
-                              </option>
-                            ))}
-                          </select>
-                          {isAnimalsError && (
-                            <div className="alert alert-error mt-2 text-sm" role="alert">
-                              <AlertCircle size={16} />
-                              <span>{animalsError?.response?.data?.message || "Registered animals could not be loaded."}</span>
-                              <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchAnimals()}>Try again</button>
+                                <span>Select animal</span>
+                                {!selectedAnimalId && (
+                                  <Check size={14} className="text-primary" />
+                                )}
+                              </button>
+
+                              <div className="divider my-0.5" />
+
+                              {availableAnimals.map((animal) => {
+                                const isSelected =
+                                  String(animal._id) ===
+                                  String(selectedAnimalId);
+                                const isMale =
+                                  String(animal.gender || "").toLowerCase() ===
+                                  "male";
+                                const tag = String(animal.earTag || "").replace(
+                                  /^#/,
+                                  "",
+                                );
+
+                                return (
+                                  <button
+                                    key={animal._id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    disabled={isMale}
+                                    onClick={() => {
+                                      if (!isMale) {
+                                        setSelectedAnimalId(animal._id);
+                                        setIsAnimalDropdownOpen(false);
+                                        setProcedure(initialProcedure());
+                                      }
+                                    }}
+                                    className={`flex w-full items-center justify-between gap-3 rounded-field px-3 py-2.5 text-left transition-all ${
+                                      isSelected
+                                        ? "bg-primary/10 text-primary font-semibold"
+                                        : isMale
+                                          ? "opacity-40 cursor-not-allowed bg-base-200/40"
+                                          : "hover:bg-base-200 cursor-pointer"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                      <span
+                                        className={`badge badge-sm font-mono font-bold shrink-0 ${
+                                          isSelected
+                                            ? "bg-primary! text-primary-content! border-0!"
+                                            : "bg-base-200 text-base-content border border-base-300"
+                                        }`}
+                                      >
+                                        Tag #{tag}
+                                      </span>
+
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-bold text-sm text-base-content truncate">
+                                            {animal.name
+                                              ? `${animal.name} · `
+                                              : ""}
+                                            {animal.breed || animal.species}
+                                          </span>
+                                          <span
+                                            className={`badge badge-xs font-semibold shrink-0 ${
+                                              isMale
+                                                ? "badge-error badge-soft"
+                                                : "badge-success badge-soft"
+                                            }`}
+                                          >
+                                            {isMale
+                                              ? "Male"
+                                              : animal.gender || "Female"}
+                                          </span>
+                                        </div>
+                                        <div className="text-xs text-base-content/60 truncate">
+                                          {animal.species
+                                            ? `${animal.species}`
+                                            : "Livestock"}
+                                          {animal.reproductiveStatus
+                                            ? ` · ${animal.reproductiveStatus}`
+                                            : ""}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="shrink-0">
+                                      {isSelected ? (
+                                        <Check
+                                          size={16}
+                                          className="text-primary"
+                                        />
+                                      ) : isMale ? (
+                                        <span className="text-[10px] font-bold text-error/80 uppercase tracking-wide">
+                                          Ineligible
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+
+                              {capabilities.showRegistration && (
+                                <>
+                                  <div className="divider my-0.5" />
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs w-full justify-start text-primary gap-1.5 font-semibold hover:bg-primary/10"
+                                    onClick={() => {
+                                      setIsAnimalDropdownOpen(false);
+                                      setIsRegisterAnimalOpen(true);
+                                    }}
+                                  >
+                                    <Plus size={14} /> Register animal
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
-                        </>
+
+                          {isAnimalsError && (
+                            <div
+                              className="alert alert-error mt-2 text-sm"
+                              role="alert"
+                            >
+                              <AlertCircle size={16} />
+                              <span>
+                                {animalsError?.response?.data?.message ||
+                                  "Registered animals could not be loaded."}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => refetchAnimals()}
+                              >
+                                Try again
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </fieldset>
                   )}
@@ -1001,15 +1399,14 @@ const AIServiceModal = ({
                     </div>
                     <div className="font-medium text-base-content">
                       {requestContext?.requestedAt
-                        ? new Date(requestContext.requestedAt).toLocaleDateString(
-                            "en-US",
-                            {
-                              timeZone: "Asia/Manila",
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            },
-                          )
+                        ? new Date(
+                            requestContext.requestedAt,
+                          ).toLocaleDateString("en-US", {
+                            timeZone: "Asia/Manila",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          })
                         : "Not recorded"}
                     </div>
                   </div>
@@ -1025,9 +1422,9 @@ const AIServiceModal = ({
                     <div className="text-xs font-semibold text-base-content/70">
                       Submitted heat signs
                     </div>
-                    <div className="font-medium text-base-content">
+                    <div className="font-medium text-base-content capitalize">
                       {taskHeatSigns.length
-                        ? taskHeatSigns.join(", ")
+                        ? taskHeatSigns.map(sign => String(sign).replace(/_/g, " ")).join(", ")
                         : "None submitted"}
                     </div>
                   </div>
@@ -1057,27 +1454,39 @@ const AIServiceModal = ({
                   </div>
 
                   {isLoadingContext && (
-                    <div role="status" className="alert">
-                      <span className="loading loading-spinner loading-sm" />
-                      <span>Checking requests and AI eligibility…</span>
+                    <div
+                      role="status"
+                      className="flex items-center gap-3 rounded-box border border-base-300 bg-base-200/50 p-4 text-sm text-base-content/70 shadow-2xs"
+                    >
+                      <span className="loading loading-spinner loading-sm text-primary" />
+                      <span>
+                        Checking requests and insemination eligibility…
+                      </span>
                     </div>
                   )}
 
                   {isContextError && (
-                    <div role="alert" className="alert alert-error alert-soft">
-                      <AlertCircle size={18} />
-                      <div className="flex-1">
-                        <div className="font-bold">
-                          Context could not be loaded
+                    <div
+                      role="alert"
+                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 rounded-box border border-error/30 bg-error/5 p-4 text-base-content shadow-2xs"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-field bg-error/15 text-error mt-0.5 sm:mt-0">
+                          <AlertCircle size={18} />
                         </div>
-                        <div className="text-sm">
-                          {contextError?.response?.data?.message ||
-                            "Check the connection and try again."}
+                        <div>
+                          <div className="font-bold text-sm text-error">
+                            Context could not be loaded
+                          </div>
+                          <div className="text-xs text-base-content/70 mt-0.5">
+                            {contextError?.response?.data?.message ||
+                              "Check the connection and try again."}
+                          </div>
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="btn btn-sm"
+                        className="btn btn-sm btn-outline btn-error self-end sm:self-center shrink-0"
                         onClick={() => refetchContext()}
                       >
                         Retry
@@ -1086,122 +1495,192 @@ const AIServiceModal = ({
                   )}
 
                   {serviceContext?.mode === "walk_in" && (
-                    <div role="alert" className="alert alert-info alert-soft">
-                      <BadgeCheck size={19} />
-                      <div>
-                        <div className="font-bold">
-                          Direct service available
+                    <div
+                      role="alert"
+                      className="flex items-start gap-3.5 rounded-box border border-success/30 bg-success/5 p-4 text-base-content shadow-2xs"
+                    >
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-field bg-success/15 text-success mt-0.5">
+                        <BadgeCheck size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-base-content">
+                            Direct service available
+                          </span>
+                          <span className="badge badge-xs badge-success badge-soft font-semibold">
+                            Eligible
+                          </span>
                         </div>
-                        <div className="text-sm">
+                        <p className="text-xs text-base-content/70 leading-relaxed">
                           No active AI request was found. Record the current
                           service directly for this farmer and animal.
-                        </div>
+                        </p>
                       </div>
                     </div>
                   )}
 
-                  {activeRequest && (
-                    <div
-                      role="alert"
-                      className={`alert alert-vertical sm:alert-horizontal ${
-                        serviceContext.mode === "blocked"
-                          ? "alert-error alert-soft"
-                          : "alert-info alert-soft"
-                      }`}
-                    >
-                      <CalendarClock size={20} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold">
-                            Active AI request found
-                          </span>
-                          <span className="badge badge-sm badge-info badge-soft">
-                            {requestStatusLabel(activeRequest.status)}
-                          </span>
-                          {serviceContext.timing?.isEarly && (
-                            <span className="badge badge-sm badge-warning badge-soft">
-                              Scheduled later
-                            </span>
-                          )}
-                          {serviceContext.timing?.isOverdue && (
-                            <span className="badge badge-sm badge-warning badge-soft">
-                              Overdue
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1 text-sm">
-                          Visit: {formatVisit(activeRequest.scheduledDate)}
-                          {activeRequest.assignedTechnician?.name
-                            ? ` · ${activeRequest.assignedTechnician.name}`
-                            : " · Not yet claimed"}
-                        </div>
-                        {activeRequest.assignment === "unclaimed" ? (
-                          <div className="mt-1 text-sm">
-                            Claim this request, then choose its visit schedule.
-                          </div>
-                        ) : opensInWorkQueue ? (
-                          <div className="mt-1 text-sm">
-                            This visit is already scheduled and is managed in My
-                            Work.
-                          </div>
-                        ) : (
-                          <div className="mt-1 text-sm">
-                            Continue to the request details to choose a visit
-                            date and time.
-                          </div>
-                        )}
-                        {serviceContext.blockedReason && (
-                          <div className="mt-1 text-sm font-medium">
-                            {serviceContext.blockedReason}
-                          </div>
-                        )}
-                      </div>
-                      {activeRequest.assignment === "unclaimed" &&
-                      serviceContext.allowedActions?.includes(
-                        "claim_request",
-                      ) ? (
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={claimMutation.isPending}
-                          onClick={() =>
-                            claimMutation.mutate(activeRequest.requestId)
-                          }
+                  {activeRequest &&
+                    (() => {
+                      const isBlocked = serviceContext.mode === "blocked";
+                      const tone = isBlocked
+                        ? "error"
+                        : isOverdue
+                          ? "warning"
+                          : "info";
+
+                      const toneStyles = {
+                        error: {
+                          card: "border-error/30 bg-error/5",
+                          iconBox: "bg-error/15 text-error",
+                          button: "btn-outline btn-error",
+                        },
+                        warning: {
+                          card: "border-warning/35 bg-warning/5",
+                          iconBox: "bg-warning/15 text-warning",
+                          button: "btn-warning",
+                        },
+                        info: {
+                          card: "border-info/25 bg-info/5",
+                          iconBox: "bg-info/15 text-info",
+                          button: "btn-primary",
+                        },
+                      }[tone];
+
+                      return (
+                        <div
+                          role="alert"
+                          className={`flex flex-col sm:flex-row items-start justify-between gap-4 rounded-box border p-4 text-base-content shadow-2xs transition-all ${toneStyles.card}`}
                         >
-                          {claimMutation.isPending && (
-                            <span className="loading loading-spinner loading-xs" />
-                          )}
-                          Claim and schedule
-                        </button>
-                      ) : serviceContext.allowedActions?.includes(
-                          "open_request",
-                        ) ? (
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={() => openRequest(activeRequest)}
-                        >
-                          {opensInWorkQueue
-                            ? "Open in My Work"
-                            : "Schedule request"}
-                        </button>
-                      ) : null}
-                    </div>
-                  )}
+                          <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                            <div
+                              className={`flex size-9 shrink-0 items-center justify-center rounded-field mt-0.5 ${toneStyles.iconBox}`}
+                            >
+                              <CalendarClock size={18} />
+                            </div>
+
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-sm text-base-content">
+                                  Active Insemination request found
+                                </span>
+                                <span className="badge badge-sm badge-info badge-soft font-semibold">
+                                  {requestStatusLabel(activeRequest.status)}
+                                </span>
+                                {serviceContext.timing?.isEarly && (
+                                  <span className="badge badge-sm badge-warning badge-soft font-semibold">
+                                    Scheduled later
+                                  </span>
+                                )}
+                                {serviceContext.timing?.isOverdue && (
+                                  <span className="badge badge-sm badge-warning badge-soft font-semibold">
+                                    Overdue
+                                  </span>
+                                )}
+                                {isBlocked && (
+                                  <span className="badge badge-sm badge-error badge-soft font-semibold">
+                                    Blocked
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-base-content/80">
+                                <span className="font-semibold text-base-content">
+                                  Visit:{" "}
+                                  {formatVisit(
+                                    activeRequest.scheduledDate,
+                                    activeRequest.visitPeriod,
+                                  )}
+                                </span>
+                                <span className="text-base-content/40">·</span>
+                                <span>
+                                  {activeRequest.assignedTechnician?.name
+                                    ? activeRequest.assignedTechnician.name
+                                    : "Not yet claimed"}
+                                </span>
+                              </div>
+
+                              <div className="text-xs text-base-content/70 pt-0.5 leading-relaxed">
+                                {activeRequest.assignment === "unclaimed" ? (
+                                  "Claim this request, then choose its visit schedule."
+                                ) : isOverdue ? (
+                                  <span className="font-medium text-warning-content dark:text-warning">
+                                    This service already passed its scheduled
+                                    date. <br />
+                                    Please record the necessary details if this
+                                    service is completed.
+                                  </span>
+                                ) : isScheduled || opensInWorkQueue ? (
+                                  "This visit is already scheduled and is managed in My Work."
+                                ) : (
+                                  "Continue to the request details to choose a visit date and time."
+                                )}
+                              </div>
+
+                              {serviceContext.blockedReason && (
+                                <div className="text-xs font-semibold text-error pt-1">
+                                  {serviceContext.blockedReason}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 sm:self-center w-full sm:w-auto pt-2 sm:pt-0">
+                            {activeRequest.assignment === "unclaimed" &&
+                            serviceContext.allowedActions?.includes(
+                              "claim_request",
+                            ) ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm w-full sm:w-auto shadow-xs"
+                                disabled={claimMutation.isPending}
+                                onClick={() =>
+                                  claimMutation.mutate(activeRequest.requestId)
+                                }
+                              >
+                                {claimMutation.isPending && (
+                                  <span className="loading loading-spinner loading-xs" />
+                                )}
+                                Claim and schedule
+                              </button>
+                            ) : serviceContext.allowedActions?.includes(
+                                "open_request",
+                              ) ? (
+                              <button
+                                type="button"
+                                className={`btn btn-sm w-full sm:w-auto shadow-xs ${toneStyles.button}`}
+                                onClick={() => openRequest(activeRequest)}
+                              >
+                                {isScheduled || opensInWorkQueue
+                                  ? "Open in My Work"
+                                  : "Schedule request"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                   {serviceContext?.mode === "blocked" && !activeRequest && (
                     <div
                       role="alert"
-                      className="alert alert-warning alert-soft"
+                      className="flex items-start gap-3.5 rounded-box border border-error/30 bg-error/5 p-4 text-base-content shadow-2xs"
                     >
-                      <AlertCircle size={19} />
-                      <div>
-                        <div className="font-bold">
-                          AI service cannot continue
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-field bg-error/15 text-error mt-0.5">
+                        <AlertCircle size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-error">
+                            AI service cannot continue
+                          </span>
+                          <span className="badge badge-xs badge-error badge-soft font-semibold">
+                            Blocked
+                          </span>
                         </div>
-                        <div className="text-sm">
-                          {serviceContext.blockedReason}
-                        </div>
+                        <p className="text-xs text-base-content/75 leading-relaxed">
+                          {serviceContext.blockedReason ||
+                            "This animal is currently not eligible for artificial insemination."}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1214,39 +1693,35 @@ const AIServiceModal = ({
             {showProcedureForm && (
               <fieldset disabled={procedureDisabled} className="space-y-4">
                 <div className="flex items-center gap-2 border-b border-base-300 pb-3">
-                  <History size={16} className="text-primary" />
+                  <Syringe size={16} className="text-primary" />
                   <h3 className="font-bold text-base-content">
-                    {isPastRecord ? "Past AI service details" : "AI procedure details"}
+                    {isPastRecord
+                      ? "Past Insemination details"
+                      : "Insemination procedure details"}
                   </h3>
                 </div>
-
-                {context === "walk-in" && !hasDirectSelection && (
-                  <div role="status" className="alert alert-info alert-soft">
-                    <Activity size={18} />
-                    <span>
-                      Select a registered farmer and animal to enable the AI
-                      service fields.
-                    </span>
-                  </div>
-                )}
-
-                {submissionError && (
+                {submissionError ? (
                   <div role="alert" className="alert alert-error alert-soft">
                     <AlertCircle size={18} />
                     <span>{submissionError}</span>
                   </div>
-                )}
+                ) : isPastRecord ? (
+                  <div role="alert" className="alert alert-info alert-soft">
+                    <History size={18} />
+                    <span>
+                      Enter the actual date and time of the earlier Insemination
+                      service.
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <fieldset className="fieldset">
                     <legend className="fieldset-legend">Sire breed</legend>
-                    <input
-                      type="text"
+                    <select
                       aria-label="Sire breed"
-                      className={`input w-full ${fieldErrors.sireBreed ? "input-error" : ""}`}
+                      className={`select w-full ${fieldErrors.sireBreed ? "select-error" : ""}`}
                       value={procedure.sireBreed}
-                      placeholder="Enter the recorded sire breed"
-                      maxLength={100}
                       onChange={(event) => {
                         setProcedure((current) => ({
                           ...current,
@@ -1257,7 +1732,22 @@ const AIServiceModal = ({
                           sireBreed: null,
                         }));
                       }}
-                    />
+                    >
+                      <option value="" disabled>
+                        Select sire breed
+                      </option>
+                      {procedure.sireBreed &&
+                        !CATTLE_BREEDS.includes(procedure.sireBreed) && (
+                          <option value={procedure.sireBreed}>
+                            {procedure.sireBreed}
+                          </option>
+                        )}
+                      {CATTLE_BREEDS.map((breed) => (
+                        <option key={breed} value={breed}>
+                          {breed}
+                        </option>
+                      ))}
+                    </select>
                     {fieldErrors.sireBreed && (
                       <p role="alert" className="label text-error">
                         {fieldErrors.sireBreed}
@@ -1358,54 +1848,36 @@ const AIServiceModal = ({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">
-                        Number of semen doses used
-                      </legend>
-                      <input
-                        type="number"
-                        aria-label="Number of semen doses used"
-                        min="1"
-                        step="1"
-                        className={`input w-full ${fieldErrors.semenDosesUsed ? "input-error" : ""}`}
-                        value={procedure.semenDosesUsed}
-                        onChange={(event) => {
-                          setProcedure((current) => ({
-                            ...current,
-                            semenDosesUsed: event.target.value,
-                          }));
-                          setFieldErrors((current) => ({
-                            ...current,
-                            semenDosesUsed: null,
-                          }));
-                        }}
-                      />
-                      {fieldErrors.semenDosesUsed && (
-                        <p role="alert" className="label text-error">
-                          {fieldErrors.semenDosesUsed}
-                        </p>
-                      )}
-                    </fieldset>
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">
-                        Technician notes (optional)
-                      </legend>
-                      <textarea
-                        className="textarea w-full"
-                        aria-label="Technician notes"
-                        rows={3}
-                        maxLength={2000}
-                        value={procedure.technicianNote}
-                        placeholder="Add service observations"
-                        onChange={(event) =>
-                          setProcedure((current) => ({
-                            ...current,
-                            technicianNote: event.target.value,
-                          }))
-                        }
-                      />
-                    </fieldset>
-                  </div>
+                  <fieldset className="fieldset">
+                    <legend className="fieldset-legend">
+                      Number of semen doses used
+                    </legend>
+                    <input
+                      type="number"
+                      aria-label="Number of semen doses used"
+                      min="1"
+                      step="1"
+                      className={`input w-full ${fieldErrors.semenDosesUsed ? "input-error" : ""}`}
+                      value={procedure.semenDosesUsed}
+                      onChange={(event) => {
+                        setProcedure((current) => ({
+                          ...current,
+                          semenDosesUsed: event.target.value,
+                        }));
+                        setFieldErrors((current) => ({
+                          ...current,
+                          semenDosesUsed: null,
+                        }));
+                      }}
+                    />
+                    {fieldErrors.semenDosesUsed && (
+                      <p role="alert" className="label text-error">
+                        {fieldErrors.semenDosesUsed}
+                      </p>
+                    )}
+                  </fieldset>
+
+                </div>
               </fieldset>
             )}
           </div>
@@ -1414,7 +1886,12 @@ const AIServiceModal = ({
           {/* FOOTER */}
           {/* ========================================== */}
           <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-base-300 bg-base-100 px-5 py-4">
-            <button type="button" className="btn" onClick={onClose}>
+            <button
+              type="button"
+              className="btn"
+              disabled={recordMutation.isPending}
+              onClick={() => !recordMutation.isPending && onClose()}
+            >
               {context === "walk-in" ? "Cancel" : "Close"}
             </button>
             {showProcedureForm && (
@@ -1436,7 +1913,7 @@ const AIServiceModal = ({
           type="button"
           className="modal-backdrop"
           aria-label="Close Record AI"
-          onClick={onClose}
+          onClick={() => !recordMutation.isPending && onClose()}
         />
       </div>
 

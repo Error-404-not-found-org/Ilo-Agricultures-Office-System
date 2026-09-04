@@ -11,7 +11,7 @@ describe("Previous AI runtime UX wiring", () => {
   it("uses the shared direct-AI terminology without changing mutation wiring", () => {
     const screen = readRelative("../screens/RecordAIScreen.tsx");
 
-    assert.match(screen, /Record AI Now/);
+    assert.match(screen, /Record (Insemination|AI Now)/);
     assert.match(screen, /Add Past Record/);
     assert.doesNotMatch(screen, /Current AI Service/);
     assert.doesNotMatch(screen, /Previous AI Record/);

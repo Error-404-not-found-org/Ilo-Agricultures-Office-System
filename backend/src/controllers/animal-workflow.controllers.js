@@ -356,6 +356,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     record.healthRequestId && typeof record.healthRequestId === "object"
       ? record.healthRequestId
       : null;
+  const isDirectHealthService = !linkedRequest;
   const technician = record.technicianId || null;
   const attachments = uniqueRecordAttachments([
     ...(linkedRequest?.photos || []).map((url, index) => ({
@@ -389,7 +390,8 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       "Health record completed",
     date: record.date || record.createdAt,
     dateLabel: "Health service record date",
-    datePrecision: record.isHistoricalEntry ? "date" : "datetime",
+    datePrecision:
+      isDirectHealthService || record.isHistoricalEntry ? "date" : "datetime",
     attachments,
     technician: personSummary(technician),
     details: {
@@ -398,7 +400,11 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       entryDate: record.createdAt,
       entryDateLabel: "Recorded in BreedSmart at",
       status: "completed",
-      requestType: linkedRequest?.requestType || record.type,
+      requestType:
+        linkedRequest?.requestType || record.details?.serviceType || record.type,
+      serviceType:
+        record.details?.serviceType || linkedRequest?.requestType || record.type,
+      isDirectHealthService,
       requestDetails: linkedRequest?.requestDetails,
       symptoms: linkedRequest?.symptoms,
       farmerNotes: linkedRequest?.farmerNotes,
@@ -408,7 +414,10 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       medicine: record.details?.medicineName,
       dosage: record.details?.dosage,
       advice:
-        linkedRequest?.advice || linkedRequest?.resolutionNotes || record.note,
+        linkedRequest?.advice ||
+        linkedRequest?.resolutionNotes ||
+        record.details?.advice ||
+        record.note,
       followUpDate: record.followUpDate || linkedRequest?.followUpDate,
       withdrawalPeriodDays: record.details?.withdrawalPeriodDays,
       withdrawalEndDate: record.details?.withdrawalEndDate,

@@ -52,7 +52,7 @@ export function SystemHealthCard({ data }: SystemHealthProps) {
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: serverOnline ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: serverOnline ? "#10b981" : "#ef4444" }} />
-            <Text style={{ color: serverOnline ? "#10b981" : "#ef4444", fontSize: 11, fontFamily: "Outfit_700Bold" }}>
+            <Text style={{ color: serverOnline ? "#10b981" : "#ef4444", fontSize: 12, fontFamily: "Outfit_700Bold" }}>
               {serverOnline ? "API ONLINE" : "OFFLINE"}
             </Text>
           </View>
@@ -64,7 +64,7 @@ export function SystemHealthCard({ data }: SystemHealthProps) {
             <MaterialCommunityIcons name="cellphone-link" size={20} color="#10b981" />
             <View>
               <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{online}</Text>
-              <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Online Devices</Text>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Online Devices</Text>
             </View>
           </View>
 
@@ -73,7 +73,7 @@ export function SystemHealthCard({ data }: SystemHealthProps) {
             <MaterialCommunityIcons name="cellphone-off" size={20} color="#64748b" />
             <View>
               <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{offline}</Text>
-              <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Offline Devices</Text>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Offline Devices</Text>
             </View>
           </View>
 
@@ -82,7 +82,7 @@ export function SystemHealthCard({ data }: SystemHealthProps) {
             <MaterialCommunityIcons name="sync" size={20} color="#3b82f6" />
             <View>
               <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{pending}</Text>
-              <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Pending Sync</Text>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Pending Sync</Text>
             </View>
           </View>
 
@@ -91,7 +91,7 @@ export function SystemHealthCard({ data }: SystemHealthProps) {
             <MaterialCommunityIcons name="database-check" size={20} color="#7c3aed" />
             <View style={{ flexShrink: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 12, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{lastBackup}</Text>
-              <Text style={{ fontSize: 10, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Last Backup</Text>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Last Backup</Text>
             </View>
           </View>
         </View>

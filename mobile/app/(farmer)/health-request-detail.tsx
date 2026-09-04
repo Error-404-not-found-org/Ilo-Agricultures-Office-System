@@ -329,7 +329,7 @@ export default function HealthRequestDetailScreen() {
   const cancellationResponseReason = getRequestText(
     request.cancellationResponseReason,
   );
-  const handlerName = getRequestText(handler?.name);
+  const handlerName = getRequestText(request.technicianDisplayName) || getRequestText(handler?.name);
   const hasHandlerReference = Boolean(
     handlerName ||
       (typeof handler === "string" ? getRequestText(handler) : handler?._id),

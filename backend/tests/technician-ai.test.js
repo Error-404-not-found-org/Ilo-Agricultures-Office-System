@@ -276,7 +276,7 @@ test("Technician AI Service Suite", async (t) => {
     }
   });
 
-  await t.test("completes request-linked AI task successfully", async () => {
+  await t.test("completes an overdue request-linked AI task successfully", async () => {
     const harness = installHarness({
       task: { ...baseTask, status: "In Progress", metadata: { requestId: ids.request } },
       insemination: { ...baseInsemination, status: "in-progress" },
@@ -288,7 +288,7 @@ test("Technician AI Service Suite", async (t) => {
         requestId: ids.request,
         farmerId: ids.farmer,
         animalId: ids.animal,
-        inseminationDate: new Date(),
+        inseminationDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
         sireBreed: "Holstein",
         sireCode: "HOL-202",
         semenDosesUsed: "2",

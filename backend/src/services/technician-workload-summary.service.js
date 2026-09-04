@@ -2,6 +2,8 @@ import { User } from "../models/user.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { Task } from "../models/task.model.js";
+import { MedicalRecord } from "../models/medical-record.model.js";
+import { DIRECT_HEALTH_SERVICE_TYPES } from "../domain/direct-health-record.js";
 import {
   ACTIVE_AI_REQUEST_STATUSES,
   ACTIVE_HEALTH_REQUEST_STATUSES,
@@ -71,8 +73,7 @@ export const DUE_GATED_REPRODUCTIVE_TASK_TYPES = Object.freeze([
   "Calving",
 ]);
 
-export const buildCompletedStandaloneTaskFilter = ({ technicianId } = {}) => ({
-  status: "Completed",
+export const buildStandaloneTaskDuplicateSuppressionFilter = () => ({
   $nor: [
     {
       taskType: {
@@ -84,6 +85,11 @@ export const buildCompletedStandaloneTaskFilter = ({ technicianId } = {}) => ({
       taskType: { $nin: DUE_GATED_REPRODUCTIVE_TASK_TYPES },
     },
   ],
+});
+
+export const buildCompletedStandaloneTaskFilter = ({ technicianId } = {}) => ({
+  status: "Completed",
+  ...buildStandaloneTaskDuplicateSuppressionFilter(),
   ...(technicianId ? { technicianId } : {}),
 });
 
@@ -103,19 +109,166 @@ export const buildActiveStandaloneTaskFilter = ({ technicianId, now } = {}) => (
       ],
     },
   ],
-  $nor: [
-    {
-      taskType: {
-        $in: ["AI", "Health", "Treatment", "Vaccination", "Deworming"],
-      },
-    },
-    {
-      relatedRecordType: { $in: ["insemination", "health"] },
-      taskType: { $nin: DUE_GATED_REPRODUCTIVE_TASK_TYPES },
-    },
-  ],
+  ...buildStandaloneTaskDuplicateSuppressionFilter(),
   ...(technicianId ? { technicianId } : {}),
 });
+
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+export const getManilaDayBounds = (now = new Date()) => {
+  const start = new Date(now.getTime() + MANILA_OFFSET_MS);
+  start.setUTCHours(0, 0, 0, 0);
+  start.setTime(start.getTime() - MANILA_OFFSET_MS);
+
+  return {
+    start,
+    end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
+  };
+};
+
+export const buildAICompletedInRangeFilter = ({
+  technicianId,
+  start,
+  end,
+} = {}) => ({
+  $and: [
+    buildCompletedAIWorkFilter({ technicianId }),
+    {
+      $or: [
+        { completedAt: { $gte: start, $lt: end } },
+        {
+          completedAt: null,
+          entryMode: { $nin: ["history_only", "continue_tracking"] },
+          statusHistory: {
+            $elemMatch: {
+              status: AI_STATUS.DONE,
+              createdAt: { $gte: start, $lt: end },
+            },
+          },
+        },
+      ],
+    },
+  ],
+});
+
+export const buildDirectHealthCompletedInRangeFilter = ({
+  technicianId,
+  start,
+  end,
+} = {}) => ({
+  technicianId,
+  healthRequestId: null,
+  deletedAt: null,
+  "details.serviceType": { $in: DIRECT_HEALTH_SERVICE_TYPES },
+  date: { $gte: start, $lt: end },
+});
+
+const buildDateBoundActiveFilter = ({ baseFilter, field, range }) => ({
+  ...baseFilter,
+  [field]: range,
+});
+
+export const loadTechnicianDashboardMetrics = async ({
+  technicianId,
+  now = new Date(),
+  models = {},
+} = {}) => {
+  const InseminationModel = models.Insemination || Insemination;
+  const HealthRequestModel = models.HealthRequest || HealthRequest;
+  const TaskModel = models.Task || Task;
+  const MedicalRecordModel = models.MedicalRecord || MedicalRecord;
+  const { start, end } = getManilaDayBounds(now);
+  const activeAI = buildActiveAIWorkFilter({ technicianId });
+  const activeHealth = buildActiveHealthWorkFilter({ technicianId });
+  const activeTasks = buildActiveStandaloneTaskFilter({ technicianId, now });
+  const scheduledHealth = {
+    ...activeHealth,
+    handlingMethod: { $nin: ["advice", "office_pickup"] },
+  };
+
+  const [
+    aiDueToday,
+    healthDueToday,
+    tasksDueToday,
+    aiOverdue,
+    healthOverdue,
+    tasksOverdue,
+    aiCompletedToday,
+    healthCompletedToday,
+    tasksCompletedToday,
+    directHealthCompletedToday,
+  ] = await Promise.all([
+    InseminationModel.countDocuments(
+      buildDateBoundActiveFilter({
+        baseFilter: activeAI,
+        field: "scheduledDate",
+        range: { $gte: start, $lt: end },
+      }),
+    ),
+    HealthRequestModel.countDocuments(
+      buildDateBoundActiveFilter({
+        baseFilter: scheduledHealth,
+        field: "scheduledDate",
+        range: { $gte: start, $lt: end },
+      }),
+    ),
+    TaskModel.countDocuments(
+      buildDateBoundActiveFilter({
+        baseFilter: activeTasks,
+        field: "dueDate",
+        range: { $gte: start, $lt: end },
+      }),
+    ),
+    InseminationModel.countDocuments(
+      buildDateBoundActiveFilter({
+        baseFilter: activeAI,
+        field: "scheduledDate",
+        range: { $lt: start },
+      }),
+    ),
+    HealthRequestModel.countDocuments(
+      buildDateBoundActiveFilter({
+        baseFilter: scheduledHealth,
+        field: "scheduledDate",
+        range: { $lt: start },
+      }),
+    ),
+    TaskModel.countDocuments(
+      buildDateBoundActiveFilter({
+        baseFilter: activeTasks,
+        field: "dueDate",
+        range: { $lt: start },
+      }),
+    ),
+    InseminationModel.countDocuments(
+      buildAICompletedInRangeFilter({ technicianId, start, end }),
+    ),
+    HealthRequestModel.countDocuments({
+      ...buildCompletedHealthWorkFilter({ technicianId }),
+      resolvedAt: { $gte: start, $lt: end },
+    }),
+    TaskModel.countDocuments({
+      ...buildCompletedStandaloneTaskFilter({ technicianId }),
+      completedAt: { $gte: start, $lt: end },
+    }),
+    MedicalRecordModel.countDocuments(
+      buildDirectHealthCompletedInRangeFilter({ technicianId, start, end }),
+    ),
+  ]);
+
+  return {
+    dueToday: aiDueToday + healthDueToday + tasksDueToday,
+    overdue: aiOverdue + healthOverdue + tasksOverdue,
+    completedToday:
+      aiCompletedToday +
+      healthCompletedToday +
+      tasksCompletedToday +
+      directHealthCompletedToday,
+    aiDueToday,
+    aiOverdue,
+    aiCompletedToday,
+  };
+};
 
 const countByTechnician = (rows) =>
   new Map(rows.map((row) => [String(row._id), row]));

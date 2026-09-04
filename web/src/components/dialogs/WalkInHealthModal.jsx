@@ -14,6 +14,10 @@ import {
   StickyNote,
   Mail,
   ChevronDown,
+  UserPlus,
+  AlertCircle,
+  Check,
+  Plus
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -23,6 +27,7 @@ import {
   CATTLE_SPECIES,
   BREED_OPTIONS_BY_SPECIES,
 } from "../../constants/breeds";
+import UserAvatar from "../ui/UserAvatar";
 import {
   formatBarangayWithDistrict,
   getIloiloBarangayOptions,
@@ -30,6 +35,11 @@ import {
   ILOILO_CITY_NAME,
   ILOILO_MUNICIPALITY_OPTIONS,
 } from "../../utils/addressOptions";
+import {
+  buildDirectHealthRecordPayload,
+  DIRECT_HEALTH_SERVICE_TYPES,
+  formatDirectHealthDateKey,
+} from "../../utils/directHealthRecord";
 
 const inputClass = `input input-bordered w-full font-semibold`;
 const selectClass = `select select-bordered w-full font-semibold`;
@@ -53,10 +63,13 @@ const WalkInHealthModal = ({
   const [selectedFarmerId, setSelectedFarmerId] = useState("");
   const [searchFarmer, setSearchFarmer] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isAnimalDropdownOpen, setIsAnimalDropdownOpen] = useState(false);
+  const animalDropdownRef = useRef(null);
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [submissionError, setSubmissionError] = useState("");
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -75,10 +88,12 @@ const WalkInHealthModal = ({
     requestType: "disease",
     urgency: "medium",
     status: "resolved",
-    preferredDate: new Date().toISOString().split("T")[0],
+    preferredDate: formatDirectHealthDateKey(),
     preferredTime: "08:00",
     diagnosis: "",
     treatment: "",
+    medicineGiven: "",
+    dosage: "",
     advice: "",
     technicianNote: "",
     followUpDate: "",
@@ -102,8 +117,18 @@ const WalkInHealthModal = ({
       const res = await axiosInstance.get("/user?role=farmer");
       return Array.isArray(res.data) ? res.data : res.data.data || [];
     },
-    enabled: isOpen && !preSelectedFarmer,
+    enabled: isOpen,
   });
+
+  const matchingFarmers = useMemo(() => {
+    const query = searchFarmer.toLowerCase();
+    return farmers.filter(
+      (f) =>
+        (f.name || "").toLowerCase().includes(query) ||
+        (f.phoneNumber || "").toLowerCase().includes(query) ||
+        (typeof f.address === "string" ? f.address : f.address?.barangay || "").toLowerCase().includes(query)
+    );
+  }, [farmers, searchFarmer]);
 
   const {
     data: animals = [],
@@ -122,9 +147,25 @@ const WalkInHealthModal = ({
     enabled: !!selectedFarmerId && isExistingRecord,
   });
 
+  const selectedFarmer = useMemo(() => {
+    return farmers.find((f) => String(f._id) === String(selectedFarmerId));
+  }, [farmers, selectedFarmerId]);
+
+  const selectedAnimal = useMemo(() => {
+    return animals.find((a) => String(a._id) === String(selectedAnimalId));
+  }, [animals, selectedAnimalId]);
+
+  const clearFarmer = () => {
+    setSearchFarmer("");
+    setSelectedFarmerId("");
+    setSelectedAnimalId("");
+    setFieldErrors((current) => ({ ...current, farmer: null, animal: null }));
+    setTimeout(() => setIsDropdownOpen(true), 0);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !submittingRef.current) {
         onClose();
       }
     };
@@ -140,7 +181,9 @@ const WalkInHealthModal = ({
     if (isOpen && preSelectedFarmer) {
       Promise.resolve().then(() => {
         setIsExistingRecord(true);
-        setSelectedFarmerId(preSelectedFarmer._id || preSelectedFarmer.id || "");
+        setSelectedFarmerId(
+          preSelectedFarmer._id || preSelectedFarmer.id || "",
+        );
         setSelectedAnimalId("");
         setSearchFarmer(preSelectedFarmer.name || "");
         setIsDropdownOpen(false);
@@ -168,6 +211,7 @@ const WalkInHealthModal = ({
         setIsBarangayDropdownOpen(false);
         setSelectedDistrict("");
         setFieldErrors({});
+        setSubmissionError("");
         setFormData({
           firstName: "",
           lastName: "",
@@ -185,10 +229,12 @@ const WalkInHealthModal = ({
           requestType: "disease",
           urgency: "medium",
           status: "resolved",
-          preferredDate: new Date().toISOString().split("T")[0],
+          preferredDate: formatDirectHealthDateKey(),
           preferredTime: "08:00",
           diagnosis: "",
           treatment: "",
+          medicineGiven: "",
+          dosage: "",
           advice: "",
           technicianNote: "",
           followUpDate: "",
@@ -222,22 +268,46 @@ const WalkInHealthModal = ({
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const res = await axiosInstance.post("/health-request/walk-in", data);
+      const isCanonicalDirectRecord =
+        existingOnly && Boolean(data.farmerId) && Boolean(data.animalId);
+      if (!isCanonicalDirectRecord) {
+        const res = await axiosInstance.post("/health-request/walk-in", data);
+        return res.data;
+      }
+      const payload = buildDirectHealthRecordPayload({
+        animalId: data.animalId,
+        serviceType: data.requestType,
+        serviceDate: data.preferredDate,
+        diagnosis: data.diagnosis,
+        treatment: data.treatment,
+        medicineGiven: data.medicineGiven,
+        dosage: data.dosage,
+        withdrawalPeriodDays: data.withdrawalPeriodDays,
+        advice: data.advice,
+        resolutionNotes: data.technicianNote,
+        followUpDate: data.followUpDate,
+      });
+      const res = await axiosInstance.post("/medical", payload);
       return res.data;
     },
     onSuccess: async (result) => {
       submittingRef.current = false;
-      toast.success(
-        formData.status === "resolved"
-          ? "Health record saved!"
-          : "Visit scheduled successfully!",
-      );
-      const invalidations = [
-        queryClient.invalidateQueries({ queryKey: ["technician"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["technician", "health-requests-list"],
-        }),
-      ];
+      setSubmissionError("");
+      const invalidations = existingOnly
+        ? [
+            queryClient.invalidateQueries({
+              queryKey: ["technician", "official-records"],
+            }),
+            queryClient.invalidateQueries({
+              queryKey: ["technician", "dashboard"],
+            }),
+          ]
+        : [
+            queryClient.invalidateQueries({ queryKey: ["technician"] }),
+            queryClient.invalidateQueries({
+              queryKey: ["technician", "health-requests-list"],
+            }),
+          ];
       if (selectedFarmerId) {
         invalidations.push(
           queryClient.invalidateQueries({
@@ -258,14 +328,18 @@ const WalkInHealthModal = ({
       await Promise.allSettled(invalidations);
       if (onSuccess) onSuccess(result);
       onClose();
+      toast.success(
+        formData.status === "resolved"
+          ? "Health record saved!"
+          : "Visit scheduled successfully!",
+      );
     },
     onError: (error) => {
       submittingRef.current = false;
-      toast.error(
-        "Failed to process request: " +
-          (error?.response?.data?.message ||
-            error?.message ||
-            "Unable to save the health service."),
+      setSubmissionError(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the health service.",
       );
     },
   });
@@ -291,8 +365,12 @@ const WalkInHealthModal = ({
       const animal = animals.find((a) => a._id === selectedAnimalId);
       if (!farmer || !animal) {
         setFieldErrors({
-          ...(!farmer ? { farmer: "The selected farmer is no longer available." } : {}),
-          ...(!animal ? { animal: "The selected animal is no longer available." } : {}),
+          ...(!farmer
+            ? { farmer: "The selected farmer is no longer available." }
+            : {}),
+          ...(!animal
+            ? { animal: "The selected animal is no longer available." }
+            : {}),
         });
         return;
       }
@@ -315,22 +393,28 @@ const WalkInHealthModal = ({
       };
     } else {
       if (!formData.address.city) {
-        return toast.error("Municipality or city is required.");
+        setSubmissionError("Municipality or city is required.");
+        return;
       }
       if (formData.address.city === ILOILO_CITY_NAME && !selectedDistrict) {
-        return toast.error("Please select the Iloilo City district.");
+        setSubmissionError("Please select the Iloilo City district.");
+        return;
       }
       if (!formData.address.barangay) {
-        return toast.error("Barangay is required.");
+        setSubmissionError("Barangay is required.");
+        return;
       }
       if (!formData.phoneNumber || !formData.animalDetails.earTag) {
-        return toast.error("Phone number and Ear Tag are required.");
+        setSubmissionError("Phone number and Ear Tag are required.");
+        return;
       }
       if (formData.phoneNumber.length < 11) {
-        return toast.error("Phone number must be exactly 11 digits.");
+        setSubmissionError("Phone number must be exactly 11 digits.");
+        return;
       }
       if (!formData.phoneNumber.startsWith("09")) {
-        return toast.error("Phone number must start with 09.");
+        setSubmissionError("Phone number must start with 09.");
+        return;
       }
       submissionData = {
         ...formData,
@@ -349,6 +433,8 @@ const WalkInHealthModal = ({
 
     submissionData.diagnosis = submissionData.diagnosis.trim();
     submissionData.treatment = submissionData.treatment.trim();
+    submissionData.medicineGiven = submissionData.medicineGiven.trim();
+    submissionData.dosage = submissionData.dosage.trim();
     submissionData.advice = submissionData.advice.trim();
     submissionData.technicianNote = submissionData.technicianNote.trim();
 
@@ -382,6 +468,7 @@ const WalkInHealthModal = ({
     }
 
     setFieldErrors({});
+    setSubmissionError("");
     submittingRef.current = true;
     mutation.mutate(submissionData);
   };
@@ -441,6 +528,11 @@ const WalkInHealthModal = ({
 
           {/* SCROLLABLE CONTENT */}
           <div className="overflow-y-auto flex-1 custom-scrollbar px-5 pb-32 pt-5 space-y-5 bg-base-100">
+            {submissionError && (
+              <div role="alert" className="alert alert-error alert-soft">
+                <span>{submissionError}</span>
+              </div>
+            )}
             {/* TOGGLES */}
             {!existingOnly && (
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
@@ -461,27 +553,27 @@ const WalkInHealthModal = ({
                   </button>
                 </div>
 
-              <div className="join">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFormData({ ...formData, status: "resolved" })
-                  }
-                  className={`btn btn-sm join-item ${formData.status === "resolved" ? "btn-success" : "btn-ghost"}`}
-                >
-                  Completed
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFormData({ ...formData, status: "in-progress" })
-                  }
-                  className={`btn btn-sm join-item ${formData.status === "in-progress" ? "btn-info" : "btn-ghost"}`}
-                >
-                  Schedule
-                </button>
+                <div className="join">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, status: "resolved" })
+                    }
+                    className={`btn btn-sm join-item ${formData.status === "resolved" ? "btn-success" : "btn-ghost"}`}
+                  >
+                    Completed
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, status: "in-progress" })
+                    }
+                    className={`btn btn-sm join-item ${formData.status === "in-progress" ? "btn-info" : "btn-ghost"}`}
+                  >
+                    Schedule
+                  </button>
+                </div>
               </div>
-            </div>
             )}
 
             {isExistingRecord ? (
@@ -492,49 +584,83 @@ const WalkInHealthModal = ({
                     Farmer and animal
                   </h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={labelClass} htmlFor="health-farmer-search">
-                      Farmer
-                    </label>
-                    <div className="relative">
-                      <Search
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
-                      />
-                      <input
-                        id="health-farmer-search"
-                        aria-describedby={fieldErrors.farmer ? "health-farmer-error" : undefined}
-                        value={searchFarmer}
-                        readOnly={Boolean(preSelectedFarmer)}
-                        onChange={(e) => {
-                          setSearchFarmer(e.target.value);
-                          setSelectedFarmerId("");
-                          setSelectedAnimalId("");
-                          setFieldErrors((current) => ({
-                            ...current,
-                            farmer: null,
-                            animal: null,
-                          }));
-                          setIsDropdownOpen(true);
-                        }}
-                        onFocus={() => {
-                          if (!preSelectedFarmer) setIsDropdownOpen(true);
-                        }}
-                        onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
-                        placeholder="Type farmer name..."
-                        className={`${inputClass} pl-11`}
-                      />
-
-                      <AnimatePresence>
-                        {isDropdownOpen && !preSelectedFarmer && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <fieldset className="fieldset">
+                    <legend className="fieldset-legend">Farmer</legend>
+                    {preSelectedFarmer ? (
+                      <div className="flex h-12 items-center gap-3 rounded-field border border-base-300 bg-base-200 px-4">
+                        <UserAvatar
+                          name={preSelectedFarmer.name}
+                          imageUrl={
+                            preSelectedFarmer.imageUrl ||
+                            preSelectedFarmer.avatarUrl ||
+                            preSelectedFarmer.avatar
+                          }
+                          size={28}
+                          sizeClass="h-7 w-7"
+                        />
+                        <span className="truncate font-semibold">
+                          {preSelectedFarmer.name}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <label className="input w-full flex items-center gap-2">
+                          {selectedFarmer ? (
+                            <UserAvatar
+                              name={selectedFarmer.name}
+                              imageUrl={
+                                selectedFarmer.imageUrl ||
+                                selectedFarmer.avatarUrl ||
+                                selectedFarmer.avatar
+                              }
+                              size={22}
+                              sizeClass="h-5.5 w-5.5"
+                            />
+                          ) : (
+                            <Search
+                              size={16}
+                              className="shrink-0 text-base-content/40"
+                            />
+                          )}
+                          <input
+                            className="grow min-w-0"
+                            value={searchFarmer}
+                            onChange={(event) => {
+                              setSearchFarmer(event.target.value);
+                              setSelectedFarmerId("");
+                              setSelectedAnimalId("");
+                              setFieldErrors((current) => ({ ...current, farmer: null, animal: null }));
+                              setIsDropdownOpen(true);
+                            }}
+                            onFocus={() => setIsDropdownOpen(true)}
+                            onBlur={() =>
+                              window.setTimeout(
+                                () => setIsDropdownOpen(false),
+                                150,
+                              )
+                            }
+                            placeholder="Name, phone, or barangay"
+                          />
+                          {Boolean(searchFarmer || selectedFarmerId) && (
+                            <button
+                              type="button"
+                              aria-label="Clear farmer selection"
+                              className="btn btn-ghost btn-circle btn-xs shrink-0 text-base-content/50 hover:text-base-content"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                clearFarmer();
+                              }}
+                            >
+                              <X size={14} aria-hidden="true" />
+                            </button>
+                          )}
+                        </label>
+                        {isDropdownOpen && (
+                          <div
                             role="listbox"
                             aria-label="Matching farmers"
-                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl custom-scrollbar"
+                            className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
                           >
                             {isLoadingFarmers ? (
                               <div
@@ -554,6 +680,7 @@ const WalkInHealthModal = ({
                                   role="alert"
                                   className="alert alert-error alert-soft"
                                 >
+                                  <AlertCircle size={16} />
                                   <span className="text-sm">
                                     {farmersError?.response?.data?.message ||
                                       "Registered farmers could not be loaded."}
@@ -570,149 +697,294 @@ const WalkInHealthModal = ({
                                   Try again
                                 </button>
                               </div>
-                            ) : farmers.filter((f) =>
-                              (f.name || "")
-                                .toLowerCase()
-                                .includes(searchFarmer.toLowerCase()) ||
-                              (f.phoneNumber || "")
-                                .toLowerCase()
-                                .includes(searchFarmer.toLowerCase()) ||
-                              (typeof f.address === "string"
-                                ? f.address
-                                : f.address?.barangay || ""
-                              )
-                                .toLowerCase()
-                                .includes(searchFarmer.toLowerCase()),
-                            ).length > 0 ? (
-                              farmers
-                                .filter((f) =>
-                                  (f.name || "")
-                                    .toLowerCase()
-                                    .includes(searchFarmer.toLowerCase()) ||
-                                  (f.phoneNumber || "")
-                                    .toLowerCase()
-                                    .includes(searchFarmer.toLowerCase()) ||
-                                  (typeof f.address === "string"
-                                    ? f.address
-                                    : f.address?.barangay || ""
-                                  )
-                                    .toLowerCase()
-                                    .includes(searchFarmer.toLowerCase()),
-                                )
-                                .map((farmer) => (
-                                  <button
-                                    key={farmer._id}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={selectedFarmerId === farmer._id}
-                                    onClick={() => {
-                                      setSelectedFarmerId(farmer._id);
-                                      setSelectedAnimalId("");
-                                      setSearchFarmer(farmer.name);
-                                      setIsDropdownOpen(false);
-                                      setFieldErrors((current) => ({
-                                        ...current,
-                                        farmer: null,
-                                        animal: null,
-                                      }));
-                                    }}
-                                    className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary cursor-pointer"
-                                  >
-                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                                      {(farmer.name || "Farmer").substring(0, 2).toUpperCase()}
+                            ) : matchingFarmers.length ? (
+                              matchingFarmers.map((farmer) => (
+                                <button
+                                  key={farmer._id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={
+                                    selectedFarmerId === farmer._id
+                                  }
+                                  className="flex w-full cursor-pointer items-center gap-3 rounded-field px-3 py-2.5 text-left hover:bg-base-200"
+                                  onMouseDown={(event) =>
+                                    event.preventDefault()
+                                  }
+                                  onClick={() => {
+                                    setSelectedFarmerId(farmer._id);
+                                    setSelectedAnimalId("");
+                                    setSearchFarmer(farmer.name);
+                                    setIsDropdownOpen(false);
+                                    setFieldErrors((current) => ({ ...current, farmer: null, animal: null }));
+                                  }}
+                                >
+                                  <UserAvatar
+                                    name={farmer.name}
+                                    imageUrl={
+                                      farmer.imageUrl ||
+                                      farmer.avatarUrl ||
+                                      farmer.avatar
+                                    }
+                                    size={36}
+                                    sizeClass="h-9 w-9"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-semibold">
+                                      {farmer.name}
                                     </span>
-                                    <span className="min-w-0">
-                                      <span className="block truncate text-sm font-bold text-base-content">
-                                        {farmer.name}
-                                      </span>
-                                      <span className="block text-xs font-medium text-base-content/60">
-                                        {farmer.phoneNumber || "No Contact"} •{" "}
-                                        {typeof farmer.address === "string"
-                                          ? farmer.address
-                                          : farmer.address?.barangay || "No Barangay"}
-                                      </span>
+                                    <span className="block truncate text-xs text-base-content/55">
+                                      {farmer.phoneNumber || "No phone number"}
                                     </span>
-                                  </button>
-                                ))
+                                  </span>
+                                </button>
+                              ))
                             ) : (
-                              <p className="px-4 py-8 text-center text-sm font-medium text-base-content/60">
-                                No farmers found
-                              </p>
+                              <div className="space-y-3 p-4 text-center">
+                                <div>
+                                  <div className="font-semibold">
+                                    Farmer not found
+                                  </div>
+                                  <div className="text-sm text-base-content/55">
+                                    No matching registered farmer is available.
+                                  </div>
+                                </div>
+                              </div>
                             )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    {fieldErrors.farmer && (
-                      <p id="health-farmer-error" role="alert" className="text-sm text-error">
-                        {fieldErrors.farmer}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={labelClass} htmlFor="health-animal">
-                      Animal
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="health-animal"
-                        aria-describedby={fieldErrors.animal ? "health-animal-error" : undefined}
-                        disabled={!selectedFarmerId || isLoadingAnimals}
-                        value={selectedAnimalId}
-                        onChange={(e) => {
-                          setSelectedAnimalId(e.target.value);
-                          setFieldErrors((current) => ({
-                            ...current,
-                            animal: null,
-                          }));
-                        }}
-                        className={`${selectClass} disabled:opacity-50 cursor-pointer`}
-                      >
-                        <option value="">
-                          {isLoadingAnimals
-                            ? "Synchronizing..."
-                            : "Select animal"}
-                        </option>
-                        {animals.map((a) => (
-                          <option key={a._id} value={a._id}>
-                            Tag #{a.earTag} ({a.breed}) -{" "}
-                            {a.reproductiveStatus || "Normal"}
-                          </option>
-                        ))}
-                      </select>
-                      {!isLoadingAnimals &&
-                        !isAnimalsError &&
-                        selectedFarmerId &&
-                        animals.length === 0 && (
-                          <p className="mt-2 text-sm text-base-content/65">
-                            This farmer has no registered animals.
-                          </p>
-                        )}
-                      {isAnimalsError && (
-                        <div className="mt-2 space-y-2">
-                          <div
-                            role="alert"
-                            className="alert alert-error alert-soft py-2 text-sm"
-                          >
-                            {animalsError?.response?.data?.message ||
-                              "Registered animals could not be loaded."}
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-sm w-full"
-                            onClick={() => refetchAnimals()}
-                          >
-                            Try again
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {fieldErrors.animal && (
-                      <p id="health-animal-error" role="alert" className="text-sm text-error">
-                        {fieldErrors.animal}
-                      </p>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </fieldset>
+
+                  <fieldset className="fieldset">
+                    <legend className="fieldset-legend">Animal</legend>
+                    {selectedFarmerId &&
+                      !isLoadingAnimals &&
+                      !isAnimalsError &&
+                      animals.length === 0 ? (
+                      <div className="space-y-3 rounded-field border border-base-300 bg-base-200 p-4 text-center">
+                        <div>
+                          <div className="font-semibold">
+                            No animals found
+                          </div>
+                          <div className="text-sm text-base-content/55">
+                            This farmer has no registered animals.
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative" ref={animalDropdownRef}>
+                        <button
+                          type="button"
+                          disabled={
+                            !selectedFarmerId ||
+                            isLoadingAnimals ||
+                            isAnimalsError
+                          }
+                          onClick={() =>
+                            setIsAnimalDropdownOpen((prev) => !prev)
+                          }
+                          className={`input w-full flex items-center justify-between gap-2 text-left ${
+                            !selectedFarmerId ||
+                            isLoadingAnimals ||
+                            isAnimalsError
+                              ? "opacity-60 cursor-not-allowed bg-base-200/50"
+                              : "cursor-pointer hover:border-primary/50"
+                          }`}
+                        >
+                          {selectedAnimal ? (
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="badge badge-sm font-mono font-bold bg-base-200 text-base-content border border-base-300 shrink-0">
+                                #
+                                {String(selectedAnimal.earTag || "").replace(
+                                  /^#/,
+                                  "",
+                                )}
+                              </span>
+                              <span className="font-semibold text-sm text-base-content truncate">
+                                {selectedAnimal.name
+                                  ? `${selectedAnimal.name} · `
+                                  : ""}
+                                {selectedAnimal.breed ||
+                                  selectedAnimal.species}
+                              </span>
+                              <span className="badge badge-xs badge-success badge-soft font-semibold shrink-0">
+                                {selectedAnimal.gender || "Female"}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-base-content/50">
+                              {isLoadingAnimals
+                                ? "Loading registered animals…"
+                                : selectedFarmerId
+                                  ? "Select animal"
+                                  : "Select a farmer first"}
+                            </span>
+                          )}
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {Boolean(selectedAnimalId) && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Clear animal selection"
+                                className="btn btn-ghost btn-circle btn-xs text-base-content/50 hover:text-base-content"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedAnimalId("");
+                                  setFieldErrors((current) => ({ ...current, animal: null }));
+                                }}
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.stopPropagation();
+                                    setSelectedAnimalId("");
+                                    setFieldErrors((current) => ({ ...current, animal: null }));
+                                  }
+                                }}
+                              >
+                                <X size={14} aria-hidden="true" />
+                              </span>
+                            )}
+                            <ChevronDown
+                              size={16}
+                              className={`text-base-content/50 transition-transform ${
+                                isAnimalDropdownOpen ? "rotate-180" : ""
+                              }`}
+                              aria-hidden="true"
+                            />
+                          </div>
+                        </button>
+
+                        {isAnimalDropdownOpen && (
+                          <div
+                            role="listbox"
+                            aria-label="Registered animals"
+                            className="absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1.5 shadow-xl space-y-1"
+                          >
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={!selectedAnimalId}
+                              onClick={() => {
+                                setSelectedAnimalId("");
+                                setIsAnimalDropdownOpen(false);
+                                setFieldErrors((current) => ({ ...current, animal: null }));
+                              }}
+                              className={`flex w-full items-center justify-between rounded-field px-3 py-2 text-xs font-medium text-left transition-colors ${
+                                !selectedAnimalId
+                                  ? "bg-base-200 text-base-content font-bold"
+                                  : "text-base-content/60 hover:bg-base-200"
+                              }`}
+                            >
+                              <span>Select animal</span>
+                              {!selectedAnimalId && (
+                                <Check size={14} className="text-primary" />
+                              )}
+                            </button>
+
+                            <div className="divider my-0.5" />
+
+                            {animals.map((animal) => {
+                              const isSelected =
+                                String(animal._id) ===
+                                String(selectedAnimalId);
+                              const tag = String(animal.earTag || "").replace(
+                                /^#/,
+                                "",
+                              );
+
+                              return (
+                                <button
+                                  key={animal._id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSelected}
+                                  onClick={() => {
+                                    setSelectedAnimalId(animal._id);
+                                    setIsAnimalDropdownOpen(false);
+                                    setFieldErrors((current) => ({ ...current, animal: null }));
+                                  }}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-field px-3 py-2.5 text-left transition-all ${
+                                    isSelected
+                                      ? "bg-primary/10 text-primary font-semibold"
+                                      : "hover:bg-base-200 cursor-pointer"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <span
+                                      className={`badge badge-sm font-mono font-bold shrink-0 ${
+                                        isSelected
+                                          ? "bg-primary! text-primary-content! border-0!"
+                                          : "bg-base-200 text-base-content border border-base-300"
+                                      }`}
+                                    >
+                                      Tag #{tag}
+                                    </span>
+
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-sm text-base-content truncate">
+                                          {animal.name
+                                            ? `${animal.name} · `
+                                            : ""}
+                                          {animal.breed || animal.species}
+                                        </span>
+                                        <span
+                                          className="badge badge-xs font-semibold shrink-0 badge-success badge-soft"
+                                        >
+                                          {animal.gender || "Female"}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-base-content/60 truncate">
+                                        {animal.species
+                                          ? `${animal.species}`
+                                          : "Livestock"}
+                                        {animal.reproductiveStatus
+                                          ? ` · ${animal.reproductiveStatus}`
+                                          : ""}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="shrink-0">
+                                    {isSelected ? (
+                                      <Check
+                                        size={16}
+                                        className="text-primary"
+                                      />
+                                    ) : null}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {isAnimalsError && (
+                          <div
+                            className="alert alert-error mt-2 text-sm"
+                            role="alert"
+                          >
+                            <AlertCircle size={16} />
+                            <span>
+                              {animalsError?.response?.data?.message ||
+                                "Registered animals could not be loaded."}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              onClick={() => refetchAnimals()}
+                            >
+                              Try again
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </fieldset>
                 </div>
               </section>
             ) : (
@@ -879,7 +1151,11 @@ const WalkInHealthModal = ({
                         />
                         <input
                           type="text"
-                          value={formData.address.barangay ? toTitleCase(formData.address.barangay) : ""}
+                          value={
+                            formData.address.barangay
+                              ? toTitleCase(formData.address.barangay)
+                              : ""
+                          }
                           onChange={(e) => {
                             setFormData({
                               ...formData,
@@ -1050,11 +1326,11 @@ const WalkInHealthModal = ({
               <div className="flex items-center gap-2 mb-1">
                 <Calendar size={14} className="text-emerald-500" />
                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                  Visit details
+                  {existingOnly ? "Service details" : "Visit details"}
                 </h4>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className={labelClass} htmlFor="health-service-type">
                     Service type
@@ -1071,92 +1347,108 @@ const WalkInHealthModal = ({
                       }
                       className={`${selectClass} cursor-pointer`}
                     >
-                      <option value="disease">Disease Control</option>
-                      <option value="medicine">Medicine/Supplies</option>
-                      <option value="checkup">Routine Checkup</option>
-                      <option value="injury">Injury Treatment</option>
-                      <option value="vaccination">Vaccination</option>
-                      <option value="deworming">Deworming</option>
-                      <option value="other">Other Veterinary</option>
+                      {DIRECT_HEALTH_SERVICE_TYPES.map((serviceType) => (
+                        <option
+                          key={serviceType.value}
+                          value={serviceType.value}
+                        >
+                          {serviceType.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className={labelClass} htmlFor="health-visit-date">
-                    {formData.status === "resolved" ? "Service date" : "Visit date"}
+                    {formData.status === "resolved"
+                      ? "Service date"
+                      : "Visit date"}
                   </label>
                   <div className="relative">
                     <input
                       id="health-visit-date"
                       type="date"
-                      aria-describedby={fieldErrors.preferredDate ? "health-date-error" : undefined}
-                      value={formData.preferredDate}
-                      onChange={(e) =>
-                        {
-                          setFormData({
-                            ...formData,
-                            preferredDate: e.target.value,
-                          });
-                          setFieldErrors((current) => ({
-                            ...current,
-                            preferredDate: null,
-                          }));
-                        }
+                      max={
+                        existingOnly ? formatDirectHealthDateKey() : undefined
                       }
+                      aria-describedby={
+                        fieldErrors.preferredDate
+                          ? "health-date-error"
+                          : undefined
+                      }
+                      value={formData.preferredDate}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          preferredDate: e.target.value,
+                        });
+                        setFieldErrors((current) => ({
+                          ...current,
+                          preferredDate: null,
+                        }));
+                      }}
                       className={`${inputClass} cursor-pointer`}
                     />
                   </div>
                   {fieldErrors.preferredDate && (
-                    <p id="health-date-error" role="alert" className="text-sm text-error">
+                    <p
+                      id="health-date-error"
+                      role="alert"
+                      className="text-sm text-error"
+                    >
                       {fieldErrors.preferredDate}
                     </p>
                   )}
                 </div>
-                <div className="space-y-1.5">
-                  <label className={labelClass} htmlFor="health-visit-time">
-                    {formData.status === "resolved" ? "Service time" : "Visit time"}
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="health-visit-time"
-                      type="time"
-                      value={formData.preferredTime}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          preferredTime: e.target.value,
-                        })
-                      }
-                      className={`${inputClass} cursor-pointer`}
-                    />
+                {!existingOnly && (
+                  <div className="space-y-1.5">
+                    <label className={labelClass} htmlFor="health-visit-time">
+                      Visit time
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="health-visit-time"
+                        type="time"
+                        value={formData.preferredTime}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            preferredTime: e.target.value,
+                          })
+                        }
+                        className={`${inputClass} cursor-pointer`}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              <div className="space-y-1.5 pt-4 border-t border-base-300">
-                <label className={labelClass}>Urgency</label>
-                <div className="flex gap-4">
-                  {["low", "medium", "high", "emergency"].map((u) => (
-                    <button
-                      type="button"
-                      key={u}
-                      aria-pressed={formData.urgency === u}
-                      onClick={() => setFormData({ ...formData, urgency: u })}
-                      className={`btn btn-sm flex-1 ${
-                        formData.urgency === u
-                          ? u === "high" || u === "emergency"
-                            ? "btn-error"
-                            : u === "medium"
-                              ? "btn-warning"
-                              : "btn-success"
-                          : "btn-outline"
-                      }`}
-                    >
-                      {u}
-                    </button>
-                  ))}
+              {!existingOnly && (
+                <div className="space-y-1.5 pt-4 border-t border-base-300">
+                  <label className={labelClass}>Urgency</label>
+                  <div className="flex gap-4">
+                    {["low", "medium", "high", "emergency"].map((u) => (
+                      <button
+                        type="button"
+                        key={u}
+                        aria-pressed={formData.urgency === u}
+                        onClick={() => setFormData({ ...formData, urgency: u })}
+                        className={`btn btn-sm flex-1 ${
+                          formData.urgency === u
+                            ? u === "high" || u === "emergency"
+                              ? "btn-error"
+                              : u === "medium"
+                                ? "btn-warning"
+                                : "btn-success"
+                            : "btn-outline"
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </section>
 
             {/* Medical Findings */}
@@ -1173,7 +1465,9 @@ const WalkInHealthModal = ({
                 </label>
                 <textarea
                   id="health-diagnosis"
-                  aria-describedby={fieldErrors.diagnosis ? "health-diagnosis-error" : undefined}
+                  aria-describedby={
+                    fieldErrors.diagnosis ? "health-diagnosis-error" : undefined
+                  }
                   value={formData.diagnosis}
                   onChange={(e) => {
                     setFormData({ ...formData, diagnosis: e.target.value });
@@ -1190,7 +1484,11 @@ const WalkInHealthModal = ({
                   className={textareaClass}
                 />
                 {fieldErrors.diagnosis && (
-                  <p id="health-diagnosis-error" role="alert" className="text-sm text-error">
+                  <p
+                    id="health-diagnosis-error"
+                    role="alert"
+                    className="text-sm text-error"
+                  >
                     {fieldErrors.diagnosis}
                   </p>
                 )}
@@ -1206,7 +1504,7 @@ const WalkInHealthModal = ({
                       Treatment details
                     </h4>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
                     <div className="space-y-1.5">
                       <label className={labelClass} htmlFor="health-treatment">
                         Treatment provided (optional)
@@ -1225,25 +1523,48 @@ const WalkInHealthModal = ({
                         className={inputClass}
                       />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
-                      <label className={labelClass} htmlFor="health-advice">
-                        Care advice (optional)
+                      <label className={labelClass} htmlFor="health-medicine">
+                        Medication given (optional)
                       </label>
                       <input
-                        id="health-advice"
+                        id="health-medicine"
                         type="text"
-                        value={formData.advice}
+                        value={formData.medicineGiven}
                         onChange={(e) =>
-                          setFormData({ ...formData, advice: e.target.value })
+                          setFormData({
+                            ...formData,
+                            medicineGiven: e.target.value,
+                          })
                         }
-                        placeholder="Instructions for the farmer"
+                        placeholder="e.g. Penicillin"
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className={labelClass} htmlFor="health-dosage">
+                        Dosage (optional)
+                      </label>
+                      <input
+                        id="health-dosage"
+                        type="text"
+                        value={formData.dosage}
+                        onChange={(e) =>
+                          setFormData({ ...formData, dosage: e.target.value })
+                        }
+                        placeholder="e.g. 10 ml"
                         className={inputClass}
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 border-t border-base-300 pt-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
-                      <label className={labelClass} htmlFor="health-follow-up-date">
+                      <label
+                        className={labelClass}
+                        htmlFor="health-follow-up-date"
+                      >
                         Follow-up date (optional)
                       </label>
                       <input
@@ -1260,7 +1581,10 @@ const WalkInHealthModal = ({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass} htmlFor="health-withdrawal-days">
+                      <label
+                        className={labelClass}
+                        htmlFor="health-withdrawal-days"
+                      >
                         Withdrawal period in days (optional)
                       </label>
                       <input
@@ -1269,7 +1593,11 @@ const WalkInHealthModal = ({
                         min="0"
                         step="1"
                         inputMode="numeric"
-                        aria-describedby={fieldErrors.withdrawalPeriodDays ? "health-withdrawal-error" : undefined}
+                        aria-describedby={
+                          fieldErrors.withdrawalPeriodDays
+                            ? "health-withdrawal-error"
+                            : undefined
+                        }
                         value={formData.withdrawalPeriodDays}
                         onChange={(e) => {
                           setFormData({
@@ -1285,7 +1613,11 @@ const WalkInHealthModal = ({
                         className={inputClass}
                       />
                       {fieldErrors.withdrawalPeriodDays && (
-                        <p id="health-withdrawal-error" role="alert" className="text-sm text-error">
+                        <p
+                          id="health-withdrawal-error"
+                          role="alert"
+                          className="text-sm text-error"
+                        >
                           {fieldErrors.withdrawalPeriodDays}
                         </p>
                       )}
@@ -1297,25 +1629,24 @@ const WalkInHealthModal = ({
                   <div className="flex items-center gap-2 mb-1">
                     <StickyNote size={14} className="text-emerald-500" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Notes and follow-up
+                      Care and notes
                     </h4>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className={labelClass} htmlFor="health-technician-notes">
-                      Technician notes (optional)
-                    </label>
-                    <textarea
-                      id="health-technician-notes"
-                      value={formData.technicianNote}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          technicianNote: e.target.value,
-                        })
-                      }
-                      placeholder="Add relevant service observations"
-                      className={textareaClass}
-                    />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className={labelClass} htmlFor="health-advice">
+                        Care advice (optional)
+                      </label>
+                      <textarea
+                        id="health-advice"
+                        value={formData.advice}
+                        onChange={(e) =>
+                          setFormData({ ...formData, advice: e.target.value })
+                        }
+                        placeholder="Instructions for the farmer"
+                        className={textareaClass}
+                      />
+                    </div>
                   </div>
                 </section>
               </>
@@ -1327,6 +1658,7 @@ const WalkInHealthModal = ({
             <button
               type="button"
               onClick={onClose}
+              disabled={mutation.isPending}
               className="btn"
             >
               Cancel
@@ -1350,7 +1682,9 @@ const WalkInHealthModal = ({
           type="button"
           className="modal-backdrop"
           aria-label="Close Record Health Assistance"
-          onClick={onClose}
+          onClick={() => {
+            if (!submittingRef.current && !mutation.isPending) onClose();
+          }}
         />
       </div>
     </AnimatePresence>

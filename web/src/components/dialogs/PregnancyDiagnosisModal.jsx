@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, AlertCircle, Sparkles, Calendar, Search } from 'lucide-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -11,6 +11,8 @@ import {
     getWorkflowStageLabel,
 } from "../../constants/technicianWorkflow";
 import { buildPregnancyActionRequest } from "../../utils/taskNavigation";
+import { getManilaDateKey } from "../../utils/healthRequestWorkflow";
+import { getPregnancyReadinessFallback } from "../../utils/pregnancyReadinessFallback";
 
 const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSelectedFarmer, preSelectedAnimal, taskId }) => {
     const queryClient = useQueryClient();
@@ -48,7 +50,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     // Form & UI state
     const [result, setResult] = useState(''); // 'Pregnant' or 'Empty'
     const [note, setNote] = useState('');
-    const [diagnosisDate, setDiagnosisDate] = useState(new Date().toISOString().slice(0, 10));
+    const [diagnosisDate, setDiagnosisDate] = useState(() => getManilaDateKey());
     const [followUpDate, setFollowUpDate] = useState("");
     const [diagnosticMethod, setDiagnosticMethod] = useState("");
     const [fieldErrors, setFieldErrors] = useState({});
@@ -56,6 +58,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
         () => new Date(Date.now() + 86400000).toISOString().slice(0, 10),
     );
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const activeWorkflowIdentityRef = useRef(null);
 
     // Standalone selectors state (used when taskData is not provided)
     const [selectedFarmerId, setSelectedFarmerId] = useState("");
@@ -64,38 +67,51 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     const [selectedAnimalId, setSelectedAnimalId] = useState("");
     const [selectedInseminationId, setSelectedInseminationId] = useState("");
 
-    // Reset state and handle Escape key
+    const initialAnimal = preSelectedAnimal?._id || preSelectedAnimal ||
+        (isVerificationTask ? queuedTask.animalIds?.[0]?._id || queuedTask.animalIds?.[0] || queuedTask.animalId?._id || queuedTask.animalId : "");
+    const initialFarmer = preSelectedFarmer?._id || preSelectedFarmer ||
+        (isVerificationTask ? queuedTask.farmerId?._id || queuedTask.farmerId : "");
+    const workflowIdentity = String(
+        resolvedTaskId || queuedTask.workflowId || queuedTask.relatedRecordId?._id ||
+        queuedTask.relatedRecordId || initialAnimal || "standalone-pregnancy",
+    );
+
+    // Reset state for a new workflow and handle Escape while idle.
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && !isSubmitting) {
                 onClose();
             }
         };
         if (isOpen) {
             window.addEventListener('keydown', handleKeyDown);
-            Promise.resolve().then(() => {
-                if (preSelectedFarmer) {
-                    setSelectedFarmerId(preSelectedFarmer._id);
-                    setSearchFarmer(preSelectedFarmer.name || '');
-                }
-                if (preSelectedAnimal) {
-                    setSelectedAnimalId(preSelectedAnimal._id);
-                } else if (isVerificationTask) {
-                    const animalObj = taskData.raw?.animalIds?.[0] || taskData.animalId;
-                    if (animalObj) {
-                        setSelectedAnimalId(animalObj._id || animalObj);
-                    }
-                    const farmerObj = taskData.raw?.farmerId || taskData.farmerId;
-                    if (farmerObj) {
-                        setSelectedFarmerId(farmerObj._id || farmerObj);
-                    }
-                }
-            });
-        } else {
+            if (activeWorkflowIdentityRef.current === workflowIdentity) {
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }
+            activeWorkflowIdentityRef.current = workflowIdentity;
             Promise.resolve().then(() => {
                 setResult('');
                 setNote('');
-                setDiagnosisDate(new Date().toISOString().slice(0, 10));
+                setDiagnosisDate(getManilaDateKey());
+                setFollowUpDate('');
+                setDiagnosticMethod('');
+                setSelectedFarmerId(initialFarmer || '');
+                setSearchFarmer(preSelectedFarmer?.name || '');
+                setIsDropdownOpen(false);
+                setSelectedAnimalId(initialAnimal || '');
+                setSelectedInseminationId('');
+                setFieldErrors({});
+                setIsSubmitting(false);
+                if (preSelectedFarmer) {
+                    setSearchFarmer(preSelectedFarmer.name || '');
+                }
+            });
+        } else {
+            activeWorkflowIdentityRef.current = null;
+            Promise.resolve().then(() => {
+                setResult('');
+                setNote('');
+                setDiagnosisDate(getManilaDateKey());
                 setFollowUpDate('');
                 setDiagnosticMethod('');
                 setSelectedFarmerId('');
@@ -104,12 +120,13 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                 setSelectedAnimalId('');
                 setSelectedInseminationId('');
                 setFieldErrors({});
+                setIsSubmitting(false);
             });
         }
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen, onClose, preSelectedFarmer, preSelectedAnimal, taskData, isVerificationTask]);
+    }, [isOpen, onClose, workflowIdentity, initialAnimal, initialFarmer, preSelectedFarmer, isSubmitting]);
 
     // Queries for standalone mode
     const {
@@ -212,7 +229,8 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     const selectedInsemination = taskData
         ? (isVerificationTask ? linkedInsemination : null)
         : validInseminations.find(i => (i._id || i.id) === selectedInseminationId);
-    const readiness = taskReadiness || selectedInsemination?.pregnancyReadiness;
+    const readiness = taskReadiness || selectedInsemination?.pregnancyReadiness ||
+        getPregnancyReadinessFallback(selectedInsemination?.inseminationDate);
     const methodsEligible = readiness ? readiness.isEligible : true;
     const diagnosticMethods = readiness?.policyMode === "method_based"
         ? readiness.methods || []
@@ -235,9 +253,6 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
         : 0;
     if (!daysSinceAI && taskData && !isVerificationTask) {
         daysSinceAI = taskData.daysSinceAI || 0;
-    } else if (!daysSinceAI && selectedInsemination?.inseminationDate) {
-        const diffTime = Math.abs(new Date() - new Date(selectedInsemination.inseminationDate));
-        daysSinceAI = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     }
 
     // Estimate calving drop date
@@ -339,7 +354,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                 });
             await axiosInstance.post(request.url, request.payload);
 
-            toast.success(isContinuationFlow ? "Pregnancy follow-up recorded." : `Diagnosis recorded: ${result}`);
+            const successMessage = isContinuationFlow ? "Pregnancy follow-up recorded." : `Diagnosis recorded: ${result}`;
             await Promise.allSettled([
                 queryClient.invalidateQueries({ queryKey: ["technician"] }),
                 queryClient.invalidateQueries({ queryKey: ["farmer-animals"] }),
@@ -348,8 +363,12 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
             ]);
             if (onSuccess) onSuccess();
             onClose();
+            toast.success(successMessage);
         } catch (err) {
-            toast.error(err.response?.data?.message || "Failed to record diagnosis");
+            setFieldErrors((current) => ({
+                ...current,
+                form: err.response?.data?.message || "Failed to record diagnosis",
+            }));
         } finally {
             setIsSubmitting(false);
         }
@@ -731,7 +750,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                             id="pregnancy-diagnosis-date"
                                             type="date"
                                             value={diagnosisDate}
-                                            max={new Date().toISOString().slice(0, 10)}
+                                            max={getManilaDateKey()}
                                             onChange={(event) => {
                                                 setDiagnosisDate(event.target.value);
                                                 setFieldErrors((current) => ({ ...current, diagnosisDate: null }));

@@ -143,7 +143,12 @@ const REQUEST_SECTIONS = Object.freeze({
   MY_WORK: "myWork",
 });
 
-function RequestsSectionTabs({ activeSection, onSelect }) {
+function RequestsSectionTabs({
+  activeSection,
+  onSelect,
+  availableCount = 0,
+  myWorkCount = 0,
+}) {
   return (
     <div
       role="tablist"
@@ -154,27 +159,37 @@ function RequestsSectionTabs({ activeSection, onSelect }) {
         type="button"
         role="tab"
         aria-selected={activeSection === REQUEST_SECTIONS.AVAILABLE}
-        className={`tab grow sm:grow-0 font-semibold ${
+        className={`tab grow sm:grow-0 font-semibold gap-2 ${
           activeSection === REQUEST_SECTIONS.AVAILABLE
             ? "tab-active font-bold! bg-primary/15! text-primary!"
             : ""
         }`}
         onClick={() => onSelect(REQUEST_SECTIONS.AVAILABLE)}
       >
-        Available
+        <span>Available</span>
+        {availableCount > 0 && (
+          <span className="badge badge-sm badge-primary font-bold">
+            {availableCount}
+          </span>
+        )}
       </button>
       <button
         type="button"
         role="tab"
         aria-selected={activeSection === REQUEST_SECTIONS.MY_WORK}
-        className={`tab grow sm:grow-0 font-semibold ${
+        className={`tab grow sm:grow-0 font-semibold gap-2 ${
           activeSection === REQUEST_SECTIONS.MY_WORK
             ? "tab-active font-bold! bg-primary/15! text-primary!"
             : ""
         }`}
         onClick={() => onSelect(REQUEST_SECTIONS.MY_WORK)}
       >
-        My Work
+        <span>My Work</span>
+        {myWorkCount > 0 && (
+          <span className="badge badge-sm badge-primary font-semibold opacity-80">
+            {myWorkCount}
+          </span>
+        )}
       </button>
     </div>
   );
@@ -237,6 +252,47 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
     });
   };
 
+  const { data: workQueueCountData } = useQuery({
+    queryKey: ["technician", "work-queue", "active-count"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/work-queue", {
+        params: {
+          workState: "active",
+          limit: 1,
+        },
+      });
+      return res.data || {};
+    },
+    enabled: isTechnician,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const { data: availableCountData } = useQuery({
+    queryKey: ["technician", "requests", "available-count"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/requests", {
+        params: {
+          assignment: "unassigned",
+          includeOperationalTasks: false,
+          includeCounts: true,
+          limit: 1,
+        },
+      });
+      return res.data || {};
+    },
+    enabled: isTechnician,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const availableCount = availableCountData?.counts
+    ? (availableCountData.counts.ai || 0) +
+      (availableCountData.counts.health || 0)
+    : availableCountData?.pagination?.total || 0;
+
+  const myWorkCount = workQueueCountData?.counts?.all || 0;
+
   if (!isTechnician) return <RequestBoard role={role} />;
 
   if (activeSection === REQUEST_SECTIONS.MY_WORK) {
@@ -252,10 +308,14 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
           <RequestsSectionTabs
             activeSection={activeSection}
             onSelect={selectSection}
+            availableCount={availableCount}
+            myWorkCount={myWorkCount}
           />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-base-content">My Work</h2>
+              <h2 className="text-lg font-semibold text-base-content">
+                My Work
+              </h2>
               <p className="mt-1 text-sm text-base-content/65">
                 Work currently assigned to you and ready for action.
               </p>
@@ -273,10 +333,22 @@ export default function OperationalInbox({ role = WEB_ROLES.TECHNICIAN }) {
     );
   }
 
-  return <RequestBoard role={role} onSelectSection={selectSection} />;
+  return (
+    <RequestBoard
+      role={role}
+      onSelectSection={selectSection}
+      availableCount={availableCount}
+      myWorkCount={myWorkCount}
+    />
+  );
 }
 
-function RequestBoard({ role, onSelectSection }) {
+function RequestBoard({
+  role,
+  onSelectSection,
+  availableCount = 0,
+  myWorkCount = 0,
+}) {
   const queryClient = useQueryClient();
   const actionPolicy = getRequestActionPolicy(role);
   const { isAdmin } = actionPolicy;
@@ -734,6 +806,8 @@ function RequestBoard({ role, onSelectSection }) {
           <RequestsSectionTabs
             activeSection={REQUEST_SECTIONS.AVAILABLE}
             onSelect={onSelectSection}
+            availableCount={availableCount}
+            myWorkCount={myWorkCount}
           />
         )}
         <div className="space-y-6">
@@ -879,7 +953,7 @@ function RequestBoard({ role, onSelectSection }) {
                       <div className="join flex" aria-label="Request type">
                         {[
                           ["all", "All"],
-                          ["ai", "AI"],
+                          ["ai", "Insemination"],
                           ["health", "Health"],
                         ].map(([value, label]) => (
                           <button

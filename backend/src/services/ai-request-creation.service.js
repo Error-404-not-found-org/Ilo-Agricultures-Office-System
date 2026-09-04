@@ -115,7 +115,11 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
 
   const attemptNumber = (lastPerformedAttempt?.attemptNumber || 0) + 1;
   if (payload.status === AI_STATUS.DONE) {
-    serverPayload.completedAt = new Date();
+    serverPayload.completedAt =
+      options.completedAt instanceof Date &&
+      !Number.isNaN(options.completedAt.getTime())
+        ? options.completedAt
+        : new Date();
   }
 
   try {

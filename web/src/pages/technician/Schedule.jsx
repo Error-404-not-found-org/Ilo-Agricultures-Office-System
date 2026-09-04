@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -15,6 +15,7 @@ import {
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
 import PageMeta from "../../components/layout/PageMeta";
+import Modal from "../../components/ui/Modal";
 import {
   buildScheduleItems,
   formatScheduleDate,
@@ -157,7 +158,7 @@ function ScheduleWorkList({
                 <button
                   type="button"
                   className="btn btn-ghost btn-xs mt-1.5 h-auto px-0 text-primary"
-                  onClick={() => onOpen(navigation)}
+                  onClick={() => onOpen(navigation, item)}
                 >
                   {navigation.label}
                   <ArrowUpRight aria-hidden="true" size={13} />
@@ -230,7 +231,57 @@ export default function TechnicianSchedule() {
     (item) => item.timingState === "overdue",
   );
 
-  const openWork = (target) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [previewItem, setPreviewItem] = useState(null);
+
+  const previewTaskId = searchParams.get("previewTaskId");
+  const previewRequestId = searchParams.get("previewRequestId");
+
+  useEffect(() => {
+    if (previewTaskId) {
+      const matched = scheduleItems.find(
+        (item) => String(item.taskId || item.id || item._id) === previewTaskId,
+      );
+      if (matched) {
+        setPreviewItem(matched);
+      }
+    } else if (previewRequestId) {
+      const matched = scheduleItems.find(
+        (item) =>
+          String(
+            item.workflowId || item.requestId || item.id || item._id,
+          ) === previewRequestId,
+      );
+      if (matched) {
+        setPreviewItem(matched);
+      }
+    }
+  }, [previewTaskId, previewRequestId, scheduleItems]);
+
+  const closePreview = () => {
+    setPreviewItem(null);
+    if (previewTaskId || previewRequestId) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("previewTaskId");
+          next.delete("previewRequestId");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  };
+
+  const openWork = (target, item) => {
+    if (
+      target?.action === "preview" ||
+      target?.isUpcoming ||
+      item?.timingState === "upcoming"
+    ) {
+      setPreviewItem(item);
+      return;
+    }
     navigate(target.path + target.search);
   };
 
@@ -382,9 +433,31 @@ export default function TechnicianSchedule() {
           >
             <div className="card-body p-3 sm:p-4">
               {isLoading ? (
-                <div className="space-y-3" aria-label="Loading schedule">
-                  <div className="skeleton h-8 w-52" />
-                  <div className="skeleton h-72 w-full" />
+                <div className="space-y-2" aria-label="Loading schedule">
+                  {/* Toolbar row */}
+                  <div className="flex items-center justify-between pb-1">
+                    <div className="flex gap-1.5">
+                      <div className="skeleton h-7 w-7 rounded-md" />
+                      <div className="skeleton h-7 w-7 rounded-md" />
+                      <div className="skeleton h-7 w-16 rounded-md" />
+                    </div>
+                    <div className="skeleton h-5 w-32 rounded" />
+                    <div className="skeleton h-7 w-10 rounded-md opacity-0 pointer-events-none" />
+                  </div>
+                  {/* Day-name header */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 7 }).map((_, i) => (
+                      <div key={i} className="skeleton h-6 rounded-sm" />
+                    ))}
+                  </div>
+                  {/* Week rows */}
+                  {Array.from({ length: 5 }).map((_, row) => (
+                    <div key={row} className="grid grid-cols-7 gap-1">
+                      {Array.from({ length: 7 }).map((_, col) => (
+                        <div key={col} className="skeleton h-20 sm:h-24 rounded-sm" />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -488,6 +561,162 @@ export default function TechnicianSchedule() {
           </div>
         </div>
       </main>
+
+      <Modal
+        isOpen={Boolean(previewItem)}
+        onClose={closePreview}
+        title={
+          previewItem?.scheduleLabel ||
+          previewItem?.taskType ||
+          previewItem?.serviceType ||
+          "Work details"
+        }
+        subtitle="Upcoming work details"
+        size="md"
+        closeOnBackdropClick={true}
+        closeOnEscape={true}
+        actions={
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={closePreview}
+          >
+            Close
+          </button>
+        }
+      >
+        {previewItem && (
+          <div className="space-y-4 text-sm">
+            <div role="status" className="alert alert-info alert-soft">
+              <Clock3 className="size-5 shrink-0" aria-hidden="true" />
+              <span>
+                This work is scheduled for a future date. You can review it now, and perform the action when it is due.
+              </span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-base-content/55">Farmer</p>
+                <p className="font-semibold">
+                  {farmerNameOf(previewItem)}
+                </p>
+                {(previewItem.farmerPhone ||
+                  previewItem.raw?.farmerId?.phoneNumber ||
+                  previewItem.raw?.farmerId?.phone) && (
+                  <p className="text-xs text-base-content/70">
+                    {previewItem.farmerPhone ||
+                      previewItem.raw?.farmerId?.phoneNumber ||
+                      previewItem.raw?.farmerId?.phone}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs text-base-content/55">Animal</p>
+                <p className="font-semibold">
+                  {animalReferenceOf(previewItem)
+                    ? `Animal ${animalReferenceOf(previewItem)}`
+                    : "Not recorded"}
+                </p>
+                {(previewItem.animalBreed ||
+                  previewItem.animal?.breed ||
+                  previewItem.raw?.animalId?.breed ||
+                  previewItem.raw?.animalIds?.[0]?.breed) && (
+                  <p className="text-xs text-base-content/70">
+                    {previewItem.animalBreed ||
+                      previewItem.animal?.breed ||
+                      previewItem.raw?.animalId?.breed ||
+                      previewItem.raw?.animalIds?.[0]?.breed}
+                    {(previewItem.animalSpecies ||
+                      previewItem.animal?.species ||
+                      previewItem.raw?.animalId?.species ||
+                      previewItem.raw?.animalIds?.[0]?.species)
+                      ? ` · ${
+                          previewItem.animalSpecies ||
+                          previewItem.animal?.species ||
+                          previewItem.raw?.animalId?.species ||
+                          previewItem.raw?.animalIds?.[0]?.species
+                        }`
+                      : ""}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs text-base-content/55">Status</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="badge badge-sm badge-ghost font-semibold">
+                    Upcoming
+                  </span>
+                  <span className="text-xs text-base-content/70">
+                    ({titleCase(previewItem.status || "Pending")})
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-base-content/55">
+                  {previewItem.scheduleKind === "ai" ||
+                  previewItem.scheduleKind === "health"
+                    ? "Scheduled Visit"
+                    : "Due Date"}
+                </p>
+                <p className="font-semibold">
+                  {formatScheduleDate(previewItem.scheduleDate)}
+                  {previewItem.periodLabel ? ` · ${previewItem.periodLabel}` : ""}
+                </p>
+              </div>
+
+              <div className="sm:col-span-2">
+                <p className="text-xs text-base-content/55">Location</p>
+                <p className="font-semibold">
+                  {locationOf(previewItem) || "Not recorded"}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
+              <p className="text-xs text-base-content/55">
+                Service information
+              </p>
+              <p className="font-semibold mt-0.5">
+                {previewItem.scheduleLabel}
+              </p>
+              {previewItem.raw?.description && (
+                <p className="mt-1 text-xs text-base-content/80">
+                  {previewItem.raw.description}
+                </p>
+              )}
+              {previewItem.raw?.notes && (
+                <p className="mt-1 text-xs text-base-content/70 italic">
+                  Note: {previewItem.raw.notes}
+                </p>
+              )}
+              {(previewItem.raw?.metadata?.sireBreed ||
+                previewItem.raw?.sireBreed) && (
+                <p className="mt-1 text-xs text-base-content/70">
+                  Sire:{" "}
+                  {previewItem.raw?.metadata?.sireBreed ||
+                    previewItem.raw?.sireBreed}
+                  {previewItem.raw?.metadata?.semenCode ||
+                  previewItem.raw?.semenCode
+                    ? ` · Code: ${
+                        previewItem.raw?.metadata?.semenCode ||
+                        previewItem.raw?.semenCode
+                      }`
+                    : ""}
+                </p>
+              )}
+              {previewItem.raw?.handlingMethod && (
+                <p className="mt-1 text-xs text-base-content/70">
+                  Handling:{" "}
+                  {String(previewItem.raw.handlingMethod).replaceAll("_", " ")}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

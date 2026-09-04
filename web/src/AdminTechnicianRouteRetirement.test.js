@@ -19,7 +19,8 @@ describe("Admin Technician roster retirement source safety", () => {
       '<Navigate to="/admin/users?role=technician" replace />',
     );
     expect(app).toContain('path="technicians/:id"');
-    expect(app).toContain("<TechnicianProfile />");
+    expect(app).toContain('path="users/:id"');
+    expect(app).toContain("<UserDetails />");
     expect(app).not.toContain(
       'lazy(() => import("./pages/admin/Technicians"))',
     );

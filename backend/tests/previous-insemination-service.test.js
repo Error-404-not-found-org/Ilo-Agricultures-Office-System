@@ -153,6 +153,10 @@ test("history-only saves an official record with no current-state or Task writes
     assert.equal(result.insemination.entryMode, "history_only");
     assert.equal(result.insemination.outcome, "Pending");
     assert.equal(result.insemination.isSuccess, null);
+    assert.equal(
+      result.insemination.completedAt.toISOString(),
+      "2024-08-20T08:00:00.000Z",
+    );
     assert.equal(result.insemination.attemptNumber, undefined);
     assert.equal(harness.state.animal.reproductiveStatus, "Normal");
     assert.equal(harness.state.animalUpdates.length, 0);
@@ -226,6 +230,10 @@ test("continue-tracking uses actual AI date and skips passed heat-return work", 
       now: new Date("2026-08-20T08:00:00.000Z"),
     });
     assert.equal(result.insemination.entryMode, "continue_tracking");
+    assert.equal(
+      result.insemination.completedAt.toISOString(),
+      "2026-06-20T08:00:00.000Z",
+    );
     assert.equal(harness.state.animal.reproductiveStatus, "Inseminated");
     assert.equal(
       new Date(harness.state.animal.lastInseminationDate).toISOString(),

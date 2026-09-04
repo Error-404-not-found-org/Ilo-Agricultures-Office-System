@@ -68,6 +68,11 @@ export const buildAIServiceContext = ({
       status: activeRequest.status,
       createdAt: activeRequest.createdAt,
       scheduledDate,
+      visitPeriod:
+        activeRequest.visitPeriod ||
+        task?.visitPeriod ||
+        task?.metadata?.visitPeriod ||
+        null,
       assignedTechnician: assignedTechnician
         ? {
             _id: idOf(assignedTechnician),

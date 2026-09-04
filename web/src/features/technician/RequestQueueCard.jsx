@@ -62,10 +62,7 @@ export default function RequestQueueCard({
   const ownership = isMine
     ? { label: "Claimed by You", badgeClass: "badge-success badge-soft" }
     : status;
-  const animalLabel =
-    request.animalName && request.animalName !== request.animalTag
-      ? `${request.animalName} · Tag ${request.animalTag}`
-      : `Tag ${request.animalTag || "Not recorded"}`;
+  const animalLabel = `Tag ${request.animalTag || "Not recorded"}`;
   const animalContext = [request.species, request.breed]
     .filter((value) => value && value !== "Not recorded")
     .join(" · ");
@@ -81,111 +78,107 @@ export default function RequestQueueCard({
     isAvailable && canClaim ? "Review Request" : "View Request";
 
   return (
-    <article className="card card-border bg-base-100">
-      <div className="card-body gap-4 p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <article className="card bg-base-100 border border-base-300 shadow-sm transition-all hover:shadow-md overflow-hidden">
+      <div className="card-body p-3.5 sm:p-4">
+        {/* Top Header: Farmer Info and Badges */}
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <UserAvatar
+              name={request.farmer}
+              imageUrl={request.farmerImageUrl}
+              size={36}
+              sizeClass="h-9 w-9 sm:h-10 sm:w-10"
+              className="shrink-0"
+            />
+            <div className="min-w-0">
+              <h3 className="truncate text-[15px] sm:text-base font-bold text-base-content leading-tight">
+                {request.farmer}
+              </h3>
+              <p className="truncate text-xs sm:text-[13px] font-medium text-base-content/65 mt-0.5">
+                {animalLabel}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
             <span
-              className={`badge badge-sm badge-soft ${isAI ? "badge-info" : "badge-error"}`}
+              className={`badge badge-sm badge-soft font-semibold ${isAI ? "badge-info" : "badge-error"}`}
             >
               {isAI ? "AI Request" : "Health Request"}
             </span>
-            <span className={`badge badge-sm ${ownership.badgeClass}`}>
+            <span className={`badge badge-sm font-medium ${ownership.badgeClass}`}>
               {ownership.label}
             </span>
-            {isUrgentHealth ? (
-              <span className="badge badge-sm badge-error gap-1">
+          </div>
+        </div>
+
+        {/* Badges Row (Urgent / Photos) */}
+        {(isUrgentHealth || photoCount > 0) && (
+          <div className="flex items-center gap-2 mb-1">
+            {isUrgentHealth && (
+              <span className="badge badge-sm badge-error font-semibold gap-1">
                 <TriangleAlert size={12} aria-hidden="true" />
                 Urgent
               </span>
-            ) : null}
+            )}
+            {photoCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-xs font-semibold text-base-content/60"
+                aria-label={`${photoCount} Farmer request photo${photoCount === 1 ? "" : "s"}`}
+              >
+                <Images size={14} aria-hidden="true" />
+                {photoCount} photo{photoCount === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
-          {photoCount > 0 ? (
-            <span
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-base-content/65"
-              aria-label={`${photoCount} Farmer request photo${photoCount === 1 ? "" : "s"}`}
-            >
-              <Images size={15} aria-hidden="true" />
-              {photoCount}
-            </span>
-          ) : null}
+        )}
+
+        {/* Request Context Info */}
+        <div className="bg-base-200/50 rounded-xl p-3 space-y-2 mt-1.5">
+          {animalContext && (
+            <div className="flex items-start gap-2 text-[13px]">
+              <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Animal</span>
+              <span className="font-semibold text-base-content/80 line-clamp-1">{animalContext}</span>
+            </div>
+          )}
+          <div className="flex items-start gap-2 text-[13px]">
+             <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Location</span>
+             <div className="flex items-start gap-1 font-semibold text-base-content/80 flex-1">
+               <MapPin size={14} className="shrink-0 text-primary mt-0.5" aria-hidden="true" />
+               <span className="line-clamp-1">{request.location}</span>
+             </div>
+          </div>
+          <div className="flex items-start gap-2 text-[13px]">
+             <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Submitted</span>
+             <div className="flex items-center gap-1 font-semibold text-base-content/80 flex-1">
+               <Clock3 size={14} className="shrink-0 text-primary" aria-hidden="true" />
+               <span>{request.formattedSentAt || "Date unavailable"}</span>
+             </div>
+          </div>
+          {hasSchedule && (
+            <div className="flex items-start gap-2 text-[13px]">
+               <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Visit</span>
+               <div className="flex items-center gap-1 font-semibold text-primary flex-1">
+                 <CalendarDays size={14} className="shrink-0" aria-hidden="true" />
+                 <span>{request.date}</span>
+               </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <UserAvatar
-            name={request.farmer}
-            imageUrl={request.farmerImageUrl}
-            size={44}
-            sizeClass="h-11 w-11"
-            className="shrink-0"
-          />
-          <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold text-base-content">
-              {request.farmer}
-            </h3>
-            <p className="mt-0.5 truncate text-sm text-base-content/65">
-              {animalLabel}
-            </p>
-          </div>
-        </div>
-
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          {animalContext ? (
-            <div>
-              <dt className="text-xs text-base-content/55">Animal</dt>
-              <dd className="font-medium text-base-content/80">
-                {animalContext}
-              </dd>
-            </div>
-          ) : null}
-          <div>
-            <dt className="text-xs text-base-content/55">Location</dt>
-            <dd className="flex items-start gap-1.5 font-medium text-base-content/80">
-              <MapPin
-                size={14}
-                className="mt-0.5 shrink-0 text-base-content/55"
-                aria-hidden="true"
-              />
-              <span>{request.location}</span>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-base-content/55">Submitted</dt>
-            <dd className="flex items-start gap-1.5 font-medium text-base-content/80">
-              <Clock3
-                size={14}
-                className="mt-0.5 shrink-0 text-base-content/55"
-                aria-hidden="true"
-              />
-              <span>{request.formattedSentAt || "Date unavailable"}</span>
-            </dd>
-          </div>
-          {hasSchedule ? (
-            <div>
-              <dt className="text-xs text-base-content/55">Visit</dt>
-              <dd className="flex items-start gap-1.5 font-medium text-base-content/80">
-                <CalendarDays
-                  size={14}
-                  className="mt-0.5 shrink-0 text-base-content/55"
-                  aria-hidden="true"
-                />
-                <span>{request.date}</span>
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-
-        {request.taskDetails ? (
-          <p className="line-clamp-2 text-sm leading-relaxed text-base-content/65">
-            {request.taskDetails}
+        {/* Task Details / Remarks */}
+        {request.taskDetails && (
+          <p className="line-clamp-2 text-[13px] leading-relaxed text-base-content/70 mt-0.5 italic border-l-2 border-base-300 pl-2.5">
+            "{request.taskDetails}"
           </p>
-        ) : null}
+        )}
 
-        <div className="card-actions items-center justify-between border-t border-base-300 pt-3">
+        {/* Card Actions */}
+        <div className="card-actions items-center justify-between border-t border-base-200 mt-1.5 pt-3">
           {canCancel && isMine ? (
             <button
               type="button"
-              className="btn btn-ghost btn-sm text-error"
+              className="btn btn-ghost btn-sm text-error hover:bg-error/10"
               disabled={isUpdating}
               onClick={() => onCancel(request)}
             >
@@ -197,7 +190,7 @@ export default function RequestQueueCard({
           )}
           <button
             type="button"
-            className={`btn btn-sm ${isAvailable && canClaim ? "btn-primary" : ""}`}
+            className={`btn btn-sm px-5 ${isAvailable && canClaim ? "btn-primary shadow-sm shadow-primary/20" : ""}`}
             disabled={isUpdating}
             onClick={handlePrimaryAction}
           >

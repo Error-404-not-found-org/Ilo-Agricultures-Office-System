@@ -42,6 +42,19 @@ const healthRecord = (attachments = []) => ({
   attachments,
 });
 
+const directHealthRecord = () => ({
+  ...healthRecord(),
+  date: "2026-08-08T00:00:00.000Z",
+  datePrecision: "date",
+  details: {
+    serviceDate: "2026-08-08T00:00:00.000Z",
+    serviceType: "medicine",
+    isDirectHealthService: true,
+    diagnosis: "Bacterial infection",
+    treatment: "Antibiotic",
+  },
+});
+
 const renderDetail = ({ record = healthRecord(), onClose = vi.fn() } = {}) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -79,6 +92,16 @@ describe("OfficialRecordDetailModal attachments", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     anchorClick.mockRestore();
+  });
+
+  it("labels standalone Health records as services and shows a date without time", async () => {
+    renderDetail({ record: directHealthRecord() });
+
+    expect(await screen.findByText("Service type")).toBeInTheDocument();
+    expect(screen.queryByText("Request type")).toBeNull();
+    expect(screen.getByText("Medicine")).toBeInTheDocument();
+    expect(screen.getByText("August 8, 2026")).toBeInTheDocument();
+    expect(screen.queryByText(/8:00\s*AM/i)).toBeNull();
   });
 
   it("omits the section when the official record has no valid attachments", async () => {

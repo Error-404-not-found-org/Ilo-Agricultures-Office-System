@@ -36,7 +36,8 @@ export default function BottomNavigator({
     queryFn: () =>
       getTechnicianRequests(api, {
         assignment: "unassigned",
-        status: "pending",
+        includeOperationalTasks: false,
+        includeCounts: true,
         page: 1,
         limit: 1,
       }),
@@ -52,7 +53,9 @@ export default function BottomNavigator({
   if ((focusedOptions.tabBarStyle as any)?.display === "none") return null;
 
   const activeRoute = state.routes[state.index]?.name;
-  const availableCount = requestCountData?.pagination?.total || 0;
+  const availableCount = requestCountData?.counts
+    ? (requestCountData.counts.ai || 0) + (requestCountData.counts.health || 0)
+    : requestCountData?.pagination?.total || 0;
 
   const navigate = (screenName: string) => {
     const route = state.routes.find((item) => item.name === screenName);
