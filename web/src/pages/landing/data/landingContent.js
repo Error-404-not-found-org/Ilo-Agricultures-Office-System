@@ -2,14 +2,19 @@ import {
   APP_DOWNLOAD_URL,
   getDownloadQrUrl,
 } from "../../../config/appDistribution";
+import BRAND_LOGO_ASSET_TRANSPARENT from "../../../assets/branding/icon-removebg-preview.png";
 import BRAND_LOGO_ASSET from "../../../assets/branding/logo.png";
 import OTON_LOGO_ASSET from "../../../assets/branding/OtonImg2.png";
 
-export const HERO_BG = "https://res.cloudinary.com/donhulins/image/upload/v1785461083/ChatGPT_Image_Jul_31_2026_09_22_42_AM_qs3wcd.png";
+export const HERO_BG =
+  "https://res.cloudinary.com/donhulins/image/upload/v1785461083/ChatGPT_Image_Jul_31_2026_09_22_42_AM_qs3wcd.png";
 export const BRAND_LOGO = BRAND_LOGO_ASSET;
+export const BRAND_LOGO_TRANSPARENT = BRAND_LOGO_ASSET_TRANSPARENT;
 export const OTON_LOGO = OTON_LOGO_ASSET;
-export const MUNICIPAL_SEAL = "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
-export const MOCKUP_IMG = "https://res.cloudinary.com/donhulins/image/upload/v1780318231/mockup_1.png";
+export const MUNICIPAL_SEAL =
+  "https://res.cloudinary.com/donhulins/image/upload/v1780319299/foreground_fpxivy.png";
+export const MOCKUP_IMG =
+  "https://res.cloudinary.com/donhulins/image/upload/v1780318231/mockup_1.png";
 export const APK_URL = APP_DOWNLOAD_URL;
 export const QR_URL = getDownloadQrUrl(APP_DOWNLOAD_URL);
 
@@ -19,6 +24,12 @@ export const NAV_LINKS = [
   { label: "For Farmers", href: "#for-farmers" },
   { label: "For Staff", href: "#for-staff" },
   { label: "Download App", href: "/download-app" },
+];
+
+export const ACTION_IMAGES = [
+  "https://images.unsplash.com/photo-1580570598977-4b2412d01bbc?w=1200&h=700&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1598715685267-0f45367d8071?w=600&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1636998980792-63f27ddea4e3?w=600&h=400&fit=crop&auto=format",
 ];
 
 export const VALUE_STRIP_ITEMS = [
@@ -58,7 +69,8 @@ export const HOW_IT_WORKS_STEPS = [
   {
     step: "3",
     title: "Technician responds",
-    description: "An authorized Technician reviews, schedules, and provides the service.",
+    description:
+      "An authorized Technician reviews, schedules, and provides the service.",
   },
   {
     step: "4",

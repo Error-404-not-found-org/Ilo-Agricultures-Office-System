@@ -1,52 +1,89 @@
-import { Smartphone } from "lucide-react";
-import StaffSignInButton from "../../../components/auth/StaffSignInButton";
+import { ArrowRight } from "lucide-react";
 import { HERO_BG } from "../data/landingContent";
 
 export default function LandingHero() {
   return (
     <section
       id="home"
-      className="relative bg-[#FAF9F5] overflow-hidden border-b border-slate-200/60"
+      tabIndex={-1}
+      data-motion-hero
+      className="relative bg-[#061A0E] overflow-hidden min-h-screen flex flex-col justify-end"
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-16 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-        {/* Left Column: Editorial Headline & Copy */}
-        <div className="lg:col-span-6 space-y-6 text-left z-10">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 leading-[1.08] tracking-tight">
-            Better cattle care <br className="hidden sm:inline" />
-            <span className="text-[#074033]">for Oton, Iloilo.</span>
-          </h1>
+      {/* Background image with parallax */}
+      <div className="absolute inset-0">
+        <div data-motion-hero-image className="absolute inset-0">
+          <img
+            src={HERO_BG}
+            alt="Filipino cattle farmer tending to cattle in a lush green pasture in Oton, Iloilo under warm golden hour sunlight"
+            className="w-full h-full object-cover"
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+        {/* Gradient overlays */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#061A0E] via-[#061A0E]/70 to-[#061A0E]/20" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#061A0E]/60 to-transparent" />
+      </div>
 
-          <p className="text-base sm:text-lg text-slate-700 font-small max-w-xl leading-relaxed">
-            BreedSmart helps local cattle Farmers request services, organize
-            animal records, and stay connected with agricultural Technicians.
-          </p>
+      {/* Grid lines */}
+      <div className="absolute inset-0 grid grid-cols-6 pointer-events-none opacity-10">
+        {[...Array(7)].map((_, i) => (
+          <div key={i} className="border-l border-white/30 h-full" />
+        ))}
+      </div>
 
-          {/* Action Buttons Row */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
-            <a
-              href="/download-app"
-              className="inline-flex min-h-12 items-center justify-center gap-2.5 px-7 py-3 rounded-xl bg-[#074033] hover:bg-[#052E24] text-white text-sm sm:text-base font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#074033] focus-visible:ring-offset-2"
-            >
-              <Smartphone size={18} />
-              Download Farmer App
-            </a>
-
-            <StaffSignInButton size="lg" />
-          </div>
+      {/* Content */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-20 w-full">
+        {/* Label */}
+        <div className="mb-8" data-motion-hero-part>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-sm bg-[#A8E063]/10 border border-[#A8E063]/20">
+            <span className="font-mono-brand text-[#A8E063] text-[11px] uppercase tracking-wider">
+              Built for Livestock Services in Oton, Iloilo
+            </span>
+          </span>
         </div>
 
-        {/* Right Column: Hero Photograph Frame */}
-        <div className="lg:col-span-6 relative">
-          <div className="relative rounded-3xl overflow-hidden shadow-xl border border-slate-200/80 bg-slate-100 aspect-[4/3] sm:aspect-[16/10] lg:aspect-[4/3]">
-            <img
-              src={HERO_BG}
-              alt="Filipino cattle farmer tending to cattle in a lush green pasture in Oton, Iloilo under warm golden hour sunlight"
-              className="w-full h-full object-cover object-center"
-              loading="eager"
-              width="800"
-              height="600"
+        {/* Headline */}
+        <h1
+          data-motion-hero-part
+          className="font-display font-bold text-white text-[clamp(3rem,8vw,7.5rem)] leading-[0.9] tracking-tight max-w-4xl mb-8"
+        >
+          Breed
+          <br />
+          <span className="text-[#A8E063]">Smarter.</span>
+          <br />
+          Farm Better.
+        </h1>
+
+        <p
+          data-motion-hero-part
+          className="text-white/60 text-[clamp(1rem,1.5vw,1.25rem)] max-w-xl leading-relaxed mb-12 font-light"
+        >
+          BreedSmart helps local Farmers request Artificial Insemination and
+          health assistance, manage cattle records, and stay connected with
+          Agricultural Technicians.
+        </p>
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-stretch sm:items-center">
+          <a
+            data-motion-hero-cta
+            href="#platform-overview"
+            className="group inline-flex items-center justify-center gap-2 bg-[#A8E063] text-[#061A0E] font-display font-semibold text-[15px] px-8 py-4 rounded-sm hover:bg-[#C5EF89] transition-colors duration-200"
+          >
+            Explore Platform
+            <ArrowRight
+              size={16}
+              className="transition-transform duration-200 group-hover:translate-x-1"
             />
-          </div>
+          </a>
+
+          <a
+            data-motion-hero-cta
+            href="#how-it-works"
+            className="inline-flex items-center justify-center text-white/70 font-medium text-[15px] px-8 py-4 border border-white/20 rounded-sm hover:border-white/40 hover:text-white transition-colors duration-200"
+          >
+            How it works
+          </a>
         </div>
       </div>
     </section>

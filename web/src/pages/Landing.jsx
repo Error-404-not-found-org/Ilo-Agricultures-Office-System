@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import AuthShell from "../components/auth/AuthShell";
+import error503Icon from "../assets/branding/503_icon.webp";
 import axiosInstance from "../lib/axios";
 import {
   classifyStaffBootstrapFailure,
@@ -12,16 +13,46 @@ import {
   STAFF_SIGN_IN_INTENT_KEY,
 } from "../config/staffAccess";
 
-import PublicNavbar from './landing/components/PublicNavbar';
-import LandingHero from './landing/components/LandingHero';
-import ValueStrip from './landing/components/ValueStrip';
-import HowItWorks from './landing/components/HowItWorks';
-import FarmerAppSection from './landing/components/FarmerAppSection';
-import StaffPortalSection from './landing/components/StaffPortalSection';
-import OtonCommunitySection from './landing/components/OtonCommunitySection';
-import AppDownloadSection from './landing/components/AppDownloadSection';
-import FinalCTA from './landing/components/FinalCTA';
-import PublicFooter from './landing/components/PublicFooter';
+import PublicNavbar from "./landing/components/PublicNavbar";
+import LandingHero from "./landing/components/LandingHero";
+import ValueStrip from "./landing/components/ValueStrip";
+import HowItWorks from "./landing/components/HowItWorks";
+import FarmerAppSection from "./landing/components/FarmerAppSection";
+import StaffPortalSection from "./landing/components/StaffPortalSection";
+import OtonCommunitySection from "./landing/components/OtonCommunitySection";
+import InAction from "./landing/components/InAction";
+import FinalCTA from "./landing/components/FinalCTA";
+import PublicFooter from "./landing/components/PublicFooter";
+import Developers from "./landing/components/Developers";
+import useLandingAnimations from "./landing/hooks/useLandingAnimations";
+import "./landing/landingMotion.css";
+
+function AnimatedPublicLanding() {
+  const landingRef = useRef(null);
+  useLandingAnimations(landingRef);
+
+  return (
+    <div
+      ref={landingRef}
+      data-landing-motion
+      className="font-['Outfit'] min-h-screen flex flex-col bg-[#FAF9F5] text-slate-900 antialiased selection:bg-[#EDF3E8] selection:text-[#074033]"
+    >
+      <PublicNavbar />
+      <main className="flex-1">
+        <LandingHero />
+        <ValueStrip />
+        <HowItWorks />
+        <FarmerAppSection />
+        <StaffPortalSection />
+        <OtonCommunitySection />
+        <InAction />
+        <Developers />
+        <FinalCTA />
+      </main>
+      <PublicFooter />
+    </div>
+  );
+}
 
 export default function Landing() {
   const { isSignedIn, isLoaded, user } = useUser();
@@ -43,10 +74,10 @@ export default function Landing() {
     if (!feedback || consumedStaffAccessMessage.current === feedback) return;
 
     consumedStaffAccessMessage.current = feedback;
-    navigate(
-      `${location.pathname}${location.search}${location.hash}`,
-      { replace: true, state: null },
-    );
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: null,
+    });
 
     if (feedback.type === "error") {
       toast.error(feedback.title, { description: feedback.description });
@@ -85,7 +116,6 @@ export default function Landing() {
         });
         return;
       }
-
     };
 
     const resolveStaffAccess = async () => {
@@ -141,24 +171,59 @@ export default function Landing() {
 
   if (staffAccessIssue) {
     return (
-      <AuthShell
-        context="BreedSmart Staff"
-        title={staffAccessIssue.title}
-        description={staffAccessIssue.description}
-        helper="Your Clerk session is still active. Retrying will only check your BreedSmart profile again."
-      >
-        <button
-          type="button"
-          className="btn btn-primary w-full"
-          onClick={() => {
-            setStaffAccessIssue(null);
-            setStaffAccessRetry((current) => current + 1);
-          }}
-        >
-          <RefreshCw size={16} />
-          Try Again
-        </button>
-      </AuthShell>
+      <main className="min-h-dvh flex items-center justify-center px-5 py-12 bg-[#061A0E]">
+        <div className="w-full max-w-lg flex flex-col items-center text-center">
+          <div className="mb-8">
+            <span className="font-mono-brand text-[#A8E063] text-[11px] uppercase tracking-wider">
+              BreedSmart Staff
+            </span>
+          </div>
+
+          <img
+            src={error503Icon}
+            alt="Connection problem"
+            className="w-64 h-auto object-contain mb-8 opacity-80"
+          />
+
+          <h1 className="font-display font-semibold text-[clamp(1.5rem,3vw,2rem)] leading-tight mb-4 text-white">
+            Connection problem
+          </h1>
+
+          <p className="text-[1rem] leading-relaxed max-w-sm mb-12 text-white/50">
+            BreedSmart could not reach the server to verify your staff access. Please check your connection and try again.
+          </p>
+
+          <div className="flex flex-col w-full sm:flex-row justify-center gap-4">
+            <button
+              type="button"
+              className="group inline-flex items-center justify-center gap-2 font-display font-semibold text-[14px] px-6 py-3 rounded-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-[#0D3320] text-[#A8E063] hover:bg-[#1A5C35] focus-visible:ring-[#A8E063] focus-visible:ring-offset-[#061A0E]"
+              onClick={() => {
+                setStaffAccessIssue(null);
+                setStaffAccessRetry((current) => current + 1);
+              }}
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              Try Again
+            </button>
+
+            <button
+              type="button"
+              className="group inline-flex items-center justify-center gap-2 font-display font-semibold text-[14px] px-6 py-3 rounded-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-transparent border-2 border-[#A8E063] text-white hover:bg-[#A8E063]/10 focus-visible:ring-[#A8E063] focus-visible:ring-offset-[#061A0E]"
+              onClick={() => {
+                window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
+                setStaffAccessIssue(null);
+                setIsHandlingStaffAccessFeedback(true);
+              }}
+            >
+              Return to public site
+            </button>
+          </div>
+
+          <p className="mt-12 text-white/20 font-mono-brand text-[11px] uppercase tracking-wider">
+            Your sign-in is still active. Retrying will only check your BreedSmart profile again.
+          </p>
+        </div>
+      </main>
     );
   }
 
@@ -197,20 +262,5 @@ export default function Landing() {
     }
   }
 
-  return (
-    <div className="font-['Outfit'] min-h-screen flex flex-col bg-[#FAF9F5] text-slate-900 antialiased selection:bg-[#EDF3E8] selection:text-[#074033]">
-      <PublicNavbar />
-      <main className="flex-1">
-        <LandingHero />
-        <ValueStrip />
-        <HowItWorks />
-        <FarmerAppSection />
-        <StaffPortalSection />
-        <OtonCommunitySection />
-        <AppDownloadSection />
-        <FinalCTA />
-      </main>
-      <PublicFooter />
-    </div>
-  );
+  return <AnimatedPublicLanding />;
 }

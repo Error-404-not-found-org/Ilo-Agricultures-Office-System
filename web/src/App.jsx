@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet, useLocation, useParams } from "react-router-dom";
 import { SignedIn, SignedOut, useClerk, useAuth } from "@clerk/clerk-react";
 
 // Utilities
@@ -14,6 +14,7 @@ import ProtectedTechnicianRoute from "./components/layout/ProtectedTechnicianRou
 // Public Pages
 import Landing from "./pages/Landing";
 import DownloadApp from "./pages/DownloadApp";
+import NotFound from "./pages/NotFound";
 const TechnicianWelcome = lazy(() => import("./pages/TechnicianWelcome"));
 
 // Admin Pages
@@ -58,7 +59,6 @@ const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
 const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
 const TechnicianSchedule = lazy(() => import("./pages/technician/Schedule"));
 const TechnicianRequests = lazy(() => import("./pages/technician/Requests"));
-const BreedingLedger = lazy(() => import("./pages/technician/BreedingLedger"));
 const TechSettings = lazy(() => import("./pages/technician/Settings"));
 const Moowie = lazy(() => import("./pages/technician/Moowie"));
 const Newborns = lazy(() => import("./pages/technician/Newborns"));
@@ -85,6 +85,19 @@ function LegacyTechnicianRequestDetailsRedirect() {
   return <Navigate to={target} replace />;
 }
 
+function LegacyTechnicianPregnancyTrackerRedirect() {
+  const { id } = useParams();
+  return (
+    <Navigate
+      to={
+        id
+          ? `/technician/animals/${encodeURIComponent(id)}`
+          : "/technician/animals"
+      }
+      replace
+    />
+  );
+}
 function LegacyTechnicianWorkQueueRedirect() {
   const { search } = useLocation();
   const params = new URLSearchParams(search);
@@ -98,7 +111,6 @@ function LegacyTechnicianWorkQueueRedirect() {
 
   return <Navigate to={`/technician/requests?${params.toString()}`} replace />;
 }
-
 
 function App() {
   const { signOut } = useClerk();
@@ -189,7 +201,7 @@ function App() {
                 <>
                   <SignedIn>
                     <ProtectedAdminRoute>
-                      <Layout />
+                      <Outlet />
                     </ProtectedAdminRoute>
                   </SignedIn>
                   <SignedOut>
@@ -198,6 +210,7 @@ function App() {
                 </>
               }
             >
+              <Route element={<Layout />}>
               <Route
                 index
                 element={<Navigate to="/admin/dashboard" replace />}
@@ -238,6 +251,8 @@ function App() {
               />
               <Route path="work-queue" element={<AdminWorkQueue />} />
               <Route path="newborns" element={<AdminCalvings />} />
+              </Route>
+              <Route path="*" element={<NotFound role="admin" />} />
             </Route>
 
             {/* Protected Technician Routes */}
@@ -247,7 +262,7 @@ function App() {
                 <>
                   <SignedIn>
                     <ProtectedTechnicianRoute>
-                      <Layout />
+                      <Outlet />
                     </ProtectedTechnicianRoute>
                   </SignedIn>
                   <SignedOut>
@@ -256,6 +271,8 @@ function App() {
                 </>
               }
             >
+              <Route element={<Layout />}>
+              <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<TechnicianDashboard />} />
               <Route path="farmers" element={<FarmersDirectory />} />
               <Route path="farmers/:id" element={<FarmerProfile />} />
@@ -266,11 +283,11 @@ function App() {
               />
               <Route
                 path="pregnancy-tracker/:id"
-                element={<Navigate to="/technician/ledger" replace />}
+                element={<LegacyTechnicianPregnancyTrackerRedirect />}
               />
               <Route
                 path="pregnancy-tracker"
-                element={<Navigate to="/technician/ledger" replace />}
+                element={<LegacyTechnicianPregnancyTrackerRedirect />}
               />
               <Route
                 path="inseminations"
@@ -280,7 +297,10 @@ function App() {
               <Route path="newborns" element={<Newborns />} />
               <Route path="health" element={<TechnicianHealth />} />
               <Route path="health-map" element={<TechnicianHealthMap />} />
-              <Route path="ledger" element={<BreedingLedger />} />
+              <Route
+                path="ledger"
+                element={<Navigate to="/technician/records" replace />}
+              />
               <Route path="walk-in" element={<WalkInInsemination />} />
               <Route path="profile" element={<TechMyProfile />} />
               <Route path="analytics" element={<TechnicianAnalytics />} />
@@ -300,10 +320,11 @@ function App() {
               />
               <Route path="moowie" element={<Moowie />} />
               <Route path="settings" element={<TechSettings />} />
+              </Route>
+              <Route path="*" element={<NotFound role="technician" />} />
             </Route>
 
-            {/* Catch-all redirect */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </SidebarProvider>

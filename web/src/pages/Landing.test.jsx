@@ -26,6 +26,10 @@ vi.mock("../lib/axios", () => ({
   default: { post: vi.fn() },
 }));
 
+vi.mock("./landing/hooks/useLandingAnimations", () => ({
+  default: vi.fn(),
+}));
+
 vi.mock("./landing/components/PublicNavbar", () => ({
   default: () => <div>PublicNavbar</div>,
 }));
@@ -313,5 +317,34 @@ describe("Landing staff role resolution", () => {
     });
     expect(axiosInstance.post).not.toHaveBeenCalled();
     expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Public landing availability", () => {
+  it("does not verify a signed-out visitor when the backend is down", () => {
+    sessionStorage.clear();
+    axiosInstance.post.mockClear().mockRejectedValue(new Error("Network unavailable"));
+    useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
+    useAuth.mockReturnValue({ getToken: vi.fn() });
+    useClerk.mockReturnValue({ signOut: mocks.signOut });
+    renderLanding();
+    expect(screen.getByText("LandingHero")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent(/^\/$/);
+    expect(axiosInstance.post).not.toHaveBeenCalled();
+  });
+
+  it("lets a staff visitor return to public content after a connection failure", async () => {
+    sessionStorage.setItem(STAFF_SIGN_IN_INTENT_KEY, "true");
+    axiosInstance.post.mockReset().mockRejectedValue(new Error("Network unavailable"));
+    useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: { publicMetadata: { role: "technician" } } });
+    useAuth.mockReturnValue({ getToken: vi.fn().mockResolvedValue("token") });
+    useClerk.mockReturnValue({ signOut: mocks.signOut });
+    renderLanding();
+    expect(await screen.findByRole("heading", { name: "Connection problem" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Return to public site" }));
+    expect(screen.getByText("LandingHero")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent(/^\/$/);
+    expect(sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBeNull();
   });
 });
