@@ -111,7 +111,7 @@ export default function PublicNavbar() {
       {/* Mobile Drawer Menu */}
       <div
         className={`lg:hidden bg-[#F5F2E8] border-b border-[#061A0E]/10 overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
-          mobileMenuOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+          mobileMenuOpen ? "max-h-125 opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="px-6 pb-6 pt-4 flex flex-col gap-2">

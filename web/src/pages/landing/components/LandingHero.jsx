@@ -21,8 +21,8 @@ export default function LandingHero() {
           />
         </div>
         {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#061A0E] via-[#061A0E]/70 to-[#061A0E]/20" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#061A0E]/60 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-[#061A0E] via-[#061A0E]/70 to-[#061A0E]/20" />
+        <div className="absolute inset-0 bg-linear-to-r from-[#061A0E]/60 to-transparent" />
       </div>
 
       {/* Grid lines */}

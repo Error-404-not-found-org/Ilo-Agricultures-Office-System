@@ -31,7 +31,7 @@ export default function InAction() {
               className="w-full h-full object-cover opacity-70"
               loading="lazy"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#061A0E]/80 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-t from-[#061A0E]/80 to-transparent" />
             <div className="absolute bottom-8 left-8 right-8">
               <p className="font-mono-brand text-[#A8E063] text-[11px] uppercase tracking-wider mb-2">
                 Real story
@@ -55,7 +55,7 @@ export default function InAction() {
                 className="w-full h-full object-cover opacity-60"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#061A0E]/70 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-[#061A0E]/70 to-transparent" />
               <div className="absolute bottom-4 left-4 right-4">
                 <p className="text-white font-display font-semibold text-[15px]">
                   Technician-led AI in 6 barangays
@@ -70,7 +70,7 @@ export default function InAction() {
                 className="w-full h-full object-cover opacity-60"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#061A0E]/70 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-[#061A0E]/70 to-transparent" />
               <div className="absolute bottom-4 left-4 right-4">
                 <p className="text-white font-display font-semibold text-[15px]">
                   60% fewer emergency vet calls

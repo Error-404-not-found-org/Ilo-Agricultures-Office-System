@@ -52,8 +52,7 @@ export const clerkAppearance = {
     footerActionText: {
       fontSize: "12px",
       lineHeight: "16px",
-      color:
-        "color-mix(in srgb, var(--color-base-content) 60%, transparent)",
+      color: "color-mix(in srgb, var(--color-base-content) 60%, transparent)",
       fontWeight: "400",
     },
     footerActionLink: { display: "none" },
@@ -65,7 +64,12 @@ export const clerkEmbeddedAppearance = {
   elements: {
     ...clerkAppearance.elements,
     cardBox: { width: "100%", boxShadow: "none" },
-    card: { width: "100%", padding: 0, background: "transparent", boxShadow: "none" },
+    card: {
+      width: "100%",
+      padding: 0,
+      background: "transparent",
+      boxShadow: "none",
+    },
     header: { display: "none" },
     footer: { background: "transparent", boxShadow: "none" },
     footerAction: { display: "flex" },
@@ -101,26 +105,28 @@ export const clerkPublicSignInAppearance = {
     colorShadow: "#1d2b27",
     colorBorder: "#e2e8f0",
     colorModalBackdrop: "#1d2b27",
+    borderRadius: "2px",
   },
   elements: {
     ...clerkAppearance.elements,
     cardBox:
-      "w-full overflow-hidden rounded-box border border-slate-200 bg-white shadow-sm",
+      "w-full max-w-[340px] mx-auto overflow-hidden rounded-sm border border-slate-200 bg-white shadow-md",
     card: "w-full bg-white shadow-none",
-    headerTitle: "text-2xl font-extrabold tracking-tight text-slate-900",
-    headerSubtitle: "text-sm leading-5 text-slate-600",
+    headerTitle: "text-xl font-extrabold tracking-tight text-slate-900",
+    headerSubtitle: "text-xs leading-4 text-slate-500 mt-1",
     socialButtonsBlockButton:
-      "h-11 rounded-xl border border-slate-200 bg-white text-slate-900 shadow-none hover:bg-slate-50",
+      "h-9 text-sm rounded-sm border border-slate-200 bg-white text-slate-900 shadow-none hover:bg-slate-50",
     dividerLine: "bg-slate-200",
-    dividerText: "text-slate-600",
-    formFieldLabel: "text-sm font-semibold text-slate-800",
+    dividerText: "text-xs text-slate-500",
+    formFieldLabel: "text-xs font-semibold text-slate-800",
     formFieldInput:
-      "h-11 rounded-xl border-slate-300 bg-white text-slate-900 shadow-none focus:border-[#17663a] focus:ring-2 focus:ring-[#17663a]/20",
+      "h-9 text-sm rounded-sm border-slate-300 bg-white text-slate-900 shadow-none focus:border-[#17663a] focus:ring-2 focus:ring-[#17663a]/20",
     formButtonPrimary:
-      "h-11 rounded-xl bg-[#17663a] font-semibold text-white shadow-none hover:bg-[#12512e] focus:ring-2 focus:ring-[#17663a]/30",
-    formFieldAction: "font-semibold text-[#17663a] hover:text-[#12512e]",
+      "h-9 text-sm rounded-sm bg-[#17663a] font-semibold text-white shadow-none hover:bg-[#12512e] focus:ring-2 focus:ring-[#17663a]/30",
+    formFieldAction:
+      "text-xs font-semibold text-[#17663a] hover:text-[#12512e]",
     identityPreview:
-      "rounded-xl border border-slate-200 bg-slate-50 shadow-none",
+      "rounded-sm border border-slate-200 bg-slate-50 shadow-none",
     identityPreviewEditButton: "text-[#17663a]",
     footerActionText: {
       ...clerkAppearance.elements.footerActionText,

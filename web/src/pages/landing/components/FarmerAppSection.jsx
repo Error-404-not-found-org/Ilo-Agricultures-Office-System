@@ -22,8 +22,8 @@ export default function FarmerAppSection() {
           <div data-motion-visual data-motion-x="-28" className="relative flex justify-center order-2 lg:order-1">
             <div className="relative">
               {/* Phone frame */}
-              <div className="w-[280px] bg-[#061A0E] rounded-[2.5rem] p-2 shadow-2xl shadow-[#061A0E]/30">
-                <div className="bg-[#0D1F0F] rounded-[2rem] overflow-hidden">
+              <div className="w-70 bg-[#061A0E] rounded-[2.5rem] p-2 shadow-2xl shadow-[#061A0E]/30">
+                <div className="bg-[#0D1F0F] rounded-4xl overflow-hidden">
                   {/* Status bar */}
                   <div className="bg-[#0D3320] px-5 pt-4 pb-2 flex justify-between items-center">
                     <span className="text-white/60 font-mono-brand text-[10px]">
@@ -36,7 +36,7 @@ export default function FarmerAppSection() {
                   </div>
 
                   {/* App content */}
-                  <div className="bg-[#0D1F0F] p-4 min-h-[480px]">
+                  <div className="bg-[#0D1F0F] p-4 min-h-120">
                     <p className="font-mono-brand text-[#A8E063] text-[11px] uppercase tracking-wider mb-4">
                       BreedSmart · My Herd
                     </p>
@@ -80,7 +80,7 @@ export default function FarmerAppSection() {
                         className="flex items-center gap-3 py-2.5 border-b border-white/5"
                       >
                         <div
-                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: animal.color }}
                         />
                         <div className="flex-1 min-w-0">

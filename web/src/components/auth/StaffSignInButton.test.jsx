@@ -38,6 +38,7 @@ describe("StaffSignInButton", () => {
     expect(clerkMocks.signInButtonProps).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "modal",
+        forceRedirectUrl: "/",
         withSignUp: false,
         appearance: expect.objectContaining({
           variables: expect.objectContaining({

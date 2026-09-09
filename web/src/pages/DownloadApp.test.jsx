@@ -1,10 +1,16 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuth } from "@clerk/clerk-react";
 import axiosInstance from "../lib/axios";
 import DownloadApp from "./DownloadApp";
+
+const distribution = vi.hoisted(() => ({ url: "" }));
+vi.mock("../config/appDistribution", () => ({
+  get APP_DOWNLOAD_URL() { return distribution.url; },
+  APP_DEEP_LINK_URL: "ilo-agriculture://",
+}));
 
 vi.mock("@clerk/clerk-react", () => ({
   useAuth: vi.fn(),
@@ -41,6 +47,7 @@ const renderDownload = (route = "/download-app") =>
 describe("DownloadApp Farmer invitation acceptance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    distribution.url = "";
     useAuth.mockReturnValue({
       getToken: vi.fn(),
       isLoaded: true,
@@ -95,9 +102,9 @@ describe("DownloadApp Farmer invitation acceptance", () => {
     ).toBeInTheDocument();
   });
 
-  it("bootstraps a signed-in Farmer before showing the download page", async () => {
+  it("verifies a signed-in Farmer while keeping the download page available", async () => {
     const getToken = vi.fn().mockResolvedValue("farmer-token");
-    useAuth.mockReturnValue({ getToken, isLoaded: true, isSignedIn: true });
+    useAuth.mockReturnValue({ getToken, isLoaded: true, userId: "farmer-1", sessionId: "session-1", isSignedIn: true });
     axiosInstance.post.mockResolvedValue({
       data: { user: { role: "farmer", profileClaimStatus: "claimed" } },
     });
@@ -105,15 +112,15 @@ describe("DownloadApp Farmer invitation acceptance", () => {
     renderDownload("/download-app?__clerk_ticket=accepted-ticket");
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Confirming your account",
+      "Checking your BreedSmart account...",
     );
     expect(
-      await screen.findByRole("heading", { name: /Your Farmer account is ready/i }),
+      await screen.findByText("Farmer profile connected"),
     ).toBeInTheDocument();
     expect(axiosInstance.post).toHaveBeenCalledWith(
       "/user/bootstrap",
       {},
-      { headers: { Authorization: "Bearer farmer-token" } },
+      expect.objectContaining({ headers: { Authorization: "Bearer farmer-token" }, skipGlobalAuthSignOut: true, signal: expect.any(AbortSignal), timeout: 15000 }),
     );
     expect(
       screen.queryByTestId("clerk-farmer-invitation-sign-up"),
@@ -126,7 +133,7 @@ describe("DownloadApp Farmer invitation acceptance", () => {
       useAuth.mockReturnValue({
         getToken: vi.fn().mockResolvedValue(`${role}-token`),
         isLoaded: true,
-        isSignedIn: true,
+        userId: "farmer-1", sessionId: "session-1", isSignedIn: true,
       });
       axiosInstance.post.mockResolvedValue({ data: { user: { role } } });
 
@@ -136,8 +143,42 @@ describe("DownloadApp Farmer invitation acceptance", () => {
         expect(screen.getByText(/not a Farmer account/i)).toBeInTheDocument();
       });
       expect(
-        screen.queryByRole("heading", { name: /^BreedSmart Mobile$/i }),
-      ).not.toBeInTheDocument();
+        screen.getByRole("heading", { name: /^BreedSmart Mobile$/i }),
+      ).toBeInTheDocument();
     },
   );
+});
+
+
+it("preserves the configured download destination and app deep link", () => {
+  distribution.url = "https://example.com/breedsmart.apk";
+  useAuth.mockReturnValue({ getToken: vi.fn(), isLoaded: true, isSignedIn: false });
+  renderDownload();
+  expect(screen.getByRole("link", { name: "Download BreedSmart" })).toHaveAttribute("href", distribution.url);
+  expect(screen.getByRole("link", { name: "Open BreedSmart App" })).toHaveAttribute("href", "ilo-agriculture://");
+});
+
+it("keeps public download available without claiming Farmer verification after a network failure", async () => {
+  distribution.url = "https://example.com/breedsmart.apk";
+  useAuth.mockReturnValue({ getToken: vi.fn().mockResolvedValue("token"), isLoaded: true, userId: "farmer-1", sessionId: "session-1", isSignedIn: true });
+  axiosInstance.post.mockRejectedValue(new Error("Network unavailable"));
+  renderDownload();
+  expect(await screen.findByRole("heading", { name: "Your account check couldn't finish" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Download BreedSmart" })).toBeVisible();
+  expect(screen.queryByText("Farmer profile connected")).not.toBeInTheDocument();
+});
+
+
+it("retries verification using a fresh token and recovers without leaving the download page", async () => {
+  const getToken = vi.fn().mockResolvedValue("fresh-token");
+  useAuth.mockReturnValue({ getToken, userId: "farmer-1", sessionId: "session-1", isLoaded: true, isSignedIn: true });
+  axiosInstance.post.mockReset()
+    .mockRejectedValueOnce(new Error("Network unavailable"))
+    .mockResolvedValueOnce({ data: { user: { role: "farmer" } } });
+  renderDownload();
+  fireEvent.click(await screen.findByRole("button", { name: "Try Again" }));
+  expect(await screen.findByText("Farmer profile connected")).toBeVisible();
+  expect(getToken).toHaveBeenLastCalledWith({ skipCache: true });
+  expect(axiosInstance.post).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("link", { name: "Open BreedSmart App" })).toBeVisible();
 });
