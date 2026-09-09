@@ -3,10 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
-  ChevronRight,
   Download,
   MapPin,
-  User,
+  Phone,
+  UserRound,
   Syringe,
   Stethoscope,
   AlertCircle,
@@ -130,6 +130,48 @@ function formatAge(birthDate) {
   }
 }
 
+function getInitials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+}
+
+function TimelineMarker({ state }) {
+  if (state === "completed") {
+    return (
+      <span className="flex size-6 items-center justify-center rounded-full bg-success text-success-content">
+        <CheckCircle2 size={14} aria-hidden="true" />
+      </span>
+    );
+  }
+  if (state === "failed") {
+    return (
+      <span className="flex size-6 items-center justify-center rounded-full bg-error text-error-content">
+        <AlertCircle size={14} aria-hidden="true" />
+      </span>
+    );
+  }
+  if (state === "current") {
+    return (
+      <span className="flex size-6 items-center justify-center rounded-full border-2 border-primary bg-base-100">
+        <span className="size-2 rounded-full bg-primary" />
+      </span>
+    );
+  }
+  return (
+    <span className="flex size-6 items-center justify-center rounded-full border-2 border-base-300 bg-base-100">
+      <span className="size-1.5 rounded-full bg-base-content/25" />
+    </span>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
@@ -189,6 +231,11 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       dateEntered: record.createdAt,
       originId: record._id,
       originLabel: "AI service request",
+      officialRecordKind: "insemination",
+      officialRecordId: record._id || record.id,
+      officialRecordAvailable: ["done", "completed", "resolved"].includes(
+        String(record.status || "").toLowerCase(),
+      ),
     }));
 
     const health = (medicalHistory || []).map((record) => ({
@@ -207,6 +254,9 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       dateEntered: record.createdAt,
       originId: record.healthRequestId?._id || record.healthRequestId,
       originLabel: record.healthRequestId ? "Health assistance request" : null,
+      officialRecordKind: "medical_record",
+      officialRecordId: record._id || record.id,
+      officialRecordAvailable: Boolean(record._id || record.id),
     }));
 
     const pdEvents = (animal?.inseminations || [])
@@ -321,7 +371,9 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       ...recordRows,
     ]
       .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","),
+        row
+          .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
+          .join(","),
       )
       .join("\n");
     const url = URL.createObjectURL(
@@ -413,13 +465,6 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
     const endDate = new Date(record.details.withdrawalEndDate);
     return endDate.getTime() > currentTimestamp;
   });
-
-  const daysAgoInsemination = latestInsemination
-    ? Math.floor(
-        (currentTimestamp - new Date(latestInsemination.inseminationDate).getTime()) /
-          (1000 * 60 * 60 * 24),
-      )
-    : null;
 
   const displayedRecords =
     showAllRecords || recordSearch.trim().length > 0
@@ -1264,69 +1309,59 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
         }}
       />
 
-      <ActivityDetailsModal
-        isOpen={!!selectedActivity}
-        onClose={() => setSelectedActivity(null)}
-        activity={selectedActivity}
-        onOpenSource={(activity) => {
-          if (!activity?.originId) return;
-          const requestPath = isAdmin
-            ? "/admin/requests"
-            : "/technician/requests";
-          const status = isAdmin ? "all" : "completed";
-          navigate(
-            `${requestPath}?requestId=${encodeURIComponent(activity.originId)}&status=${status}`,
-          );
-        }}
+      <OfficialRecordDetailModal
+        recordIdentity={selectedOfficialRecord}
+        onClose={() => setSelectedOfficialRecord(null)}
       />
 
       {!isAdmin && (
         <>
-          <AddMedicalRecordModal
-        key={medicalInitialType}
-        isOpen={isAddMedicalModalOpen}
-        onClose={() => setIsAddMedicalModalOpen(false)}
-        animalId={id}
-        animalTag={animal.earTag}
-        initialType={medicalInitialType}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <WalkInHealthModal
+            isOpen={isHealthModalOpen}
+            existingOnly
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onClose={() => setIsHealthModalOpen(false)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
 
-      <AIServiceModal
-        isOpen={isAIModalOpen}
-        onClose={() => setIsAIModalOpen(false)}
-        preSelectedFarmer={animal?.farmerId}
-        preSelectedAnimal={animal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <AIServiceModal
+            isOpen={isAIModalOpen}
+            onClose={() => setIsAIModalOpen(false)}
+            context="walk-in"
+            existingOnly
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
 
-      <PregnancyDiagnosisModal
-        isOpen={isPDModalOpen}
-        onClose={() => setIsPDModalOpen(false)}
-        preSelectedFarmer={animal?.farmerId}
-        preSelectedAnimal={animal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <PregnancyDiagnosisModal
+            isOpen={isPDModalOpen}
+            onClose={() => setIsPDModalOpen(false)}
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
 
-      <RecordCalfDropModal
-        isOpen={isCalvingModalOpen}
-        onClose={() => setIsCalvingModalOpen(false)}
-        preSelectedFarmer={animal?.farmerId}
-        preSelectedAnimal={animal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <RecordCalfDropModal
+            isOpen={isCalvingModalOpen}
+            onClose={() => setIsCalvingModalOpen(false)}
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
         </>
       )}
     </div>

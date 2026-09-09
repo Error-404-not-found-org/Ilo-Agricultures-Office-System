@@ -8,9 +8,7 @@ import { AppPageHeader } from "@/components/AppPageHeader";
 import { Text } from "@/components/ui/Text";
 import { AIRequestDetails } from "@/features/technician-requests/components/AIRequestDetails";
 import { HealthRequestDetails } from "@/features/technician-health-request/components/HealthRequestDetails";
-import {
-  getTechnicianRequestDetail,
-} from "@/features/technician/services/technician.service";
+import { getTechnicianRequestDetail } from "@/features/technician/services/technician.service";
 import { useApi } from "@/lib/api";
 import { technicianKeys } from "@/lib/queryKeys";
 import { useTheme } from "@/lib/theme";
@@ -52,16 +50,24 @@ export default function RequestDetailsScreen() {
           requestId,
         );
         setRequest(requestData);
-
       } catch (error: any) {
-        if (error?.response?.status === 403 || error?.response?.status === 404) {
+        if (
+          error?.response?.status === 403 ||
+          error?.response?.status === 404
+        ) {
           toast.error(
             "This request is no longer available or is assigned to another technician.",
           );
           await Promise.all([
-            queryClient.invalidateQueries({ queryKey: technicianKeys.requests() }),
-            queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() }),
-            queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() }),
+            queryClient.invalidateQueries({
+              queryKey: technicianKeys.requests(),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: technicianKeys.workQueue(),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: technicianKeys.dashboard(),
+            }),
             queryClient.invalidateQueries({ queryKey: technicianKeys.tasks() }),
           ]);
           router.back();
@@ -72,7 +78,8 @@ export default function RequestDetailsScreen() {
       } finally {
         setLoading(false);
       }
-    }, [api, queryClient, requestId, requestType, router],
+    },
+    [api, queryClient, requestId, requestType, router],
   );
 
   useEffect(() => {
@@ -83,9 +90,14 @@ export default function RequestDetailsScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppPageHeader title="Request Details" onBack={() => router.back()} />
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <View
+          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+        >
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text textRole="body" style={{ color: colors.textSecondary, marginTop: 12 }}>
+          <Text
+            textRole="body"
+            style={{ color: colors.textSecondary, marginTop: 12 }}
+          >
             Loading request details…
           </Text>
         </View>
@@ -104,10 +116,20 @@ export default function RequestDetailsScreen() {
           backgroundColor: colors.background,
         }}
       >
-        <Text textRole="title" style={{ color: colors.textPrimary, textAlign: "center" }}>
+        <Text
+          textRole="title"
+          style={{ color: colors.textPrimary, textAlign: "center" }}
+        >
           Request details not found
         </Text>
-        <Text textRole="body" style={{ color: colors.textSecondary, textAlign: "center", marginTop: 6 }}>
+        <Text
+          textRole="body"
+          style={{
+            color: colors.textSecondary,
+            textAlign: "center",
+            marginTop: 6,
+          }}
+        >
           The request may have been removed or assigned to another technician.
         </Text>
         <TouchableOpacity

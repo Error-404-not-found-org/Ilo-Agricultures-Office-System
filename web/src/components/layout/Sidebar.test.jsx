@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const clerkMocks = vi.hoisted(() => ({
+  role: "admin",
   openUserProfile: vi.fn(),
   signOut: vi.fn(),
 }));
@@ -13,7 +14,7 @@ vi.mock("@clerk/clerk-react", () => ({
     user: {
       fullName: "Admin User",
       imageUrl: "https://example.test/admin-avatar.png",
-      publicMetadata: { role: "admin" },
+      publicMetadata: { role: clerkMocks.role },
     },
   }),
   useClerk: () => clerkMocks,
@@ -52,6 +53,7 @@ function renderSidebar(path = "/admin/dashboard", { collapsed = false } = {}) {
 
 describe("Admin Sidebar navigation", () => {
   beforeEach(() => {
+    clerkMocks.role = "admin";
     vi.clearAllMocks();
     localStorage.clear();
   });
@@ -342,5 +344,16 @@ describe("Admin Sidebar navigation", () => {
     expect(
       serviceRecords.querySelector("[data-sidebar-icon]"),
     ).toHaveClass("group-hover:translate-x-0.5");
+  });
+});
+
+
+describe("Technician Profile navigation", () => {
+  it("keeps Profile and removes the separate Settings destination", () => {
+    clerkMocks.role = "technician";
+    renderSidebar("/technician/profile");
+    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/technician/profile");
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+    clerkMocks.role = "admin";
   });
 });

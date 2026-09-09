@@ -35,6 +35,19 @@ export const createHealthRequestWithGuard = async (payload) => {
   const existing = await findActiveHealthCase(payload.animalId, requestType);
   if (existing) throw createActiveHealthCaseError(existing);
 
+  if (
+    payload.photos?.some(
+      (p) => typeof p === "string" && p.trim().startsWith("data:image"),
+    ) ||
+    (typeof payload.imageUrl === "string" &&
+      payload.imageUrl.trim().startsWith("data:image"))
+  ) {
+    throw new AppError("Base64 images cannot be persisted to HealthRequest.", {
+      status: 400,
+      code: "BASE64_PERSISTENCE_FORBIDDEN",
+    });
+  }
+
   try {
     return await HealthRequest.create({
       ...payload,

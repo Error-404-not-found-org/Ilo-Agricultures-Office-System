@@ -18,7 +18,7 @@ const heatFollowUp = {
   },
 };
 
-for (const day of [18, 25]) {
+for (const day of [18, 21, 25]) {
   test(`Day ${day} shows the Farmer Home Give Update reminder`, () => {
     const [attention] = selectNeedsAttention([
       {
@@ -32,8 +32,15 @@ for (const day of [18, 25]) {
 
     assert.equal(attention.actionKind, "report_signs");
     assert.equal(attention.actionLabel, "Give Update");
-    assert.equal(attention.displayTitle, `${day} days after insemination`);
-    assert.equal(attention.guidance, "Has your animal returned to heat?");
+    assert.equal(attention.displayTitle, "Breeding Update");
+    assert.equal(
+      attention.displaySubtitle,
+      `COW-001 · ${day} days after insemination`,
+    );
+    assert.equal(
+      attention.guidance,
+      "Has your animal shown signs of heat since insemination?",
+    );
     assert.equal(attention.urgency, "due_today");
   });
 }

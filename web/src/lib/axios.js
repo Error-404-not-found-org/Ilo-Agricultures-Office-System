@@ -20,6 +20,8 @@ axiosInstance.interceptors.response.use(
     (error) => {
         if (
             error.response?.status === 401 &&
+            // Public onboarding can present its own auth recovery without signing out.
+            !error.config?.skipGlobalAuthSignOut &&
             !_sessionExpiredFired &&
             _signOutCallback
         ) {
@@ -36,4 +38,4 @@ axiosInstance.interceptors.response.use(
     }
 );
 
-export default axiosInstance;
+export default axiosInstance;

@@ -62,7 +62,7 @@ export default function RequestQueueCard({
     request.type === "insemination" ||
     request.serviceType === "ai";
   const isUrgentHealth =
-    request.type === "health" && request.urgency === "urgent";
+    request.type === "health" && (request.urgency === "emergency" || request.urgency === "high");
   const photoCount = uniquePhotoCount(request);
   const status =
     getRequestStatusPresentation(request) ||

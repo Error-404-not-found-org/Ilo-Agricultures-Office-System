@@ -190,9 +190,13 @@ test("FARMER HEALTH", async (t) => {
   await t.test("photos stored", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: ["p1.jpg", "p2.jpg"] }, "farmer", farmerId);
+    const photoUrls = [
+      "https://res.cloudinary.com/demo/image/upload/v1/p1.jpg",
+      "https://res.cloudinary.com/demo/image/upload/v1/p2.jpg",
+    ];
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: photoUrls }, "farmer", farmerId);
     await createHealthRequest(req, res);
-    assert.deepEqual(res.body.request.photos, ["p1.jpg", "p2.jpg"]);
+    assert.deepEqual(res.body.request.photos, photoUrls);
   });
   await t.test("structured request details survive POST and persistence", async () => {
     const animalId = new mongoose.Types.ObjectId();

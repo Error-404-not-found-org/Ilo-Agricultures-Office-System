@@ -19,7 +19,6 @@ const normalizedAdminFiles = [
   "src/components/layout/Sidebar.jsx",
   "src/components/layout/Topbar.jsx",
   "src/components/dialogs/AdminRequestActions.jsx",
-  "src/components/dialogs/ActivityDetailsModal.jsx",
   "src/components/dialogs/RequestActionModal.jsx",
   "src/components/dialogs/TechnicianInviteDialog.jsx",
   "src/components/admin/users/UserDirectoryCards.jsx",

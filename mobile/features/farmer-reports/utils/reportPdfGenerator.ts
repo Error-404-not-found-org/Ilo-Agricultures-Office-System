@@ -82,12 +82,10 @@ export function generateSingleRecordPdfHtml(record: ActivityFeedItem): string {
       ["Service Date", dateVal],
       ["Concern / Request Type", (record.details?.requestType || "Check-up").replaceAll("_", " ")],
       ["Symptoms", record.details?.symptoms || "N/A"],
-      [
+      ...(record.details?.urgency && getHealthUrgencyPresentation(record.details.urgency).priority === "urgent" ? [[
         "Farmer Request Priority",
-        record.details?.urgency
-          ? getHealthUrgencyPresentation(record.details.urgency).label
-          : "N/A",
-      ],
+        getHealthUrgencyPresentation(record.details.urgency).label
+      ] as [string, string]] : []),
       ["Diagnosis", record.details?.diagnosis || "N/A"],
       ["Treatment", record.details?.treatment || "N/A"],
       ["Medicine / Advice", record.details?.advice || "N/A"],

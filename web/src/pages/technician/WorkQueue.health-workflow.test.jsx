@@ -198,7 +198,7 @@ describe("Work Queue owned Health workflow", () => {
     ]);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Start Visit" }),
+      await screen.findByRole("button", { name: "Record Health Assistance" }),
     );
 
     const dialog = screen.getByRole("dialog", {
@@ -349,6 +349,95 @@ describe("Work Queue owned Health workflow", () => {
     );
   });
 
+  it("renders full farmer update with signs, photos, and formatted summary in breeding follow-up modal", async () => {
+    renderQueue(
+      [
+        {
+          ...baseTask,
+          id: ids.followUpTask,
+          taskId: ids.followUpTask,
+          workflowType: "BreedingFollowUp",
+          type: "task",
+          taskType: "BreedingFollowUp",
+          serviceType: "Breeding Follow-up",
+          allowedAction: "RECORD_BREEDING_OBSERVATION",
+          actionLabel: "Record Follow-up",
+          context: { inseminationId: ids.ai, reportType: "return_to_heat" },
+          summary:
+            "Breeding observation: return_to_heat. Signs: mucus_discharge, mounting_behavior. Notes: None",
+          raw: { _id: ids.followUpTask, taskType: "BreedingFollowUp" },
+        },
+      ],
+      {
+        taskDetailsById: {
+          [ids.followUpTask]: {
+            _id: ids.followUpTask,
+            farmerId: {
+              _id: ids.farmer,
+              name: "Dong Pongase",
+              phoneNumber: "09171234567",
+            },
+            animalIds: [
+              {
+                _id: ids.animal,
+                name: "02DP",
+                earTag: "02DP",
+                species: "Cattle",
+                breed: "Native",
+              },
+            ],
+            insemination: {
+              _id: ids.ai,
+              inseminationDate: "2026-08-17T04:00:00.000Z",
+              attemptNumber: 1,
+              farmerOutcomeReport: "return_to_heat",
+              farmerOutcomeReportedAt: "2026-09-07T04:40:00.000Z",
+              farmerObservationSigns: ["mucus_discharge", "mounting_behavior"],
+              farmerObservationNotes: "Cow was displaying heat signs",
+              evidencePhotos: [
+                "https://res.cloudinary.com/demo/photo1.jpg",
+                "https://res.cloudinary.com/demo/photo2.jpg",
+              ],
+            },
+          },
+        },
+      },
+    );
+
+    // Verify row displays Needs review badge and formatted summary without raw enums
+    expect(await screen.findByText("Needs review")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Breeding observation: Return to heat. Signs: Clear mucus discharge, Mounting other cattle. Notes: None",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/return_to_heat/)).toBeNull();
+    expect(screen.queryByText(/mucus_discharge/)).toBeNull();
+
+    // Open modal
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Record Follow-up" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(`/tasks/${ids.followUpTask}`),
+    );
+
+    // Verify Farmer Update section
+    expect(await screen.findByText("Farmer Update")).toBeTruthy();
+    expect(await screen.findByText("Showing signs of heat")).toBeTruthy();
+    expect(screen.getByText("Clear mucus discharge")).toBeTruthy();
+    expect(screen.getByText("Mounting other cattle")).toBeTruthy();
+    expect(screen.getByText("Cow was displaying heat signs")).toBeTruthy();
+    expect(screen.queryByText("No farmer update received")).toBeNull();
+
+    // Verify supporting photos are rendered as buttons
+    const photoButtons = screen.getAllByRole("button", {
+      name: /View supporting photo/,
+    });
+    expect(photoButtons).toHaveLength(2);
+  });
+
   it("routes completed AI View Record to the canonical official record detail", async () => {
     renderQueue([
       {
@@ -480,7 +569,7 @@ describe("My Work Schedule deep links", () => {
     renderDeepLink({ parameter, id, target });
     expect(await screen.findByRole("dialog", { name: new RegExp(label) })).toBeTruthy();
     expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
-      params: expect.objectContaining({ [parameter]: id, page: 1, limit: 1, workState: "active" }),
+      params: expect.objectContaining({ [parameter]: id, limit: 1, workState: "active" }),
     });
   });
 
@@ -556,7 +645,7 @@ describe("My Work Schedule deep links", () => {
     const dialog = await screen.findByRole("dialog", {
       name: details.serviceType,
     });
-    expect(dialog).toHaveTextContent(/scheduled for a future date/i);
+    expect(dialog).toHaveTextContent(/Upcoming|Scheduled/i);
     expect(dialog).toHaveTextContent("Test Farmer");
     expect(dialog).toHaveTextContent("Test Animal");
     expect(dialog).toHaveTextContent("Poblacion, Oton");
@@ -622,7 +711,7 @@ describe("My Work Schedule deep links", () => {
       allowedAction: "RECORD_SERVICE",
     });
     renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
-    fireEvent.click(await screen.findByRole("button", { name: "Close dialog" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
     await waitFor(() =>
       expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="),
     );
@@ -647,7 +736,7 @@ describe("My Work Schedule deep links", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open next deep link" }));
     expect(
       await screen.findByRole("dialog", { name: "Pregnancy Diagnosis" }),
-    ).toHaveTextContent(/scheduled for a future date/i);
+    ).toHaveTextContent(/Upcoming/i);
   });
 
   it("clears the identifier when the opened workflow closes", async () => {
@@ -667,7 +756,7 @@ describe("My Work Schedule deep links", () => {
   it("fails closed and clears an unavailable or foreign identifier", async () => {
     renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target: null });
     await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
-    expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId=");
+    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="));
   });
 
   it("can open a different deep link immediately after closing the first", async () => {

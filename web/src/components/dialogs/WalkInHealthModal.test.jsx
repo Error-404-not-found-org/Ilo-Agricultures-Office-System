@@ -40,4 +40,11 @@ describe("Web direct Health recording", () => {
     expect(source).not.toContain("toast.error(");
     expect(source).toContain("toast.success(");
   });
+
+  it("accepts an animal preselection from the Technician livestock profile", () => {
+    expect(source).toContain("preSelectedAnimal");
+    expect(source).toContain(
+      "preSelectedAnimal?._id || preSelectedAnimal?.id ||",
+    );
+  });
 });

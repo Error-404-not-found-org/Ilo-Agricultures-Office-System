@@ -437,17 +437,15 @@ export default function HealthLog() {
                               <span className="font-extrabold text-xs text-base-content leading-tight">
                                 {c.diagnosis || "Undiagnosed"}
                               </span>
-                              <span
-                                className={`inline-block text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${
-                                  c.urgency === "high"
-                                    ? "bg-red-500/10 text-rose-600 border-red-200/50"
-                                    : c.urgency === "medium"
-                                      ? "bg-amber-500/10 text-amber-600 border-amber-200/50"
-                                      : "bg-blue-500/10 text-blue-600 border-blue-200/50"
-                                }`}
-                              >
-                                {c.urgency}
-                              </span>
+                              {(c.urgency?.toLowerCase() === "emergency" || c.urgency?.toLowerCase() === "high") ? (
+                                <span
+                                  className={`inline-block text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider border bg-red-500/10 text-rose-600 border-red-200/50`}
+                                >
+                                  {c.urgency.toLowerCase() === "emergency" ? "Needs urgent attention" : c.urgency}
+                                </span>
+                              ) : (
+                                <span className="text-base-content/30">-</span>
+                              )}
                             </div>
                             <span className="text-[10px] text-base-content/55 block leading-tight font-medium max-w-[200px] truncate">
                               Symptoms: {c.symptoms || "None reported"}
@@ -634,14 +632,16 @@ export default function HealthLog() {
                   {selectedCase.farmer}
                 </span>
               </div>
-              <div>
-                <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
-                  Urgency Level
-                </span>
-                <span className="text-sm font-extrabold text-base-content uppercase truncate block mt-1">
-                  {selectedCase.urgency}
-                </span>
-              </div>
+              {(selectedCase.urgency?.toLowerCase() === "emergency" || selectedCase.urgency?.toLowerCase() === "high") && (
+                <div>
+                  <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                    Urgency Level
+                  </span>
+                  <span className="text-sm font-extrabold text-base-content uppercase truncate block mt-1">
+                    {selectedCase.urgency.toLowerCase() === "emergency" ? "Needs urgent attention" : selectedCase.urgency}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
                   Incident Status

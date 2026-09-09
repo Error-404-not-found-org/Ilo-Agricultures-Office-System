@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -36,6 +36,15 @@ import {
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
 } from "../../utils/requestWorkPresentation";
+import ImagePreviewModal from "../../components/ui/ImagePreviewModal";
+import { imagePreviewUrl } from "../../components/ui/imagePreviewUrl";
+import {
+  normalizeFarmerObservation,
+  getBreedingObservationLabel,
+  getBreedingObservationSignLabel,
+  formatTaskSummary,
+  formatSubmittedAt,
+} from "../../utils/breedingObservation";
 
 // Helper to convert strings to Title Case
 const toTitleCase = (str) => {
@@ -229,6 +238,29 @@ export default function WorkQueue({ embedded = false }) {
     },
   });
 
+  const deepLinkQuery = useQuery({
+    queryKey: [
+      "technician",
+      "work-queue",
+      "mine",
+      "deep-link",
+      deepLinkTaskId,
+      deepLinkRequestId,
+    ],
+    enabled: hasDeepLink,
+    queryFn: async () => {
+      const response = await axiosInstance.get("/technician/work-queue", {
+        params: {
+          limit: 1,
+          workState: "active",
+          ...(deepLinkTaskId ? { taskId: deepLinkTaskId } : {}),
+          ...(deepLinkRequestId ? { requestId: deepLinkRequestId } : {}),
+        },
+      });
+      return response.data?.data?.[0] || null;
+    },
+  });
+
   const breedingFollowUpTaskId =
     breedingFollowUp?.taskId || breedingFollowUp?.id || null;
   const breedingFollowUpDetailsQuery = useQuery({
@@ -267,6 +299,12 @@ export default function WorkQueue({ embedded = false }) {
     null;
   const breedingFollowUpUnavailableLabel =
     breedingFollowUpDetailsQuery.isLoading ? "Loading…" : "Not available";
+  const farmerObservation = normalizeFarmerObservation(
+    breedingFollowUpInsemination ||
+      breedingFollowUpDetails?.insemination ||
+      breedingFollowUpDetails ||
+      breedingFollowUp,
+  );
 
   const completeMutation = useMutation({
     mutationFn: (taskId) =>
@@ -482,6 +520,51 @@ export default function WorkQueue({ embedded = false }) {
     }
   };
 
+  const firedDeepLinkIdentifier = useRef(null);
+  const currentIdentifier = deepLinkTaskId || deepLinkRequestId;
+
+  useEffect(() => {
+    if (!hasDeepLink) {
+      firedDeepLinkIdentifier.current = null;
+    } else if (deepLinkQuery.isSuccess && firedDeepLinkIdentifier.current !== currentIdentifier) {
+      firedDeepLinkIdentifier.current = currentIdentifier;
+      const target = deepLinkQuery.data;
+      if (target) {
+        if (
+          !selectedTaskWrapper &&
+          !selectedWorkDetails &&
+          !breedingFollowUp &&
+          !pregnancyLossReviewTask
+        ) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          openTask(target);
+        }
+      } else {
+        toast.error("This work item is unavailable or is not assigned to you.");
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete("taskId");
+            next.delete("requestId");
+            return next;
+          },
+          { replace: true }
+        );
+      }
+    }
+  }, [
+    hasDeepLink,
+    deepLinkQuery.isSuccess,
+    deepLinkQuery.data,
+    toast,
+    setSearchParams,
+    selectedTaskWrapper,
+    selectedWorkDetails,
+    breedingFollowUp,
+    pregnancyLossReviewTask,
+    currentIdentifier,
+  ]);
+
   const ContentContainer = embedded ? "div" : "main";
 
   return (
@@ -642,8 +725,13 @@ export default function WorkQueue({ embedded = false }) {
                         : timing.kind === "completed"
                           ? `Completed ${formatRecordDate(timing.date)}`
                           : `Due ${formatRelativeSchedule(timing.date)}`;
-                    const primaryActionLabel =
-                      task.actionLabel || getTaskPrimaryActionLabel(task);
+                    const isHealthFarmVisitScheduled =
+                      task.workflowType === "Health" &&
+                      (task.status === "scheduled" ||
+                        task.allowedAction === "START_SERVICE");
+                    const primaryActionLabel = isHealthFarmVisitScheduled
+                      ? "Record Health Assistance"
+                      : task.actionLabel || getTaskPrimaryActionLabel(task);
                     return (
                       <article
                         key={task.id}
@@ -743,7 +831,9 @@ export default function WorkQueue({ embedded = false }) {
                                 {task.summary.match(/(Contact the.*)/i) ? (
                                   <>
                                     <p className="line-clamp-2 text-xs text-base-content/55">
-                                      {task.summary.split(/(Contact the.*)/i)[0]}
+                                      {formatTaskSummary(
+                                        task.summary.split(/(Contact the.*)/i)[0],
+                                      )}
                                     </p>
                                     <div className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary">
                                       {task.summary.match(/(Contact the.*)/i)[0]}
@@ -751,7 +841,7 @@ export default function WorkQueue({ embedded = false }) {
                                   </>
                                 ) : (
                                   <p className="line-clamp-2 text-xs text-base-content/55">
-                                    {task.summary}
+                                    {formatTaskSummary(task.summary)}
                                   </p>
                                 )}
                               </div>
@@ -872,7 +962,7 @@ export default function WorkQueue({ embedded = false }) {
           Boolean(selectedTaskWrapper) &&
           selectedTaskWrapper?.workflowType === "PD"
         }
-        onClose={() => setSelectedTaskWrapper(null)}
+        onClose={handleCloseModal}
         taskData={selectedTaskWrapper?.raw}
         taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
         onSuccess={() =>
@@ -885,7 +975,7 @@ export default function WorkQueue({ embedded = false }) {
           selectedTaskWrapper?.workflowType === "AI"
         }
         context="task"
-        onClose={() => setSelectedTaskWrapper(null)}
+        onClose={handleCloseModal}
         taskData={selectedTaskWrapper?.raw}
         workflowId={selectedTaskWrapper?.workflowId || null}
         taskId={selectedTaskWrapper?.taskId || null}
@@ -910,14 +1000,14 @@ export default function WorkQueue({ embedded = false }) {
               }
             : null)
         }
-        onSuccess={() => setSelectedTaskWrapper(null)}
+        onSuccess={handleCloseModal}
       />
       <HealthRequestActionModal
         isOpen={
           Boolean(selectedTaskWrapper) &&
           selectedTaskWrapper?.workflowType === "Health"
         }
-        onClose={() => setSelectedTaskWrapper(null)}
+        onClose={handleCloseModal}
         task={
           selectedTaskWrapper?.workflowType === "Health"
             ? {
@@ -935,7 +1025,7 @@ export default function WorkQueue({ embedded = false }) {
           Boolean(selectedTaskWrapper) &&
           selectedTaskWrapper?.workflowType === "Calving"
         }
-        onClose={() => setSelectedTaskWrapper(null)}
+        onClose={handleCloseModal}
         pregnancyData={
           selectedTaskWrapper?.workflowType === "Calving" &&
           selectedTaskWrapper?.context?.pregnancyId
@@ -975,7 +1065,7 @@ export default function WorkQueue({ embedded = false }) {
           <button
             type="button"
             className="btn btn-sm"
-            onClick={() => setSelectedWorkDetails(null)}
+            onClick={handleCloseModal}
           >
             Close
           </button>
@@ -1013,7 +1103,9 @@ export default function WorkQueue({ embedded = false }) {
                 <p className="text-xs text-base-content/55">
                   {selectedWorkDetails.timing?.kind === "due"
                     ? "Due"
-                    : "Completed"}
+                    : selectedWorkDetails.timing?.kind === "scheduled_visit"
+                      ? "Visit"
+                      : "Completed"}
                 </p>
                 <p className="font-semibold">
                   {formatRecordDate(
@@ -1022,13 +1114,19 @@ export default function WorkQueue({ embedded = false }) {
                   )}
                 </p>
               </div>
+              <div>
+                <p className="text-xs text-base-content/55">Location</p>
+                <p className="font-semibold">
+                  {selectedWorkDetails.location || selectedWorkDetails.farmer?.location || "Location not recorded"}
+                </p>
+              </div>
             </div>
             <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
               <p className="text-xs text-base-content/55">
                 Service information
               </p>
               <p className="font-semibold">
-                {selectedWorkDetails.summary ||
+                {formatTaskSummary(selectedWorkDetails.summary) ||
                   "No additional service details recorded."}
               </p>
               {selectedWorkDetails.context?.sireBreed && (
@@ -1053,7 +1151,7 @@ export default function WorkQueue({ embedded = false }) {
       </Modal>
       <Modal
         isOpen={Boolean(breedingFollowUp)}
-        onClose={() => setBreedingFollowUp(null)}
+        onClose={handleCloseModal}
         title={
           breedingFollowUpStep === "overview"
             ? "Breeding Follow-up"
@@ -1071,7 +1169,10 @@ export default function WorkQueue({ embedded = false }) {
               <button
                 type="button"
                 className="btn btn-sm btn-ghost"
-                onClick={() => setBreedingFollowUp(null)}
+                onClick={() => {
+                  setBreedingFollowUp(null);
+                  setPreviewImage(null);
+                }}
               >
                 Cancel
               </button>
@@ -1180,22 +1281,107 @@ export default function WorkQueue({ embedded = false }) {
 
             {/* Farmer Update */}
             <div className="rounded-xl border border-base-300 p-4">
-              <h3 className="font-bold text-base-content mb-3">
-                Farmer Update
-              </h3>
-              <div className="text-center py-4">
-                <MessageSquare
-                  className="mx-auto text-base-content/30 mb-2"
-                  size={24}
-                />
-                <h4 className="font-bold text-base-content text-sm">
-                  No farmer update received
-                </h4>
-                <p className="text-xs text-base-content/60 mt-1 max-w-70 mx-auto">
-                  Contact the farmer to ask whether the animal showed signs of
-                  returning to heat.
-                </p>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-primary text-sm uppercase tracking-wide">
+                    Farmer Update
+                  </h3>
+                  {farmerObservation.hasObservation ? (
+                    <span className="badge badge-sm badge-info badge-soft font-semibold">
+                      Needs review
+                    </span>
+                  ) : null}
+                </div>
+                {farmerObservation.hasObservation && farmerObservation.reportedAt ? (
+                  <span className="text-xs text-base-content/60">
+                    Submitted {formatSubmittedAt(farmerObservation.reportedAt)}
+                  </span>
+                ) : null}
               </div>
+
+              {breedingFollowUpDetailsQuery.isLoading && !farmerObservation.hasObservation ? (
+                <div className="flex items-center justify-center py-6 text-xs text-base-content/50">
+                  <span className="loading loading-spinner loading-sm mr-2" />
+                  Loading farmer update…
+                </div>
+              ) : farmerObservation.hasObservation ? (
+                <div className="space-y-3">
+                  {farmerObservation.reportType ? (
+                    <h4 className="text-base font-bold text-base-content">
+                      {getBreedingObservationLabel(farmerObservation.reportType)}
+                    </h4>
+                  ) : null}
+
+                  {farmerObservation.signs.length > 0 ? (
+                    <div>
+                      <span className="text-xs font-semibold text-base-content/60 block mb-1">
+                        Signs observed:
+                      </span>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-base-content">
+                        {farmerObservation.signs.map((sign) => (
+                          <li key={sign} className="font-medium">
+                            {getBreedingObservationSignLabel(sign)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {farmerObservation.notes ? (
+                    <div>
+                      <span className="text-xs font-semibold text-base-content/60 block mb-1">
+                        Notes:
+                      </span>
+                      <p className="text-xs text-base-content/80 whitespace-pre-wrap bg-base-200/50 rounded-lg p-2.5">
+                        {farmerObservation.notes}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {farmerObservation.evidencePhotos.length > 0 ? (
+                    <div>
+                      <span className="text-xs font-semibold text-base-content/60 block mb-1.5">
+                        Supporting photos:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {farmerObservation.evidencePhotos.map((photo, index) => {
+                          const url = imagePreviewUrl(photo);
+                          return (
+                            <button
+                              key={url || index}
+                              type="button"
+                              className="relative h-16 w-16 overflow-hidden rounded-lg border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
+                              onClick={() => setPreviewImage(photo)}
+                              aria-label={`View supporting photo ${index + 1}`}
+                            >
+                              <img
+                                src={url}
+                                alt={`Supporting photo ${index + 1}`}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <MessageSquare
+                    className="mx-auto text-base-content/30 mb-2"
+                    size={24}
+                  />
+                  <h4 className="font-bold text-base-content text-sm">
+                    No farmer update received
+                  </h4>
+                  <p className="text-xs text-base-content/60 mt-1 max-w-70 mx-auto">
+                    Contact the farmer to ask whether the animal showed signs of
+                    returning to heat.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Farmer Contact */}
@@ -1364,6 +1550,16 @@ export default function WorkQueue({ embedded = false }) {
           </div>
         )}
       </Modal>
+
+      {previewImage && (
+        <ImagePreviewModal
+          images={farmerObservation?.evidencePhotos || []}
+          selectedImage={previewImage}
+          onSelectImage={setPreviewImage}
+          onClose={() => setPreviewImage(null)}
+          title="Supporting photos"
+        />
+      )}
     </div>
   );
 }

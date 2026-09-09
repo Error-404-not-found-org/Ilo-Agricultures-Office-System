@@ -1,6 +1,16 @@
 import React from "react";
 import { Modal, ScrollView, Text, View } from "react-native";
-import { CheckCircle2 } from "lucide-react-native";
+import {
+  Activity,
+  CheckCircle2,
+  Clock,
+  MessageSquare,
+  Pill,
+  Stethoscope,
+  Syringe,
+  Tag,
+  UserRound,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/Button";
 import { useTheme } from "@/lib/theme";
@@ -13,7 +23,15 @@ interface HealthReviewModalProps {
   onComplete: () => void;
 }
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
+function ReviewRow({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
   const { colors } = useTheme();
   return (
     <View
@@ -23,17 +41,20 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
         borderBottomColor: colors.border,
       }}
     >
-      <Text
-        style={{
-          color: colors.textMuted,
-          fontFamily: "Outfit_600SemiBold",
-          fontSize: 10,
-          letterSpacing: 0.5,
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {icon}
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontFamily: "Outfit_600SemiBold",
+            fontSize: 10,
+            letterSpacing: 0.5,
+            textTransform: "uppercase",
+          }}
+        >
+          {label}
+        </Text>
+      </View>
       <Text
         selectable
         style={{
@@ -62,13 +83,11 @@ export default function HealthReviewModal({
 
   if (!snapshot) return null;
 
-  const animalLabel =
-    snapshot.animal?.name ||
+  const animalEarTag =
     snapshot.animal?.earTag ||
     snapshot.animal?.animalId ||
-    "Animal";
-  const animalReference =
-    snapshot.animal?.earTag || snapshot.animal?.animalId || "No ear tag";
+    snapshot.animal?.name ||
+    "No ear tag";
 
   return (
     <Modal
@@ -145,20 +164,50 @@ export default function HealthReviewModal({
             </View>
 
             <View style={{ marginTop: 16 }}>
-              <ReviewRow label="Farmer" value={snapshot.farmer?.name || "Farmer"} />
               <ReviewRow
-                label="Animal"
-                value={`${animalLabel} · ${animalReference}`}
+                icon={<UserRound size={13} color={colors.textMuted} />}
+                label="Farmer"
+                value={snapshot.farmer?.name || "Farmer"}
               />
-              <ReviewRow label="Findings/Diagnosis" value={snapshot.details.diagnosis || "None"} />
-              <ReviewRow label="Treatment" value={snapshot.details.treatment || "None"} />
-              <ReviewRow label="Medicine Given" value={snapshot.details.medicineGiven || "None"} />
-              <ReviewRow label="Dosage" value={snapshot.details.dosage || "None"} />
               <ReviewRow
+                icon={<Tag size={13} color={colors.textMuted} />}
+                label="Animal Ear Tag"
+                value={animalEarTag}
+              />
+              <ReviewRow
+                icon={<Stethoscope size={13} color={colors.textMuted} />}
+                label="Findings/Diagnosis"
+                value={snapshot.details.diagnosis || "None"}
+              />
+              <ReviewRow
+                icon={<Activity size={13} color={colors.textMuted} />}
+                label="Treatment"
+                value={snapshot.details.treatment || "None"}
+              />
+              <ReviewRow
+                icon={<Pill size={13} color={colors.textMuted} />}
+                label="Medicine Given"
+                value={snapshot.details.medicineGiven || "None"}
+              />
+              <ReviewRow
+                icon={<Syringe size={13} color={colors.textMuted} />}
+                label="Dosage"
+                value={snapshot.details.dosage || "None"}
+              />
+              <ReviewRow
+                icon={<Clock size={13} color={colors.textMuted} />}
                 label="Withdrawal Period"
-                value={snapshot.details.withdrawalPeriodDays ? `${snapshot.details.withdrawalPeriodDays} days` : "None"}
+                value={
+                  snapshot.details.withdrawalPeriodDays
+                    ? `${snapshot.details.withdrawalPeriodDays} days`
+                    : "None"
+                }
               />
-              <ReviewRow label="Advice" value={snapshot.details.advice || "None"} />
+              <ReviewRow
+                icon={<MessageSquare size={13} color={colors.textMuted} />}
+                label="Advice"
+                value={snapshot.details.advice || "None"}
+              />
             </View>
           </ScrollView>
 

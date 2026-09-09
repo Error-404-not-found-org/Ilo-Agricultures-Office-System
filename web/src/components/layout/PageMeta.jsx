@@ -8,7 +8,6 @@ const getTitleForPath = (path) => {
   if (path.startsWith('/technician/animals')) return 'Animals | Technician Portal';
   if (path.startsWith('/technician/requests')) return 'Service Requests | Technician Portal';
   if (path.startsWith('/technician/schedule')) return 'Schedule | Technician Portal';
-  if (path.startsWith('/technician/ledger')) return 'Breeding and Pregnancy Records | Technician Portal';
   if (path.startsWith('/technician/inseminations')) return 'AI Services | Technician Portal';
   if (path.startsWith('/technician/newborns')) return 'Calving Records | Technician Portal';
   if (path.startsWith('/technician/health-map')) return 'Map and Locations | Technician Portal';
@@ -19,7 +18,7 @@ const getTitleForPath = (path) => {
   if (path.startsWith('/technician/settings')) return 'Settings | Technician Portal';
   if (path.startsWith('/technician/walk-in')) return 'Add AI Service Record | Technician Portal';
   if (path.startsWith('/technician/profile')) return 'My Profile | Tech Portal';
-  
+
   // Admin Routes
   if (path.startsWith('/admin/dashboard')) return 'Admin Dashboard | Iloilo Agri';
   if (path === '/admin/technicians') return 'User Management | Admin';
@@ -51,7 +50,7 @@ export default function PageMeta() {
       link.rel = 'icon';
       document.head.appendChild(link);
     }
-    
+
     // Only update if it's not already pointing to logo.png to prevent unnecessary reloading
     const newIcon = '/logo.png';
     if (!link.href.endsWith(newIcon)) {

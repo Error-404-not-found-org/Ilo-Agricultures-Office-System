@@ -613,7 +613,7 @@ export function normalizeWorkflowStatus(
     }
 
     // No handling method chosen yet
-    if (scheduleState) return scheduleState;
+    if (temporalStatus) return temporalStatus;
     if (
       [
         "scheduled",
@@ -630,7 +630,7 @@ export function normalizeWorkflowStatus(
     return "open";
   }
 
-  if (scheduleState) return scheduleState;
+  if (temporalStatus) return temporalStatus;
 
   if (
     [
@@ -654,9 +654,12 @@ export function getWorkflowStatusPresentation(
     { label: string; tone: RequestWorkTone }
   > = {
     open: { label: "Open", tone: "amber" },
+    needs_review: { label: "Needs review", tone: "blue" },
     needs_response: { label: "Needs response", tone: "blue" },
     needs_scheduling: { label: "Needs scheduling", tone: "amber" },
     scheduled: { label: "Scheduled", tone: "blue" },
+    scheduled_today: { label: "Scheduled Today", tone: "amber" },
+    upcoming: { label: "Upcoming", tone: "blue" },
     due_today: { label: "Due Today", tone: "amber" },
     overdue: { label: "Overdue", tone: "red" },
     completed: { label: "Completed", tone: "green" },

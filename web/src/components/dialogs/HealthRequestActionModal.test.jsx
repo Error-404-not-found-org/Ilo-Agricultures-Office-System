@@ -147,11 +147,27 @@ describe("HealthRequestActionModal", () => {
     );
 
     expect(
-      await screen.findByText("Farmer request photos (2)"),
+      await screen.findByText(/Farmer Request Photos \(2\)/i),
     ).toBeInTheDocument();
     expect(
       screen.getAllByRole("img", { name: /Farmer Health request photo/ }),
     ).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open Farmer Health request photo 1",
+      }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Farmer Health request photo" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Preview of Photo 1" }),
+    ).toHaveAttribute("src", "https://example.test/health-1.jpg");
+    fireEvent.click(screen.getByRole("button", { name: "View next image" }));
+    expect(
+      screen.getByRole("img", { name: "Preview of Photo 2" }),
+    ).toHaveAttribute("src", "https://example.test/health-2.jpg");
   });
 
   it("claims the original request before exposing response methods", async () => {
@@ -310,14 +326,16 @@ describe("HealthRequestActionModal", () => {
       status: "scheduled",
       raw: scheduled,
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Start Visit" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Record Health Assistance" }),
+    );
     await waitFor(() =>
       expect(mocks.patch).toHaveBeenCalledWith(
         `/health-request/${requestId}/status`,
         { status: "in-progress" },
       ),
     );
-    first.onClose.mockClear();
+    expect(first.onClose).not.toHaveBeenCalled();
 
     cleanup();
     mocks.patch.mockClear();

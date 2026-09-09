@@ -46,14 +46,10 @@ export default function TechnicianRequestsScreen({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { section, workState } = useLocalSearchParams<{
+  const { section } = useLocalSearchParams<{
     section?: string | string[];
-    workState?: string | string[];
   }>();
   const normalizedSection = Array.isArray(section) ? section[0] : section;
-  const normalizedWorkState = Array.isArray(workState)
-    ? workState[0]
-    : workState;
 
   const {
     search,
@@ -269,11 +265,11 @@ export default function TechnicianRequestsScreen({
 
   const hasOpenRequestFilters = Boolean(
     search.trim() ||
-      type !== "all" ||
-      municipality ||
-      barangay ||
-      nearLat ||
-      sortBy !== "newest",
+    type !== "all" ||
+    municipality ||
+    barangay ||
+    nearLat ||
+    sortBy !== "newest",
   );
 
   return (
@@ -325,7 +321,9 @@ export default function TechnicianRequestsScreen({
                   : "transparent",
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
               <Text
                 style={{
                   fontFamily: "Outfit_700Bold",
@@ -385,7 +383,9 @@ export default function TechnicianRequestsScreen({
                   : "transparent",
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
               <Text
                 style={{
                   fontFamily: "Outfit_700Bold",
@@ -644,11 +644,7 @@ export default function TechnicianRequestsScreen({
             }
           />
         ) : (
-          <TechnicianMyWorkPanel
-            initialWorkState={
-              normalizedWorkState === "completed" ? "completed" : "active"
-            }
-          />
+          <TechnicianMyWorkPanel />
         )}
       </View>
     </ScreenLayout>

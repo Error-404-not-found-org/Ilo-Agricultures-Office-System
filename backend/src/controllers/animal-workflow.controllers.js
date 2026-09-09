@@ -12,7 +12,10 @@ import {
   TASK_STATUS,
 } from "../domain/status-vocabulary.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
-import { buildAIRequestMutationOwnershipGuard } from "../policies/request.policy.js";
+import {
+  buildAIRequestMutationOwnershipGuard,
+  buildHealthRequestMutationOwnershipGuard,
+} from "../policies/request.policy.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import {
   getAnimalTimeline as buildAnimalTimeline,
@@ -84,6 +87,8 @@ const OFFICIAL_RECORD_KINDS = new Set([
   "pregnancy",
   "calving",
   "medical_record",
+  "health_request",
+  "ai_request",
 ]);
 
 const idOf = (value) => {
@@ -142,13 +147,143 @@ const animalSummary = (recordAnimal, fallbackAnimal) => {
 const officialRecordDetail = ({ recordKind, record, animal }) => {
   const sourceId = idOf(record);
   const subject = animalSummary(record.animalId, animal);
+  const resolvedFarmer =
+    record.farmerId && typeof record.farmerId === "object" && record.farmerId.name
+      ? record.farmerId
+      : animal?.farmerId && typeof animal.farmerId === "object" && animal.farmerId.name
+        ? animal.farmerId
+        : record.farmerId || animal?.farmerId;
   const common = {
     id: sourceId,
     sourceId,
     sourceKind: recordKind,
     animalId: subject,
-    farmerId: personSummary(record.farmerId),
+    farmerId: personSummary(resolvedFarmer),
   };
+
+  if (recordKind === "health_request") {
+    const isAdvice = record.handlingMethod === "advice";
+    const isPickup = record.handlingMethod === "office_pickup";
+    const isCancelled = ["cancelled", "rejected"].includes(record.status);
+    const eventDate = isCancelled
+      ? record.cancellationRespondedAt || record.updatedAt || record.createdAt
+      : record.resolvedAt || record.updatedAt || record.createdAt;
+    const pickup = record.technicianResponse?.pickup;
+    return {
+      ...common,
+      type: "health",
+      title: isAdvice
+        ? "Health Advice"
+        : isPickup
+          ? "Office Pickup"
+          : "Cancelled Request",
+      description: isAdvice
+        ? record.advice || "Technician advice sent"
+        : isPickup
+          ? pickup?.instructions || record.advice || "Pickup information sent"
+          : record.cancellationResponseReason ||
+            record.cancellationReason ||
+            "Health request closed",
+      date: eventDate,
+      dateLabel: isCancelled ? "Request closed on" : "Response sent on",
+      datePrecision: "datetime",
+      attachments: uniqueRecordAttachments([
+        ...(record.photos || []).map((url, index) => ({
+          url,
+          category: "request_evidence",
+          label: `Health request photo ${index + 1}`,
+        })),
+        ...(record.imageUrl
+          ? [{
+              url: record.imageUrl,
+              category: "request_evidence",
+              label: "Health request photo",
+            }]
+          : []),
+      ]),
+      technician: personSummary(record.handledBy || record.assignedTechnicianId),
+      details: {
+        serviceDate: eventDate,
+        serviceDateLabel: isCancelled ? "Request closed on" : "Response sent on",
+        requestedAt: record.createdAt,
+        requestedAtLabel: "Request submitted at",
+        status: record.status,
+        requestType:
+          record.requestDetails?.assistanceRequested || record.requestType,
+        requestDetails: record.requestDetails,
+        symptoms: record.symptoms,
+        farmerNotes: record.farmerNotes,
+        urgency: record.urgency,
+        handlingMethod: record.handlingMethod || null,
+        advice: record.advice,
+        followUpDate: record.followUpDate,
+        pickupItem: pickup?.item,
+        pickupAvailable: pickup?.availabilityConfirmed,
+        pickupInstructions: pickup?.instructions,
+        dosageOrUseInstructions: pickup?.dosageOrUseInstructions,
+        withdrawalGuidance: pickup?.withdrawalGuidance,
+        cancellationReason: record.cancellationReason,
+        cancellationResponseReason: record.cancellationResponseReason,
+        technician:
+          record.handledBy?.name || record.assignedTechnicianId?.name || "",
+      },
+      actions: {
+        reportPreviewAvailable: false,
+        reportId: null,
+        pregnancyTrackerAvailable: false,
+      },
+    };
+  }
+
+  if (recordKind === "ai_request") {
+    const technician = record.technicianId || record.approvedBy || null;
+    const eventDate =
+      record.cancellationRespondedAt || record.updatedAt || record.createdAt;
+    return {
+      ...common,
+      type: "ai",
+      title: "AI Request",
+      description:
+        record.cancellationResponseReason ||
+        record.cancellationReason ||
+        "Artificial insemination request closed",
+      date: eventDate,
+      dateLabel: "Request closed on",
+      datePrecision: "datetime",
+      attachments: uniqueRecordAttachments([
+        ...(record.photos || []).map((url, index) => ({
+          url,
+          category: "request_evidence",
+          label: `AI request photo ${index + 1}`,
+        })),
+        ...(record.imageUrl
+          ? [{
+              url: record.imageUrl,
+              category: "request_evidence",
+              label: "AI request photo",
+            }]
+          : []),
+      ]),
+      technician: personSummary(technician),
+      details: {
+        serviceDate: eventDate,
+        serviceDateLabel: "Request closed on",
+        requestedAt: record.createdAt,
+        requestedAtLabel: "Request submitted at",
+        status: record.status,
+        scheduledDate: record.scheduledDate,
+        visitPeriod: record.visitPeriod || null,
+        cancellationReason: record.cancellationReason,
+        cancellationResponseReason: record.cancellationResponseReason,
+        technician: technician?.name || "",
+      },
+      actions: {
+        reportPreviewAvailable: false,
+        reportId: null,
+        pregnancyTrackerAvailable: false,
+      },
+    };
+  }
 
   if (recordKind === "insemination") {
     const technician =
@@ -446,6 +581,16 @@ export const getOfficialRecordDetail = async (req, res) => {
       });
     }
 
+    if (
+      ["health_request", "ai_request"].includes(recordKind) &&
+      req.user.role === "farmer"
+    ) {
+      throw new AppError("This request history is available from Requests.", {
+        status: 403,
+        code: "REQUEST_RECORD_ACCESS_DENIED",
+      });
+    }
+
     const animal = await getAccessibleAnimal(animalId, req.user);
     const scope = { _id: recordId, animalId: animal._id };
     let query;
@@ -480,6 +625,33 @@ export const getOfficialRecordDetail = async (req, res) => {
           "healthRequestId",
           "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes imageUrl photos",
         );
+    } else if (recordKind === "health_request") {
+      query = HealthRequest.findOne({
+        ...scope,
+        deletedAt: null,
+        ...(req.user.role === "technician"
+          ? buildHealthRequestMutationOwnershipGuard({
+              technicianId: req.user._id,
+            })
+          : {}),
+        $or: [
+          { status: "resolved", handlingMethod: { $in: ["advice", "office_pickup"] } },
+          { status: { $in: ["cancelled", "rejected"] } },
+        ],
+      })
+        .populate("handledBy assignedTechnicianId", "name role")
+        .populate("farmerId", "name");
+    } else {
+      query = Insemination.findOne({
+        ...scope,
+        deletedAt: null,
+        status: { $in: [AI_STATUS.CANCELLED, AI_STATUS.REJECTED] },
+        ...(req.user.role === "technician"
+          ? buildAIRequestMutationOwnershipGuard({ technicianId: req.user._id })
+          : {}),
+      })
+        .populate("technicianId approvedBy", "name role")
+        .populate("farmerId", "name");
     }
 
     const record = await query.lean();
@@ -561,6 +733,7 @@ export const getOfficialRecords = async (req, res) => {
     const windowLimit = search ? null : pageInfo.skip + pageInfo.limit;
     const technicianId =
       req.user.role === "technician" ? req.user._id : null;
+    const includeClosedRequests = Boolean(technicianId);
     const inseminationFilter = {
       ...scope,
       status: "done",
@@ -594,16 +767,62 @@ export const getOfficialRecords = async (req, res) => {
           ? { type: { $ne: "General Note" } }
           : {}),
     };
+    const cancelledInseminationFilter = {
+      ...scope,
+      status: { $in: [AI_STATUS.CANCELLED, AI_STATUS.REJECTED] },
+      deletedAt: null,
+      ...buildAIRequestMutationOwnershipGuard({ technicianId }),
+      ...(hasDateRange
+        ? {
+            $or: [
+              { cancellationRespondedAt: dateRange },
+              { updatedAt: dateRange },
+            ],
+          }
+        : {}),
+    };
+    const healthOwnership = buildHealthRequestMutationOwnershipGuard({
+      technicianId,
+    });
+    const closedHealthRequestFilter = {
+      ...scope,
+      deletedAt: null,
+      $and: [
+        ...(healthOwnership.$and || []),
+        {
+          $or: [
+            {
+              status: "resolved",
+              handlingMethod: { $in: ["advice", "office_pickup"] },
+            },
+            { status: { $in: ["cancelled", "rejected"] } },
+          ],
+        },
+        ...(hasDateRange
+          ? [{
+              $or: [
+                { resolvedAt: dateRange },
+                { cancellationRespondedAt: dateRange },
+                { updatedAt: dateRange },
+              ],
+            }]
+          : []),
+      ],
+    };
 
     const [
       inseminations,
       pregnancies,
       calvings,
       medicalRecords,
+      cancelledInseminations,
+      closedHealthRequests,
       inseminationCount,
       pregnancyCount,
       calvingCount,
       medicalRecordCount,
+      cancelledInseminationCount,
+      closedHealthRequestCount,
     ] =
       await Promise.all([
         includeAI
@@ -663,6 +882,32 @@ export const getOfficialRecords = async (req, res) => {
               windowLimit,
             )
           : [],
+        includeClosedRequests && includeAI
+          ? executeOfficialRecordQuery(
+              Insemination.find(cancelledInseminationFilter)
+                .populate(
+                  "animalId",
+                  "animalId earTag brand color breed species imageUrl reproductiveStatus",
+                )
+                .populate("farmerId", "name phoneNumber address imageUrl")
+                .populate("technicianId approvedBy", "name role"),
+              { cancellationRespondedAt: -1, updatedAt: -1 },
+              windowLimit,
+            )
+          : [],
+        includeClosedRequests && includeHealth
+          ? executeOfficialRecordQuery(
+              HealthRequest.find(closedHealthRequestFilter)
+                .populate(
+                  "animalId",
+                  "animalId earTag brand color breed species imageUrl reproductiveStatus",
+                )
+                .populate("farmerId", "name phoneNumber address imageUrl")
+                .populate("handledBy assignedTechnicianId", "name role"),
+              { resolvedAt: -1, cancellationRespondedAt: -1, updatedAt: -1 },
+              windowLimit,
+            )
+          : [],
         !search && includeAI
           ? Insemination.countDocuments(inseminationFilter)
           : 0,
@@ -672,6 +917,12 @@ export const getOfficialRecords = async (req, res) => {
         !search && includeCalving ? Calving.countDocuments(calvingFilter) : 0,
         !search && (includeHealth || includeNotes)
           ? MedicalRecord.countDocuments(medicalRecordFilter)
+          : 0,
+        !search && includeClosedRequests && includeAI
+          ? Insemination.countDocuments(cancelledInseminationFilter)
+          : 0,
+        !search && includeClosedRequests && includeHealth
+          ? HealthRequest.countDocuments(closedHealthRequestFilter)
           : 0,
       ]);
 
@@ -745,6 +996,57 @@ export const getOfficialRecords = async (req, res) => {
           source: item,
         };
       }),
+      ...cancelledInseminations.map((item) => ({
+        id: item._id,
+        recordKind: "ai_request",
+        category: "AI",
+        recordDate:
+          item.cancellationRespondedAt || item.updatedAt || item.createdAt,
+        enteredAt: item.createdAt,
+        title: "AI Request",
+        summary:
+          item.cancellationResponseReason ||
+          item.cancellationReason ||
+          "Artificial insemination request closed",
+        status: item.status,
+        farmerId: item.farmerId,
+        animalId: item.animalId,
+        technicianId: item.technicianId || item.approvedBy,
+        source: item,
+      })),
+      ...closedHealthRequests.map((item) => {
+        const isAdvice = item.handlingMethod === "advice";
+        const isPickup = item.handlingMethod === "office_pickup";
+        const isCancelled = ["cancelled", "rejected"].includes(item.status);
+        return {
+          id: item._id,
+          recordKind: "health_request",
+          category: "Health",
+          recordDate: isCancelled
+            ? item.cancellationRespondedAt || item.updatedAt || item.createdAt
+            : item.resolvedAt || item.updatedAt || item.createdAt,
+          enteredAt: item.createdAt,
+          title: isAdvice
+            ? "Health Advice"
+            : isPickup
+              ? "Office Pickup"
+              : "Cancelled Request",
+          summary: isAdvice
+            ? item.advice || "Technician advice sent"
+            : isPickup
+              ? item.technicianResponse?.pickup?.instructions ||
+                item.advice ||
+                "Pickup information sent"
+              : item.cancellationResponseReason ||
+                item.cancellationReason ||
+                "Health request closed",
+          status: item.status,
+          farmerId: item.farmerId,
+          animalId: item.animalId,
+          technicianId: item.handledBy || item.assignedTechnicianId,
+          source: item,
+        };
+      }),
     ]
       .filter((record) => recordMatchesSearch(record, search))
       .sort(
@@ -762,7 +1064,12 @@ export const getOfficialRecords = async (req, res) => {
       page: pageInfo.page,
       limit: pageInfo.limit,
       total:
-        inseminationCount + pregnancyCount + calvingCount + medicalRecordCount,
+        inseminationCount +
+        pregnancyCount +
+        calvingCount +
+        medicalRecordCount +
+        cancelledInseminationCount +
+        closedHealthRequestCount,
     });
   } catch (error) {
     return res.status(error.status || 500).json({

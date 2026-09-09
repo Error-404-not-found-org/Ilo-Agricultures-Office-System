@@ -190,7 +190,7 @@ const renderRecords = (initialEntry = "/technician/records") => {
   );
 };
 
-describe("Technician official records", () => {
+describe("Technician records", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.get.mockImplementation((url) => {
@@ -207,7 +207,7 @@ describe("Technician official records", () => {
   it("loads ALL filter columns correctly", async () => {
     renderRecords();
 
-    await screen.findByRole("table", { name: "Technician official records" });
+    await screen.findByRole("table", { name: "Technician finished activity" });
 
     // Verify ALL filter headers
     expect(screen.getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
@@ -222,13 +222,13 @@ describe("Technician official records", () => {
   it("loads AI filter columns correctly", async () => {
     renderRecords("/technician/records?type=insemination");
 
-    await screen.findByRole("table", { name: "Technician official records" });
+    await screen.findByRole("table", { name: "Technician finished activity" });
 
     // Verify AI filter headers
     expect(screen.getByRole("columnheader", { name: "Animal" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Farmer" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "AI Date" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Sire" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Activity Date" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Sire / Details" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Attempt" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Technician" })).toBeNull();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
@@ -242,7 +242,7 @@ describe("Technician official records", () => {
   it("loads HEALTH filter columns correctly", async () => {
     renderRecords("/technician/records?type=health");
 
-    await screen.findByRole("table", { name: "Technician official records" });
+    await screen.findByRole("table", { name: "Technician finished activity" });
 
     // Verify Health filter headers
     expect(screen.getByRole("columnheader", { name: "Animal" })).toBeInTheDocument();
@@ -261,7 +261,7 @@ describe("Technician official records", () => {
   it("loads PREGNANCY filter columns correctly", async () => {
     renderRecords("/technician/records?type=pregnancy");
 
-    await screen.findByRole("table", { name: "Technician official records" });
+    await screen.findByRole("table", { name: "Technician finished activity" });
 
     // Verify Pregnancy filter headers
     expect(screen.getByRole("columnheader", { name: "Animal" })).toBeInTheDocument();
@@ -279,7 +279,7 @@ describe("Technician official records", () => {
   it("loads CALVING filter columns correctly", async () => {
     renderRecords("/technician/records?type=calving");
 
-    await screen.findByRole("table", { name: "Technician official records" });
+    await screen.findByRole("table", { name: "Technician finished activity" });
 
     // Verify Calving filter headers
     expect(screen.getByRole("columnheader", { name: "Dam / Animal" })).toBeInTheDocument();
@@ -301,7 +301,7 @@ describe("Technician official records", () => {
   ])("opens %s through its canonical %s detail endpoint", async (recordId, recordKind, fieldLabel, fieldValue) => {
     renderRecords();
 
-    await screen.findByRole("table", { name: "Technician official records" });
+    await screen.findByRole("table", { name: "Technician finished activity" });
     const allCards = await screen.findAllByRole("button", { name: "View record" });
     const index = records.findIndex((item) => item.id === recordId);
     fireEvent.click(allCards[index]);
@@ -373,4 +373,107 @@ describe("Technician official records", () => {
       "recordId=" + ids.health,
     );
   });
+
+  it("renders semantically labeled health results, humanized enums, and suppresses raw dosage in the table", async () => {
+    mocks.get.mockImplementation((url) => {
+      if (url === "/animals/records") {
+        return Promise.resolve({
+          data: {
+            data: [
+              {
+                id: "rec-haha",
+                recordKind: "medical_record",
+                category: "Health",
+                recordDate: "2026-09-05T07:06:00.000Z",
+                title: "Health record",
+                summary: "Haha",
+                status: "completed",
+                animalId: { earTag: "01RD" },
+                farmerId: { name: "Renelyn Dumalfin" },
+                source: {
+                  details: {
+                    diagnosis: "Haha",
+                    treatment: "Haah",
+                    dosage: "1",
+                  },
+                },
+              },
+              {
+                id: "rec-dosage-only",
+                recordKind: "medical_record",
+                category: "Health",
+                recordDate: "2026-09-06T07:06:00.000Z",
+                title: "Health record",
+                summary: "1",
+                status: "completed",
+                animalId: { earTag: "02RD" },
+                farmerId: { name: "Renelyn Dumalfin" },
+                source: {
+                  details: {
+                    dosage: "1",
+                  },
+                },
+              },
+              {
+                id: "rec-preg-enum",
+                recordKind: "pregnancy",
+                category: "Pregnancy",
+                recordDate: "2026-09-06T08:00:00.000Z",
+                title: "Pregnancy Diagnosis",
+                summary: "needs_recheck",
+                status: "completed",
+                animalId: { earTag: "03DP" },
+                farmerId: { name: "John Cabanig" },
+                source: {
+                  pregnancyDiagnosis: {
+                    result: "needs_recheck",
+                  },
+                },
+              },
+            ],
+            page: 1,
+            limit: 10,
+            total: 3,
+            totalPages: 1,
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+
+    renderRecords();
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+
+    // 01RD: Haha should have Diagnosis label, not raw unlabeled Haha
+    expect(await screen.findByText(/Diagnosis:/i)).toBeInTheDocument();
+    expect(await screen.findByText("Haha")).toBeInTheDocument();
+
+    // 03DP: raw enum "needs_recheck" must NOT appear, humanized "Recheck required" should appear
+    expect(await screen.findByText("Recheck required")).toBeInTheDocument();
+    expect(screen.queryByText("needs_recheck")).toBeNull();
+
+    // 02RD: dosage "1" must NOT appear as an unlabelled standalone result
+    expect(screen.queryByText("1")).toBeNull();
+  });
+
+  it("renders hybrid action column with primary button and kebab menu, opening canonical detail from kebab", async () => {
+    renderRecords();
+
+    // Primary buttons exist (awaited after data loads)
+    const primaryViewButtons = await screen.findAllByRole("button", { name: "View record" });
+    expect(primaryViewButtons.length).toBeGreaterThan(0);
+
+    // Kebab triggers exist
+    const kebabTriggers = screen.getAllByRole("button", { name: /More actions for/i });
+    expect(kebabTriggers.length).toBe(primaryViewButtons.length);
+
+    // Clicking kebab menuitem invokes the existing canonical record detail
+    const kebabItems = screen.getAllByRole("menuitem", { name: "View record", hidden: true });
+    fireEvent.click(kebabItems[0]);
+
+    expect(await screen.findByText("Sire")).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("recordId=" + ids.ai);
+  });
 });
+

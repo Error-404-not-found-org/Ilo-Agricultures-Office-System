@@ -130,7 +130,7 @@ export default function RecordDetailsScreen() {
             textRole="body"
             style={{ color: colors.textSecondary, marginTop: 12 }}
           >
-            Loading the official record…
+            Loading the saved activity…
           </Text>
         </View>
       ) : !record ? (
@@ -151,7 +151,7 @@ export default function RecordDetailsScreen() {
             }}
           >
             {recordQuery.isError
-              ? "Official record could not be loaded"
+              ? "Saved activity could not be loaded"
               : "Record link is incomplete"}
           </Text>
           <Text
@@ -164,7 +164,7 @@ export default function RecordDetailsScreen() {
             }}
           >
             {recordQuery.isError
-              ? "Check your connection and try loading the saved backend record again."
+              ? "Check your connection and try loading the saved activity again."
               : hasCanonicalIdentity
                 ? "This record is no longer available."
                 : "Open this item again from Technician Records so its animal and record identifiers are included."}

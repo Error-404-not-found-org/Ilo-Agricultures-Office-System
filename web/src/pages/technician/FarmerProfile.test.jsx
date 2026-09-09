@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -80,6 +80,11 @@ const animal = {
   reproductiveStatus: "Normal",
 };
 
+function RecordsProbe() {
+  const location = useLocation();
+  return <output data-testid="records-route">{location.pathname}{location.search}</output>;
+}
+
 const renderProfile = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -90,6 +95,7 @@ const renderProfile = () => {
         <Routes>
           <Route path="/technician/farmers/:id" element={<FarmerProfile />} />
           <Route path="/technician/animals/:id" element={<div>Animal details</div>} />
+          <Route path="/technician/records" element={<RecordsProbe />} />
         </Routes>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -145,6 +151,23 @@ describe("Technician Farmer Profile", () => {
 
     expect(mocks.get).toHaveBeenCalledWith(`/user/${farmerId}`);
     expect(mocks.get).toHaveBeenCalledWith(`/animals/farmer/${farmerId}`);
+  });
+
+  it.each([
+    ["AI Records", "/technician/records?type=insemination"],
+    ["Health Records", "/technician/records?type=health"],
+  ])("routes %s through the canonical Records page", async (label, target) => {
+    mocks.get.mockImplementation(async (url) => {
+      if (url === `/user/${farmerId}`) return { data: farmer };
+      if (url === `/animals/farmer/${farmerId}`) return { data: [animal] };
+      return { data: [] };
+    });
+
+    renderProfile();
+    await screen.findByText("Maria Santos");
+    fireEvent.click(screen.getByRole("button", { name: label }));
+
+    expect(await screen.findByTestId("records-route")).toHaveTextContent(target);
   });
 
   it("shows useful empty states when the Farmer has no animals or activity", async () => {

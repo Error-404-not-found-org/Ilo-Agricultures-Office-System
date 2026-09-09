@@ -756,7 +756,9 @@ export default function GISFieldHub() {
                         <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Client:</span> <span className="font-bold text-base-content truncate block">{selectedItem.farmer}</span></div>
                         <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Sector Address:</span> <span className="font-bold text-base-content truncate block">{selectedItem.barangay}</span></div>
                         <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Dispatch Time:</span> <span className="font-bold text-base-content block">{selectedItem.time}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Priority:</span> <span className="font-bold text-purple-600 block">{selectedItem.urgency}</span></div>
+                        {(selectedItem.urgency?.toLowerCase() === "emergency" || selectedItem.urgency?.toLowerCase() === "high") && (
+                          <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Priority:</span> <span className="font-bold text-purple-600 block">{selectedItem.urgency.toLowerCase() === "emergency" ? "Needs urgent attention" : selectedItem.urgency}</span></div>
+                        )}
                       </div>
                     )}
 

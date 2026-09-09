@@ -344,7 +344,7 @@ export function AdviceResponseForm({
         onChange={(followUpDate) => onChange({ ...values, followUpDate })}
         disabled={disabled}
       />
-      <FoundationField
+      {/* <FoundationField
         label="Internal Note"
         helper="Optional · Only technicians and administrators can see this."
         value={values.internalNote}
@@ -352,7 +352,7 @@ export function AdviceResponseForm({
         multiline
         internal
         disabled={disabled}
-      />
+      /> */}
     </View>
   );
 }
@@ -480,7 +480,7 @@ export function OfficePickupResponseForm({
         onChange={(followUpDate) => onChange({ ...values, followUpDate })}
         disabled={disabled}
       />
-      <FoundationField
+      {/* <FoundationField
         label="Internal Note"
         helper="Optional · Only visible to technicians and administrators."
         value={values.internalNote}
@@ -489,7 +489,7 @@ export function OfficePickupResponseForm({
         multiline
         internal
         disabled={disabled}
-      />
+      /> */}
     </View>
   );
 }

@@ -10,6 +10,13 @@ import {
   CalendarDays,
   Clock3,
   MapPin,
+  Phone,
+  Tag,
+  User,
+  Building2,
+  Calendar,
+  Info,
+  AlertCircle,
 } from "lucide-react";
 
 import axiosInstance from "../../lib/axios";
@@ -42,6 +49,40 @@ const titleCase = (value) =>
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const cleanTaskTitle = (title, timingState) => {
+  let clean = String(title || "Work details");
+  if (timingState !== "overdue" && timingState !== "due") {
+    clean = clean.replace(/\s+Due$/i, "");
+  }
+  return clean;
+};
+
+const getSubtitle = (kind) => {
+  if (kind === "pregnancy" || kind === "breeding_follow_up") {
+    return "Scheduled follow-up";
+  }
+  return "Upcoming work details";
+};
+
+const getDateLabel = (kind) => {
+  if (kind === "pregnancy") return "Pregnancy check date";
+  if (kind === "calving") return "Expected calving date";
+  if (kind === "ai" || kind === "health") return "Scheduled visit";
+  return "Due date";
+};
+
+const formatPurpose = (item) => {
+  let purpose = item.raw?.notes || item.raw?.description || item.scheduleLabel;
+
+  if (item.scheduleKind === "pregnancy" && item.raw?.notes) {
+    purpose = item.raw.notes
+      .replace(/Pregnancy Diagnosis \(PD\)/gi, "Pregnancy diagnosis")
+      .replace(/ for Animal Tag #?[A-Z0-9]+/gi, "")
+      .trim();
+  }
+  return purpose;
+};
 
 const farmerNameOf = (item) =>
   item.farmerName ||
@@ -98,9 +139,9 @@ function ScheduleWorkList({
         return (
           <li
             key={String(item.taskId || item.id || item._id)}
-            className="flex items-start gap-3 rounded-lg border border-base-300 bg-base-200/40 px-3 py-2.5"
+            className="group flex items-start gap-3 rounded-lg border border-base-300 bg-base-200/40 px-3 py-2.5 transition-colors hover:bg-base-200/70"
           >
-            <div className="mt-0.5 shrink-0 rounded-lg bg-primary/10 p-2 text-primary">
+            <div className="mt-0.5 shrink-0 rounded-lg bg-primary/10 p-2 text-primary group-hover:bg-primary/20 transition-colors">
               {item.scheduleKind === "ai" || item.scheduleKind === "health" ? (
                 <CalendarDays aria-hidden="true" size={16} />
               ) : (
@@ -157,7 +198,7 @@ function ScheduleWorkList({
               {navigation ? (
                 <button
                   type="button"
-                  className="btn btn-ghost btn-xs mt-1.5 h-auto px-0 text-primary"
+                  className="btn btn-ghost btn-xs mt-1.5 h-auto px-0 text-primary hover:bg-transparent hover:text-primary/80"
                   onClick={() => onOpen(navigation, item)}
                 >
                   {navigation.label}
@@ -248,9 +289,8 @@ export default function TechnicianSchedule() {
     } else if (previewRequestId) {
       const matched = scheduleItems.find(
         (item) =>
-          String(
-            item.workflowId || item.requestId || item.id || item._id,
-          ) === previewRequestId,
+          String(item.workflowId || item.requestId || item.id || item._id) ===
+          previewRequestId,
       );
       if (matched) {
         setPreviewItem(matched);
@@ -286,7 +326,8 @@ export default function TechnicianSchedule() {
   };
 
   return (
-    <div className="min-h-full bg-base-200/40">      {/* FullCalendar styles */}
+    <div className="min-h-full bg-base-200/40">
+      {/* FullCalendar styles */}
       <style>{`
         /* ── All themes — interactivity + consistent typography ── */
         .fc-daygrid-day { cursor: pointer; }
@@ -454,7 +495,10 @@ export default function TechnicianSchedule() {
                   {Array.from({ length: 5 }).map((_, row) => (
                     <div key={row} className="grid grid-cols-7 gap-1">
                       {Array.from({ length: 7 }).map((_, col) => (
-                        <div key={col} className="skeleton h-20 sm:h-24 rounded-sm" />
+                        <div
+                          key={col}
+                          className="skeleton h-20 sm:h-24 rounded-sm"
+                        />
                       ))}
                     </div>
                   ))}
@@ -562,75 +606,126 @@ export default function TechnicianSchedule() {
         </div>
       </main>
 
+      {/* Enhanced Modal Design */}
       <Modal
         isOpen={Boolean(previewItem)}
         onClose={closePreview}
         title={
-          previewItem?.scheduleLabel ||
-          previewItem?.taskType ||
-          previewItem?.serviceType ||
-          "Work details"
+          previewItem
+            ? cleanTaskTitle(
+                previewItem.scheduleLabel ||
+                  previewItem.taskType ||
+                  previewItem.serviceType,
+                previewItem.timingState,
+              )
+            : "Work details"
         }
-        subtitle="Upcoming work details"
-        size="md"
+        subtitle={previewItem ? getSubtitle(previewItem.scheduleKind) : ""}
+        size="lg"
         closeOnBackdropClick={true}
         closeOnEscape={true}
         actions={
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={closePreview}
-          >
-            Close
-          </button>
+          <div className="flex gap-2">
+            {previewItem?.timingState !== "upcoming" &&
+              previewItem?.navigationTarget?.action !== "preview" && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => {
+                    const nav = previewItem?.navigationTarget;
+                    if (nav) {
+                      closePreview();
+                      navigate(nav.path + nav.search);
+                    }
+                  }}
+                >
+                  {previewItem?.navigationTarget?.label || "Open"}
+                  <ArrowUpRight size={15} aria-hidden="true" />
+                </button>
+              )}
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={closePreview}
+            >
+              Close
+            </button>
+          </div>
         }
       >
         {previewItem && (
-          <div className="space-y-4 text-sm">
-            <div role="status" className="alert alert-info alert-soft">
+          <div className="space-y-5">
+            {/* Status Banner */}
+            <div
+              role="status"
+              className={`alert ${previewItem.timingState === "overdue" ? "alert-error" : previewItem.timingState === "due" ? "alert-warning" : "alert-info"} alert-soft py-3`}
+            >
               <Clock3 className="size-5 shrink-0" aria-hidden="true" />
-              <span>
-                This work is scheduled for a future date. You can review it now, and perform the action when it is due.
-              </span>
+              <div className="flex flex-col">
+                <span className="font-medium">
+                  {previewItem.timingState === "overdue"
+                    ? `Overdue - Scheduled for ${formatScheduleDate(previewItem.scheduleDate)}`
+                    : previewItem.timingState === "due"
+                      ? `Due today - ${formatScheduleDate(previewItem.scheduleDate)}`
+                      : `Scheduled for ${formatScheduleDate(previewItem.scheduleDate)}`}
+                </span>
+                <span className="text-xs opacity-80 mt-0.5">
+                  {previewItem.timingState === "upcoming"
+                    ? "Recording becomes available when due."
+                    : "Please complete this work as soon as possible."}
+                </span>
+              </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <p className="text-xs text-base-content/55">Farmer</p>
-                <p className="font-semibold">
+            {/* Main Info Grid */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Farmer */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <User size={14} />
+                  Farmer
+                </div>
+                <p className="font-semibold text-base-content">
                   {farmerNameOf(previewItem)}
                 </p>
                 {(previewItem.farmerPhone ||
                   previewItem.raw?.farmerId?.phoneNumber ||
                   previewItem.raw?.farmerId?.phone) && (
-                  <p className="text-xs text-base-content/70">
-                    {previewItem.farmerPhone ||
-                      previewItem.raw?.farmerId?.phoneNumber ||
-                      previewItem.raw?.farmerId?.phone}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-1 text-xs text-base-content/70">
+                    <Phone size={12} className="shrink-0" />
+                    <span>
+                      {previewItem.farmerPhone ||
+                        previewItem.raw?.farmerId?.phoneNumber ||
+                        previewItem.raw?.farmerId?.phone}
+                    </span>
+                  </div>
                 )}
               </div>
 
-              <div>
-                <p className="text-xs text-base-content/55">Animal</p>
-                <p className="font-semibold">
+              {/* Animal */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <Tag size={14} />
+                  Animal
+                </div>
+                <p className="font-semibold text-base-content">
                   {animalReferenceOf(previewItem)
-                    ? `Animal ${animalReferenceOf(previewItem)}`
+                    ? animalReferenceOf(previewItem)
                     : "Not recorded"}
                 </p>
                 {(previewItem.animalBreed ||
                   previewItem.animal?.breed ||
                   previewItem.raw?.animalId?.breed ||
                   previewItem.raw?.animalIds?.[0]?.breed) && (
-                  <p className="text-xs text-base-content/70">
+                  <p className="text-xs text-base-content/70 mt-1">
                     {previewItem.animalBreed ||
                       previewItem.animal?.breed ||
                       previewItem.raw?.animalId?.breed ||
                       previewItem.raw?.animalIds?.[0]?.breed}
-                    {(previewItem.animalSpecies ||
-                      previewItem.animal?.species ||
-                      previewItem.raw?.animalId?.species ||
-                      previewItem.raw?.animalIds?.[0]?.species)
+                    {previewItem.animalSpecies ||
+                    previewItem.animal?.species ||
+                    previewItem.raw?.animalId?.species ||
+                    previewItem.raw?.animalIds?.[0]?.species
                       ? ` · ${
                           previewItem.animalSpecies ||
                           previewItem.animal?.species ||
@@ -642,76 +737,92 @@ export default function TechnicianSchedule() {
                 )}
               </div>
 
-              <div>
-                <p className="text-xs text-base-content/55">Status</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="badge badge-sm badge-ghost font-semibold">
-                    Upcoming
-                  </span>
-                  <span className="text-xs text-base-content/70">
-                    ({titleCase(previewItem.status || "Pending")})
+              {/* Schedule */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <Calendar size={14} />
+                  {getDateLabel(previewItem.scheduleKind)}
+                </div>
+                <p className="font-semibold text-base-content">
+                  {formatScheduleDate(previewItem.scheduleDate)}
+                  {previewItem.periodLabel
+                    ? ` · ${previewItem.periodLabel}`
+                    : ""}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50 flex flex-col justify-center">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <Info size={14} />
+                  Status
+                </div>
+                <div>
+                  <span
+                    className={`badge font-semibold ${
+                      previewItem.timingState === "overdue"
+                        ? "badge-error"
+                        : previewItem.timingState === "due"
+                          ? "badge-warning"
+                          : "badge-neutral"
+                    }`}
+                  >
+                    {previewItem.timingState === "upcoming"
+                      ? "Scheduled"
+                      : titleCase(previewItem.timingState)}
                   </span>
                 </div>
               </div>
-
-              <div>
-                <p className="text-xs text-base-content/55">
-                  {previewItem.scheduleKind === "ai" ||
-                  previewItem.scheduleKind === "health"
-                    ? "Scheduled Visit"
-                    : "Due Date"}
-                </p>
-                <p className="font-semibold">
-                  {formatScheduleDate(previewItem.scheduleDate)}
-                  {previewItem.periodLabel ? ` · ${previewItem.periodLabel}` : ""}
-                </p>
-              </div>
-
-              <div className="sm:col-span-2">
-                <p className="text-xs text-base-content/55">Location</p>
-                <p className="font-semibold">
-                  {locationOf(previewItem) || "Not recorded"}
-                </p>
-              </div>
             </div>
 
-            <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
-              <p className="text-xs text-base-content/55">
-                Service information
+            {/* Location */}
+            <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+              <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                <Building2 size={14} />
+                Location
+              </div>
+              <p className="font-semibold text-base-content flex items-center gap-1.5">
+                <MapPin size={14} className="shrink-0 text-base-content/40" />
+                {locationOf(previewItem) || "Not recorded"}
               </p>
-              <p className="font-semibold mt-0.5">
-                {previewItem.scheduleLabel}
+            </div>
+
+            {/* Purpose */}
+            <div className="rounded-lg border border-base-300 bg-base-200/30 p-4">
+              <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                <AlertCircle size={14} />
+                Purpose
+              </div>
+              <p className="font-semibold text-base-content leading-relaxed">
+                {formatPurpose(previewItem)}
               </p>
-              {previewItem.raw?.description && (
-                <p className="mt-1 text-xs text-base-content/80">
-                  {previewItem.raw.description}
-                </p>
-              )}
-              {previewItem.raw?.notes && (
-                <p className="mt-1 text-xs text-base-content/70 italic">
-                  Note: {previewItem.raw.notes}
-                </p>
-              )}
               {(previewItem.raw?.metadata?.sireBreed ||
                 previewItem.raw?.sireBreed) && (
-                <p className="mt-1 text-xs text-base-content/70">
-                  Sire:{" "}
-                  {previewItem.raw?.metadata?.sireBreed ||
-                    previewItem.raw?.sireBreed}
-                  {previewItem.raw?.metadata?.semenCode ||
-                  previewItem.raw?.semenCode
-                    ? ` · Code: ${
-                        previewItem.raw?.metadata?.semenCode ||
-                        previewItem.raw?.semenCode
-                      }`
-                    : ""}
-                </p>
+                <div className="mt-2 pt-2 border-t border-base-300/50">
+                  <p className="text-xs text-base-content/70">
+                    <span className="font-medium">Sire:</span>{" "}
+                    {previewItem.raw?.metadata?.sireBreed ||
+                      previewItem.raw?.sireBreed}
+                    {previewItem.raw?.metadata?.semenCode ||
+                    previewItem.raw?.semenCode
+                      ? ` · Code: ${
+                          previewItem.raw?.metadata?.semenCode ||
+                          previewItem.raw?.semenCode
+                        }`
+                      : ""}
+                  </p>
+                </div>
               )}
               {previewItem.raw?.handlingMethod && (
-                <p className="mt-1 text-xs text-base-content/70">
-                  Handling:{" "}
-                  {String(previewItem.raw.handlingMethod).replaceAll("_", " ")}
-                </p>
+                <div className="mt-1.5">
+                  <p className="text-xs text-base-content/70">
+                    <span className="font-medium">Handling:</span>{" "}
+                    {String(previewItem.raw.handlingMethod).replaceAll(
+                      "_",
+                      " ",
+                    )}
+                  </p>
+                </div>
               )}
             </div>
           </div>

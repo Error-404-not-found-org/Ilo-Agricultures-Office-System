@@ -78,10 +78,12 @@ const InseminationSchema = new mongoose.Schema(
       type: String,
       default: undefined,
     },
-    declinedByTechnicianIds: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    }],
+    declinedByTechnicianIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     claimedAt: {
       type: Date,
       default: null,
@@ -218,7 +220,15 @@ const InseminationSchema = new mongoose.Schema(
     },
     observationSource: {
       type: String,
-      enum: ["farmer", "technician", "farmer_app", "technician_phone", "technician_field", "paper_record", null],
+      enum: [
+        "farmer",
+        "technician",
+        "farmer_app",
+        "technician_phone",
+        "technician_field",
+        "paper_record",
+        null,
+      ],
       default: null,
     },
     observationRecordedBy: {
@@ -253,7 +263,13 @@ const InseminationSchema = new mongoose.Schema(
     },
     pregnancyReportVerificationStatus: {
       type: String,
-      enum: ["not_requested", "pending", "more_info_requested", "accepted", "rejected"],
+      enum: [
+        "not_requested",
+        "pending",
+        "more_info_requested",
+        "accepted",
+        "rejected",
+      ],
       default: "not_requested",
     },
     pregnancyReportReviewedBy: {
@@ -295,30 +311,47 @@ const InseminationSchema = new mongoose.Schema(
     farmerDismissedAt: { type: Date, default: null },
 
     // Status history (mirrors HealthRequest)
-    statusHistory: [{
-      status: { type: String, required: true },
-      note: { type: String, default: "" },
-      actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      createdAt: { type: Date, default: Date.now },
-    }],
+    statusHistory: [
+      {
+        status: { type: String, required: true },
+        note: { type: String, default: "" },
+        actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
 
     dispatch: {
       location: {
         municipalityCode: { type: String },
         municipalityName: { type: String },
-        localityType: { type: String, enum: ["municipality", "city", "unresolved"] },
+        localityType: {
+          type: String,
+          enum: ["municipality", "city", "unresolved"],
+        },
         provinceCode: { type: String },
         provinceName: { type: String },
         barangayCode: { type: String },
         barangayName: { type: String },
         source: {
           type: String,
-          enum: ["confirmed_farm_location", "canonical_contact_address", "legacy_address_fallback", "unresolved"],
+          enum: [
+            "confirmed_farm_location",
+            "canonical_contact_address",
+            "legacy_address_fallback",
+            "unresolved",
+          ],
         },
         psgcVersion: { type: String },
       },
-      stage: { type: String, enum: ["local", "adjacent", "regional"], default: "local" },
-      resolutionStatus: { type: String, enum: ["resolved", "legacy_fallback", "unresolved"] },
+      stage: {
+        type: String,
+        enum: ["local", "adjacent", "regional"],
+        default: "local",
+      },
+      resolutionStatus: {
+        type: String,
+        enum: ["resolved", "legacy_fallback", "unresolved"],
+      },
       version: { type: Number, default: 1 },
       resolvedAt: { type: Date },
     },

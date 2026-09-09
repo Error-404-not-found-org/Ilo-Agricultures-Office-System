@@ -14,10 +14,8 @@ import {
   StickyNote,
   Mail,
   ChevronDown,
-  UserPlus,
   AlertCircle,
   Check,
-  Plus
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -53,6 +51,7 @@ const WalkInHealthModal = ({
   onSuccess,
   prefillData,
   preSelectedFarmer,
+  preSelectedAnimal,
   existingOnly = false,
 }) => {
   const queryClient = useQueryClient();
@@ -184,7 +183,9 @@ const WalkInHealthModal = ({
         setSelectedFarmerId(
           preSelectedFarmer._id || preSelectedFarmer.id || "",
         );
-        setSelectedAnimalId("");
+        setSelectedAnimalId(
+          preSelectedAnimal?._id || preSelectedAnimal?.id || "",
+        );
         setSearchFarmer(preSelectedFarmer.name || "");
         setIsDropdownOpen(false);
       });
@@ -245,7 +246,7 @@ const WalkInHealthModal = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, prefillData, preSelectedFarmer, onClose, existingOnly]);
+  }, [isOpen, prefillData, preSelectedFarmer, preSelectedAnimal, onClose, existingOnly]);
 
   useEffect(() => {
     if (formData.animalDetails.species) {
@@ -268,26 +269,28 @@ const WalkInHealthModal = ({
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const isCanonicalDirectRecord =
-        existingOnly && Boolean(data.farmerId) && Boolean(data.animalId);
-      if (!isCanonicalDirectRecord) {
-        const res = await axiosInstance.post("/health-request/walk-in", data);
+      const endpoint =
+        existingOnly && Boolean(data.farmerId)
+          ? "/medical"
+          : "/health-request/walk-in";
+      if (endpoint === "/medical") {
+        const payload = buildDirectHealthRecordPayload({
+          animalId: data.animalId,
+          serviceType: data.requestType,
+          serviceDate: data.preferredDate,
+          diagnosis: data.diagnosis,
+          treatment: data.treatment,
+          medicineGiven: data.medicineGiven,
+          dosage: data.dosage,
+          withdrawalPeriodDays: data.withdrawalPeriodDays,
+          advice: data.advice,
+          resolutionNotes: data.technicianNote,
+          followUpDate: data.followUpDate,
+        });
+        const res = await axiosInstance.post(endpoint, payload);
         return res.data;
       }
-      const payload = buildDirectHealthRecordPayload({
-        animalId: data.animalId,
-        serviceType: data.requestType,
-        serviceDate: data.preferredDate,
-        diagnosis: data.diagnosis,
-        treatment: data.treatment,
-        medicineGiven: data.medicineGiven,
-        dosage: data.dosage,
-        withdrawalPeriodDays: data.withdrawalPeriodDays,
-        advice: data.advice,
-        resolutionNotes: data.technicianNote,
-        followUpDate: data.followUpDate,
-      });
-      const res = await axiosInstance.post("/medical", payload);
+      const res = await axiosInstance.post("/health-request/walk-in", data);
       return res.data;
     },
     onSuccess: async (result) => {
@@ -1644,6 +1647,26 @@ const WalkInHealthModal = ({
                           setFormData({ ...formData, advice: e.target.value })
                         }
                         placeholder="Instructions for the farmer"
+                        className={textareaClass}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label
+                        className={labelClass}
+                        htmlFor="health-technician-notes"
+                      >
+                        Resolution / technician notes (optional)
+                      </label>
+                      <textarea
+                        id="health-technician-notes"
+                        value={formData.technicianNote}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            technicianNote: e.target.value,
+                          })
+                        }
+                        placeholder="Internal resolution notes"
                         className={textareaClass}
                       />
                     </div>

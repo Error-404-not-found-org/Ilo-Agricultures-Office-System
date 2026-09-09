@@ -20,7 +20,10 @@ import {
   CalendarDays,
   CheckCircle2,
   HeartPulse,
+  House,
+  MapIcon,
   MapPin,
+  MapPinHouse,
   MessageSquare,
   Navigation,
   PackageCheck,
@@ -86,7 +89,7 @@ import {
   shouldShowTechnicianHealthMapAction,
 } from "../utils/healthRequestLocation";
 import {
-  TECHNICIAN_MY_WORK_COMPLETED_TARGET,
+  TECHNICIAN_RECORDS_TARGET,
   runConfirmedHealthResponseSubmission,
 } from "../utils/healthResponseSubmission";
 
@@ -173,6 +176,7 @@ const formatDate = (value: unknown, includeTime = false) => {
     month: "long",
     day: "numeric",
     year: "numeric",
+    timeZone: "Asia/Manila",
     ...(includeTime ? { hour: "numeric", minute: "2-digit" } : {}),
   });
 };
@@ -562,7 +566,7 @@ export function HealthRequestDetails({
           toast.success("Advice sent to farmer");
         },
         navigate: () =>
-          router.replace(TECHNICIAN_MY_WORK_COMPLETED_TARGET as never),
+          router.replace(TECHNICIAN_RECORDS_TARGET as never),
       });
     } catch (error: any) {
       const statusCode = error?.response?.status;
@@ -616,7 +620,7 @@ export function HealthRequestDetails({
           toast.success("Pickup information sent to farmer");
         },
         navigate: () =>
-          router.replace(TECHNICIAN_MY_WORK_COMPLETED_TARGET as never),
+          router.replace(TECHNICIAN_RECORDS_TARGET as never),
       });
     } catch (error: any) {
       const message =
@@ -699,7 +703,52 @@ export function HealthRequestDetails({
       setSelectedHandlingMethod(null);
       return;
     }
-    if (isScheduled || isInProgress) {
+    if (isScheduled) {
+      if (!(await requireOnline())) return;
+      if (updating) return;
+      setUpdating(true);
+      setActionNotice(null);
+      try {
+        await updateRequestStatus(api, "health", requestId, {
+          status: "in-progress",
+        });
+        await invalidateHealthWorkflow();
+        queryClient.invalidateQueries({
+          queryKey: ["technician", "request", requestId],
+        });
+        openHealthLog();
+      } catch (error: any) {
+        if (error?.response?.status === 409) {
+          await invalidateHealthWorkflow();
+          queryClient.invalidateQueries({
+            queryKey: ["technician", "request", requestId],
+          });
+          await onRefresh();
+          const refreshedData = queryClient.getQueryData<any>(
+            healthRequestKeys.detail(requestId),
+          );
+          const nextStatus = cleanText(
+            error?.response?.data?.details?.currentStatus ||
+              refreshedData?.status ||
+              request?.status,
+          ).toLowerCase();
+          if (["in-progress", "in_progress"].includes(nextStatus)) {
+            openHealthLog();
+            return;
+          }
+        }
+        const message = getErrorMessage(
+          error,
+          "The Health visit could not be started.",
+        );
+        setActionNotice(message);
+        toast.error(message);
+      } finally {
+        setUpdating(false);
+      }
+      return;
+    }
+    if (isInProgress) {
       openHealthLog();
       return;
     }
@@ -718,13 +767,11 @@ export function HealthRequestDetails({
           : isOfficePickup
             ? "Confirm Pickup"
             : "Handle Request"
-      : isScheduled
+      : isScheduled || isInProgress
         ? "Record Health Assistance"
-        : isInProgress
-          ? "Continue Health Assistance"
-          : isResolved && request?.medicalRecordId
-            ? "View Health Record"
-            : "";
+        : isResolved && request?.medicalRecordId
+          ? "View Health Record"
+          : "";
 
   const handleDecline = async () => {
     if (updating) return;
@@ -976,55 +1023,6 @@ export function HealthRequestDetails({
             />
           </View>
 
-          {/* Urgency Row */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              gap: 12,
-              marginTop: 16,
-              paddingTop: 12,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-            }}
-          >
-            <Text textRole="label" style={{ color: colors.textMuted }}>
-              Urgency
-            </Text>
-            <View style={{ flex: 1, alignItems: "flex-end" }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                {urgencyPresentation.priority === "urgent" ? (
-                  <TriangleAlert size={17} color={colors.errorForeground} />
-                ) : null}
-                <Text
-                  textRole="bodyStrong"
-                  style={{
-                    color:
-                      urgencyPresentation.priority === "urgent"
-                        ? colors.errorForeground
-                        : colors.textPrimary,
-                  }}
-                >
-                  {urgencyPresentation.label}
-                </Text>
-              </View>
-              {urgencyPresentation.technicianContext ? (
-                <Text
-                  textRole="caption"
-                  style={{ color: colors.textMuted, marginTop: 2 }}
-                >
-                  {urgencyPresentation.technicianContext}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-
           {/* Status Message */}
           {isAvailable ? (
             <Text
@@ -1069,7 +1067,18 @@ export function HealthRequestDetails({
             </TouchableOpacity>
           ) : null}
           <InfoLine
-            icon={MapPin}
+            icon={House}
+            text={
+              [
+                farmer?.address?.barangay,
+                farmer?.address?.city || farmer?.address?.municipality,
+              ]
+                .filter(Boolean)
+                .join(", ") || "Home location not provided"
+            }
+          />
+          <InfoLine
+            icon={MapPinHouse}
             text={locationPresentation.humanReadableLocation}
           />
           {locationPresentation.landmark ? (

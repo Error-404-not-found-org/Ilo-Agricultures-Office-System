@@ -246,9 +246,6 @@ export function useOfflineMutation<TData = any, TError = any, TVariables = any, 
     ...mutationOptions,
     mutationFn: async (variables: TVariables): Promise<MutationResult<TData>> => {
       const { ownerUserId, ownerRole } = getOfflineMutationOwner(user?.id);
-      if (!ownerUserId) {
-        throw new Error("Cannot execute offline mutation without an authoritative user session");
-      }
       return executeOfflineMutation<TData, TVariables>(
         api,
         params,
@@ -256,23 +253,8 @@ export function useOfflineMutation<TData = any, TError = any, TVariables = any, 
         undefined,
         onLifecycleStateChange,
         ownerUserId,
-        ownerRole
+        ownerRole,
       );
-    },
-    onSuccess: (data, variables, context, mutation) => {
-      if (data.status === "queued") {
-        toast.success("Submission saved safely", {
-          description: params.reconcileOnTimeout
-            ? "It will continue syncing with the original operation ID. Do not submit it again."
-            : "It will sync automatically when you reconnect.",
-          duration: 4000,
-          id: `offline-queued-${params.entityType || params.url}`,
-        });
-      }
-
-      if (mutationOptions.onSuccess) {
-        mutationOptions.onSuccess(data, variables, context as any, mutation);
-      }
     },
   });
 }

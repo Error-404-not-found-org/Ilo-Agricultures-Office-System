@@ -1,11 +1,19 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, FileText, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, FileText, Search } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
 import OfficialRecordDetailModal from "../../components/technician/OfficialRecordDetailModal";
+import RecordActionsMenu from "../../components/technician/RecordActionsMenu";
 import UserAvatar from "../../components/ui/UserAvatar";
+import {
+  formatRecordStatus,
+  getAllRecordsResultPresentation,
+  getHealthResultPresentation,
+  getAIResultPresentation,
+  getPregnancyResultPresentation,
+} from "../../utils/officialRecordPresentation";
 
 const PAGE_SIZE = 10;
 
@@ -33,6 +41,11 @@ const categoryBadgeClass = (category) => {
   if (category === "Calving") return "badge-success";
   return "badge-primary";
 };
+
+const statusBadgeClass = (status) =>
+  ["cancelled", "rejected"].includes(String(status || "").toLowerCase())
+    ? "badge-error"
+    : "badge-success";
 
 // --- Presentation Helpers ---
 const getAnimalTag = (record) => {
@@ -83,6 +96,16 @@ const getCalvingFields = (record) => ({
   calvingEase: record.source?.calvingEase,
 });
 
+const getRecordActionLabel = (record) => {
+  if (record.recordKind === "ai_request") return "View request";
+  if (record.recordKind === "health_request") {
+    return ["advice", "office_pickup"].includes(record.source?.handlingMethod)
+      ? "View response"
+      : "View request";
+  }
+  return "View record";
+};
+
 // --- Dynamic Column Definitions ---
 const COLUMNS_BY_TYPE = {
   all: [
@@ -91,13 +114,16 @@ const COLUMNS_BY_TYPE = {
       header: "Type",
       className: "p-3.5 pl-6",
       renderCell: (record) => (
-        <span
-          className={`badge badge-sm rounded-full text-[9px] font-bold uppercase tracking-wider ${categoryBadgeClass(record.category)}`}
-        >
-          {record.category === "AI"
-            ? "Insemination"
-            : record.category || "Record"}
-        </span>
+        <div className="space-y-1.5">
+          <span
+            className={`badge badge-sm rounded-full text-[9px] font-bold uppercase tracking-wider ${categoryBadgeClass(record.category)}`}
+          >
+            {record.category === "AI" ? "AI" : record.category || "Record"}
+          </span>
+          <span className="block text-sm font-bold text-base-content">
+            {record.title || "Saved activity"}
+          </span>
+        </div>
       ),
     },
     {
@@ -147,11 +173,28 @@ const COLUMNS_BY_TYPE = {
       id: "status",
       header: "Result / Status",
       className: "max-w-sm p-3.5",
-      renderCell: (record) => (
-        <span className="block truncate text-base-content/65">
-          {record.summary || "Completed official record"}
-        </span>
-      ),
+      renderCell: (record) => {
+        const secondary = getAllRecordsResultPresentation(record);
+        return (
+          <div className="space-y-1.5">
+            <span
+              className={`badge badge-sm badge-soft ${statusBadgeClass(record.status)}`}
+            >
+              {formatRecordStatus(record.status)}
+            </span>
+            {secondary?.value && (
+              <span className="block truncate text-base-content/65">
+                {secondary.label ? (
+                  <span className="font-semibold text-base-content/80">
+                    {secondary.label}:{" "}
+                  </span>
+                ) : null}
+                <span>{secondary.value}</span>
+              </span>
+            )}
+          </div>
+        );
+      },
     },
   ],
   insemination: [
@@ -190,7 +233,7 @@ const COLUMNS_BY_TYPE = {
     },
     {
       id: "date",
-      header: "AI Date",
+      header: "Activity Date",
       className: "p-3.5",
       renderCell: (record) => {
         const fields = getInseminationFields(record);
@@ -203,13 +246,15 @@ const COLUMNS_BY_TYPE = {
     },
     {
       id: "sire",
-      header: "Sire",
+      header: "Sire / Details",
       className: "p-3.5",
       renderCell: (record) => {
         const fields = getInseminationFields(record);
         return (
           <span className="block text-sm text-base-content/75">
-            {fields.sireBreed || "Not recorded"}
+            {record.recordKind === "ai_request"
+              ? record.summary || "Request closed"
+              : fields.sireBreed || "Not recorded"}
             {fields.sireCode && (
               <span className="block text-[10px] uppercase">
                 {fields.sireCode}
@@ -227,7 +272,9 @@ const COLUMNS_BY_TYPE = {
         const fields = getInseminationFields(record);
         return (
           <span className="block text-sm font-bold text-base-content/85">
-            {fields.attemptNumber
+            {record.recordKind === "ai_request"
+              ? "Not applicable"
+              : fields.attemptNumber
               ? `Attempt #${fields.attemptNumber}`
               : "Not recorded"}
           </span>
@@ -240,9 +287,12 @@ const COLUMNS_BY_TYPE = {
       className: "p-3.5",
       renderCell: (record) => {
         const fields = getInseminationFields(record);
+        const outcome = getAIResultPresentation(record);
         return (
-          <span className="block truncate text-base-content/65">
-            {fields.outcome || "Not recorded"}
+          <span
+            className={`badge badge-sm badge-soft ${statusBadgeClass(record.status)}`}
+          >
+            {outcome || fields.outcome || formatRecordStatus(record.status)}
           </span>
         );
       },
@@ -313,11 +363,25 @@ const COLUMNS_BY_TYPE = {
       header: "Treatment / Result",
       className: "max-w-sm p-3.5",
       renderCell: (record) => {
-        const fields = getHealthFields(record);
+        const health = getHealthResultPresentation(record);
         return (
-          <span className="block truncate text-base-content/65">
-            {fields.treatment || "Not recorded"}
-          </span>
+          <div className="space-y-1.5">
+            <span
+              className={`badge badge-sm badge-soft ${statusBadgeClass(record.status)}`}
+            >
+              {formatRecordStatus(record.status)}
+            </span>
+            {health.value && (
+              <span className="block truncate text-base-content/65">
+                {health.label ? (
+                  <span className="font-semibold text-base-content/80">
+                    {health.label}:{" "}
+                  </span>
+                ) : null}
+                <span>{health.value}</span>
+              </span>
+            )}
+          </div>
         );
       },
     },
@@ -375,9 +439,10 @@ const COLUMNS_BY_TYPE = {
       className: "p-3.5",
       renderCell: (record) => {
         const fields = getPregnancyFields(record);
+        const result = getPregnancyResultPresentation(record);
         return (
           <span className="block font-bold leading-tight text-base-content">
-            {fields.result || "Not recorded"}
+            {result || fields.result || "Not recorded"}
           </span>
         );
       },
@@ -477,18 +542,38 @@ const COLUMNS_BY_TYPE = {
 const ACTION_COLUMN = {
   id: "action",
   header: "Actions",
-  className: "w-30 p-3.5 pr-6 text-right",
-  renderCell: (record, context) => (
-    <div className="flex items-center justify-end">
-      <button
-        type="button"
-        className="btn btn-primary btn-sm rounded-xl hover:bg-primary/90 hover:border-none"
-        onClick={() => context.openRecord(record)}
+  className: "w-36 p-3.5 pr-6 text-right",
+  renderCell: (record, context) => {
+    const actionLabel = getRecordActionLabel(record);
+    const actions = [
+      {
+        id: "view-record",
+        label: actionLabel,
+        icon: Eye,
+        onClick: () => context.openRecord(record),
+      },
+    ];
+
+    return (
+      <div
+        className="flex items-center justify-end gap-1.5"
+        onClick={(e) => e.stopPropagation()}
       >
-        View record
-      </button>
-    </div>
-  ),
+        <button
+          type="button"
+          className="btn btn-primary btn-sm rounded-xl hover:bg-primary/90 hover:border-none"
+          onClick={() => context.openRecord(record)}
+        >
+          {actionLabel}
+        </button>
+        <RecordActionsMenu
+          id={record.id}
+          actions={actions}
+          ariaLabel={`More actions for ${getAnimalTag(record)} record`}
+        />
+      </div>
+    );
+  },
 };
 
 export default function TechnicianRecords() {
@@ -566,7 +651,7 @@ export default function TechnicianRecords() {
     <div className="flex min-h-screen flex-1 flex-col overflow-y-auto bg-base-200 text-base-content">
       <Topbar
         title="Records"
-        subtitle="Completed AI, Health, Pregnancy, and Calving records"
+        subtitle="Finished services, responses, and closed requests"
       />
       <main className="flex-1 space-y-5 p-4 md:p-6">
         <section className="card card-border bg-base-100 shadow-sm">
@@ -585,13 +670,13 @@ export default function TechnicianRecords() {
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
                   placeholder="Search animal, farmer, service, or technician"
-                  aria-label="Search official records"
+                  aria-label="Search finished activity"
                 />
               </form>
               <div className="flex flex-wrap items-center gap-2 xl:justify-end">
                 <select
                   className="select select-bordered w-full sm:w-48"
-                  aria-label="Filter official records by type"
+                  aria-label="Filter records by type"
                   value={type}
                   onChange={(event) =>
                     updateParams({ type: event.target.value, page: 1 })
@@ -606,7 +691,7 @@ export default function TechnicianRecords() {
                 <span className="text-sm text-base-content/60">
                   {recordsQuery.isFetching && !recordsQuery.isLoading
                     ? "Updating..."
-                    : `${total} ${total === 1 ? "official record" : "official records"}`}
+                    : `${total} ${total === 1 ? "saved activity" : "saved activities"}`}
                 </span>
               </div>
             </div>
@@ -614,7 +699,7 @@ export default function TechnicianRecords() {
             <div className="overflow-x-auto rounded-box border border-base-300">
               <table
                 className="table table-pin-rows w-full min-w-215 text-left"
-                aria-label="Technician official records"
+                aria-label="Technician finished activity"
               >
                 <thead>
                   <tr className="border-b border-base-300 bg-base-200 text-[11px] font-bold uppercase tracking-wider text-base-content/60">
@@ -667,10 +752,10 @@ export default function TechnicianRecords() {
                           className="mx-auto mb-3 text-base-content/35"
                         />
                         <p className="font-bold text-base-content">
-                          No completed records found
+                          No finished activity found
                         </p>
                         <p className="mt-1 font-medium">
-                          Completed official service records will appear here.
+                          Completed services, responses, and closed requests will appear here.
                         </p>
                       </td>
                     </tr>
@@ -702,12 +787,12 @@ export default function TechnicianRecords() {
                 </span>
                 <nav
                   className="join self-end sm:self-auto"
-                  aria-label="Official record pagination"
+                  aria-label="Records pagination"
                 >
                   <button
                     type="button"
                     className="join-item btn btn-sm"
-                    aria-label="Previous official records page"
+                    aria-label="Previous records page"
                     disabled={page <= 1}
                     onClick={() => updateParams({ page: page - 1 })}
                   >
@@ -719,7 +804,7 @@ export default function TechnicianRecords() {
                   <button
                     type="button"
                     className="join-item btn btn-sm"
-                    aria-label="Next official records page"
+                    aria-label="Next records page"
                     disabled={page >= totalPages}
                     onClick={() => updateParams({ page: page + 1 })}
                   >

@@ -615,7 +615,7 @@ test("Official records bounds each source query to the requested global page win
     inseminationDate: new Date(`2026-08-0${4 - index}T00:00:00.000Z`),
     createdAt: new Date(`2026-08-0${4 - index}T00:00:00.000Z`),
   }));
-  Insemination.find = () => ({
+  Insemination.find = (filter = {}) => ({
     populate() {
       return this;
     },
@@ -626,9 +626,10 @@ test("Official records bounds each source query to the requested global page win
       appliedLimit = value;
       return this;
     },
-    lean: async () => records,
+    lean: async () => (filter.status === "done" ? records : []),
   });
-  Insemination.countDocuments = async () => 10;
+  Insemination.countDocuments = async (filter = {}) =>
+    filter.status === "done" ? 10 : 0;
 
   const recorder = responseRecorder();
   try {
@@ -1010,7 +1011,7 @@ test("Official record detail: standalone direct Health uses service wording and 
   }
 });
 
-test("Official record detail rejects raw HealthRequest identifiers", async () => {
+test("Farmer official record detail keeps raw HealthRequests in Requests", async () => {
   const recorder = responseRecorder();
 
   await getOfficialRecordDetail(
@@ -1025,8 +1026,8 @@ test("Official record detail rejects raw HealthRequest identifiers", async () =>
     recorder.response,
   );
 
-  assert.equal(recorder.statusCode, 400);
-  assert.equal(recorder.body.code, "OFFICIAL_RECORD_KIND_INVALID");
+  assert.equal(recorder.statusCode, 403);
+  assert.equal(recorder.body.code, "REQUEST_RECORD_ACCESS_DENIED");
 });
 
 test("official records response includes farmer imageUrl for all types", async () => {
@@ -1036,10 +1037,12 @@ test("official records response includes farmer imageUrl for all types", async (
     pregnancy: Pregnancy.find,
     calving: Calving.find,
     medical: MedicalRecord.find,
+    health: HealthRequest.find,
     inseminationCount: Insemination.countDocuments,
     pregnancyCount: Pregnancy.countDocuments,
     calvingCount: Calving.countDocuments,
     medicalCount: MedicalRecord.countDocuments,
+    healthCount: HealthRequest.countDocuments,
   };
 
   Animal.findOne = async () => ({ _id: "animal-1", farmerId: "farmer-1" });
@@ -1078,16 +1081,18 @@ test("official records response includes farmer imageUrl for all types", async (
   }
 });
 
-test("Official records: Technicians receive only their completed official record history", async () => {
+test("Technician Records aggregate owned finished services, responses, and closed requests", async () => {
   const originals = {
     insemination: Insemination.find,
     pregnancy: Pregnancy.find,
     calving: Calving.find,
     medical: MedicalRecord.find,
+    health: HealthRequest.find,
     inseminationCount: Insemination.countDocuments,
     pregnancyCount: Pregnancy.countDocuments,
     calvingCount: Calving.countDocuments,
     medicalCount: MedicalRecord.countDocuments,
+    healthCount: HealthRequest.countDocuments,
   };
   const ownId = (value) => String(value?._id || value || "");
   const pathValue = (record, path) =>
@@ -1142,6 +1147,25 @@ test("Official records: Technicians receive only their completed official record
       inseminationDate: date,
       createdAt: date,
     },
+    {
+      _id: "ai-cancelled-a",
+      status: "cancelled",
+      deletedAt: null,
+      approvedBy: "tech-a",
+      technicianId: "tech-a",
+      cancellationReason: "Farmer no longer needs the visit",
+      cancellationRespondedAt: date,
+      createdAt: date,
+    },
+    {
+      _id: "ai-scheduled-a",
+      status: "scheduled",
+      deletedAt: null,
+      approvedBy: "tech-a",
+      technicianId: "tech-a",
+      scheduledDate: date,
+      createdAt: date,
+    },
   ];
   const pregnancies = [
     {
@@ -1191,20 +1215,73 @@ test("Official records: Technicians receive only their completed official record
       createdAt: date,
     },
   ];
+  const healthRequests = [
+    {
+      _id: "health-advice-a",
+      status: "resolved",
+      handlingMethod: "advice",
+      handledBy: "tech-a",
+      assignedTechnicianId: "tech-a",
+      advice: "Keep the animal hydrated",
+      resolvedAt: date,
+      createdAt: date,
+    },
+    {
+      _id: "health-pickup-a",
+      status: "resolved",
+      handlingMethod: "office_pickup",
+      handledBy: "tech-a",
+      assignedTechnicianId: "tech-a",
+      technicianResponse: {
+        pickup: { item: "Dewormer", instructions: "Collect at the office" },
+      },
+      resolvedAt: date,
+      createdAt: date,
+    },
+    {
+      _id: "health-cancelled-a",
+      status: "cancelled",
+      handledBy: "tech-a",
+      assignedTechnicianId: "tech-a",
+      cancellationReason: "Farmer cancelled",
+      cancellationRespondedAt: date,
+      createdAt: date,
+    },
+    {
+      _id: "health-farm-visit-a",
+      status: "resolved",
+      handlingMethod: "farm_visit",
+      handledBy: "tech-a",
+      assignedTechnicianId: "tech-a",
+      resolvedAt: date,
+      createdAt: date,
+    },
+    {
+      _id: "health-advice-b",
+      status: "resolved",
+      handlingMethod: "advice",
+      handledBy: "tech-b",
+      assignedTechnicianId: "tech-b",
+      resolvedAt: date,
+      createdAt: date,
+    },
+  ];
 
   Insemination.find = queryFor(inseminations);
   Pregnancy.find = queryFor(pregnancies);
   Calving.find = queryFor(calvings);
   MedicalRecord.find = queryFor(medicalRecords);
+  HealthRequest.find = queryFor(healthRequests);
   Insemination.countDocuments = countFor(inseminations);
   Pregnancy.countDocuments = countFor(pregnancies);
   Calving.countDocuments = countFor(calvings);
   MedicalRecord.countDocuments = countFor(medicalRecords);
+  HealthRequest.countDocuments = countFor(healthRequests);
 
   try {
     for (const [user, expected] of [
-      [{ _id: "tech-a", role: "technician" }, ["ai-a", "medical-a", "pregnancy-a", "calving-a"]],
-      [{ _id: "tech-b", role: "technician" }, ["ai-b", "medical-b", "pregnancy-b", "calving-b"]],
+      [{ _id: "tech-a", role: "technician" }, ["ai-a", "ai-cancelled-a", "medical-a", "pregnancy-a", "calving-a", "health-advice-a", "health-pickup-a", "health-cancelled-a"]],
+      [{ _id: "tech-b", role: "technician" }, ["ai-b", "medical-b", "pregnancy-b", "calving-b", "health-advice-b"]],
       [{ _id: "admin-1", role: "admin" }, ["ai-a", "ai-b", "medical-a", "medical-b", "pregnancy-a", "pregnancy-b", "calving-a", "calving-b"]],
     ]) {
       const recorder = responseRecorder();
@@ -1217,11 +1294,11 @@ test("Official records: Technicians receive only their completed official record
       assert.equal(recorder.body.total, expected.length);
     }
 
-    for (const [type, expectedId] of [
-      ["ai", "ai-a"],
-      ["health", "medical-a"],
-      ["pregnancy", "pregnancy-a"],
-      ["calving", "calving-a"],
+    for (const [type, expectedIds] of [
+      ["ai", ["ai-a", "ai-cancelled-a"]],
+      ["health", ["medical-a", "health-advice-a", "health-pickup-a", "health-cancelled-a"]],
+      ["pregnancy", ["pregnancy-a"]],
+      ["calving", ["calving-a"]],
     ]) {
       const recorder = responseRecorder();
       await getOfficialRecords(
@@ -1232,17 +1309,83 @@ test("Official records: Technicians receive only their completed official record
         recorder.response,
       );
       assert.equal(recorder.statusCode, 200);
-      assert.deepEqual(recordIds(recorder.body.data), [expectedId]);
-      assert.equal(recorder.body.total, 1);
+      assert.deepEqual(recordIds(recorder.body.data), expectedIds.sort());
+      assert.equal(recorder.body.total, expectedIds.length);
     }
   } finally {
     Insemination.find = originals.insemination;
     Pregnancy.find = originals.pregnancy;
     Calving.find = originals.calving;
     MedicalRecord.find = originals.medical;
+    HealthRequest.find = originals.health;
     Insemination.countDocuments = originals.inseminationCount;
     Pregnancy.countDocuments = originals.pregnancyCount;
     Calving.countDocuments = originals.calvingCount;
     MedicalRecord.countDocuments = originals.medicalCount;
+    HealthRequest.countDocuments = originals.healthCount;
+  }
+});
+
+test("Official record detail queries populate farmerId for insemination, pregnancy, and calving", async () => {
+  const controller = readFileSync(
+    new URL("../src/controllers/animal-workflow.controllers.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    controller,
+    /if \(recordKind === "insemination"\) \{\s*query = Insemination\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId", "name"\)/,
+  );
+  assert.match(
+    controller,
+    /else if \(recordKind === "pregnancy"\) \{\s*query = Pregnancy\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId", "name"\)/,
+  );
+  assert.match(
+    controller,
+    /else if \(recordKind === "calving"\) \{\s*query = Calving\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId", "name"\)/,
+  );
+
+  const originals = {
+    animal: Animal.findOne,
+    insemination: Insemination.findOne,
+  };
+  const animal = {
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    earTag: "xx1",
+    species: "Dairy Cattle",
+    breed: "Holstein",
+  };
+  Animal.findOne = async () => animal;
+
+  Insemination.findOne = () =>
+    queryResult({
+      _id: "ai-1",
+      animalId: animal,
+      farmerId: { _id: "farmer-1", name: "Farmer Juan" },
+      status: "done",
+      inseminationDate: new Date("2026-09-07T08:00:00.000Z"),
+      completedAt: new Date("2026-09-07T08:30:00.000Z"),
+    });
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "tech-1", role: "technician" },
+        params: {
+          id: "animal-1",
+          recordKind: "insemination",
+          recordId: "ai-1",
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data.farmerId?.name, "Farmer Juan");
+    assert.equal(recorder.body.data.farmerId?.id, "farmer-1");
+  } finally {
+    Animal.findOne = originals.animal;
+    Insemination.findOne = originals.insemination;
   }
 });

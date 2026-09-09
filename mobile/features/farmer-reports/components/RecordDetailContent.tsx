@@ -460,15 +460,11 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                     value={selectedActivity.details.farmerNotes}
                   />
                 ) : null}
-                {hasDisplayValue(selectedActivity.details.urgency) ? (
+                {hasDisplayValue(selectedActivity.details.urgency) && healthPriority.priority === "urgent" ? (
                   <DetailRow
                     label="Farmer request priority"
                     value={healthPriority.label}
-                    highlightColor={
-                      healthPriority.priority === "urgent"
-                        ? "#dc2626"
-                        : "#059669"
-                    }
+                    highlightColor="#dc2626"
                   />
                 ) : null}
                 {hasDisplayValue(selectedActivity.details.diagnosis) ? (

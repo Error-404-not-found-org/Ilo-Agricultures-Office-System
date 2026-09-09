@@ -237,10 +237,13 @@ export function AIRequestDetails({
     cleanText(farmerAddress.city || farmerAddress.municipality) ||
     cleanText(request?.municipality);
   const candidateArea = [barangay, municipality].filter(Boolean).join(", ");
-  const farmerNotes = normalizeText(
+  const rawNotes = normalizeText(
     request?.farmerNotes || request?.comment || request?.note,
     "\n\n",
   );
+  const farmerNotes = rawNotes.startsWith("Additional Notes:\n")
+    ? rawNotes.substring(18).trim()
+    : rawNotes;
   const attachments = useMemo(
     () => getAIRequestAttachmentUrls(request),
     [request],

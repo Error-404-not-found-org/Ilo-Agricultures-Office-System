@@ -697,6 +697,7 @@ export const persistBreedingObservationVerification = async ({
       nextAction: outcome.nextAction,
     };
   });
+};
 
 export const resolveHealthRequest = ({
   id,
@@ -741,13 +742,17 @@ export const resolveHealthRequest = ({
 
       if (task.status === "Completed") {
         if (String(task.relatedRecordId) === String(id)) {
-          const existingRequest = await HealthRequest.findById(id).session(session);
+          const existingRequest =
+            await HealthRequest.findById(id).session(session);
           return existingRequest;
         } else {
-          throw new AppError("This task is already completed and linked to another request.", {
-            status: 409,
-            code: "TASK_ALREADY_LINKED",
-          });
+          throw new AppError(
+            "This task is already completed and linked to another request.",
+            {
+              status: 409,
+              code: "TASK_ALREADY_LINKED",
+            },
+          );
         }
       }
 
@@ -808,7 +813,10 @@ export const resolveHealthRequest = ({
           code: "TASK_FARMER_MISMATCH",
         });
       }
-      if (!task.animalIds || !task.animalIds.some((aid) => String(aid) === String(request.animalId))) {
+      if (
+        !task.animalIds ||
+        !task.animalIds.some((aid) => String(aid) === String(request.animalId))
+      ) {
         throw new AppError("Task animal mismatch.", {
           status: 409,
           code: "TASK_ANIMAL_MISMATCH",
@@ -836,46 +844,63 @@ export const resolveHealthRequest = ({
       { upsert: true, session },
     );
 
-    await AuditLog.create([{
-      action: "RESOLVE_HEALTH_REQUEST",
-      actorId: technicianId,
-      entityId: request._id,
-      entityType: "HealthRequest",
-      metadata: {
-        status: "resolved",
-        taskId: task ? task._id : undefined,
-        healthRequestId: request._id,
-        animalId: request.animalId,
-        farmerId: request.farmerId,
-      },
-      createdAt: new Date(),
-    }], { session });
+    await AuditLog.create(
+      [
+        {
+          action: "RESOLVE_HEALTH_REQUEST",
+          actorId: technicianId,
+          entityId: request._id,
+          entityType: "HealthRequest",
+          metadata: {
+            status: "resolved",
+            taskId: task ? task._id : undefined,
+            healthRequestId: request._id,
+            animalId: request.animalId,
+            farmerId: request.farmerId,
+          },
+          createdAt: new Date(),
+        },
+      ],
+      { session },
+    );
 
-    await AnimalTimelineEvent.create([{
-      animalId: request.animalId,
-      eventType: "Health Check",
-      occurredAt: new Date(),
-      title: "Health Check Completed",
-      summary: updateFields.diagnosis || "Health issue resolved",
-      sourceType: "HealthRequest",
-      sourceId: request._id,
-      metadata: {
-        taskId: task ? task._id : undefined,
-        technicianId,
-        diagnosis: updateFields.diagnosis
-      }
-    }], { session });
+    await AnimalTimelineEvent.create(
+      [
+        {
+          animalId: request.animalId,
+          eventType: "Health Check",
+          occurredAt: new Date(),
+          title: "Health Check Completed",
+          summary: updateFields.diagnosis || "Health issue resolved",
+          sourceType: "HealthRequest",
+          sourceId: request._id,
+          metadata: {
+            taskId: task ? task._id : undefined,
+            technicianId,
+            diagnosis: updateFields.diagnosis,
+          },
+        },
+      ],
+      { session },
+    );
 
     return request;
   });
 
-export const createResolvedWalkInHealth = ({ requestData, medicalRecord, taskId }) =>
+export const createResolvedWalkInHealth = ({
+  requestData,
+  medicalRecord,
+  taskId,
+}) =>
   runTransaction(async (session) => {
     if (taskId) {
-      throw new AppError("Walk-in health records cannot be linked to a pre-existing task.", {
-        status: 400,
-        code: "WALKIN_TASK_FORBIDDEN",
-      });
+      throw new AppError(
+        "Walk-in health records cannot be linked to a pre-existing task.",
+        {
+          status: 400,
+          code: "WALKIN_TASK_FORBIDDEN",
+        },
+      );
     }
 
     const [request] = await HealthRequest.create([requestData], { session });
@@ -889,30 +914,40 @@ export const createResolvedWalkInHealth = ({ requestData, medicalRecord, taskId 
       { session },
     );
 
-    await AuditLog.create([{
-      action: "CREATE_WALKIN_HEALTH",
-      actorId: medicalRecord.technicianId,
-      entityId: request._id,
-      entityType: "HealthRequest",
-      metadata: {
-        medicalRecordId: record._id,
-        healthRequestId: request._id,
-        animalId: request.animalId,
-        farmerId: request.farmerId,
-      },
-      createdAt: new Date(),
-    }], { session });
+    await AuditLog.create(
+      [
+        {
+          action: "CREATE_WALKIN_HEALTH",
+          actorId: medicalRecord.technicianId,
+          entityId: request._id,
+          entityType: "HealthRequest",
+          metadata: {
+            medicalRecordId: record._id,
+            healthRequestId: request._id,
+            animalId: request.animalId,
+            farmerId: request.farmerId,
+          },
+          createdAt: new Date(),
+        },
+      ],
+      { session },
+    );
 
-    await AnimalTimelineEvent.create([{
-      animalId: request.animalId,
-      eventType: "Health Check",
-      occurredAt: new Date(),
-      title: "Walk-in Health Check Completed",
-      summary: "Walk-in health log recorded",
-      sourceType: "HealthRequest",
-      sourceId: request._id,
-      metadata: { technicianId: medicalRecord.technicianId }
-    }], { session });
+    await AnimalTimelineEvent.create(
+      [
+        {
+          animalId: request.animalId,
+          eventType: "Health Check",
+          occurredAt: new Date(),
+          title: "Walk-in Health Check Completed",
+          summary: "Walk-in health log recorded",
+          sourceType: "HealthRequest",
+          sourceId: request._id,
+          metadata: { technicianId: medicalRecord.technicianId },
+        },
+      ],
+      { session },
+    );
 
     return { request, medicalRecord: record };
   });

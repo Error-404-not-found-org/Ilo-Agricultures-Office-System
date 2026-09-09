@@ -637,8 +637,8 @@ export default function FarmerProfile() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => navigate("/technician/inseminations")}>AI Records</button>
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => navigate("/technician/health")}>Health Records</button>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => navigate("/technician/records?type=insemination")}>AI Records</button>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => navigate("/technician/records?type=health")}>Health Records</button>
                 </div>
               </div>
 

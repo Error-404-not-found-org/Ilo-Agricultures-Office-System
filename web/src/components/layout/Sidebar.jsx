@@ -259,11 +259,6 @@ export default function Sidebar() {
         icon: <Users size={16} />,
         label: "Profile",
       },
-      {
-        path: "/technician/settings",
-        icon: <SettingsIcon size={16} />,
-        label: "Settings",
-      },
     ],
     [livePendingCount],
   );

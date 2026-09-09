@@ -111,6 +111,7 @@ const formatSubmittedDate = (value: unknown) => {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "Asia/Manila",
   });
 };
 

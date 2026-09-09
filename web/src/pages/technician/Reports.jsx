@@ -376,7 +376,7 @@ export default function FieldReports() {
           item.symptoms || "—",
           item.diagnosis || "—",
           item.treatment || "—",
-          (item.urgency || "low").toUpperCase(),
+          (item.urgency?.toLowerCase() === "emergency" ? "Needs urgent attention" : (item.urgency?.toLowerCase() === "high" ? "High" : "")).toUpperCase(),
           (item.status || "pending").toUpperCase()
         ]);
 
@@ -808,7 +808,7 @@ export default function FieldReports() {
                 <table className="table table-sm w-full divide-y divide-base-300">
                   <thead className="bg-base-200 text-base-content/50 uppercase font-bold tracking-wider text-[10px]">
                     <tr>
-                      <th className="py-3 px-5 text-center w-[70px]">Type</th>
+                      <th className="py-3 px-5 text-center w-17.5">Type</th>
                       <th className="py-3 px-4 text-left">Animal / Tag</th>
                       <th className="py-3 px-4 text-left">Farmer Client</th>
                       <th className="py-3 px-4 text-left">Location</th>

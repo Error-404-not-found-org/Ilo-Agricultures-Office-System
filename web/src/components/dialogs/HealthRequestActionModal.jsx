@@ -19,8 +19,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
+import ImagePreviewModal from "../ui/ImagePreviewModal";
 import Modal from "../ui/Modal";
 import UserAvatar from "../ui/UserAvatar";
+import { formatFarmerLocation } from "./PregnancyLossReviewModal";
 import {
   HEALTH_ADVICE_MAX_LENGTH,
   HEALTH_PICKUP_ITEM_MAX_LENGTH,
@@ -65,24 +67,22 @@ const unwrapDetail = (response) =>
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
 
-const getRequestPhotos = (request) => [
-  ...new Set(
-    [
-      ...(Array.isArray(request?.photos) ? request.photos : []),
-      request?.imageUrl,
-    ]
-      .filter((url) => typeof url === "string")
-      .map((url) => url.trim())
-      .filter(Boolean),
-  ),
-];
-
-const getFarmerAddress = (farmer) =>
-  typeof farmer?.address === "string"
-    ? farmer.address
-    : [farmer?.address?.barangay, farmer?.address?.city]
-        .filter(Boolean)
-        .join(" ");
+const getRequestPhotos = (request) => {
+  const raw = request?.raw || request || {};
+  return Array.from(
+    new Set(
+      [
+        ...(Array.isArray(raw?.photos) ? raw.photos : []),
+        ...(Array.isArray(raw?.farmerRequest?.photos) ? raw.farmerRequest.photos : []),
+        raw?.photoUrl,
+        raw?.imageUrl,
+        raw?.farmerRequest?.photoUrl,
+      ]
+        .filter((url) => typeof url === "string" && url.trim().length > 0)
+        .map((url) => url.trim())
+    )
+  );
+};
 
 const formatRequestDate = (dateString) => {
   if (!dateString) return "Date unknown";
@@ -115,15 +115,19 @@ const getInitialRequest = (task, requestId) => ({
 
 function Field({ label, helper, children }) {
   return (
-    <fieldset className="fieldset min-w-0">
-      <legend className="fieldset-legend text-sm font-semibold text-base-content">
-        {label}
-      </legend>
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="label-text text-xs font-semibold text-base-content/80 block">
+          {label}
+        </label>
+        {helper && (
+          <span className="text-[10px] text-base-content/50 font-medium">
+            {helper}
+          </span>
+        )}
+      </div>
       {children}
-      {helper ? (
-        <p className="label text-xs text-base-content/60">{helper}</p>
-      ) : null}
-    </fieldset>
+    </div>
   );
 }
 
@@ -133,16 +137,18 @@ function MethodButton({ icon: Icon, title, description, disabled, onClick }) {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="group flex min-h-18 w-full cursor-pointer items-center gap-3 rounded-xl border border-base-300 bg-base-200 p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+      className="group flex min-h-16 w-full cursor-pointer flex-col items-start gap-1 rounded-xl border border-base-300 bg-base-100 p-3.5 text-left transition-all hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-base-300 text-primary group-hover:bg-primary/10">
-        <Icon size={20} aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-bold text-base-content">{title}</span>
-        <span className="mt-0.5 block text-xs leading-relaxed text-base-content/65">
-          {description}
+      <div className="flex items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-content">
+          <Icon size={16} aria-hidden="true" />
         </span>
+        <span className="font-bold text-xs text-base-content">
+          {title}
+        </span>
+      </div>
+      <span className="text-[10px] leading-tight text-base-content/65 font-normal">
+        {description}
       </span>
     </button>
   );
@@ -157,6 +163,7 @@ export default function HealthRequestActionModal({
   const queryClient = useQueryClient();
   const requestId = getHealthRequestId(task);
   const [view, setView] = useState("summary");
+  const [previewImage, setPreviewImage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [justClaimed, setJustClaimed] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -396,7 +403,10 @@ export default function HealthRequestActionModal({
       await axiosInstance.patch(`/health-request/${requestId}/status`, {
         status: "in-progress",
       });
-      await finish("Health visit started");
+      await invalidateHealth();
+      const refreshed = await detailQuery.refetch();
+      if (refreshed.error) throw refreshed.error;
+      toast.success("Health service started");
     } catch (error) {
       setErrorMessage(
         getErrorMessage(error, "The Health visit could not be started."),
@@ -461,7 +471,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={returnToSummary}
           >
@@ -469,7 +479,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold gap-1.5 rounded-xl"
             disabled={busy}
             onClick={submitAdvice}
           >
@@ -484,7 +494,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={returnToSummary}
           >
@@ -492,7 +502,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold gap-1.5 rounded-xl"
             disabled={busy}
             onClick={submitPickup}
           >
@@ -507,7 +517,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={() => setSamePeriodConfirmation(false)}
           >
@@ -515,7 +525,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-warning"
+            className="btn btn-sm btn-warning font-bold gap-1.5 rounded-xl"
             disabled={busy}
             onClick={() => submitSchedule(true)}
           >
@@ -530,7 +540,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={returnToSummary}
           >
@@ -538,7 +548,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold gap-1.5 rounded-xl"
             disabled={busy || !schedule.visitPeriod}
             onClick={() => submitSchedule(false)}
           >
@@ -553,7 +563,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={onClose}
           >
@@ -561,7 +571,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold gap-1.5 rounded-xl"
             disabled={busy}
             onClick={completeVisit}
           >
@@ -576,7 +586,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={onClose}
           >
@@ -584,7 +594,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl"
             disabled={busy}
             onClick={openSchedule}
           >
@@ -592,12 +602,12 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold gap-1.5 rounded-xl"
             disabled={busy}
             onClick={startVisit}
           >
-            {busy ? <Loader2 size={15} className="animate-spin" /> : null} Start
-            Visit
+            {busy ? <Loader2 size={15} className="animate-spin" /> : null} Record
+            Health Assistance
           </button>
         </>
       );
@@ -607,7 +617,7 @@ export default function HealthRequestActionModal({
         <>
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
             disabled={busy}
             onClick={onClose}
           >
@@ -615,7 +625,7 @@ export default function HealthRequestActionModal({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold gap-1.5 rounded-xl"
             disabled={busy}
             onClick={claimRequest}
           >
@@ -628,7 +638,7 @@ export default function HealthRequestActionModal({
     return (
       <button
         type="button"
-        className="btn btn-sm"
+        className="btn btn-ghost btn-sm font-bold rounded-xl text-base-content/70"
         disabled={busy}
         onClick={onClose}
       >
@@ -649,7 +659,8 @@ export default function HealthRequestActionModal({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={busy ? undefined : onClose}
       title="Health Request"
@@ -660,53 +671,64 @@ export default function HealthRequestActionModal({
       size="xl"
       actions={actions}
     >
-      <div className="space-y-5">
+      <div className="space-y-5 py-1">
         {detailQuery.isLoading ? (
-          <div className="space-y-5 animate-pulse">
-            <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3 w-full">
-                  <div className="h-12 w-12 rounded-full bg-base-300 shrink-0"></div>
-                  <div className="space-y-2 flex-1">
-                    <div className="h-3 w-16 bg-base-300 rounded"></div>
-                    <div className="h-4 w-32 bg-base-300 rounded"></div>
-                  </div>
-                </div>
-                <div className="space-y-2 text-right">
-                  <div className="h-3 w-16 bg-base-300 rounded ml-auto"></div>
-                  <div className="h-3 w-24 bg-base-300 rounded ml-auto"></div>
-                </div>
-              </div>
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <div className="h-4 w-full bg-base-300 rounded"></div>
-                <div className="h-4 w-5/6 bg-base-300 rounded"></div>
-                <div className="h-4 w-4/5 bg-base-300 rounded"></div>
-                <div className="h-4 w-full bg-base-300 rounded"></div>
-              </div>
-              <div className="mt-5 pt-5 border-t border-base-300">
-                <div className="h-4 w-32 bg-base-300 rounded mb-3"></div>
-                <div className="space-y-2">
-                  <div className="h-3 w-full bg-base-300 rounded"></div>
-                  <div className="h-3 w-4/5 bg-base-300 rounded"></div>
-                </div>
-              </div>
-            </section>
-            {isOwned ? (
-              <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-                <div className="h-5 w-40 bg-base-300 rounded mb-4"></div>
-                <div className="space-y-3">
-                  <div className="h-12 w-full bg-base-300 rounded-lg"></div>
-                  <div className="h-12 w-full bg-base-300 rounded-lg"></div>
-                </div>
-              </section>
-            ) : null}
+          <div className="space-y-4 animate-pulse">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="h-28 rounded-2xl bg-base-200 border border-base-300"></div>
+              <div className="h-28 rounded-2xl bg-base-200 border border-base-300"></div>
+            </div>
+            <div className="h-32 rounded-2xl bg-base-200 border border-base-300"></div>
           </div>
         ) : (
           <>
-            {/* Farmer Information Section */}
-            <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
+            {/* Animal & Farmer Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Mother Animal / Patient Animal */}
+              <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
+                    Animal Patient
+                  </span>
+                  <span className="badge badge-primary/15 text-primary border-primary/20 badge-sm font-semibold">
+                    {formatRequestType(
+                      request?.requestType || task?.requestType,
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-bold text-sm text-base-content">
+                      Tag #{request?.animalId?.earTag ||
+                        request?.animalId?.animalId ||
+                        task?.animalTag ||
+                        task?.animalName ||
+                        "Not recorded"}
+                    </h4>
+                    <p className="text-xs text-base-content/70 mt-0.5">
+                      {[
+                        request?.animalId?.species || task?.animalSpecies,
+                        request?.animalId?.breed || task?.animalBreed,
+                      ]
+                        .filter(Boolean)
+                        .join(" • ") || "Species not recorded"}
+                    </p>
+                  </div>
+                </div>
+                {request?.createdAt && (
+                  <p className="text-[11px] text-base-content/60 mt-2 flex items-center gap-1">
+                    <Clock3 className="h-3 w-3 text-primary/70" />
+                    Submitted: <strong>{formatRequestDate(request.createdAt)}</strong>
+                  </p>
+                )}
+              </div>
+
+              {/* Reporting Farmer */}
+              <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+                  Reporting Farmer
+                </span>
+                <div className="flex items-start gap-3">
                   <UserAvatar
                     name={
                       request?.farmerId?.name ||
@@ -716,167 +738,101 @@ export default function HealthRequestActionModal({
                     imageUrl={
                       request?.farmerId?.imageUrl || task?.farmerImageUrl
                     }
-                    size={48}
-                    sizeClass="h-12 w-12"
+                    size={40}
+                    sizeClass="h-10 w-10"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-base-content/55">
-                      Farmer
-                    </p>
-                    <p className="truncate font-bold text-base-content">
+                    <h4 className="font-bold text-sm text-base-content truncate">
                       {request?.farmerId?.name ||
                         request?.farmerName ||
                         task?.farmer ||
                         "Not recorded"}
+                    </h4>
+                    <p className="text-xs text-base-content/70 mt-0.5 truncate">
+                      {formatFarmerLocation(request?.farmerId, "Location unknown")}
                     </p>
+                    {(request?.farmerId?.phoneNumber ||
+                      request?.farmerId?.phone) && (
+                      <a
+                        href={`tel:${request?.farmerId?.phoneNumber || request?.farmerId?.phone}`}
+                        className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-1.5 hover:underline"
+                      >
+                        <Phone className="h-3 w-3" />
+                        {request?.farmerId?.phoneNumber ||
+                          request?.farmerId?.phone}
+                      </a>
+                    )}
                   </div>
                 </div>
-                {request?.createdAt && (
-                  <div className="text-right shrink-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-base-content/55">
-                      Submitted
-                    </p>
-                    <p className="text-xs text-base-content/70">
-                      {formatRequestDate(request.createdAt)}
-                    </p>
-                  </div>
-                )}
               </div>
-            </section>
+            </div>
 
-            {/* Request Details Section - Improved Hierarchy */}
-            <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-base-content/60 mb-4">
-                Request Details
-              </h4>
+            {/* Clinical Request Details Section */}
+            <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
+                Clinical Request Details
+              </span>
 
-              <div className="space-y-4">
-                {/* Location and Contact */}
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                    <MapPin size={16} className="shrink-0 text-primary" />
-                    <span className="truncate text-base-content/70">
-                      {getFarmerAddress(request?.farmerId) ||
-                        "Location unknown"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                    <Phone size={16} className="shrink-0 text-primary" />
-                    <span className="truncate text-base-content/70">
-                      {request?.farmerId?.phoneNumber ||
-                        request?.farmerId?.phone ||
-                        "Not recorded"}
-                    </span>
-                  </div>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                    Assistance Requested
+                  </span>
+                  <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium wrap-break-word whitespace-pre-wrap capitalize">
+                    {request?.requestDetails?.assistanceRequested
+                      ? request.requestDetails.assistanceRequested.replace(
+                          /_/g,
+                          " ",
+                        )
+                      : request?.symptoms ||
+                        request?.description ||
+                        task?.symptoms ||
+                        "Not recorded."}
+                  </p>
                 </div>
 
-                {/* Animal and Type */}
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                    <Tag size={16} className="shrink-0 text-primary" />
-                    <span className="truncate text-base-content/70">
-                      Animal Tag:{" "}
-                      <strong className="text-base-content">
-                        {request?.animalId?.earTag ||
-                          request?.animalId?.animalId ||
-                          task?.animalTag ||
-                          task?.animalName ||
-                          "Not recorded"}
-                      </strong>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                    <Activity size={16} className="shrink-0 text-primary" />
-                    <span className="truncate text-base-content/70">
-                      Type:{" "}
-                      <strong className="text-base-content">
-                        {formatRequestType(
-                          request?.requestType || task?.requestType,
-                        )}
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Assistance Requested */}
-                <div className="bg-base-100 rounded-lg p-4 border border-base-300">
-                  <div className="flex items-start gap-2">
-                    <MessageSquareText
-                      size={16}
-                      className="shrink-0 mt-0.5 text-primary"
-                    />
-                    <div className="flex-1">
-                      <strong className="text-base-content block mb-2 text-sm">
-                        Assistance Requested:
-                      </strong>
-                      <p className="text-sm text-base-content/80 leading-relaxed wrap-break-word whitespace-pre-wrap capitalize">
-                        {request?.requestDetails?.assistanceRequested
-                          ? request.requestDetails.assistanceRequested.replace(
-                              /_/g,
-                              " ",
-                            )
-                          : request?.symptoms ||
-                            request?.description ||
-                            task?.symptoms ||
-                            "Not recorded."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Observed Signs - Using DaisyUI Badge Component */}
                 {request?.requestDetails?.observedSigns?.length > 0 && (
-                  <div className="bg-base-100 rounded-lg p-4 border border-base-300">
-                    <div className="flex items-start gap-2">
-                      <Activity
-                        size={16}
-                        className="shrink-0 mt-0.5 text-primary"
-                      />
-                      <div className="flex-1">
-                        <strong className="text-base-content block mb-3 text-sm">
-                          Observed Signs:
-                        </strong>
-                        <div className="flex flex-wrap gap-2">
-                          {request.requestDetails.observedSigns.map(
-                            (sign, index) => (
-                              <div
-                                key={index}
-                                className="badge badge-primary badge-lg gap-1.5 px-3 py-2.5 text-xs font-medium capitalize"
-                              >
-                                {sign.replace(/_/g, " ")}
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </div>
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1.5">
+                      Observed Signs ({request.requestDetails.observedSigns.length})
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {request.requestDetails.observedSigns.map(
+                        (sign, index) => (
+                          <span
+                            key={index}
+                            className="badge badge-primary/15 text-primary border-primary/25 badge-sm font-semibold capitalize py-2 px-2.5"
+                          >
+                            {sign.replace(/_/g, " ")}
+                          </span>
+                        ),
+                      )}
                     </div>
                   </div>
                 )}
               </div>
-            </section>
+            </div>
 
-            {/* Photos Section - Improved with DaisyUI */}
+            {/* Photos Section */}
             {requestPhotos.length > 0 && (
-              <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-                <div className="mb-3 flex items-center gap-2">
-                  <ImageIcon
-                    size={16}
-                    className="text-primary"
-                    aria-hidden="true"
-                  />
-                  <h4 className="text-sm font-semibold text-base-content">
+              <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
                     Farmer Request Photos ({requestPhotos.length})
-                  </h4>
+                  </span>
+                  <span className="text-[11px] text-base-content/60 flex items-center gap-1">
+                    <ImageIcon className="h-3 w-3 text-primary" />
+                    {requestPhotos.length} {requestPhotos.length === 1 ? "photo attached" : "photos attached"}
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="flex flex-wrap gap-2.5">
                   {requestPhotos.map((photo, index) => (
-                    <a
+                    <button
+                      type="button"
                       key={photo}
-                      href={photo}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() => setPreviewImage(photo)}
                       aria-label={`Open Farmer Health request photo ${index + 1}`}
-                      className="aspect-video overflow-hidden rounded-xl border border-base-300 bg-base-100 transition-transform hover:scale-105 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      className="relative h-20 w-28 rounded-xl overflow-hidden border border-base-300 hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <img
                         src={photo}
@@ -884,10 +840,10 @@ export default function HealthRequestActionModal({
                         className="h-full w-full object-cover"
                         loading="lazy"
                       />
-                    </a>
+                    </button>
                   ))}
                 </div>
-              </section>
+              </div>
             )}
 
             {detailQuery.isLoading ? (
@@ -901,8 +857,11 @@ export default function HealthRequestActionModal({
             ) : null}
 
             {detailQuery.isError ? (
-              <div role="alert" className="alert alert-error alert-soft">
-                <AlertCircle size={18} aria-hidden="true" />
+              <div
+                role="alert"
+                className="alert alert-error/15 border-error/30 text-xs text-error flex items-start gap-3 rounded-2xl py-3 px-4"
+              >
+                <AlertCircle size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
                 <span>
                   {getErrorMessage(
                     detailQuery.error,
@@ -913,34 +872,62 @@ export default function HealthRequestActionModal({
             ) : null}
 
             {errorMessage ? (
-              <div role="alert" className="alert alert-error alert-soft">
-                <AlertCircle size={18} aria-hidden="true" />
-                <span>{errorMessage}</span>
+              <div
+                role="alert"
+                className="alert alert-error/15 border-error/30 text-xs text-error flex items-start gap-3 rounded-2xl py-3 px-4"
+              >
+                <AlertCircle size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="font-semibold">{errorMessage}</span>
+              </div>
+            ) : null}
+
+            {!detailQuery.isLoading && view === "summary" && isScheduled ? (
+              <div className="border border-base-300 rounded-2xl bg-base-200/50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+                    <CalendarDays size={18} aria-hidden="true" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
+                      Scheduled Farm Visit
+                    </span>
+                    <h4 className="font-bold text-sm text-base-content mt-0.5">
+                      {formatHealthVisitSchedule(
+                        request.scheduledDate,
+                        request.visitPeriod,
+                      )}
+                    </h4>
+                  </div>
+                </div>
               </div>
             ) : null}
 
             {!detailQuery.isLoading && view === "summary" && canChooseMethod ? (
-              <section className={`space-y-4 ${justClaimed ? "animate-in slide-in-from-top-4 fade-in duration-500" : ""}`}>
+              <div
+                className={`border border-base-300 rounded-2xl p-4 space-y-3 ${justClaimed ? "animate-in slide-in-from-top-4 fade-in duration-500" : ""}`}
+              >
                 {justClaimed && (
-                  <div className="alert alert-success alert-soft mb-2">
-                    <CheckCircle2 size={18} aria-hidden="true" />
-                    <span>Request claimed successfully. Please select a response method below.</span>
+                  <div className="alert alert-success/15 border-success/30 text-xs text-base-content/80 flex items-start gap-2.5 rounded-xl py-2.5 px-3 mb-1">
+                    <CheckCircle2 size={16} className="text-success shrink-0 mt-0.5" aria-hidden="true" />
+                    <span>
+                      Request claimed successfully. Please select a response
+                      method below.
+                    </span>
                   </div>
                 )}
                 <div>
-                  <h4 className="text-base font-bold text-base-content">
-                    How will you handle this request?
-                  </h4>
-                  <p className="mt-1 text-sm text-base-content/65">
-                    Choose one response method. Only a Farm Visit creates a
-                    schedule.
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
+                    Response Determination
+                  </span>
+                  <p className="text-xs text-base-content/70 mt-0.5">
+                    Choose one response method. Only a Farm Visit creates a calendar schedule.
                   </p>
                 </div>
-                <div className="grid gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
                   <MethodButton
                     icon={MessageSquareText}
                     title="Give Advice"
-                    description="Send guidance to the farmer without scheduling a visit."
+                    description="Send guidance to farmer without scheduling a visit."
                     disabled={!adviceEligible || busy}
                     onClick={() => {
                       setErrorMessage("");
@@ -950,7 +937,7 @@ export default function HealthRequestActionModal({
                   <MethodButton
                     icon={Building2}
                     title="Office Pickup"
-                    description="Confirm an item is available and provide pickup instructions."
+                    description="Confirm available item and provide pickup guidance."
                     disabled={!pickupEligible || busy}
                     onClick={() => {
                       setErrorMessage("");
@@ -960,31 +947,31 @@ export default function HealthRequestActionModal({
                   <MethodButton
                     icon={CalendarDays}
                     title="Schedule Farm Visit"
-                    description="Choose a visit date and a morning or afternoon period."
+                    description="Choose visit date and morning or afternoon period."
                     disabled={!farmVisitEligible || busy}
                     onClick={openSchedule}
                   />
                 </div>
-              </section>
+              </div>
             ) : null}
 
             {!detailQuery.isLoading &&
             view === "summary" &&
             !isOwned &&
             !isTerminal ? (
-              <div className="alert alert-info alert-soft">
-                <Stethoscope size={18} aria-hidden="true" />
+              <div className="alert alert-info/15 border-info/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+                <Stethoscope size={16} className="text-info shrink-0 mt-0.5" aria-hidden="true" />
                 <span>Claim this request before choosing how to respond.</span>
               </div>
             ) : null}
 
             {view === "advice" ? (
-              <section className="space-y-4">
+              <div className="border border-base-300 rounded-2xl p-4 space-y-4">
                 <div>
-                  <h4 className="text-base font-bold text-base-content">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                     Give Advice
-                  </h4>
-                  <p className="mt-1 text-sm text-base-content/65">
+                  </span>
+                  <p className="text-xs text-base-content/70 mt-0.5">
                     This resolves the request without creating a Medical Record
                     or farm schedule.
                   </p>
@@ -992,7 +979,7 @@ export default function HealthRequestActionModal({
                 <Field label="Advice for Farmer" helper="Required">
                   <textarea
                     aria-label="Advice for Farmer"
-                    className="textarea min-h-32 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-28 resize-none"
                     maxLength={HEALTH_ADVICE_MAX_LENGTH}
                     value={advice.adviceForFarmer}
                     onChange={(event) => {
@@ -1002,6 +989,7 @@ export default function HealthRequestActionModal({
                       });
                       setErrorMessage("");
                     }}
+                    placeholder="Provide guidance, symptoms analysis, or instructions for the farmer..."
                   />
                 </Field>
                 <Field label="Follow-up date" helper="Optional">
@@ -1009,7 +997,7 @@ export default function HealthRequestActionModal({
                     aria-label="Follow-up date"
                     type="date"
                     min={todayKey}
-                    className="input w-full"
+                    className="input input-bordered w-full text-xs font-semibold rounded-xl"
                     value={advice.followUpDate}
                     onChange={(event) => {
                       setAdvice({
@@ -1026,7 +1014,7 @@ export default function HealthRequestActionModal({
                 >
                   <textarea
                     aria-label="Internal Note"
-                    className="textarea min-h-24 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                     maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
                     value={advice.internalNote}
                     onChange={(event) => {
@@ -1036,18 +1024,19 @@ export default function HealthRequestActionModal({
                       });
                       setErrorMessage("");
                     }}
+                    placeholder="Notes for municipal staff..."
                   />
                 </Field>
-              </section>
+              </div>
             ) : null}
 
             {view === "pickup" ? (
-              <section className="space-y-4">
+              <div className="border border-base-300 rounded-2xl p-4 space-y-4">
                 <div>
-                  <h4 className="text-base font-bold text-base-content">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                     Office Pickup
-                  </h4>
-                  <p className="mt-1 text-sm text-base-content/65">
+                  </span>
+                  <p className="text-xs text-base-content/70 mt-0.5">
                     Confirm availability and tell the farmer where and how to
                     collect the item. This does not record treatment or
                     collection.
@@ -1056,7 +1045,7 @@ export default function HealthRequestActionModal({
                 <Field label="Item available for pickup" helper="Required">
                   <input
                     aria-label="Item available for pickup"
-                    className="input w-full"
+                    className="input input-bordered w-full text-xs font-semibold rounded-xl"
                     maxLength={HEALTH_PICKUP_ITEM_MAX_LENGTH}
                     value={pickup.item}
                     onChange={(event) => {
@@ -1066,11 +1055,11 @@ export default function HealthRequestActionModal({
                     placeholder="Dewormer, medicine, vaccine, or supplements"
                   />
                 </Field>
-                <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-base-300 bg-base-200/30 p-3">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-base-300 bg-base-100 p-3 hover:bg-base-200/50 transition-colors">
                   <input
                     aria-label="I confirm this item is available for office pickup"
                     type="checkbox"
-                    className="checkbox checkbox-primary"
+                    className="checkbox checkbox-primary checkbox-sm rounded-lg"
                     checked={pickup.availabilityConfirmed}
                     onChange={(event) => {
                       setPickup({
@@ -1080,7 +1069,7 @@ export default function HealthRequestActionModal({
                       setErrorMessage("");
                     }}
                   />
-                  <span className="font-semibold text-base-content">
+                  <span className="font-semibold text-xs text-base-content">
                     I confirm this item is available for office pickup
                   </span>
                 </label>
@@ -1090,7 +1079,7 @@ export default function HealthRequestActionModal({
                 >
                   <textarea
                     aria-label="Pickup instructions"
-                    className="textarea min-h-28 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-24 resize-none"
                     maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
                     value={pickup.pickupInstructions}
                     onChange={(event) => {
@@ -1106,7 +1095,7 @@ export default function HealthRequestActionModal({
                 <Field label="Message for Farmer" helper="Optional">
                   <textarea
                     aria-label="Message for Farmer"
-                    className="textarea min-h-22 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                     maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
                     value={pickup.farmerMessage}
                     onChange={(event) =>
@@ -1117,11 +1106,11 @@ export default function HealthRequestActionModal({
                     }
                   />
                 </Field>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Dosage / Use instructions" helper="Optional">
                     <textarea
                       aria-label="Dosage / Use instructions"
-                      className="textarea min-h-24 w-full"
+                      className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                       maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
                       value={pickup.dosageInstructions}
                       onChange={(event) =>
@@ -1138,7 +1127,7 @@ export default function HealthRequestActionModal({
                   >
                     <textarea
                       aria-label="Withdrawal guidance"
-                      className="textarea min-h-24 w-full"
+                      className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                       maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
                       value={pickup.withdrawalGuidance}
                       onChange={(event) =>
@@ -1155,7 +1144,7 @@ export default function HealthRequestActionModal({
                     aria-label="Pickup follow-up date"
                     type="date"
                     min={todayKey}
-                    className="input w-full"
+                    className="input input-bordered w-full text-xs font-semibold rounded-xl"
                     value={pickup.followUpDate}
                     onChange={(event) => {
                       setPickup({
@@ -1172,7 +1161,7 @@ export default function HealthRequestActionModal({
                 >
                   <textarea
                     aria-label="Pickup Internal Note"
-                    className="textarea min-h-24 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                     maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
                     value={pickup.internalNote}
                     onChange={(event) =>
@@ -1180,16 +1169,16 @@ export default function HealthRequestActionModal({
                     }
                   />
                 </Field>
-              </section>
+              </div>
             ) : null}
 
             {view === "schedule" ? (
-              <section className="space-y-4">
+              <div className="border border-base-300 rounded-2xl p-4 space-y-4">
                 <div>
-                  <h4 className="text-base font-bold text-base-content">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                     Schedule Farm Visit
-                  </h4>
-                  <p className="mt-1 text-sm text-base-content/65">
+                  </span>
+                  <p className="text-xs text-base-content/70 mt-0.5">
                     Choose a calendar date and service period. No exact
                     appointment time is stored.
                   </p>
@@ -1199,7 +1188,7 @@ export default function HealthRequestActionModal({
                     aria-label="Visit date"
                     type="date"
                     min={todayKey}
-                    className="input w-full"
+                    className="input input-bordered w-full text-xs font-semibold rounded-xl"
                     value={schedule.scheduledDate}
                     onChange={(event) => {
                       setSchedule({
@@ -1211,11 +1200,11 @@ export default function HealthRequestActionModal({
                     }}
                   />
                 </Field>
-                <fieldset className="fieldset">
-                  <legend className="fieldset-legend text-sm font-semibold text-base-content">
+                <div className="space-y-1.5">
+                  <label className="label-text text-xs font-semibold text-base-content/80 block">
                     Visit Period
-                  </legend>
-                  <div className="grid grid-cols-2 gap-3">
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
                     {["morning", "afternoon"].map((period) => {
                       const availability = availabilityByPeriod[period];
                       const selected = schedule.visitPeriod === period;
@@ -1233,13 +1222,17 @@ export default function HealthRequestActionModal({
                             setSamePeriodConfirmation(false);
                             setErrorMessage("");
                           }}
-                          className={`min-h-16 rounded-xl border p-3 text-left ${selected ? "border-primary bg-primary/10 text-primary" : "border-base-300 bg-base-100 text-base-content"} disabled:cursor-not-allowed disabled:opacity-45`}
+                          className={`min-h-14 rounded-xl border p-3 text-left transition-all ${
+                            selected
+                              ? "border-primary bg-primary/15 text-primary shadow-sm"
+                              : "border-base-300 bg-base-100 text-base-content hover:border-primary/50 hover:bg-primary/5"
+                          } disabled:cursor-not-allowed disabled:opacity-45`}
                         >
-                          <span className="flex items-center gap-2 font-bold">
-                            <Clock3 size={17} aria-hidden="true" /> {label}
+                          <span className="flex items-center gap-2 font-bold text-xs">
+                            <Clock3 size={15} aria-hidden="true" /> {label}
                           </span>
                           {availability.reason ? (
-                            <span className="mt-1 block text-xs opacity-70">
+                            <span className="mt-1 block text-[10px] opacity-70">
                               {availability.reason}
                             </span>
                           ) : null}
@@ -1247,57 +1240,34 @@ export default function HealthRequestActionModal({
                       );
                     })}
                   </div>
-                </fieldset>
+                </div>
                 {samePeriodConfirmation ? (
                   <div
                     role="alert"
-                    className="alert alert-warning alert-soft items-start"
+                    className="alert alert-warning/15 border-warning/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4"
                   >
-                    <Clock3 size={18} aria-hidden="true" />
+                    <Clock3 size={16} className="text-warning shrink-0 mt-0.5" aria-hidden="true" />
                     <div>
-                      <p className="font-bold">
+                      <p className="font-bold text-base-content">
                         Schedule for the current period?
                       </p>
-                      <p className="mt-1 text-sm">
+                      <p className="mt-0.5 leading-relaxed text-base-content/75">
                         Confirm that you still have enough time to travel to the
                         farm and provide the service.
                       </p>
                     </div>
                   </div>
                 ) : null}
-              </section>
-            ) : null}
-
-            {!detailQuery.isLoading && view === "summary" && isScheduled ? (
-              <section className="rounded-xl border border-base-300 bg-base-100 p-4">
-                <div className="flex items-start gap-3">
-                  <CalendarDays
-                    size={20}
-                    className="mt-0.5 text-primary"
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <h4 className="font-bold text-base-content">
-                      Scheduled Farm Visit
-                    </h4>
-                    <p className="mt-1 text-sm text-base-content/70">
-                      {formatHealthVisitSchedule(
-                        request.scheduledDate,
-                        request.visitPeriod,
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </section>
+              </div>
             ) : null}
 
             {!detailQuery.isLoading && view === "summary" && isInProgress ? (
-              <section className="space-y-4">
+              <div className="border border-base-300 rounded-2xl p-4 space-y-4">
                 <div>
-                  <h4 className="text-base font-bold text-base-content">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                     Record Health Service
-                  </h4>
-                  <p className="mt-1 text-sm text-base-content/65">
+                  </span>
+                  <p className="text-xs text-base-content/70 mt-0.5">
                     Complete the clinical visit against this original Health
                     request.
                   </p>
@@ -1305,7 +1275,7 @@ export default function HealthRequestActionModal({
                 <Field label="Diagnosis" helper="Required">
                   <input
                     aria-label="Diagnosis"
-                    className="input w-full"
+                    className="input input-bordered w-full text-xs font-semibold rounded-xl"
                     value={clinical.diagnosis}
                     onChange={(event) => {
                       setClinical({
@@ -1314,12 +1284,13 @@ export default function HealthRequestActionModal({
                       });
                       setErrorMessage("");
                     }}
+                    placeholder="Clinical diagnosis..."
                   />
                 </Field>
                 <Field label="Treatment" helper="Required">
                   <input
                     aria-label="Treatment"
-                    className="input w-full"
+                    className="input input-bordered w-full text-xs font-semibold rounded-xl"
                     value={clinical.treatment}
                     onChange={(event) => {
                       setClinical({
@@ -1328,12 +1299,13 @@ export default function HealthRequestActionModal({
                       });
                       setErrorMessage("");
                     }}
+                    placeholder="Administered treatment..."
                   />
                 </Field>
                 <Field label="Advice for Farmer" helper="Optional">
                   <textarea
                     aria-label="Clinical Advice for Farmer"
-                    className="textarea min-h-24 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                     value={clinical.advice}
                     onChange={(event) =>
                       setClinical({ ...clinical, advice: event.target.value })
@@ -1346,7 +1318,7 @@ export default function HealthRequestActionModal({
                 >
                   <textarea
                     aria-label="Clinical Internal Note"
-                    className="textarea min-h-24 w-full"
+                    className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
                     value={clinical.technicianNote}
                     onChange={(event) =>
                       setClinical({
@@ -1356,20 +1328,28 @@ export default function HealthRequestActionModal({
                     }
                   />
                 </Field>
-              </section>
+              </div>
             ) : null}
 
             {!detailQuery.isLoading && view === "summary" && isTerminal ? (
-              <div className="alert alert-success alert-soft">
-                <CheckCircle2 size={18} aria-hidden="true" />
+              <div className="alert alert-success/15 border-success/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+                <CheckCircle2 size={16} className="text-success shrink-0 mt-0.5" aria-hidden="true" />
                 <span>
                   This Health request is already {status.replaceAll("-", " ")}.
                 </span>
               </div>
             ) : null}
-          </> 
+          </>
         )}
       </div>
-    </Modal>
+      </Modal>
+      <ImagePreviewModal
+        images={requestPhotos}
+        selectedImage={previewImage}
+        onSelectImage={setPreviewImage}
+        onClose={() => setPreviewImage(null)}
+        title="Farmer Health request photo"
+      />
+    </>
   );
 }
