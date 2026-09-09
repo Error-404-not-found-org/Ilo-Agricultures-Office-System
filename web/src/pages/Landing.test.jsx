@@ -120,6 +120,8 @@ describe("Landing staff role resolution", () => {
       expect(mocks.toastError).toHaveBeenCalledWith("Staff access only", {
         description:
           "This account is registered as a Farmer. Please use the BreedSmart mobile app to continue.",
+        closeButton: false,
+        className: "landing-progress-toast",
       });
     });
     expect(mocks.toastError).toHaveBeenCalledTimes(1);
@@ -129,7 +131,7 @@ describe("Landing staff role resolution", () => {
     expect(window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBeNull();
   });
 
-  it("replaces the landing page with a neutral state while rejection is pending", async () => {
+  it("shows signing you out on the landing page while rejection is pending", async () => {
     let finishSignOut;
     mocks.signOut.mockImplementation(
       (callback) => new Promise((resolve) => {
@@ -142,7 +144,10 @@ describe("Landing staff role resolution", () => {
     useUser.mockReturnValue({
       isLoaded: true,
       isSignedIn: true,
-      user: { publicMetadata: { role: "farmer" } },
+      user: {
+        emailAddresses: [{ emailAddress: "farmer@breedsmart.test" }],
+        publicMetadata: { role: "farmer" },
+      },
     });
     markStaffSignIn();
     axiosInstance.post.mockResolvedValue({
@@ -154,7 +159,8 @@ describe("Landing staff role resolution", () => {
     await waitFor(() => {
       expect(screen.getByText("Signing you out…")).toBeInTheDocument();
     });
-    expect(screen.queryByText("PublicNavbar")).not.toBeInTheDocument();
+    expect(screen.getByText("PublicNavbar")).toBeInTheDocument();
+    expect(screen.getByText("farmer@breedsmart.test")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Sign Out/i })).not.toBeInTheDocument();
 
     await act(async () => {
@@ -165,6 +171,8 @@ describe("Landing staff role resolution", () => {
       expect(mocks.toastError).toHaveBeenCalledWith("Staff access only", {
         description:
           "This account is registered as a Farmer. Please use the BreedSmart mobile app to continue.",
+        closeButton: false,
+        className: "landing-progress-toast",
       });
     });
   });
@@ -194,6 +202,8 @@ describe("Landing staff role resolution", () => {
     expect(mocks.toastError).toHaveBeenCalledWith("Staff access only", {
       description:
         "This account is registered as a Farmer. Please use the BreedSmart mobile app to continue.",
+      closeButton: false,
+      className: "landing-progress-toast",
     });
     await waitFor(() => {
       expect(screen.getByTestId("route-state")).toHaveTextContent("null");
@@ -273,6 +283,8 @@ describe("Landing staff role resolution", () => {
         {
           description:
             "This account does not have access to the BreedSmart staff workspace. Contact your BreedSmart administrator.",
+          closeButton: false,
+          className: "landing-progress-toast",
         },
       );
     });
@@ -295,6 +307,8 @@ describe("Landing staff role resolution", () => {
         {
           description:
             "This Clerk account is authenticated but is not registered in BreedSmart. Contact your BreedSmart administrator.",
+          closeButton: false,
+          className: "landing-progress-toast",
         },
       );
     });
@@ -317,6 +331,41 @@ describe("Landing staff role resolution", () => {
     });
     expect(axiosInstance.post).not.toHaveBeenCalled();
     expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("renders the compact MongoDB-style signing in card over the hero while staff authentication is resolving", async () => {
+    let resolveBootstrap;
+    axiosInstance.post.mockReturnValue(
+      new Promise((resolve) => {
+        resolveBootstrap = resolve;
+      }),
+    );
+    useUser.mockReturnValue({
+      isLoaded: true,
+      isSignedIn: true,
+      user: {
+        primaryEmailAddress: { emailAddress: "test.staff@example.com" },
+        publicMetadata: {},
+      },
+    });
+    markStaffSignIn();
+
+    renderLanding();
+
+    expect(screen.getByText("Signing in...")).toBeInTheDocument();
+    expect(screen.getByText("test.staff@example.com")).toBeInTheDocument();
+    expect(screen.getByText("BreedSmart.")).toBeInTheDocument();
+    expect(screen.getByText("LandingHero")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveBootstrap({ data: { user: { role: "admin" } } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent(
+        "/admin/dashboard",
+      );
+    });
   });
 });
 

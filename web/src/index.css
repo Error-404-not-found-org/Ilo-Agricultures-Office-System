@@ -383,3 +383,39 @@ html {
 .fc.fc-media-screen {
   @apply min-h-125;
 }
+
+/* Landing page countdown progress toast */
+[data-sonner-toast].landing-progress-toast {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+[data-sonner-toast].landing-progress-toast [data-close-button] {
+  display: none !important;
+}
+
+[data-sonner-toast].landing-progress-toast::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  background: currentColor;
+  opacity: 0.35;
+  transform-origin: left;
+  animation: landing-toast-progress 4000ms linear forwards;
+}
+
+[data-sonner-toast].landing-progress-toast:hover::after {
+  animation-play-state: paused;
+}
+
+@keyframes landing-toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}

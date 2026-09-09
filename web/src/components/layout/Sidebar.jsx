@@ -171,11 +171,7 @@ export default function Sidebar() {
       localStorage.removeItem(`welcomed_${user.id}_${today}`);
     }
     setIsLoggingOut(true);
-    toast("Signing out...", {
-      icon: "🔐",
-      duration: 2000,
-      id: "logout-toast",
-    });
+
     // Short delay so user sees the overlay before Clerk unmounts everything
     setTimeout(() => {
       signOut();

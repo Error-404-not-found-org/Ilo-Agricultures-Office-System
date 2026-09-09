@@ -4,7 +4,6 @@ import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import AuthShell from "../components/auth/AuthShell";
 import error503Icon from "../assets/branding/503_icon.webp";
 import axiosInstance from "../lib/axios";
 import {
@@ -14,6 +13,7 @@ import {
 } from "../config/staffAccess";
 
 import PublicNavbar from "./landing/components/PublicNavbar";
+import StaffSigningInScreen from "../components/auth/StaffSigningInScreen";
 import LandingHero from "./landing/components/LandingHero";
 import ValueStrip from "./landing/components/ValueStrip";
 import HowItWorks from "./landing/components/HowItWorks";
@@ -54,6 +54,9 @@ function AnimatedPublicLanding() {
   );
 }
 
+const MIN_SIGN_IN_DISPLAY_MS =
+  import.meta.env?.MODE === "test" ? 0 : 650;
+
 export default function Landing() {
   const { isSignedIn, isLoaded, user } = useUser();
   const { getToken } = useAuth();
@@ -80,7 +83,11 @@ export default function Landing() {
     });
 
     if (feedback.type === "error") {
-      toast.error(feedback.title, { description: feedback.description });
+      toast.error(feedback.title, {
+        description: feedback.description,
+        closeButton: false,
+        className: "landing-progress-toast",
+      });
     }
   }, [
     location.hash,
@@ -113,6 +120,8 @@ export default function Landing() {
         toast.error("Unable to sign out", {
           description:
             "Please try again before using another BreedSmart account.",
+          closeButton: false,
+          className: "landing-progress-toast",
         });
         return;
       }
@@ -121,11 +130,14 @@ export default function Landing() {
     const resolveStaffAccess = async () => {
       try {
         const token = await getToken();
-        const response = await axiosInstance.post(
-          "/user/bootstrap",
-          {},
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const [response] = await Promise.all([
+          axiosInstance.post(
+            "/user/bootstrap",
+            {},
+            { headers: { Authorization: `Bearer ${token}` } },
+          ),
+          new Promise((resolve) => setTimeout(resolve, MIN_SIGN_IN_DISPLAY_MS)),
+        ]);
         if (cancelled) return;
 
         const role = response.data?.user?.role;
@@ -190,7 +202,8 @@ export default function Landing() {
           </h1>
 
           <p className="text-[1rem] leading-relaxed max-w-sm mb-12 text-white/50">
-            BreedSmart could not reach the server to verify your staff access. Please check your connection and try again.
+            {staffAccessIssue?.description ||
+              "BreedSmart could not reach the server to verify your staff profile. Check your connection and try again."}
           </p>
 
           <div className="flex flex-col w-full sm:flex-row justify-center gap-4">
@@ -227,24 +240,6 @@ export default function Landing() {
     );
   }
 
-  if (isRejectingStaffAccess) {
-    return (
-      <AuthShell
-        context="BreedSmart Staff"
-        title="Signing you out"
-        description="This account cannot access the staff workspace."
-      >
-        <div
-          className="flex items-center justify-center gap-3 rounded-xl bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-600"
-          role="status"
-        >
-          <span className="loading loading-dots loading-sm text-[#17663a]" />
-          <span>Signing you out…</span>
-        </div>
-      </AuthShell>
-    );
-  }
-
   if (
     isLoaded &&
     isSignedIn &&
@@ -262,5 +257,22 @@ export default function Landing() {
     }
   }
 
-  return <AnimatedPublicLanding />;
+  const isSigningInStaff = hasStaffSignInIntent && isSignedIn;
+  const userEmail =
+    isSigningInStaff || isRejectingStaffAccess
+      ? user?.primaryEmailAddress?.emailAddress ||
+        user?.emailAddresses?.[0]?.emailAddress ||
+        ""
+      : "";
+
+  return (
+    <>
+      <AnimatedPublicLanding />
+      {isRejectingStaffAccess ? (
+        <StaffSigningInScreen email={userEmail} mode="signing-out" />
+      ) : isSigningInStaff ? (
+        <StaffSigningInScreen email={userEmail} mode="signing-in" />
+      ) : null}
+    </>
+  );
 }
