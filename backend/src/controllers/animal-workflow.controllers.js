@@ -189,7 +189,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     return {
       ...common,
       type: "ai",
-      title: "Insemination record",
+      title: "Artificial Insemination",
       description: record.outcome || "Artificial insemination completed",
       date: eventDate,
       dateLabel,
@@ -330,7 +330,8 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         entryDate: record.createdAt,
         entryDateLabel: "Recorded in BreedSmart at",
         calvingOutcome: record.outcome,
-        calvingEase: record.calvingEase,
+        calvingEase:
+          record.outcome === "abortion" ? "Not applicable" : record.calvingEase,
         numberOfCalves:
           record.numberOfCalves ??
           record.totalDelivered ??
@@ -452,6 +453,7 @@ export const getOfficialRecordDetail = async (req, res) => {
     if (recordKind === "insemination") {
       query = Insemination.findOne({ ...scope, deletedAt: null })
         .populate("technicianId approvedBy outcomeConfirmedBy", "name role")
+        .populate("farmerId", "name")
         .populate(
           "previousAttemptId",
           "attemptNumber inseminationDate outcome failureReason outcomeVerificationStatus",
@@ -463,12 +465,14 @@ export const getOfficialRecordDetail = async (req, res) => {
     } else if (recordKind === "pregnancy") {
       query = Pregnancy.findOne({ ...scope, deletedAt: null })
         .populate("confirmation.confirmedBy", "name role")
+        .populate("farmerId", "name")
         .populate("inseminationId", "attemptNumber sireBreed sireCode");
     } else if (recordKind === "calving") {
       query = Calving.findOne({ ...scope, deletedAt: null })
         .populate("technicianId", "name role")
+        .populate("farmerId", "name")
         .populate("calves.animalId", "animalId earTag imageUrl");
-    } else {
+    } else if (recordKind === "medical_record") {
       query = MedicalRecord.findOne(scope)
         .populate("technicianId", "name role")
         .populate("farmerId", "name")
@@ -678,7 +682,7 @@ export const getOfficialRecords = async (req, res) => {
         category: "AI",
         recordDate: item.inseminationDate,
         enteredAt: item.createdAt,
-        title: "Insemination record",
+        title: "Artificial Insemination",
         summary: item.outcome || "Artificial insemination completed",
         status: "completed",
         farmerId: item.farmerId,

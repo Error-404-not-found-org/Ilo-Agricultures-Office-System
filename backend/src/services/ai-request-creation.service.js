@@ -71,6 +71,20 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
   const session = options?.session || null;
   const existing = await findActiveAIRequest(payload.animalId, session);
   if (existing) throw createActiveAIRequestError(existing);
+
+  if (
+    payload.photos?.some(
+      (p) => typeof p === "string" && p.trim().startsWith("data:image"),
+    ) ||
+    (typeof payload.imageUrl === "string" &&
+      payload.imageUrl.trim().startsWith("data:image"))
+  ) {
+    throw new AppError("Base64 images cannot be persisted to AI request.", {
+      status: 400,
+      code: "BASE64_PERSISTENCE_FORBIDDEN",
+    });
+  }
+
   const serverPayload = { ...payload };
   delete serverPayload.completedAt;
 

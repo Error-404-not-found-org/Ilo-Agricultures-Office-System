@@ -19,6 +19,8 @@ const identity = {
   recordId: "medical-1",
 };
 
+const dataImage = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+
 const healthRecord = (attachments = []) => ({
   sourceId: "medical-1",
   type: "health",
@@ -111,6 +113,19 @@ describe("OfficialRecordDetailModal attachments", () => {
     expect(screen.queryByText("Attachments")).toBeNull();
   });
 
+  it("omits the section for an AI record without evidence", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord(),
+        type: "ai",
+        title: "Artificial Insemination",
+      },
+    });
+
+    await screen.findByText("Artificial Insemination");
+    expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
+  });
+
   it("renders one compact attachment row with View and Download actions", async () => {
     renderDetail({
       record: healthRecord([
@@ -122,6 +137,7 @@ describe("OfficialRecordDetailModal attachments", () => {
     });
 
     expect(await screen.findByText("Attachments")).toBeInTheDocument();
+    expect(screen.getByText("1 saved photo")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Health_Photo_1.jpg" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "View Health_Photo_1.jpg" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download Health_Photo_1.jpg" })).toBeInTheDocument();
@@ -139,6 +155,75 @@ describe("OfficialRecordDetailModal attachments", () => {
     expect(await screen.findByRole("button", { name: "Health_Photo_1.jpg" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Health_Photo_2.png" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Health_Photo_3/ })).toBeNull();
+  });
+
+  it("renders canonical base64 AI evidence and opens it in the shared viewer", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord([{ url: dataImage, category: "request_evidence" }]),
+        type: "ai",
+        title: "Artificial Insemination",
+      },
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View AI_Evidence_1.jpg" }),
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Preview of AI_Evidence_1.jpg" }),
+    ).toHaveAttribute("src", dataImage);
+    expect(screen.getByText("Read-only saved activity")).toBeInTheDocument();
+  });
+
+  it("normalizes current evidence for every supported Records type", () => {
+    const supported = [
+      { type: "ai", expected: "AI_Evidence_1.jpg" },
+      { type: "health", expected: "Health_Photo_1.jpg" },
+      { type: "calving", expected: "Calving_Photo_1.jpg" },
+    ];
+
+    supported.forEach(({ type, expected }) => {
+      expect(
+        normalizeRecordAttachments({
+          ...healthRecord([{ url: dataImage }]),
+          type,
+        }).map((attachment) => attachment.displayName),
+      ).toEqual([expected]);
+    });
+
+    expect(
+      normalizeRecordAttachments({
+        ...healthRecord([{ url: dataImage }]),
+        type: "health",
+        sourceKind: "health_request",
+        title: "Health Advice",
+      }),
+    ).toHaveLength(1);
+    expect(
+      normalizeRecordAttachments({
+        ...healthRecord(),
+        type: "pregnancy",
+        attachments: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("shows abortion delivery method as not applicable even for a legacy Natural value", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord(),
+        type: "calving",
+        title: "Calving Record",
+        details: {
+          calvingOutcome: "abortion",
+          calvingEase: "Natural",
+          numberOfCalves: 0,
+        },
+      },
+    });
+
+    expect(await screen.findByText("Not applicable")).toBeInTheDocument();
   });
 
   it("opens attachments from filename or View and closes only the nested preview", async () => {
@@ -165,8 +250,11 @@ describe("OfficialRecordDetailModal attachments", () => {
         screen.queryByRole("img", { name: "Preview of Health_Photo_1.jpg" }),
       ).toBeNull(),
     );
+    expect(
+      screen.getByAltText("Preview of Health_Photo_1.jpg"),
+    ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByText("Read-only official record")).toBeInTheDocument();
+    expect(screen.getByText("Read-only saved activity")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "View Health_Photo_2.jpg" }));
     expect(
@@ -226,29 +314,60 @@ describe("OfficialRecordDetailModal attachments", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:attachment");
   });
 
-  it.each(["X", "backdrop", "Escape"])(
+  it.each(["X", "Close button", "backdrop", "Escape"])(
     "keeps the parent %s close contract intact",
     async (method) => {
-    const result = renderDetail();
-    await screen.findByText("Bacterial infection");
-    const recordDialog = screen.getAllByRole("dialog")[0];
-    if (method === "X") {
-      fireEvent.click(
-        within(recordDialog).getByRole("button", { name: "Close modal" }),
-      );
-    } else if (method === "backdrop") {
-      fireEvent.click(
-        within(recordDialog).getByRole("button", { name: "Close dialog" }),
-      );
-    } else {
-      fireEvent(
-        recordDialog,
-        new Event("cancel", { bubbles: false, cancelable: true }),
-      );
-    }
-    expect(result.onClose).toHaveBeenCalledTimes(1);
+      const result = renderDetail();
+      await screen.findByText("Bacterial infection");
+      const recordDialog = screen.getAllByRole("dialog")[0];
+      if (method === "X") {
+        fireEvent.click(
+          within(recordDialog).getByRole("button", { name: "Close modal" }),
+        );
+      } else if (method === "Close button") {
+        fireEvent.click(
+          within(recordDialog).getByRole("button", { name: "Close" }),
+        );
+      } else if (method === "backdrop") {
+        fireEvent.click(
+          within(recordDialog).getByRole("button", { name: "Close dialog" }),
+        );
+      } else {
+        fireEvent(
+          recordDialog,
+          new Event("cancel", { bubbles: false, cancelable: true }),
+        );
+      }
+      expect(result.onClose).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("retains record content when the parent clears selection for the exit transition", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    mocks.get.mockResolvedValue({ data: { data: healthRecord() } });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <OfficialRecordDetailModal
+          recordIdentity={identity}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Bacterial infection")).toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <OfficialRecordDetailModal recordIdentity={null} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("Bacterial infection")).toBeInTheDocument();
+    expect(screen.getByText("Health record")).toBeInTheDocument();
+    expect(mocks.get).toHaveBeenCalledTimes(1);
+  });
 
   it("generates clean display names instead of exposing storage IDs", () => {
     const normalized = normalizeRecordAttachments({

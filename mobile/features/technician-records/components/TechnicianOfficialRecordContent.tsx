@@ -39,6 +39,7 @@ import { useTheme } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { ImageViewerModal, type ImageViewerItem } from "@/components/shared";
 import { RecordPhotoEvidence } from "@/features/farmer-reports/components/RecordPhotoEvidence";
+import { formatDiagnosticMethodLabel } from "@/features/breeding/utils/technicianBreedingVerification";
 import type {
   OfficialRecordDetail,
   RecordAttachment,
@@ -539,13 +540,27 @@ export function TechnicianOfficialRecordContent({
           icon: <AlertTriangle size={18} color={colors.primary} />,
         }
       : null,
+    hasValue(details.cancellationReason)
+      ? {
+          label: "Cancellation reason",
+          value: details.cancellationReason || "",
+          icon: <AlertTriangle size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.cancellationResponseReason)
+      ? {
+          label: "Closure note",
+          value: details.cancellationResponseReason || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
+        }
+      : null,
   ];
 
   const pregnancyRows: (DisplayRow | null)[] = [
     hasValue(details.diagnosticMethod)
       ? {
           label: "Confirmation method",
-          value: humanize(details.diagnosticMethod),
+          value: formatDiagnosticMethodLabel(details.diagnosticMethod),
           icon: <HandHeartIcon size={18} color={colors.primary} />,
         }
       : null,
@@ -589,10 +604,13 @@ export function TechnicianOfficialRecordContent({
   ];
 
   const calvingRows: (DisplayRow | null)[] = [
-    hasValue(details.calvingEase)
+    details.calvingOutcome === "abortion" || hasValue(details.calvingEase)
       ? {
           label: "Delivery method",
-          value: humanize(details.calvingEase),
+          value:
+            details.calvingOutcome === "abortion"
+              ? "Not applicable"
+              : humanize(details.calvingEase),
           icon: <Activity size={18} color={colors.primary} />,
         }
       : null,

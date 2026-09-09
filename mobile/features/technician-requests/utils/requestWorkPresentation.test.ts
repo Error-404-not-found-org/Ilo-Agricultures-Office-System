@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getWorkflowStatusPresentation,
   normalizeTechnicianWorkItem,
   normalizeTechnicianWorkItems,
+  normalizeWorkflowStatus,
 } from "./requestWorkPresentation.ts";
 
 test("work queue normalization is safe for empty and loading input", () => {
@@ -75,6 +77,8 @@ test("Farmer return-to-heat BreedingFollowUp is presented as an update review in
   assert.equal(item.title, "Breeding Follow-up");
   assert.equal(item.actionLabel, "Review Update");
   assert.equal(item.requestKind, "breeding_observation_review");
+  assert.equal(item.statusLabel, "Needs review");
+  assert.equal(normalizeWorkflowStatus(item), "needs_review");
   assert.doesNotMatch(item.timingLabel || "", /Pregnancy confirmation/);
 });
 
@@ -267,3 +271,152 @@ test("Internal triaged status never exposes user-facing 'triaged' label", () => 
   assert.equal(item.statusLabel, "Needs response");
 });
 
+test("dated work uses source-aware status labels without changing readiness", () => {
+  const now = new Date("2026-09-05T04:00:00.000Z");
+  const cases = [
+    {
+      name: "AI today",
+      item: {
+        workflowType: "AI",
+        type: "ai",
+        status: "scheduled",
+        scheduledDate: "2026-09-05",
+      },
+      status: "scheduled_today",
+      label: "Scheduled Today",
+      isReadyToday: true,
+    },
+    {
+      name: "Health Farm Visit today",
+      item: {
+        workflowType: "HEALTH",
+        serviceType: "health",
+        status: "scheduled",
+        handlingMethod: "farm_visit",
+        scheduledDate: "2026-09-05",
+      },
+      status: "scheduled_today",
+      label: "Scheduled Today",
+      isReadyToday: true,
+    },
+    {
+      name: "Pregnancy Check today",
+      item: {
+        workflowType: "PD",
+        taskType: "PD",
+        status: "Pending",
+        dueDate: "2026-09-05",
+      },
+      status: "due_today",
+      label: "Due Today",
+      isReadyToday: true,
+    },
+    {
+      name: "Breeding Follow-up today",
+      item: {
+        workflowType: "BreedingFollowUp",
+        taskType: "BreedingFollowUp",
+        status: "Pending",
+        dueDate: "2026-09-05",
+      },
+      status: "due_today",
+      label: "Due Today",
+      isReadyToday: true,
+    },
+    {
+      name: "AI future",
+      item: {
+        workflowType: "AI",
+        type: "ai",
+        status: "scheduled",
+        scheduledDate: "2026-09-06",
+      },
+      status: "scheduled",
+      label: "Scheduled",
+      isReadyToday: false,
+    },
+    {
+      name: "Health Farm Visit future",
+      item: {
+        workflowType: "HEALTH",
+        serviceType: "health",
+        status: "scheduled",
+        handlingMethod: "farm_visit",
+        scheduledDate: "2026-09-06",
+      },
+      status: "scheduled",
+      label: "Scheduled",
+      isReadyToday: false,
+    },
+    {
+      name: "reproductive future",
+      item: {
+        workflowType: "PD",
+        taskType: "PD",
+        status: "Pending",
+        dueDate: "2026-09-06",
+      },
+      status: "upcoming",
+      label: "Upcoming",
+      isReadyToday: false,
+    },
+    {
+      name: "past unfinished reproductive work",
+      item: {
+        workflowType: "PD",
+        taskType: "PD",
+        status: "Pending",
+        dueDate: "2026-09-04",
+      },
+      status: "overdue",
+      label: "Overdue",
+      isReadyToday: false,
+    },
+  ] as const;
+
+  for (const scenario of cases) {
+    const rawStatus = normalizeWorkflowStatus(scenario.item, now);
+    assert.equal(rawStatus, scenario.status, scenario.name);
+    assert.equal(
+      getWorkflowStatusPresentation(rawStatus).label,
+      scenario.label,
+      scenario.name,
+    );
+
+    const normalized = normalizeTechnicianWorkItem(
+      {
+        id: scenario.name,
+        workflowId: scenario.name,
+        ...scenario.item,
+      } as any,
+      now,
+    );
+    assert.equal(normalized.statusLabel, scenario.label, scenario.name);
+    assert.equal(
+      normalized.isReadyToday,
+      scenario.isReadyToday,
+      scenario.name,
+    );
+  }
+});
+
+test("terminal work keeps its completed presentation", () => {
+  const now = new Date("2026-09-05T04:00:00.000Z");
+  const item = {
+    workflowType: "AI",
+    type: "ai",
+    status: "completed",
+    scheduledDate: "2026-09-05",
+  };
+
+  const rawStatus = normalizeWorkflowStatus(item, now);
+  assert.equal(rawStatus, "completed");
+  assert.equal(getWorkflowStatusPresentation(rawStatus).label, "Completed");
+
+  const normalized = normalizeTechnicianWorkItem(
+    { id: "completed-ai", workflowId: "completed-ai", ...item } as any,
+    now,
+  );
+  assert.equal(normalized.statusLabel, "Completed");
+  assert.equal(normalized.isReadyToday, false);
+});

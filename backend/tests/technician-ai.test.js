@@ -104,6 +104,7 @@ const installHarness = (overrides = {}) => {
     audits: [],
     createdInseminations: [],
     pdTasks: [],
+    followUpTasks: [],
   };
 
   const session = {
@@ -129,6 +130,7 @@ const installHarness = (overrides = {}) => {
 
   Animal.findByIdAndUpdate = async (id, update, options) => {
     state.animalUpdates.push({ id, update, options });
+    if (update.$set) Object.assign(state.animal, update.$set);
     return state.animal;
   };
 
@@ -152,6 +154,12 @@ const installHarness = (overrides = {}) => {
     state.inseminationUpdates.push({ filter, update, options });
     if (state.insemination) {
       Object.assign(state.insemination, update.$set);
+      if (update.$push?.statusHistory) {
+        state.insemination.statusHistory = [
+          ...(state.insemination.statusHistory || []),
+          update.$push.statusHistory,
+        ];
+      }
     }
     return state.insemination;
   };
@@ -163,8 +171,16 @@ const installHarness = (overrides = {}) => {
     return [created];
   };
   Insemination.updateOne = async (filter, update, options) => {
-    if (state.insemination) Object.assign(state.insemination, update.$set);
-    return { matchedCount: state.insemination ? 1 : 0 };
+    const target =
+      (state.insemination &&
+      String(filter._id) === String(state.insemination._id)
+        ? state.insemination
+        : null) ||
+      state.createdInseminations.find(
+        (record) => String(record._id) === String(filter._id),
+      );
+    if (target) Object.assign(target, update.$set);
+    return { matchedCount: target ? 1 : 0 };
   };
 
 
@@ -173,6 +189,19 @@ const installHarness = (overrides = {}) => {
   };
 
   Task.findOneAndUpdate = async (filter, update, options) => {
+    if (["PD", "BreedingFollowUp"].includes(filter.taskType)) {
+      let followUp = state.followUpTasks.find(
+        (candidate) => candidate.taskType === filter.taskType,
+      );
+      if (!followUp) {
+        followUp = {
+          _id: `507f1f77bcf86cd79943901${state.followUpTasks.length}`,
+          ...update.$setOnInsert,
+        };
+        state.followUpTasks.push(followUp);
+      }
+      return followUp;
+    }
     state.taskUpdates.push({ filter, update, options });
     if (state.task && ["Pending", "In Progress"].includes(state.task.status)) {
       if (filter.status?.$in && !filter.status.$in.includes(state.task.status)) {
@@ -232,7 +261,7 @@ test("Technician AI Service Suite", async (t) => {
       task: { ...baseTask, status: "Pending" },
       insemination: false,
     });
-    const serviceOccurredAt = new Date("2026-08-13T01:00:00.000Z");
+    const serviceOccurredAt = new Date(Date.now() - 60 * 60 * 1000);
 
     try {
       const result = await recordTechnicianAIService({
@@ -270,7 +299,23 @@ test("Technician AI Service Suite", async (t) => {
       assert.equal(harness.state.taskUpdates.length, 1);
       assert.equal(harness.state.notifications.length, 1);
       assert.equal(harness.state.audits.length, 1);
-      assert.equal(harness.state.pdTasks.length, 2);
+      assert.deepEqual(
+        harness.state.followUpTasks.map((task) => task.taskType),
+        ["PD", "BreedingFollowUp"],
+      );
+      assert.equal(
+        String(result.insemination.verificationTaskId),
+        String(harness.state.followUpTasks[0]._id),
+      );
+      assert.equal(result.insemination.statusHistory.length, 1);
+      assert.equal(result.insemination.statusHistory[0].status, "done");
+      assert.equal(
+        result.insemination.statusHistory[0].createdAt,
+        result.insemination.completedAt,
+      );
+      assert.equal(harness.state.animal.reproductiveStatus, "Inseminated");
+      assert.equal(result.postCompletionEventRequired, true);
+      assert.equal(result.insemination.requestId, undefined);
     } finally {
       harness.uninstall();
     }
@@ -341,8 +386,19 @@ test("Technician AI Service Suite", async (t) => {
         baseInsemination.attemptSeriesId,
       );
       assert.equal(harness.state.createdInseminations.length, 0);
-      assert.equal(harness.state.taskUpdates.length, 2);
-      assert.equal(harness.state.pdTasks.length, 2);
+      assert.equal(harness.state.taskUpdates.length, 1);
+      assert.deepEqual(
+        harness.state.followUpTasks.map((task) => task.taskType),
+        ["PD", "BreedingFollowUp"],
+      );
+      assert.deepEqual(
+        harness.state.followUpTasks.map((task) => task.sourceType),
+        ["automatic_pd_followup", "automatic_breeding_followup"],
+      );
+      assert.equal(
+        String(result.insemination.verificationTaskId),
+        String(harness.state.followUpTasks[0]._id),
+      );
     } finally {
       harness.uninstall();
     }

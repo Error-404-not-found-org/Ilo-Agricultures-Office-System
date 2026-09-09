@@ -24,6 +24,10 @@ import {
   createFarmerAnimalUpdate,
 } from "../controllers/animal-workflow.controllers.js";
 import { createLegacyReInseminationRequest } from "../controllers/ai-request.controllers.js";
+import {
+  listMyPregnancyLossReports,
+  reportPregnancyLoss,
+} from "../controllers/pregnancy-loss-report.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 
@@ -52,6 +56,18 @@ router.get("/:id/health-history", protectedRoute, getAnimalHealthHistory);
 router.get("/:id/reproduction-eligibility", protectedRoute, getAnimalReproductionEligibility);
 router.get("/:id/attachments", protectedRoute, getAnimalAttachments);
 router.post("/:id/updates", protectedRoute, createFarmerAnimalUpdate);
+router.get(
+  "/:animalId/pregnancy-loss-reports",
+  protectedRoute,
+  requireRole(["farmer"]),
+  listMyPregnancyLossReports,
+);
+router.post(
+  "/:animalId/report-pregnancy-loss",
+  protectedRoute,
+  requireRole(["farmer"]),
+  reportPregnancyLoss,
+);
 router.get("/:id", protectedRoute, getAnimalById);
 router.put("/wizard/:id", protectedRoute, updateAnimalWizard);
 router.delete("/:id", protectedRoute, deleteAnimal);

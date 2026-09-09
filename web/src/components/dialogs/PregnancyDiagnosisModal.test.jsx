@@ -93,7 +93,7 @@ const renderModal = (detail = taskDetail) => {
 
 const chooseMethodAndDate = async () => {
   fireEvent.click(await screen.findByRole("button", { name: /Palpation/ }));
-  fireEvent.change(screen.getByLabelText("Checked At"), {
+  fireEvent.change(screen.getByLabelText("Examination Date"), {
     target: { value: "2026-09-01" },
   });
 };
@@ -114,7 +114,7 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     expect(await screen.findByText("Aug 26, 2024")).toBeTruthy();
     expect(screen.getByText("#1")).toBeTruthy();
     expect(screen.getByText("44-12 · Brahman")).toBeTruthy();
-    expect(screen.getByText(/736 days since AI/i)).toBeTruthy();
+    expect(screen.getByText(/736 days since Inseminated/i)).toBeTruthy();
     expect(screen.getByText("possible pregnancy")).toBeTruthy();
     expect(screen.getByText("No heat signs noticed.")).toBeTruthy();
     expect(screen.getByText(/Tag DP-02.*Cattle.*Brahman/)).toBeTruthy();
@@ -124,27 +124,45 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     renderModal();
 
     await screen.findByText("Aug 26, 2024");
-    for (const label of ["Pregnant", "Empty", "Re-heat", "Recheck"]) {
+    for (const label of ["Confirmed Pregnant", "Not Pregnant", "Returned to Heat", "Additional Check Needed"]) {
       expect(screen.getByRole("button", { name: new RegExp(`^${label}`) })).toBeTruthy();
     }
-    for (const label of ["Palpation", "Ultrasound", "Visual Observation", "Farmer Interview", "Other"]) {
+    for (const label of ["Manual Palpation", "Visual Assessment", "Farmer Interview", "Other"]) {
       expect(screen.getByRole("button", { name: new RegExp(label) })).toBeTruthy();
     }
+    expect(screen.queryByRole("button", { name: /Ultrasound/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Blood PAG/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Milk PAG/i })).toBeNull();
+  });
+
+  it("blocks a new diagnosis until a method is selected", async () => {
+    renderModal();
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Confirmed Pregnant/ }));
+    fireEvent.change(screen.getByLabelText("Examination Date"), {
+      target: { value: "2026-09-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit Diagnosis" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Please select an examination method.",
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["Pregnant", "pregnant"],
-    ["Empty", "not_pregnant"],
-    ["Re-heat", "return_to_heat"],
+    ["Confirmed Pregnant", "pregnant"],
+    ["Not Pregnant", "not_pregnant"],
+    ["Returned to Heat", "return_to_heat"],
   ])("submits %s using the canonical Mobile verification payload", async (label, verificationResult) => {
     renderModal();
 
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${label}`) }));
     await chooseMethodAndDate();
-    fireEvent.change(screen.getByLabelText("Technician Notes"), {
+    fireEvent.change(screen.getByLabelText("Clinical Notes"), {
       target: { value: "Field finding." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Finalize Diagnosis" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Diagnosis" }));
 
     await waitFor(() =>
       expect(mocks.post).toHaveBeenCalledWith(
@@ -161,15 +179,15 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     );
   });
 
-  it("submits Recheck with the canonical next-check date", async () => {
+  it("submits Additional Check Needed with the canonical next-check date", async () => {
     renderModal();
 
-    fireEvent.click(await screen.findByRole("button", { name: /^Recheck/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Additional Check Needed/ }));
     await chooseMethodAndDate();
-    fireEvent.change(screen.getByLabelText("Next Recheck Date"), {
+    fireEvent.change(screen.getByLabelText("Next Check Date"), {
       target: { value: "2026-09-10" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Finalize Diagnosis" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Diagnosis" }));
 
     await waitFor(() =>
       expect(mocks.post).toHaveBeenCalledWith(
@@ -183,6 +201,33 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     );
   });
 
+  it("renders dedicated Farmer Pregnancy Report contract and clean readiness presentation", async () => {
+    const detailWithReport = {
+      ...taskDetail,
+      insemination: {
+        ...taskDetail.insemination,
+        farmerPregnancyReport: true,
+        farmerPregnancyReportedAt: "2026-08-30T04:00:00.000Z",
+        farmerPregnancyNotes: "Abdominal swelling and no heat signs.",
+        farmerPregnancyPhotos: ["https://res.cloudinary.com/test/image.jpg"],
+        pregnancyReportVerificationStatus: "pending",
+      },
+    };
+
+    renderModal(detailWithReport);
+
+    expect(await screen.findByText("Record Pregnancy Diagnosis")).toBeTruthy();
+    expect(screen.queryByText("Pregnancy Confirmation")).toBeNull();
+    expect(screen.getByText("Farmer's Observation Report")).toBeTruthy();
+    expect(screen.getByText("Pending verification")).toBeTruthy();
+    expect(screen.getByText(/Abdominal swelling and no heat signs/)).toBeTruthy();
+    expect(screen.getByLabelText("View photo 1")).toBeTruthy();
+    expect(screen.getByText("Diagnosis Window")).toBeTruthy();
+    expect(screen.queryByText(/Confirmation status: Default/i)).toBeNull();
+    expect(screen.queryByText(/Diagnosis status: Default/i)).toBeNull();
+    expect(screen.queryByText(/\bDefault\b/i)).toBeNull();
+  });
+
   it("does not offer a mutation after a finalized diagnosis", async () => {
     renderModal({
       ...taskDetail,
@@ -193,7 +238,7 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     expect(
       await screen.findByText(/already been finalized/i),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Finalize Diagnosis" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Submit Diagnosis" })).toBeNull();
   });
 
   it("uses signed, fail-closed legacy readiness when backend readiness is absent", () => {
@@ -224,9 +269,9 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
       response: { data: { message: "The diagnosis window changed." } },
     });
     renderModal();
-    fireEvent.click(await screen.findByRole("button", { name: /^Pregnant/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Confirmed Pregnant/ }));
     await chooseMethodAndDate();
-    fireEvent.click(screen.getByRole("button", { name: "Finalize Diagnosis" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Diagnosis" }));
 
     expect(
       (await screen.findByText("The diagnosis window changed.")).closest(
@@ -239,12 +284,12 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
   it("preserves same-task input and resets it when the Task identity changes", async () => {
     const { rerenderModal } = renderModal();
     await screen.findByText("Aug 26, 2024");
-    fireEvent.change(screen.getByLabelText("Technician Notes"), {
+    fireEvent.change(screen.getByLabelText("Clinical Notes"), {
       target: { value: "Keep this finding" },
     });
 
     rerenderModal(ids.task, { taskType: "PD", raw: { status: "Pending" } });
-    expect(screen.getByLabelText("Technician Notes")).toHaveValue(
+    expect(screen.getByLabelText("Clinical Notes")).toHaveValue(
       "Keep this finding",
     );
 
@@ -254,7 +299,7 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     });
     rerenderModal(nextTaskId);
     await waitFor(() =>
-      expect(screen.getByLabelText("Technician Notes")).toHaveValue(""),
+      expect(screen.getByLabelText("Clinical Notes")).toHaveValue(""),
     );
   });
 });

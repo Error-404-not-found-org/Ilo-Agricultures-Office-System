@@ -6,6 +6,11 @@ const removedFiles = [
   "src/pages/admin/TechniciansPhase3B.test.jsx",
   "src/pages/admin/PregnancyTracker.jsx",
   "src/pages/technician/RequestDetails.jsx",
+  "src/pages/technician/BreedingLedger.jsx",
+  "src/pages/technician/tabs/InseminationTab.jsx",
+  "src/pages/technician/tabs/PregnancyTab.jsx",
+  "src/pages/technician/tabs/CalvingTab.jsx",
+  "src/pages/technician/tabs/BreedingTabs.test.jsx",
   "src/components/layout/ProtectedFarmerRoute.jsx",
   "src/components/ui/Sidebar.jsx",
   "src/components/ui/LoadingView.jsx",
@@ -74,12 +79,10 @@ describe("dead component cleanup", () => {
       "src/pages/admin/LivestockProfile.jsx",
       "utf8",
     );
-    const breedingLedger = readFileSync(
-      "src/pages/technician/BreedingLedger.jsx",
-      "utf8",
-    );
+    const app = readFileSync("src/App.jsx", "utf8");
 
     expect(livestockProfile).not.toContain("EditInseminationModal");
-    expect(breedingLedger).not.toContain("/insemination/${record.id}");
+    expect(app).not.toContain('import("./pages/technician/BreedingLedger")');
+    expect(app).toContain('<Navigate to="/technician/records" replace />');
   });
 });

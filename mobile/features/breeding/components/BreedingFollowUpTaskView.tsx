@@ -72,11 +72,11 @@ export default function BreedingFollowUpTaskView({ task }: { task: any }) {
   } else if (isCancelled) {
     statusTitle = "Follow-up no longer required";
   } else if (farmerReportType === "return_to_heat") {
-    statusTitle = "Needs attention";
-    bannerTitle = "Needs attention";
+    statusTitle = "Needs review";
+    bannerTitle = "Needs review";
     bannerMessage = "Farmer reported return-to-heat signs";
-    bannerIcon = "alert-circle";
-    bannerColorType = "warning";
+    bannerIcon = "info";
+    bannerColorType = "info";
   } else if (farmerReportType === "possible_pregnancy") {
     if (observationSource === "technician") {
       statusTitle = "Observation recorded";
@@ -264,7 +264,7 @@ export default function BreedingFollowUpTaskView({ task }: { task: any }) {
                   marginBottom: 16,
                 }}
               >
-                {daysSinceAI} days since Inseminated
+                {daysSinceAI} {daysSinceAI === 1 ? "day" : "days"} since insemination
               </Text>
             ) : null}
 

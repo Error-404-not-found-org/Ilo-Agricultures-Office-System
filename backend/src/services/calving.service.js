@@ -12,6 +12,10 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Task } from "../models/task.model.js";
 import { AppError } from "../utils/app-error.js";
 import { CALVING_OUTCOMES, inferCalvingOutcome } from "../domain/calving-outcome.js";
+import {
+  toManilaCalendarDay,
+  differenceInManilaCalendarDays,
+} from "../domain/service-date-time.js";
 
 const LIVE_BIRTH_EASES = new Set(["Natural", "Normal", "Difficult", "Cesarean"]);
 const COMPATIBLE_MATERNAL_STATES = new Set(["Pregnant", "Dry"]);
@@ -22,14 +26,32 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const resolveOutcome = (outcome, calvingEase) => {
   const resolved = inferCalvingOutcome({ outcome, calvingEase });
   if (outcome) {
-    if (resolved === CALVING_OUTCOMES.ABORTION || (resolved && LIVE_BIRTH_EASES.has(calvingEase))) return resolved;
-  } else if (resolved && (LIVE_BIRTH_EASES.has(calvingEase) || ["Abortion", "Stillbirth"].includes(calvingEase))) {
+    if (Object.values(CALVING_OUTCOMES).includes(outcome)) return outcome;
+  } else if (resolved && (LIVE_BIRTH_EASES.has(calvingEase) || calvingEase === "Abortion")) {
     return resolved;
   }
   throw new AppError("Invalid calving outcome.", {
     status: 400,
     code: "CALVING_OUTCOME_INVALID",
   });
+};
+
+const normalizeCalvingEase = (outcome, calvingEase) => {
+  if (outcome === CALVING_OUTCOMES.ABORTION) return undefined;
+  const normalized = typeof calvingEase === "string" ? calvingEase.trim() : "";
+  if (!normalized) {
+    throw new AppError("Select a delivery method before saving the calving record.", {
+      status: 422,
+      code: "CALVING_EASE_REQUIRED",
+    });
+  }
+  if (!LIVE_BIRTH_EASES.has(normalized)) {
+    throw new AppError("The selected delivery method is invalid.", {
+      status: 422,
+      code: "CALVING_EASE_INVALID",
+    });
+  }
+  return normalized;
 };
 
 const normalizeLivingCalves = (calves) => {
@@ -133,6 +155,12 @@ export const getCalvingReadiness = ({
   insemination,
   at = new Date(),
 }) => {
+  const { avgGestationDays } = getBreedProfile(
+    mother?.species,
+    mother?.breed,
+  );
+  const minimumDays = avgGestationDays - EARLY_CALVING_TOLERANCE_DAYS;
+
   if (pregnancy?.pregnancyDiagnosis?.result !== "Pregnant") {
     return {
       isEligible: false,
@@ -140,41 +168,33 @@ export const getCalvingReadiness = ({
       reason: "A technician-confirmed pregnancy is required.",
       gestationDays: null,
       minimumDays: null,
+      averageGestationDays: avgGestationDays,
+      daysRemaining: null,
       earliestEligibleDate: null,
+      expectedCalvingDate: pregnancy?.targetCalvingDate || null,
+      expectedCalvingDaysRemaining: null,
     };
   }
 
-  const aiDate = new Date(insemination?.inseminationDate);
-  const checkDate = new Date(at);
-  if (Number.isNaN(aiDate.getTime()) || Number.isNaN(checkDate.getTime())) {
+  const aiCalendarDay = toManilaCalendarDay(insemination?.inseminationDate);
+  const checkCalendarDay = toManilaCalendarDay(at);
+  if (aiCalendarDay === null || checkCalendarDay === null) {
     return {
       isEligible: false,
       code: "CALVING_READINESS_UNAVAILABLE",
       reason: "Calving readiness cannot be calculated without a valid AI date.",
       gestationDays: null,
       minimumDays: null,
+      averageGestationDays: avgGestationDays,
+      daysRemaining: null,
       earliestEligibleDate: null,
+      expectedCalvingDate: pregnancy?.targetCalvingDate || null,
+      expectedCalvingDaysRemaining: null,
     };
   }
 
-  const { avgGestationDays } = getBreedProfile(
-    mother?.species,
-    mother?.breed,
-  );
-  const minimumDays = avgGestationDays - EARLY_CALVING_TOLERANCE_DAYS;
-  // Calving forms capture a calendar date, while AI records can include a
-  // timestamp. Compare UTC calendar days so an AI time does not create an
-  // off-by-one result or make the displayed eligible date fail at midnight.
-  const aiCalendarDay = Date.UTC(
-    aiDate.getUTCFullYear(),
-    aiDate.getUTCMonth(),
-    aiDate.getUTCDate(),
-  );
-  const checkCalendarDay = Date.UTC(
-    checkDate.getUTCFullYear(),
-    checkDate.getUTCMonth(),
-    checkDate.getUTCDate(),
-  );
+  // BreedSmart reproductive day counting uses calendar days in canonical Asia/Manila.
+  // Insemination calendar date = Day 0, next calendar date = Day 1.
   const gestationDays = Math.floor(
     (checkCalendarDay - aiCalendarDay) / DAY_MS,
   );
@@ -182,6 +202,18 @@ export const getCalvingReadiness = ({
     aiCalendarDay + minimumDays * DAY_MS,
   );
   const isEligible = gestationDays >= minimumDays;
+
+  const expectedCalvingDate =
+    pregnancy?.targetCalvingDate ||
+    new Date(aiCalendarDay + avgGestationDays * DAY_MS);
+  const expectedCalvingCalendarDay = toManilaCalendarDay(expectedCalvingDate);
+  const expectedCalvingDaysRemaining =
+    expectedCalvingCalendarDay !== null
+      ? Math.max(
+          0,
+          Math.floor((expectedCalvingCalendarDay - checkCalendarDay) / DAY_MS),
+        )
+      : Math.max(0, avgGestationDays - gestationDays);
 
   return {
     isEligible,
@@ -194,7 +226,8 @@ export const getCalvingReadiness = ({
     averageGestationDays: avgGestationDays,
     daysRemaining: Math.max(0, minimumDays - gestationDays),
     earliestEligibleDate,
-    expectedCalvingDate: pregnancy?.targetCalvingDate || null,
+    expectedCalvingDate,
+    expectedCalvingDaysRemaining,
   };
 };
 
@@ -512,6 +545,7 @@ export const persistCalving = async ({
   taskId,
 }) => {
   const outcome = resolveOutcome(submittedOutcome, calvingEase);
+  const normalizedCalvingEase = normalizeCalvingEase(outcome, calvingEase);
   const hasLivingCalves = [CALVING_OUTCOMES.LIVE_BIRTH, CALVING_OUTCOMES.MIXED].includes(outcome);
   const hasStillbornCalves = [CALVING_OUTCOMES.STILLBIRTH, CALVING_OUTCOMES.MIXED].includes(outcome);
   const normalizedCalves = hasLivingCalves ? normalizeLivingCalves(calves) : [];
@@ -684,15 +718,17 @@ export const persistCalving = async ({
         livingCalfCount,
         stillbornCount,
         outcome,
-        calvingEase,
+        ...(normalizedCalvingEase
+          ? { calvingEase: normalizedCalvingEase }
+          : {}),
         technicianId: actor.role === "farmer" ? undefined : actor._id,
         technicianNote,
       }], { session });
 
       const eventDescription = outcome === "live_birth"
-        ? `Gave birth to ${offspring.length} living calf/calves. Ease: ${calvingEase}.`
+        ? `Gave birth to ${offspring.length} living calf/calves. Ease: ${normalizedCalvingEase}.`
         : outcome === "mixed"
-          ? `Delivered ${livingCalfCount} living and ${stillbornCount} stillborn calf/calves. Ease: ${calvingEase}.`
+          ? `Delivered ${livingCalfCount} living and ${stillbornCount} stillborn calf/calves. Ease: ${normalizedCalvingEase}.`
         : outcome === "stillbirth"
           ? `Stillbirth recorded for ${requiredCount} calf/calves.`
           : "Pregnancy loss recorded as abortion.";
@@ -748,7 +784,16 @@ export const persistCalving = async ({
         entityId: calving._id,
         action: "create_calving_record",
         actorId: actor._id,
-        after: { outcome, calvingEase, date: calvingDate, numberOfCalves: requiredCount, livingCalfCount, stillbornCount },
+        after: {
+          outcome,
+          ...(normalizedCalvingEase
+            ? { calvingEase: normalizedCalvingEase }
+            : {}),
+          date: calvingDate,
+          numberOfCalves: requiredCount,
+          livingCalfCount,
+          stillbornCount,
+        },
         metadata: {
           pregnancyId: currentPregnancy._id,
           inseminationId: insemination._id,

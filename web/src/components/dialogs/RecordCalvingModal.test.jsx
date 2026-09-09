@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -20,6 +20,11 @@ vi.mock("sonner", () => ({
 import RecordCalvingModal from "./RecordCalvingModal";
 
 describe("RecordCalvingModal Manila date boundaries", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.post.mockResolvedValue({ data: {} });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -144,5 +149,131 @@ describe("RecordCalvingModal Manila date boundaries", () => {
       </QueryClientProvider>,
     );
     await waitFor(() => expect(notes).toHaveValue(""));
+  });
+
+  it("resolves mother display label from preSelectedAnimal when pregnancyData.animalId is string ID", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <RecordCalvingModal
+          isOpen
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+          pregnancyData={{
+            _id: "507f1f77bcf86cd799439041",
+            animalId: "507f1f77bcf86cd799439081",
+          }}
+          preSelectedAnimal={{
+            id: "507f1f77bcf86cd799439081",
+            earTag: "RC26-SINGLE-09-CALVING-DUE",
+          }}
+          taskId="507f1f77bcf86cd799439042"
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen.getByText("Link birth details and offspring to Mother #RC26-SINGLE-09-CALVING-DUE"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Mother #Selected Animal/)).toBeNull();
+  });
+
+  it("hides delivery method and omits calvingEase for abortion", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <RecordCalvingModal
+          isOpen
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+          pregnancyData={{
+            _id: "507f1f77bcf86cd799439041",
+            animalId: { _id: "507f1f77bcf86cd799439081", earTag: "TEST-1" },
+          }}
+          taskId="507f1f77bcf86cd799439042"
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Outcome"), {
+      target: { value: "abortion" },
+    });
+    expect(screen.queryByLabelText("Delivery Method / Ease")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /save calving record/i }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+    const payload = mocks.post.mock.calls[0][1];
+    expect(payload.outcome).toBe("abortion");
+    expect(payload).not.toHaveProperty("calvingEase");
+  });
+
+  it("blocks submission when outcome is mixed and all calves have the same vitality", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <RecordCalvingModal
+          isOpen
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+          pregnancyData={{
+            _id: "507f1f77bcf86cd799439041",
+            animalId: { _id: "507f1f77bcf86cd799439081", earTag: "TEST-1" },
+          }}
+          taskId="507f1f77bcf86cd799439042"
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Outcome"), {
+      target: { value: "mixed" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 104"), {
+      target: { value: "CALF-1" },
+    });
+    // With 1 calf default (Living), livingCalves = 1, nonLivingCalves = 0 -> invalid mixed
+    fireEvent.click(screen.getByRole("button", { name: /save calving record/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Mixed delivery must include at least one living and one stillborn calf.",
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it("displays real-time inline warning and dims the submit button when outcome is mixed without both living and stillborn calves", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <RecordCalvingModal
+          isOpen
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+          pregnancyData={{
+            _id: "507f1f77bcf86cd799439041",
+            animalId: { _id: "507f1f77bcf86cd799439081", earTag: "TEST-1" },
+          }}
+          taskId="507f1f77bcf86cd799439042"
+        />
+      </QueryClientProvider>,
+    );
+
+    const saveButton = screen.getByRole("button", { name: /save calving record/i });
+    expect(saveButton.className).not.toContain("opacity-60");
+    expect(screen.queryByText("Mixed delivery must include at least one living and one stillborn calf.")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Outcome"), {
+      target: { value: "mixed" },
+    });
+
+    expect(screen.getByText("Mixed delivery must include at least one living and one stillborn calf.")).toBeInTheDocument();
+    expect(saveButton.className).toContain("opacity-60");
   });
 });

@@ -10,3 +10,15 @@ export function usePregnancyTrackerQuery(id: string) {
     enabled: Boolean(id),
   });
 }
+
+export function usePregnancyLossReportsQuery(animalId: string, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["animals", animalId, "pregnancy-loss-reports"],
+    queryFn: async () => {
+      const response = await api.get(`/animals/${animalId}/pregnancy-loss-reports`);
+      return (response.data?.reports || []) as any[];
+    },
+    enabled: Boolean(animalId) && enabled,
+  });
+}

@@ -52,13 +52,18 @@ import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
   getBreedingObservationPresentation,
+  getFarmerBreedingObservationReadiness,
   canOfferFarmerReInsemination,
   isBreedingObservationAwaitingReview,
 } from "@/features/breeding/utils/breedingObservationPresentation";
-import { getAIEligibility } from "@/lib/reproductionEligibility";
+import {
+  getAIEligibility,
+  hasEligibleBreedingAttemptForPD,
+} from "@/lib/reproductionEligibility";
 import {
   getPostpartumPresentation,
   isHistoryOnlyInsemination,
+  resolveCurrentPostpartumRecovery,
 } from "@/features/breeding/utils/reproductiveCyclePresentation";
 import type {
   AIRequest,
@@ -547,24 +552,32 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   const latestHistoricalAi = validInseminations.find(({ item }) =>
     isHistoryOnlyInsemination(item),
   );
+  const currentRecoveryEvent = resolveCurrentPostpartumRecovery(animal);
   const postpartumPresentation = getPostpartumPresentation({
     isCompletedCycle: animal.reproductiveStatus === "Post-partum",
     nextAction: animal.nextAction,
     nextActionAt: animal.nextActionAt,
-    calvingDate: animal.lastCalvingDate,
+    calvingDate: currentRecoveryEvent.recoveryStartDate,
     effectiveReproductiveStatus: animal.effectiveReproductiveStatus,
+    isLossRecovery: currentRecoveryEvent.isLossRecovery,
+    lossDate: currentRecoveryEvent.isLossRecovery
+      ? currentRecoveryEvent.recoveryStartDate
+      : null,
   });
 
   const latestObservation =
     latestAi?.item?.farmerOutcomeReport && !latestAi?.item?.previousAttemptId
       ? latestAi.item
       : undefined;
-  const canReportBreedingObservation =
+  const observationReadiness = getFarmerBreedingObservationReadiness(
+    latestAi?.item,
+  );
+  const hasBreedingObservationContext =
     role === "farmer" &&
     Boolean(latestAi?.item?._id) &&
-    ["done", "completed", "resolved"].includes(
-      String(latestAi?.item?.status || "").toLowerCase(),
-    ) &&
+    observationReadiness.state !== "not_completed" &&
+    observationReadiness.state !== "resolved" &&
+    observationReadiness.state !== "missing_date" &&
     ["Inseminated", "Likely Pregnant", "In Heat"].includes(
       animal.reproductiveStatus || "",
     );
@@ -1090,7 +1103,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
             </View>
 
             {role === "farmer" &&
-            canReportBreedingObservation &&
+            hasBreedingObservationContext &&
             !latestObservation &&
             latestAi?.item?._id ? (
               <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
@@ -1163,21 +1176,25 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       color="secondary"
                       style={{ marginBottom: 12 }}
                     >
-                      Have you noticed signs of heat?
+                      {observationReadiness.isAvailable
+                        ? "Have you noticed signs of heat?"
+                        : observationReadiness.message}
                     </Text>
-                    <Button
-                      label="Give Update"
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(farmer)/report-breeding-observation",
-                          params: {
-                            animalId: animal._id,
-                            requestId: latestAi!.item._id,
-                            defaultReport: "unsure",
-                          },
-                        } as never)
-                      }
-                    />
+                    {observationReadiness.isAvailable ? (
+                      <Button
+                        label="Give Update"
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(farmer)/report-breeding-observation",
+                            params: {
+                              animalId: animal._id,
+                              requestId: latestAi!.item._id,
+                              defaultReport: "unsure",
+                            },
+                          } as never)
+                        }
+                      />
+                    ) : null}
                   </>
                 )}
               </View>
@@ -2250,36 +2267,38 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     Health Record
                   </Text>
                 </Button>
-                <Button
-                  variant="outline"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(technician)/pregnancy-check",
-                      params: {
-                        animalId: animal._id,
-                        farmerId: actionFarmerId,
-                        farmerName: owner?.name || "",
-                      },
-                    } as never)
-                  }
-                  style={{ flex: 1, borderRadius: 14, minHeight: 44 }}
-                >
-                  <MaterialCommunityIcons
-                    name="cow"
-                    size={16}
-                    color={colors.primary}
-                  />
-                  <Text
-                    style={{
-                      color: colors.textPrimary,
-                      fontFamily: "Outfit_700Bold",
-                      fontSize: 13,
-                      marginLeft: 6,
-                    }}
+                {hasEligibleBreedingAttemptForPD(animal) ? (
+                  <Button
+                    variant="outline"
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(technician)/pregnancy-check",
+                        params: {
+                          animalId: animal._id,
+                          farmerId: actionFarmerId,
+                          farmerName: owner?.name || "",
+                        },
+                      } as never)
+                    }
+                    style={{ flex: 1, borderRadius: 14, minHeight: 44 }}
                   >
-                    Pregnancy Check
-                  </Text>
-                </Button>
+                    <MaterialCommunityIcons
+                      name="cow"
+                      size={16}
+                      color={colors.primary}
+                    />
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 13,
+                        marginLeft: 6,
+                      }}
+                    >
+                      Pregnancy Check
+                    </Text>
+                  </Button>
+                ) : null}
               </View>
               <Button
                 onPress={() =>

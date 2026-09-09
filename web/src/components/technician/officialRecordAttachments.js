@@ -1,3 +1,5 @@
+import { isSafeImagePreviewUrl } from "../ui/imagePreviewUrl";
+
 const ATTACHMENT_NAMES = {
   ai: { display: "AI_Evidence", download: "AI" },
   health: { display: "Health_Photo", download: "Health" },
@@ -37,14 +39,6 @@ const attachmentDateStamp = (value) => {
     .join("-");
 };
 
-const validAttachmentUrl = (value) => {
-  try {
-    return ["http:", "https:"].includes(new URL(String(value || "")).protocol);
-  } catch {
-    return false;
-  }
-};
-
 export const normalizeRecordAttachments = (record) => {
   const naming = ATTACHMENT_NAMES[record?.type] || {
     display: "Attachment",
@@ -57,17 +51,44 @@ export const normalizeRecordAttachments = (record) => {
   );
   const date = attachmentDateStamp(record?.details?.serviceDate || record?.date);
 
-  return (Array.isArray(record?.attachments) ? record.attachments : [])
-    .filter((attachment) => validAttachmentUrl(attachment?.url))
-    .map((attachment, index) => {
-      const extension = attachmentExtension(attachment.url);
+  const rawAttachments = Array.isArray(record?.attachments) ? record.attachments : [];
+
+  const extraUrls = [
+    ...(Array.isArray(record?.photos) ? record.photos : []),
+    ...(Array.isArray(record?.details?.farmerRequest?.photos) ? record.details.farmerRequest.photos : []),
+    ...(Array.isArray(record?.healthRequestId?.photos) ? record.healthRequestId.photos : []),
+    record?.photoUrl,
+    record?.imageUrl,
+    record?.healthRequestId?.imageUrl,
+    record?.healthRequestId?.photoUrl,
+    record?.details?.farmerRequest?.photoUrl,
+    record?.details?.imageUrl,
+    record?.details?.photoUrl,
+  ]
+    .filter((url) => typeof url === "string" && url.trim().length > 0)
+    .map((url) => url.trim());
+
+  const allUrls = new Set([
+    ...rawAttachments
+      .map((attachment) =>
+        typeof attachment === "string" ? attachment : attachment?.url,
+      )
+      .filter(Boolean),
+    ...extraUrls,
+  ]);
+
+  return Array.from(allUrls)
+    .map((url) => String(url).trim())
+    .filter(isSafeImagePreviewUrl)
+    .map((url, index) => {
+      const extension = attachmentExtension(url);
       const position = index + 1;
       return {
-        url: String(attachment.url).trim(),
+        url,
         displayName: `${naming.display}_${position}.${extension}`,
         downloadName: `${naming.download}_${earTag}_${date}_${position}.${extension}`,
         extension,
-        sourceType: attachment.category || record.type || "record",
+        sourceType: record?.type || "record",
       };
     });
 };

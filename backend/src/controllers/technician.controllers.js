@@ -3540,7 +3540,7 @@ export const getTechnicianRequests = async (req, res) => {
       taskAndFilters.push({
         $or: [
           // Manual or farmer-requested: show immediately
-          { sourceType: { $in: ["manual", "farmer_requested_verification"] } },
+          { sourceType: { $in: ["manual", "farmer_requested_verification", "farmer_pregnancy_loss_report"] } },
           // Automatic follow-ups: only show when dueDate has arrived
           { sourceType: "automatic_pd_followup", dueDate: { $lte: now } },
           // Legacy tasks (no sourceType): show immediately
@@ -3669,10 +3669,7 @@ export const getTechnicianRequests = async (req, res) => {
         ],
       });
       appendMongoCondition(healthQuery, {
-        $or: [
-          { handledBy: assignedTechnicianId },
-          { assignedTechnicianId },
-        ],
+        $or: [{ handledBy: assignedTechnicianId }, { assignedTechnicianId }],
       });
       taskQuery.technicianId = assignedTechnicianId;
     }
@@ -4089,7 +4086,12 @@ export const getTechnicianRequests = async (req, res) => {
           actionLabel,
           farmer: farmer.name || "Unknown Farmer",
           farmerId: farmer._id || farmer,
-          farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
+          farmerImageUrl:
+            farmer.imageUrl ||
+            farmer.avatarUrl ||
+            farmer.profilePicture ||
+            farmer.avatar ||
+            "",
           farmerPhone: farmer.phoneNumber || "",
           phone: farmer.phone || null,
           farmerDetails: {
@@ -4381,8 +4383,12 @@ export const getTechnicianRequests = async (req, res) => {
 
       return {
         id: task._id,
-        type: "breeding_verification",
-        serviceType: "Pregnancy Check",
+        type: isPregnancyLossReview
+          ? "pregnancy_loss_review"
+          : "breeding_verification",
+        serviceType: isPregnancyLossReview
+          ? "Pregnancy Loss Review"
+          : "Pregnancy Check",
         status: task.status,
         isReadyToday: false,
         displayStatus: task.status,
@@ -4392,7 +4398,12 @@ export const getTechnicianRequests = async (req, res) => {
             : "normal",
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
-        farmerImageUrl: farmer.imageUrl || farmer.avatarUrl || farmer.profilePicture || farmer.avatar || "",
+        farmerImageUrl:
+          farmer.imageUrl ||
+          farmer.avatarUrl ||
+          farmer.profilePicture ||
+          farmer.avatar ||
+          "",
         farmerPhone: farmer.phoneNumber || "",
         animal: animal?.animalId || animal?.earTag || "Unknown",
         animalId: animal?._id || animal,
@@ -4512,7 +4523,13 @@ export const getTechnicianRequests = async (req, res) => {
         appendMongoCondition(unassignedHealthQuery, healthDispatch?.filter);
       }
       const unassignedPregnancyQuery = {
-        taskType: "PD",
+        $or: [
+          { taskType: "PD" },
+          {
+            taskType: "BreedingFollowUp",
+            sourceType: "farmer_pregnancy_loss_report",
+          },
+        ],
         technicianId: { $in: [null, undefined] },
         status: { $in: ["Pending", "unassigned"] },
         ...(includeUpcoming === "true"
@@ -4521,7 +4538,11 @@ export const getTechnicianRequests = async (req, res) => {
               $or: [
                 {
                   sourceType: {
-                    $in: ["manual", "farmer_requested_verification"],
+                    $in: [
+                      "manual",
+                      "farmer_requested_verification",
+                      "farmer_pregnancy_loss_report",
+                    ],
                   },
                 },
                 {
@@ -4654,28 +4675,29 @@ export const getWorkQueue = async (req, res) => {
       animalIds = animals.map((item) => item._id);
     }
 
-    const aiTitleMatches = /artificial insemination|insemination|ai service/i.test(
-      searchText,
-    );
+    const aiTitleMatches =
+      /artificial insemination|insemination|ai service/i.test(searchText);
     const healthTitleMatches = /health|health check|health assistance/i.test(
       searchText,
     );
-    const aiQuery = searchText && !aiTitleMatches
-      ? combineMongoFilters(aiStateQuery, {
-          $or: [
-            { farmerId: { $in: farmerIds } },
-            { animalId: { $in: animalIds } },
-          ],
-        })
-      : aiStateQuery;
-    const healthQuery = searchText && !healthTitleMatches
-      ? combineMongoFilters(healthStateQuery, {
-          $or: [
-            { farmerId: { $in: farmerIds } },
-            { animalId: { $in: animalIds } },
-          ],
-        })
-      : healthStateQuery;
+    const aiQuery =
+      searchText && !aiTitleMatches
+        ? combineMongoFilters(aiStateQuery, {
+            $or: [
+              { farmerId: { $in: farmerIds } },
+              { animalId: { $in: animalIds } },
+            ],
+          })
+        : aiStateQuery;
+    const healthQuery =
+      searchText && !healthTitleMatches
+        ? combineMongoFilters(healthStateQuery, {
+            $or: [
+              { farmerId: { $in: farmerIds } },
+              { animalId: { $in: animalIds } },
+            ],
+          })
+        : healthStateQuery;
     const taskQuery = searchText
       ? combineMongoFilters(standaloneTaskQuery, {
           $or: [
@@ -5633,6 +5655,12 @@ export const getWorkQueue = async (req, res) => {
           allowedAction = "RECORD_SERVICE";
         else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
         else if (taskDoc.status === "Completed") allowedAction = "VIEW_DETAILS";
+      } else if (wType === "PregnancyLossReview") {
+        if (["Pending", "In Progress"].includes(taskDoc.status)) {
+          allowedAction = "REVIEW_PREGNANCY_LOSS";
+        } else if (taskDoc.status === "Completed") {
+          allowedAction = "VIEW_DETAILS";
+        }
       } else if (wType === "BreedingFollowUp") {
         if (["Pending", "In Progress"].includes(taskDoc.status)) {
           allowedAction = taskDoc.technicianId
@@ -5658,6 +5686,8 @@ export const getWorkQueue = async (req, res) => {
       } else if (allowedAction === "COMPLETE_TASK")
         actionLabel = "Complete Task";
       else if (allowedAction === "CLAIM") actionLabel = "Claim";
+      else if (allowedAction === "REVIEW_PREGNANCY_LOSS")
+        actionLabel = "Review Pregnancy Loss";
       else if (allowedAction === "RECORD_BREEDING_OBSERVATION")
         actionLabel = "Record Follow-up";
       else if (allowedAction === "VIEW_DETAILS") actionLabel = "View Details";
@@ -5665,11 +5695,13 @@ export const getWorkQueue = async (req, res) => {
       const serviceType =
         wType === "PD"
           ? "Pregnancy Diagnosis"
-          : wType === "BreedingFollowUp"
-            ? "Breeding Follow-up"
-          : wType === "Calving"
-            ? "Calving Assistance"
-            : taskDoc.taskType || "Task";
+          : wType === "PregnancyLossReview"
+            ? "Pregnancy Loss Review"
+            : wType === "BreedingFollowUp"
+              ? "Breeding Follow-up"
+            : wType === "Calving"
+              ? "Calving Assistance"
+              : taskDoc.taskType || "Task";
 
       const item = {
         id: taskId,
@@ -5705,6 +5737,12 @@ export const getWorkQueue = async (req, res) => {
               taskContext.calving?.inseminationId,
           ),
           reportType: taskDoc.metadata?.reportType || null,
+          reportId: idOf(taskDoc.metadata?.reportId),
+          reportStatus: taskDoc.metadata?.reportStatus || null,
+          observationDate: taskDoc.metadata?.observationDate || null,
+          evidencePhotos: Array.isArray(taskDoc.metadata?.evidencePhotos)
+            ? taskDoc.metadata.evidencePhotos.filter(Boolean)
+            : [],
         },
         schedule: {
           date: taskDoc.dueDate || null,

@@ -26,7 +26,10 @@ import {
   normalizePhilippineMobileNumber,
 } from "../utils/phone.js";
 import { resolveOrSyncUser } from "../services/auth-user.service.js";
-import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import {
+  getPregnancyCheckReadiness,
+  isFarmerBreedingObservationReminderDay,
+} from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
 import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
@@ -2177,8 +2180,8 @@ export const getBreedingMilestones = async (req, res) => {
           }
         : null;
 
-      // Heat Watch (21 days) - show between day 15 and day 25 post-AI
-      if (daysSinceAI >= 15 && daysSinceAI <= 25) {
+      // Heat Watch (21 days) - canonical farmer observation reminder window (day 18 to 25 post-AI)
+      if (isFarmerBreedingObservationReminderDay(daysSinceAI)) {
         const heatDate = new Date(aiDate);
         heatDate.setDate(heatDate.getDate() + 21);
 

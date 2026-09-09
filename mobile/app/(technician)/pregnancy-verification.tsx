@@ -17,6 +17,7 @@ import {
   Calendar as CalendarIcon,
   Info,
   CheckCircle,
+  Check,
   FileText,
   Heart,
   CalendarCheck,
@@ -35,9 +36,17 @@ import { technicianKeys } from "@/lib/queryKeys";
 import {
   buildPregnancyContinuationPayload,
   isPregnancyContinuationStage,
+  CANONICAL_PREGNANCY_DIAGNOSIS_OUTCOMES,
+  getVisibleDiagnosticMethodOptions,
+  formatDiagnosticMethodLabel,
   type PregnancyContinuationResult,
   type TechnicianBreedingVerificationResult,
 } from "@/features/breeding/utils/technicianBreedingVerification";
+import { FarmerPregnancyReportCard } from "@/features/breeding/components/FarmerPregnancyReportCard";
+import {
+  PREGNANCY_DIAGNOSIS_UI,
+  formatDaysSinceInsemination,
+} from "@/features/breeding/utils/pregnancyDiagnosisPresentation";
 import type { WorkQueueResponse } from "@/features/technician-requests/types/technicianRequests.types";
 
 export default function PregnancyVerificationScreen() {
@@ -83,19 +92,18 @@ export default function PregnancyVerificationScreen() {
     task?.metadata?.pregnancyId ||
     routeParams.pregnancyId;
   const methodBased = pregnancyReadiness?.policyMode === "method_based";
-  const methodOptions = methodBased
-    ? pregnancyReadiness?.methods || []
-    : [
-        { methodCode: "palpation", label: "palpation", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
-        { methodCode: "ultrasound", label: "ultrasound", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
-        { methodCode: "visual_observation", label: "visual observation", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
-        { methodCode: "farmer_interview", label: "farmer interview", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
-        { methodCode: "other", label: "other", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
-      ];
+  const methodOptions = getVisibleDiagnosticMethodOptions({
+    methods: methodBased ? pregnancyReadiness?.methods : null,
+    selectedMethod: checkMethod,
+    isEligible: pregnancyReadiness?.isEligible,
+    reason: pregnancyReadiness?.reason,
+  });
   const selectedMethod = methodOptions.find((method: any) => method.methodCode === checkMethod);
   const officialDiagnosis = ["pregnant", "not_pregnant"].includes(verificationResult);
   const officialDiagnosisReady = methodBased
-    ? Boolean(selectedMethod?.enabled && selectedMethod?.isEligible)
+    ? selectedMethod
+      ? Boolean(selectedMethod?.enabled && selectedMethod?.isEligible)
+      : Boolean(pregnancyReadiness?.isEligible)
     : Boolean(pregnancyReadiness?.isEligible);
 
   useEffect(() => {
@@ -283,7 +291,9 @@ export default function PregnancyVerificationScreen() {
           <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          {isContinuationWorkflow ? "Pregnancy Follow-up" : "Pregnancy Verification"}
+          {isContinuationWorkflow
+            ? PREGNANCY_DIAGNOSIS_UI.PAGE_2.HEADER_CONTINUATION
+            : PREGNANCY_DIAGNOSIS_UI.PAGE_2.HEADER_INITIAL}
         </Text>
       </View>
 
@@ -292,25 +302,166 @@ export default function PregnancyVerificationScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
-          {/* Compact Context Summary */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
-              Cow {animal.earTag || animal.animalId || "N/A"} · Attempt #{insem.attemptNumber || "N/A"}
-            </Text>
-            <View style={{ marginTop: 8, gap: 2 }}>
-              <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 13, color: colors.textSecondary }}>
-                AI date: {formatDate(insem.inseminationDate || insem.scheduledDate)}
-              </Text>
-              {pregnancyReadiness?.daysPostAI !== undefined ? (
-                <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 13, color: colors.textSecondary }}>
-                  Day {pregnancyReadiness.daysPostAI} after AI
-                </Text>
-              ) : null}
-            </View>
-          </View>
+          {/* Animal & Breeding Reference Card */}
+          {(() => {
+            const aiDateValue = insem.inseminationDate || insem.scheduledDate || insem.createdAt;
+            const daysPostAI =
+              pregnancyReadiness?.daysPostAI !== undefined && pregnancyReadiness?.daysPostAI !== null
+                ? pregnancyReadiness.daysPostAI
+                : aiDateValue
+                  ? Math.max(0, Math.floor((new Date().getTime() - new Date(aiDateValue).getTime()) / (24 * 60 * 60 * 1000)))
+                  : null;
+            const daysSinceInseminationText =
+              daysPostAI !== null
+                ? `${daysPostAI} ${daysPostAI === 1 ? "day" : "days"} since insemination`
+                : null;
 
-          {/* Verification Outcome Form */}
-          <Text style={[styles.sectionTitle, { color: isDark ? "#34d399" : "#00643B" }]}>Verification Form</Text>
+            return (
+              <View
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: 20,
+                    padding: 16,
+                    marginBottom: 16,
+                  },
+                ]}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ecfdf5",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Heart size={20} color={isDark ? "#34d399" : "#00643B"} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_800ExtraBold",
+                        fontSize: 16,
+                      }}
+                    >
+                      {animal.earTag || animal.animalId || "Animal not recorded"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_500Medium",
+                        fontSize: 13,
+                        marginTop: 2,
+                      }}
+                    >
+                      {[animal.breed, animal.species].filter(Boolean).join(" · ") || "Cattle"}
+                      {insem.attemptNumber ? ` · Attempt #${insem.attemptNumber}` : ""}
+                    </Text>
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 16,
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 10,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.6,
+                      }}
+                    >
+                      LAST INSEMINATION
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 13,
+                        marginTop: 4,
+                      }}
+                    >
+                      {formatDate(aiDateValue)}
+                    </Text>
+                    {daysSinceInseminationText ? (
+                      <Text
+                        style={{
+                          color: colors.textSecondary,
+                          fontFamily: "Outfit_500Medium",
+                          fontSize: 12,
+                          marginTop: 2,
+                        }}
+                      >
+                        {daysSinceInseminationText}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 10,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.6,
+                      }}
+                    >
+                      DIAGNOSIS WINDOW
+                    </Text>
+                    <Text
+                      style={{
+                        color: officialDiagnosisReady
+                          ? (isDark ? "#34d399" : "#00643B")
+                          : colors.textPrimary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 13,
+                        marginTop: 4,
+                      }}
+                    >
+                      {officialDiagnosisReady
+                        ? "Available now"
+                        : pregnancyReadiness?.availableDateLabel || "Pending window"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_500Medium",
+                        fontSize: 12,
+                        marginTop: 2,
+                      }}
+                    >
+                      {PREGNANCY_DIAGNOSIS_UI.PAGE_2.SUBTEXT_TIMING}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* Farmer Context Handoff */}
+          <FarmerPregnancyReportCard insemination={insem} />
+
+          {/* Technician Diagnosis Form */}
+          <Text style={[styles.sectionTitle, { color: isDark ? "#34d399" : "#00643B" }]}>
+            {PREGNANCY_DIAGNOSIS_UI.PAGE_2.SECTION_FORM_TITLE}
+          </Text>
 
           {!isContinuationWorkflow && pregnancyReadiness && !pregnancyReadiness.isEligible && (
             <View
@@ -335,171 +486,212 @@ export default function PregnancyVerificationScreen() {
             </View>
           )}
 
-          {/* Outcome Segmented Control */}
+          {/* Outcome Selection */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>
             {isContinuationWorkflow ? "Pregnancy Follow-up Outcome" : "Pregnancy Diagnosis Outcome"}
           </Text>
-          <View style={styles.segmentedControl}>
-            {isContinuationWorkflow ? (
-              <>
-                <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    verificationResult === "continuing" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
-                    { borderColor: colors.border },
-                  ]}
-                  onPress={() => setVerificationResult("continuing")}
-                >
-                  <Text style={[styles.segmentText, { color: verificationResult === "continuing" ? "#fff" : colors.textPrimary }]}>Continuing</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    verificationResult === "loss_detected" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
-                    { borderColor: colors.border },
-                  ]}
-                  onPress={() => setVerificationResult("loss_detected")}
-                >
-                  <Text style={[styles.segmentText, { color: verificationResult === "loss_detected" ? "#fff" : colors.textPrimary }]}>Loss detected</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    verificationResult === "follow_up_required" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
-                    { borderColor: colors.border },
-                  ]}
-                  onPress={() => setVerificationResult("follow_up_required")}
-                >
-                  <Text style={[styles.segmentText, { color: verificationResult === "follow_up_required" ? "#fff" : colors.textPrimary }]}>Follow-up</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-            <TouchableOpacity
-              style={[
-                styles.segmentBtn,
-                verificationResult === "pregnant" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
-                { borderColor: colors.border }
-              ]}
-              onPress={() => setVerificationResult("pregnant")}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: verificationResult === "pregnant" ? "#fff" : colors.textPrimary }
-                ]}
-              >
-                Pregnant
-              </Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.segmentBtn,
-                verificationResult === "not_pregnant" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
-                { borderColor: colors.border }
-              ]}
-              onPress={() => setVerificationResult("not_pregnant")}
-            >
-              <Text
+          {isContinuationWorkflow ? (
+            <View style={styles.segmentedControl}>
+              <TouchableOpacity
                 style={[
-                  styles.segmentText,
-                  { color: verificationResult === "not_pregnant" ? "#fff" : colors.textPrimary }
+                  styles.segmentBtn,
+                  verificationResult === "continuing" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
+                  { borderColor: colors.border },
                 ]}
+                onPress={() => setVerificationResult("continuing")}
               >
-                Empty
-              </Text>
-            </TouchableOpacity>
+                <Text style={[styles.segmentText, { color: verificationResult === "continuing" ? "#fff" : colors.textPrimary }]}>Continuing</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  verificationResult === "loss_detected" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
+                  { borderColor: colors.border },
+                ]}
+                onPress={() => setVerificationResult("loss_detected")}
+              >
+                <Text style={[styles.segmentText, { color: verificationResult === "loss_detected" ? "#fff" : colors.textPrimary }]}>Loss detected</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  verificationResult === "follow_up_required" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
+                  { borderColor: colors.border },
+                ]}
+                onPress={() => setVerificationResult("follow_up_required")}
+              >
+                <Text style={[styles.segmentText, { color: verificationResult === "follow_up_required" ? "#fff" : colors.textPrimary }]}>Follow-up</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.grid2x2}>
+              {CANONICAL_PREGNANCY_DIAGNOSIS_OUTCOMES.map((outcome) => {
+                const isSelected = verificationResult === outcome.value;
+                const activeColors = {
+                  pregnant: {
+                    bg: isDark ? "rgba(16,185,129,0.15)" : "#ecfdf5",
+                    border: isDark ? "#10b981" : "#00643B",
+                    text: isDark ? "#34d399" : "#00643B",
+                    indicator: isDark ? "#10b981" : "#00643B",
+                  },
+                  not_pregnant: {
+                    bg: isDark ? "rgba(239,68,68,0.15)" : "#fef2f2",
+                    border: "#ef4444",
+                    text: "#ef4444",
+                    indicator: "#ef4444",
+                  },
+                  return_to_heat: {
+                    bg: isDark ? "rgba(245,158,11,0.15)" : "#fffbeb",
+                    border: "#f59e0b",
+                    text: isDark ? "#fbbf24" : "#b45309",
+                    indicator: "#f59e0b",
+                  },
+                  needs_recheck: {
+                    bg: isDark ? "rgba(59,130,246,0.15)" : "#eff6ff",
+                    border: "#3b82f6",
+                    text: isDark ? "#60a5fa" : "#1d4ed8",
+                    indicator: "#3b82f6",
+                  },
+                }[outcome.value];
 
-            <TouchableOpacity
-              style={[
-                styles.segmentBtn,
-                verificationResult === "return_to_heat" && [styles.segmentBtnActive, { backgroundColor: "#f59e0b" }],
-                { borderColor: colors.border }
-              ]}
-              onPress={() => setVerificationResult("return_to_heat")}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: verificationResult === "return_to_heat" ? "#fff" : colors.textPrimary }
-                ]}
-              >
-                Re-heat
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.segmentBtn,
-                verificationResult === "needs_recheck" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
-                { borderColor: colors.border }
-              ]}
-              onPress={() => setVerificationResult("needs_recheck")}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: verificationResult === "needs_recheck" ? "#fff" : colors.textPrimary }
-                ]}
-              >
-                Recheck
-              </Text>
-            </TouchableOpacity>
-              </>
-            )}
-          </View>
+                return (
+                  <TouchableOpacity
+                    key={outcome.value}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.gridCard,
+                      {
+                        backgroundColor: isSelected ? activeColors.bg : colors.card,
+                        borderColor: isSelected ? activeColors.border : colors.border,
+                        borderWidth: isSelected ? 2 : 1,
+                      },
+                    ]}
+                    onPress={() => setVerificationResult(outcome.value as any)}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View
+                        style={[
+                          styles.outcomeRadio,
+                          {
+                            borderColor: isSelected ? activeColors.indicator : colors.border,
+                            backgroundColor: isSelected ? activeColors.indicator : "transparent",
+                          },
+                        ]}
+                      >
+                        {isSelected && <Check size={10} color="#fff" />}
+                      </View>
+                      <Text
+                        style={[
+                          styles.gridCardText,
+                          {
+                            color: isSelected ? activeColors.text : colors.textPrimary,
+                            fontFamily: isSelected ? "Outfit_700Bold" : "Outfit_600SemiBold",
+                          },
+                        ]}
+                      >
+                        {outcome.label}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
           {/* Diagnostic Check Method */}
           {!isContinuationWorkflow && (
             <>
-          <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Diagnostic Method</Text>
-          <View style={styles.pillRow}>
-            {methodOptions.map(
-              (method: any) => (
-                <TouchableOpacity
-                  key={method.methodCode}
-                  disabled={!method.enabled || !method.isEligible}
-                  style={[
-                    styles.pillBtn,
-                    {
-                      borderColor: checkMethod === method.methodCode
-                        ? isDark ? "#047857" : "#00643B"
-                        : colors.border,
-                      backgroundColor: checkMethod === method.methodCode
-                        ? isDark ? "#047857" : "#00643B"
-                        : colors.card,
-                      opacity: method.enabled && method.isEligible ? 1 : 0.5,
-                    },
-                    checkMethod === method.methodCode && styles.pillBtnActive,
-                  ]}
-                  onPress={() => {
-                    setCheckMethod(method.methodCode);
-                    setMethodValidationError(false);
+              <Text style={[styles.formLabel, { color: colors.textPrimary }]}>
+                {PREGNANCY_DIAGNOSIS_UI.PAGE_2.SECTION_DIAGNOSTIC_METHOD}
+              </Text>
+
+              <View style={styles.pillRow}>
+                {methodOptions.map((method: any) => {
+                  const isSelected = checkMethod === method.methodCode;
+                  return (
+                    <TouchableOpacity
+                      key={method.methodCode}
+                      disabled={!method.enabled || (methodBased && !method.isEligible)}
+                      style={[
+                        styles.pillBtn,
+                        {
+                          borderColor: isSelected
+                            ? isDark
+                              ? "#10b981"
+                              : "#00643B"
+                            : colors.border,
+                          backgroundColor: isSelected
+                            ? isDark
+                              ? "rgba(16,185,129,0.15)"
+                              : "#ecfdf5"
+                            : colors.card,
+                          borderWidth: isSelected ? 2 : 1,
+                          opacity:
+                            method.enabled && (!methodBased || method.isEligible)
+                              ? 1
+                              : 0.5,
+                        },
+                      ]}
+                      onPress={() => {
+                        setCheckMethod(isSelected ? "" : method.methodCode);
+                        setMethodValidationError(false);
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        {isSelected && (
+                          <Check size={14} color={isDark ? "#34d399" : "#00643B"} />
+                        )}
+                        <Text
+                          style={[
+                            styles.pillText,
+                            {
+                              color: isSelected
+                                ? isDark
+                                  ? "#34d399"
+                                  : "#00643B"
+                                : colors.textPrimary,
+                              fontFamily: isSelected
+                                ? "Outfit_700Bold"
+                                : "Outfit_500Medium",
+                            },
+                          ]}
+                        >
+                          {method.label}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {methodValidationError && (
+                <Text
+                  style={{
+                    color: "#ef4444",
+                    fontSize: 12,
+                    marginTop: -10,
+                    fontFamily: "Outfit_500Medium",
+                    marginBottom: 14,
                   }}
                 >
+                  Select a diagnostic method before saving the pregnancy check.
+                </Text>
+              )}
+
+              {selectedMethod && !methodValidationError && (
+                <View style={{ marginTop: -10, marginBottom: 18 }}>
                   <Text
-                    style={[
-                      styles.pillText,
-                      { color: checkMethod === method.methodCode ? "#fff" : colors.textPrimary }
-                    ]}
+                    style={{
+                      color: isDark ? "#34d399" : "#00643B",
+                      fontSize: 12,
+                      fontFamily: "Outfit_500Medium",
+                    }}
                   >
-                    {method.label}
+                    Selected method: {selectedMethod.label}
                   </Text>
-                  {methodBased && (
-                    <Text style={[styles.pillText, { color: checkMethod === method.methodCode ? "#fff" : colors.textSecondary, fontSize: 9 }]}>
-                      {method.isEligible ? "Available" : method.availableDateLabel || method.reason}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )
-            )}
-          </View>
-          {methodValidationError && (
-            <Text style={{ color: "#ef4444", fontSize: 12, marginTop: 4, fontFamily: "Outfit_500Medium", marginBottom: 8 }}>
-              Select a diagnostic method before saving the pregnancy check.
-            </Text>
-          )}
+                </View>
+              )}
             </>
           )}
 
@@ -577,7 +769,9 @@ export default function PregnancyVerificationScreen() {
               <>
                 <CheckCircle size={20} color="#fff" />
                 <Text style={styles.submitBtnText}>
-                  {isContinuationWorkflow ? "Save Pregnancy Follow-up" : "Save Pregnancy Confirmation"}
+                  {isContinuationWorkflow
+                    ? PREGNANCY_DIAGNOSIS_UI.PAGE_2.CTA_SAVE_CONTINUATION
+                    : PREGNANCY_DIAGNOSIS_UI.PAGE_2.CTA_SAVE_INITIAL}
                 </Text>
               </>
             )}
@@ -753,6 +947,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginBottom: 20,
+  },
+  grid2x2: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 20,
+  },
+  gridCard: {
+    width: "48%",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    alignItems: "flex-start",
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  outcomeRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridCardText: {
+    fontSize: 13,
+    flexShrink: 1,
   },
   segmentBtn: {
     flex: 1,

@@ -12,6 +12,7 @@ import {
   getFullAnimalReference,
 } from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
 import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
+import { formatDiagnosticMethodLabel } from "@/features/breeding/utils/technicianBreedingVerification";
 
 interface RecordDetailContentProps {
   selectedActivity: ActivityFeedItem;
@@ -361,7 +362,9 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                 {hasDisplayValue(selectedActivity.details.diagnosticMethod) ? (
                   <DetailRow
                     label="Confirmation Method"
-                    value={humanize(selectedActivity.details.diagnosticMethod)}
+                    value={formatDiagnosticMethodLabel(
+                      selectedActivity.details.diagnosticMethod,
+                    )}
                   />
                 ) : null}
                 {hasDisplayValue(selectedActivity.details.confirmationStage) ? (
@@ -541,7 +544,11 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                 />
                 <DetailRow
                   label="Calving Ease"
-                  value={selectedActivity.details.calvingEase}
+                  value={
+                    selectedActivity.details.calvingOutcome === "abortion"
+                      ? "Not applicable"
+                      : selectedActivity.details.calvingEase
+                  }
                 />
                 <DetailRow
                   label="Number of Calves"

@@ -525,7 +525,7 @@ test("Security: legacy reproductive-status mutation rejects Farmers before any w
   assert.equal(lookupCalled, false);
 });
 
-test("Security: only the owning technician can use the protected legacy reproductive-status path", async (t) => {
+test("Security: legacy reproductive-status path preserves ownership checks but rejects direct mutations", async (t) => {
   const originalFindById = Animal.findById;
   const originalInseminationFindOne = Insemination.findOne;
   const originalPregnancyFindOne = Pregnancy.findOne;
@@ -551,20 +551,25 @@ test("Security: only the owning technician can use the protected legacy reproduc
     _id: "507f1f77bcf86cd799439003",
     technicianId: "technician-1",
     approvedBy: "technician-1",
+    async save() { saveCount += 1; },
   });
   Pregnancy.findOne = () => sorted(null);
   Task.findOne = () => sorted(null);
 
-  const technicianRecorder = responseRecorder();
-  await updateReproductiveStatus(
-    {
-      params: { id: "animal-1" },
-      body: { status: "Normal", note: "Verified field observation" },
-      user: { _id: "technician-1", role: "technician" },
-    },
-    technicianRecorder.response,
-  );
-  assert.equal(technicianRecorder.statusCode, 200);
+  for (const status of ["Pregnant", "Inseminated", "Normal", "In Heat", "Post-partum", "Dry", "Likely Pregnant", "invalid"]) {
+    const technicianRecorder = responseRecorder();
+    await updateReproductiveStatus(
+      {
+        params: { id: "animal-1" },
+        body: { status, note: "Direct lifecycle override" },
+        user: { _id: "technician-1", role: "technician" },
+      },
+      technicianRecorder.response,
+    );
+    assert.equal(technicianRecorder.statusCode, 409, status);
+    assert.equal(technicianRecorder.body.code, "REPRODUCTIVE_STATUS_WORKFLOW_REQUIRED", status);
+    assert.equal(saveCount, 0, status);
+  }
 
   const adminRecorder = responseRecorder();
   await updateReproductiveStatus(
@@ -576,5 +581,5 @@ test("Security: only the owning technician can use the protected legacy reproduc
     adminRecorder.response,
   );
   assert.equal(adminRecorder.statusCode, 403);
-  assert.equal(saveCount, 1);
+  assert.equal(saveCount, 0);
 });

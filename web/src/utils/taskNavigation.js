@@ -60,6 +60,8 @@ export const getTaskPrimaryActionLabel = (task = {}) => {
   const { allowedAction, workflowType } = task;
 
   switch (allowedAction) {
+    case "REVIEW_PREGNANCY_LOSS":
+      return "Review Pregnancy Loss";
     case "CLAIM":
       return "Claim Task";
     case "SCHEDULE_VISIT":
@@ -67,6 +69,8 @@ export const getTaskPrimaryActionLabel = (task = {}) => {
     case "HANDLE_REQUEST":
       return "Handle Request";
     case "START_SERVICE":
+      if (["Health", "health"].includes(workflowType))
+        return "Record Health Assistance";
       return "Start Service";
     case "RECORD_SERVICE": {
       if (workflowType === "PD") {

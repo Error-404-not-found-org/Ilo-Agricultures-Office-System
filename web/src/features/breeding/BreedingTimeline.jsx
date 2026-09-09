@@ -140,11 +140,15 @@ const BreedingTimeline = ({ history = [], reproductiveStatus = "Normal", onStepC
               </p>
               <p className="text-blue-600 dark:text-blue-400 text-xs font-bold">
                 Expected calf drop in{" "}
-                {Math.ceil(
-                  (new Date(latestPregnancy.targetCalvingDate).getTime() -
-                    new Date().getTime()) /
-                    (1000 * 60 * 60 * 24),
-                )}{" "}
+                {latestPregnancy?.calvingReadiness?.expectedCalvingDaysRemaining ??
+                  Math.max(
+                    0,
+                    Math.ceil(
+                      (new Date(latestPregnancy.targetCalvingDate).getTime() -
+                        new Date().getTime()) /
+                        (1000 * 60 * 60 * 24),
+                    ),
+                  )}{" "}
                 days. Prepare isolation stall soon.
               </p>
             </div>

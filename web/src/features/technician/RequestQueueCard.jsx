@@ -21,15 +21,23 @@ const normalizedStatus = (value) =>
     .replaceAll("_", "-");
 
 const uniquePhotoCount = (request) => {
-  const urls = Array.isArray(request.attachments?.urls)
-    ? request.attachments.urls
-    : [];
+  const raw = request?.raw || request || {};
+
+  const urls = [
+    ...(Array.isArray(raw?.photos) ? raw.photos : []),
+    ...(Array.isArray(raw?.farmerRequest?.photos) ? raw.farmerRequest.photos : []),
+    ...(Array.isArray(request.attachments?.urls) ? request.attachments.urls : []),
+    raw?.photoUrl,
+    raw?.imageUrl,
+    raw?.farmerRequest?.photoUrl,
+  ];
+
   const normalizedUrls = new Set(
     urls
-      .filter((url) => typeof url === "string")
+      .filter((url) => typeof url === "string" && url.trim().length > 0)
       .map((url) => url.trim())
-      .filter(Boolean),
   );
+
   return Math.max(Number(request.attachments?.count || 0), normalizedUrls.size);
 };
 

@@ -12,6 +12,18 @@ export const PREGNANCY_METHOD_CODES = Object.freeze([
   "other_approved",
 ]);
 
+export const PREGNANCY_DIAGNOSIS_METHOD_ALIASES = Object.freeze({
+  palpation: "rectal_palpation",
+  visual_observation: "clinical_examination",
+  farmer_interview: "clinical_examination",
+  other: "other_approved",
+});
+
+export const normalizePregnancyDiagnosisMethod = (methodCode) => {
+  const normalized = typeof methodCode === "string" ? methodCode.trim() : "";
+  return PREGNANCY_DIAGNOSIS_METHOD_ALIASES[normalized] || normalized;
+};
+
 export const PREGNANCY_DIAGNOSIS_RESULTS = Object.freeze([
   "Pregnant",
   "Empty",

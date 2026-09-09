@@ -54,6 +54,7 @@ function formatDate(dateValue?: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "Asia/Manila",
   });
 }
 
@@ -61,7 +62,15 @@ function isTechnicianWorkItem(item: WorkCardItem): item is TechnicianWorkItem {
   return (item as TechnicianWorkItem).state !== undefined;
 }
 
+function isNeedsReview(item: WorkCardItem) {
+  if (isTechnicianWorkItem(item) && item.statusLabel === "Needs review") return true;
+  return normalizeWorkflowStatus(item) === "needs_review";
+}
+
 function getStatusColor(item: WorkCardItem, colors: any) {
+  if (isNeedsReview(item)) {
+    return colors.infoForeground || colors.primary;
+  }
   if (isTechnicianWorkItem(item)) {
     if (item.overdue) return colors.error;
     if (item.isReadyToday) return colors.warning;
@@ -75,6 +84,9 @@ function getStatusColor(item: WorkCardItem, colors: any) {
 }
 
 function getStatusIcon(item: WorkCardItem) {
+  if (isNeedsReview(item)) {
+    return ClockIcon;
+  }
   if (isTechnicianWorkItem(item)) {
     if (item.overdue) return AlertCircle;
     if (item.isReadyToday) return AlertTriangle;
@@ -88,22 +100,21 @@ function getStatusIcon(item: WorkCardItem) {
 }
 
 function getStatusLabel(item: WorkCardItem) {
+  if (isNeedsReview(item)) {
+    return "Needs review";
+  }
   if (isTechnicianWorkItem(item)) {
     if (item.overdue) return "Overdue";
-    if (item.isReadyToday) return "Today";
     return item.statusLabel;
   }
   const status = normalizeWorkflowStatus(item);
-  if (status === "overdue") return "Overdue";
-  if (status === "due_today") return "Today";
-  if (status === "completed") return "Completed";
-  if (status === "needs_response") return "Needs response";
-  if (status === "needs_scheduling") return "Needs scheduling";
-  if (status === "scheduled") return "Scheduled";
-  return "Open";
+  return getWorkflowStatusPresentation(status).label;
 }
 
 function getCardBorderColor(item: WorkCardItem, colors: any) {
+  if (isNeedsReview(item)) {
+    return colors.border;
+  }
   if (isTechnicianWorkItem(item)) {
     if (item.overdue) return colors.error;
     if (item.isReadyToday) return colors.warning;
@@ -201,6 +212,18 @@ function getPreviousAttemptVerified(item: WorkCardItem): boolean {
 function getTitle(item: WorkCardItem): string {
   if (isTechnicianWorkItem(item)) {
     return item.title;
+  }
+  const rawItem = item as any;
+  if (
+    rawItem.sourceType === "farmer_pregnancy_loss_report" ||
+    rawItem.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+    rawItem.type === "pregnancy_loss_review" ||
+    rawItem.workflowType === "PregnancyLossReview" ||
+    rawItem.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+    rawItem.context?.reportId ||
+    rawItem.farmerObservation?.reportType === "pregnancy_loss"
+  ) {
+    return "Pregnancy Loss Review";
   }
   const service = normalizeServiceType(item);
   if (service === "ai") return "Artificial Insemination";

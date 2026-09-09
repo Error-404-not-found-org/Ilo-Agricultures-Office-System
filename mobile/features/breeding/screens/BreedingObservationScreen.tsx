@@ -12,7 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Camera, CheckCircle2, Circle, Send, X, Clock, Info, Check } from "lucide-react-native";
-import { differenceInCalendarDays, format } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FarmerScreen, AsyncState } from "@/features/farmer-ui/components";
@@ -33,6 +33,7 @@ import {
   getBreedingObservationPresentation,
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
+  getFarmerBreedingObservationReadiness,
   isBreedingObservationAuthoritativelyReviewed,
 } from "../utils/breedingObservationPresentation";
 
@@ -57,18 +58,20 @@ const reportOptions: {
 }[] = [
   {
     value: "return_to_heat",
-    title: "Showing signs of heat",
-    description: "I noticed signs that the animal may be in heat again.",
+    title: "Yes, I noticed heat signs",
+    description:
+      "I noticed behavior or physical signs that may mean she is in heat again.",
   },
   {
     value: "possible_pregnancy",
-    title: "No signs observed",
-    description: "I haven't noticed signs of heat.",
+    title: "No, I haven't noticed heat signs",
+    description: "I haven't noticed any signs of heat.",
   },
   {
     value: "unsure",
     title: "I'm not sure",
-    description: "I'm unsure based on what I've observed.",
+    description:
+      "The signs are unclear or I haven't been able to observe her closely.",
   },
 ];
 
@@ -234,6 +237,19 @@ export function BreedingObservationScreen({
     latestInsemination?.createdAt ||
     animal?.lastInseminationDate;
   const aiDate = aiDateValue ? new Date(aiDateValue) : null;
+  const observationReadiness = useMemo(
+    () => getFarmerBreedingObservationReadiness(latestInsemination),
+    [latestInsemination],
+  );
+  const daysPostAI = observationReadiness.daysPostAI;
+  const daysSinceInseminationText =
+    daysPostAI !== null
+      ? `${daysPostAI} ${daysPostAI === 1 ? "day" : "days"} since insemination`
+      : null;
+  const guidanceText =
+    daysPostAI !== null
+      ? `It has been ${daysPostAI} ${daysPostAI === 1 ? "day" : "days"} since insemination. Check whether you noticed signs of heat after the last insemination service.`
+      : "Check whether you noticed signs of heat after the last insemination service.";
   const toggleSign = (sign: string) => {
     setSelectedSigns((current) =>
       current.includes(sign)
@@ -262,7 +278,7 @@ export function BreedingObservationScreen({
         ...current,
         { uri: result.uri, base64: result.base64 },
       ]);
-      toast.success("Photo evidence added.");
+      toast.success("Photo added.");
     } finally {
       setIsPickingPhoto(false);
     }
@@ -275,6 +291,11 @@ export function BreedingObservationScreen({
   };
 
   const submit = async () => {
+    if (!observationReadiness.isAvailable) {
+      toast.error(observationReadiness.message);
+      return;
+    }
+
     const targetRequestId = requestId || latestInsemination?._id;
     if (!targetRequestId) {
       toast.error("No AI record is available for this observation.");
@@ -337,6 +358,65 @@ export function BreedingObservationScreen({
     );
   }
 
+  if (!hasInitialized) {
+    return <BreedingObservationSkeleton />;
+  }
+
+  if (
+    presentationMode !== "existing" &&
+    !observationReadiness.isAvailable
+  ) {
+    return (
+      <FarmerScreen scroll={false}>
+        <AppPageHeader title="Breeding Observation" onBack={() => safeBack()} />
+        <View
+          style={{
+            flex: 1,
+            padding: 24,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <View
+            className="w-full rounded-3xl border p-5"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            <View className="flex-row items-center gap-3">
+              <View
+                className="h-10 w-10 items-center justify-center rounded-full"
+                style={{ backgroundColor: colors.tint }}
+              >
+                <Clock size={20} color={colors.primary} />
+              </View>
+              <View className="flex-1">
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 16,
+                  }}
+                >
+                  Heat-return monitoring
+                </Text>
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 13,
+                    lineHeight: 19,
+                    marginTop: 4,
+                  }}
+                >
+                  {observationReadiness.message}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </FarmerScreen>
+    );
+  }
+
   return (
     <FarmerScreen scroll={false}>
       <AppPageHeader title="Breeding Observation" onBack={() => safeBack()} />
@@ -385,11 +465,23 @@ export function BreedingObservationScreen({
           <View className="flex-row items-start gap-4 mt-4 pt-4 border-t" style={{ borderColor: colors.border }}>
             <View className="flex-1">
               <Text style={{ color: colors.textMuted, fontFamily: "Outfit_600SemiBold", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Last AI
+                Last Insemination
               </Text>
               <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_600SemiBold", fontSize: 13, marginTop: 2 }}>
                 {aiDate ? format(aiDate, "MMM d, yyyy") : "Not recorded"}
               </Text>
+              {daysSinceInseminationText && (
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 11,
+                    marginTop: 2,
+                  }}
+                >
+                  {daysSinceInseminationText}
+                </Text>
+              )}
             </View>
             <View className="flex-1">
               <Text style={{ color: colors.textMuted, fontFamily: "Outfit_600SemiBold", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -424,7 +516,7 @@ export function BreedingObservationScreen({
                 lineHeight: 18,
               }}
             >
-              Check whether you noticed signs of heat after the AI service.
+              {guidanceText}
             </Text>
           </View>
         </View>
@@ -532,7 +624,7 @@ export function BreedingObservationScreen({
                   fontSize: 16,
                 }}
               >
-                What have you noticed since the AI service?
+                Have you noticed signs of heat?
               </Text>
               <Text
                 style={{
@@ -702,7 +794,7 @@ export function BreedingObservationScreen({
                 fontSize: 14,
               }}
             >
-              Photo evidence
+              Photos
             </Text>
             <View
               className="rounded-full px-3 py-1"
@@ -730,7 +822,7 @@ export function BreedingObservationScreen({
             }}
           >
             Add photos of visible signs to help the technician review your
-            observation. Photos do not replace technician verification.
+            observation.
           </Text>
 
           <View className="flex-row flex-wrap gap-3 mt-4">
@@ -738,14 +830,14 @@ export function BreedingObservationScreen({
               <View key={`${photo.uri}-${index}`} className="relative">
                 <Image
                   source={{ uri: photo.uri }}
-                  accessibilityLabel={`Photo evidence ${index + 1}`}
+                  accessibilityLabel={`Photo ${index + 1}`}
                   className="w-20 h-20 rounded-xl"
                   resizeMode="cover"
                 />
                 <TouchableOpacity
                   onPress={() => removeEvidencePhoto(index)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove photo evidence ${index + 1}`}
+                  accessibilityLabel={`Remove photo ${index + 1}`}
                   className="absolute -top-2 -right-2 w-8 h-8 rounded-full items-center justify-center"
                   style={{ backgroundColor: colors.modalBackdrop }}
                 >
@@ -759,7 +851,7 @@ export function BreedingObservationScreen({
                 onPress={() => setPhotoModalVisible(true)}
                 disabled={isPickingPhoto}
                 accessibilityRole="button"
-                accessibilityLabel="Add photo evidence"
+                accessibilityLabel="Add photo"
                 className="w-20 h-20 rounded-xl border items-center justify-center"
                 style={{
                   backgroundColor: colors.surfaceSubtle,
@@ -802,11 +894,11 @@ export function BreedingObservationScreen({
 
         <TouchableOpacity
           onPress={submit}
-          disabled={submitMutation.isPending || isPickingPhoto || (reportType === "return_to_heat" && selectedSigns.length === 0)}
+          disabled={!observationReadiness.isAvailable || submitMutation.isPending || isPickingPhoto || (reportType === "return_to_heat" && selectedSigns.length === 0)}
           className="rounded-2xl py-4 items-center justify-center flex-row mb-3"
           style={{
             backgroundColor: colors.primary,
-            opacity: submitMutation.isPending || isPickingPhoto || (reportType === "return_to_heat" && selectedSigns.length === 0) ? 0.7 : 1,
+            opacity: !observationReadiness.isAvailable || submitMutation.isPending || isPickingPhoto || (reportType === "return_to_heat" && selectedSigns.length === 0) ? 0.7 : 1,
           }}
         >
           {submitMutation.isPending ? (
@@ -857,7 +949,7 @@ export function BreedingObservationScreen({
         onClose={() => setPhotoModalVisible(false)}
         onSelectCamera={() => handleSelectPhoto("camera")}
         onSelectLibrary={() => handleSelectPhoto("library")}
-        title="Add photo evidence"
+        title="Add photo"
       />
     </FarmerScreen>
   );

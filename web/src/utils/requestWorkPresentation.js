@@ -1,3 +1,5 @@
+import { isFarmerBreedingObservationPendingReview } from "./breedingObservation";
+
 export const OPEN_REQUEST_FILTERS = [
   { value: "all", label: "All" },
   { value: "ai", label: "AI" },
@@ -50,7 +52,14 @@ export const normalizeServiceType = (itemOrValue) => {
     const workflowType = normalizedValue(itemOrValue.workflowType);
     if (workflowType === "ai") return "ai";
     if (workflowType === "health") return "health";
-    if (workflowType === "pd") return "pregnancy";
+    if (
+      workflowType === "pd" ||
+      workflowType === "pregnancylossreview" ||
+      workflowType === "pregnancy_loss_review" ||
+      itemOrValue.sourceType === "farmer_pregnancy_loss_report" ||
+      itemOrValue.raw?.sourceType === "farmer_pregnancy_loss_report"
+    )
+      return "pregnancy";
     if (workflowType === "calving") return "calving";
 
     const candidates = [
@@ -143,19 +152,28 @@ export const getServicePresentation = (service) =>
     badgeClass: "badge-ghost",
   };
 
-const localDateKey = (value) => {
+const philippineDateKey = (value) => {
   if (!value) return null;
+  if (typeof value === "string") {
+    const dateOnly = value.match(/^(\d{4}-\d{2}-\d{2})$/)?.[1];
+    if (dateOnly) return dateOnly;
+  }
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = new Intl.DateTimeFormat("en-PH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Manila",
+  }).formatToParts(date);
+  const part = (type) =>
+    parts.find((datePart) => datePart.type === type)?.value || "";
+  return [part("year"), part("month"), part("day")].join("-");
 };
 
 export const deriveScheduleState = (scheduleDate, now = new Date()) => {
-  const scheduleKey = localDateKey(scheduleDate);
-  const todayKey = localDateKey(now);
+  const scheduleKey = philippineDateKey(scheduleDate);
+  const todayKey = philippineDateKey(now);
   if (!scheduleKey || !todayKey) return null;
   if (scheduleKey < todayKey) return "overdue";
   if (scheduleKey === todayKey) return "due_today";
@@ -179,17 +197,44 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
     return "cancelled";
   }
 
+  if (isFarmerBreedingObservationPendingReview(item)) {
+    return "needs_review";
+  }
+
+  if (
+    item.sourceType === "farmer_pregnancy_loss_report" ||
+    item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+    item.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+    item.workflowType === "PregnancyLossReview" ||
+    item.context?.reportId ||
+    item.farmerObservation?.reportType === "pregnancy_loss"
+  ) {
+    return "needs_review";
+  }
+
   const serviceType = normalizeServiceType(item);
+  const handlingMethod = getHandlingMethod(item);
+  const scheduledVisitDate = item.schedule?.date || item.scheduledDate;
   const scheduleState = deriveScheduleState(
-    item.schedule?.date || item.scheduledDate || item.dueDate,
+    scheduledVisitDate || item.dueDate,
     now,
   );
+  const isVisitBased =
+    serviceType === "ai" ||
+    (serviceType === "health" &&
+      (handlingMethod === "farm_visit" || Boolean(scheduledVisitDate)));
+  const temporalStatus =
+    scheduleState === "due_today"
+      ? isVisitBased
+        ? "scheduled_today"
+        : "due_today"
+      : scheduleState === "scheduled" && !isVisitBased
+        ? "upcoming"
+        : scheduleState;
 
   if (serviceType === "health") {
-    const handlingMethod = getHandlingMethod(item);
-
     if (handlingMethod === "farm_visit") {
-      if (scheduleState) return scheduleState;
+      if (temporalStatus) return temporalStatus;
       return "needs_scheduling";
     }
 
@@ -198,7 +243,7 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
     }
 
     // No handling method chosen yet
-    if (scheduleState) return scheduleState;
+    if (temporalStatus) return temporalStatus;
     if (
       [
         "scheduled",
@@ -215,7 +260,7 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
     return "open";
   }
 
-  if (scheduleState) return scheduleState;
+  if (temporalStatus) return temporalStatus;
   if (
     [
       "scheduled",
@@ -233,6 +278,11 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
 export const getWorkflowStatusPresentation = (status) =>
   ({
     open: { label: "Open", tone: "amber", badgeClass: "badge-warning" },
+    needs_review: {
+      label: "Needs review",
+      tone: "blue",
+      badgeClass: "badge-info",
+    },
     needs_response: {
       label: "Needs response",
       tone: "blue",
@@ -249,6 +299,12 @@ export const getWorkflowStatusPresentation = (status) =>
       badgeClass: "badge-warning",
     },
     scheduled: { label: "Scheduled", tone: "blue", badgeClass: "badge-info" },
+    scheduled_today: {
+      label: "Scheduled Today",
+      tone: "amber",
+      badgeClass: "badge-warning",
+    },
+    upcoming: { label: "Upcoming", tone: "blue", badgeClass: "badge-info" },
     due_today: {
       label: "Due Today",
       tone: "amber",

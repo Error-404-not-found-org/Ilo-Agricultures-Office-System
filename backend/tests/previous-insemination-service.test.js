@@ -61,6 +61,7 @@ const installHarness = () => {
     created: [],
     animalUpdates: [],
     tasks: [],
+    inseminationUpdates: [],
     audits: [],
     newerAI: null,
     newerPregnancy: null,
@@ -86,7 +87,14 @@ const installHarness = () => {
     state.created.push(created);
     return [created];
   };
-  Insemination.updateOne = async () => ({ matchedCount: 1 });
+  Insemination.updateOne = async (filter, update) => {
+    state.inseminationUpdates.push({ filter, update });
+    const record = state.created.find(
+      (candidate) => String(candidate._id) === String(filter._id),
+    );
+    if (record && update.$set) Object.assign(record, update.$set);
+    return { matchedCount: record ? 1 : 0 };
+  };
   Pregnancy.findOne = (filter) =>
     query(filter?.$or ? state.newerPregnancy : null);
   Calving.findOne = () => query(state.newerCalving);
@@ -240,7 +248,62 @@ test("continue-tracking uses actual AI date and skips passed heat-return work", 
       "2026-06-20T08:00:00.000Z",
     );
     assert.deepEqual(harness.state.tasks.map((task) => task.taskType), ["PD"]);
+    assert.equal(
+      String(result.insemination.verificationTaskId),
+      String(harness.state.tasks[0]._id),
+    );
     assert.equal(harness.state.audits[0].action, "RECORD_PREVIOUS_AI_CONTINUE_TRACKING");
+  } finally {
+    harness.uninstall();
+  }
+});
+
+test("continue-tracking creates future Day-25 work from the actual AI date", async () => {
+  const harness = installHarness();
+  try {
+    const result = await invoke({
+      entryMode: "continue_tracking",
+      inseminationDate: "2026-08-20T08:00:00.000Z",
+      now: new Date("2026-09-04T08:00:00.000Z"),
+    });
+
+    assert.deepEqual(
+      harness.state.tasks.map((task) => task.taskType),
+      ["PD", "BreedingFollowUp"],
+    );
+    assert.equal(
+      harness.state.tasks[1].dueDate.toISOString(),
+      "2026-09-14T08:00:00.000Z",
+    );
+    assert.equal(
+      String(result.insemination.verificationTaskId),
+      String(harness.state.tasks[0]._id),
+    );
+  } finally {
+    harness.uninstall();
+  }
+});
+
+test("continue-tracking preserves the future policy-derived PD task without backfilling heat-return work", async () => {
+  const harness = installHarness();
+  try {
+    await invoke({
+      entryMode: "continue_tracking",
+      inseminationDate: "2026-07-31T08:00:00.000Z",
+      now: new Date("2026-09-04T08:00:00.000Z"),
+    });
+
+    assert.deepEqual(harness.state.tasks.map((task) => task.taskType), ["PD"]);
+    assert.equal(
+      harness.state.tasks[0].dueDate.toISOString(),
+      "2026-09-29T08:00:00.000Z",
+    );
+    assert.equal(
+      harness.state.tasks.some(
+        (task) => task.taskType === "BreedingFollowUp",
+      ),
+      false,
+    );
   } finally {
     harness.uninstall();
   }

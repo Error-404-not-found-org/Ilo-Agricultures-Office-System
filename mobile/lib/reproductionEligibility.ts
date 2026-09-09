@@ -189,3 +189,42 @@ export function getReInseminationAvailability(animal: any) {
     activeRequest,
   };
 }
+
+export function isEligibleInseminationForPD(item: any): boolean {
+  if (!item) return false;
+  const status = String(item?.status || "")
+    .trim()
+    .toLowerCase();
+  const hasPendingOutcome = !item?.outcome || item.outcome === "Pending";
+  const hasValidAIServiceDate = Boolean(
+    item?.inseminationDate &&
+      !Number.isNaN(new Date(item.inseminationDate).getTime()),
+  );
+  return (
+    ["done", "completed"].includes(status) &&
+    hasPendingOutcome &&
+    hasValidAIServiceDate
+  );
+}
+
+export function hasEligibleBreedingAttemptForPD(animal: any): boolean {
+  if (!animal) return false;
+  if (
+    animal.reproductiveStatus === "Post-partum" ||
+    animal.effectiveReproductiveStatus === "Post-partum"
+  ) {
+    return false;
+  }
+  const gender = String(animal.gender || animal.sex || "").toLowerCase();
+  if (gender && gender !== "female") return false;
+  const attempts = Array.isArray(animal.inseminations) ? animal.inseminations : [];
+  return attempts.some((attempt: any) => {
+    if (
+      attempt?.breedingCycleStatus === "lost" ||
+      attempt?.pregnancy?.cycleStatus === "lost"
+    ) {
+      return false;
+    }
+    return isEligibleInseminationForPD(attempt);
+  });
+}

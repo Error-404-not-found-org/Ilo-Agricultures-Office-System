@@ -17,9 +17,12 @@ export type RequestWorkService =
 
 export type RequestWorkStatus =
   | "open"
+  | "needs_review"
   | "needs_response"
   | "needs_scheduling"
   | "scheduled"
+  | "scheduled_today"
+  | "upcoming"
   | "due_today"
   | "overdue"
   | "completed"
@@ -276,7 +279,19 @@ export function normalizeTechnicianWorkItem(
   );
   const previousAttemptVerified = item.previousAttemptVerified === true;
   const farmerReportType = normalizedValue(
-    item.raw?.metadata?.reportType || item.raw?.farmerOutcomeReport,
+    item.raw?.metadata?.reportType ||
+      item.raw?.farmerOutcomeReport ||
+      item.context?.reportType ||
+      item.metadata?.reportType,
+  );
+  const isPregnancyLossReview = Boolean(
+    item.sourceType === "farmer_pregnancy_loss_report" ||
+      item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+      (item as any).type === "pregnancy_loss_review" ||
+      (item as any).workflowType === "PregnancyLossReview" ||
+      (item as any).allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+      item.farmerObservation?.reportType === "pregnancy_loss" ||
+      farmerReportType === "pregnancy_loss",
   );
   const handlingMethod = normalizedValue(
     item.handlingMethod || item.raw?.handlingMethod,
@@ -350,6 +365,21 @@ export function normalizeTechnicianWorkItem(
           ? `${needsAttention ? "Past expected date" : "Expected"} · ${dateLabel}`
           : `Due · ${dateLabel}`;
 
+  const isFutureDated = Boolean(
+    unfinished && timingKey && todayKey && timingKey > todayKey,
+  );
+  const temporalStatusLabel = overdue
+    ? "Overdue"
+    : isReadyToday
+      ? timingKind === "scheduled_visit"
+        ? "Scheduled Today"
+        : "Due Today"
+      : isFutureDated
+        ? timingKind === "scheduled_visit"
+          ? "Scheduled"
+          : "Upcoming"
+        : null;
+
   const readiness = item.pregnancyReadiness || item.raw?.pregnancyReadiness;
   const actionLabel =
     state === "completed"
@@ -376,10 +406,12 @@ export function normalizeTechnicianWorkItem(
               ? readiness?.isEligible === false
                 ? "Review"
                 : "Record Pregnancy Check"
-              : workType === "breeding_follow_up"
-                ? farmerReportType
-                  ? "Review Update"
-                  : "Contact Farmer"
+              : isPregnancyLossReview
+                ? "Review Pregnancy Loss"
+                : workType === "breeding_follow_up"
+                  ? farmerReportType
+                    ? "Review Update"
+                    : "Contact Farmer"
                 : workType === "calving"
                   ? ["START_SERVICE", "RECORD_SERVICE"].includes(
                       String(item.allowedAction),
@@ -400,44 +432,22 @@ export function normalizeTechnicianWorkItem(
     state,
     status,
     title:
-      state === "completed" && healthCompletionPresentation
-        ? healthCompletionPresentation.title
-        : titleFor(workType, attemptNumber),
-    statusLabel:
-      workType === "breeding_follow_up" &&
-      !["completed", "cancelled"].includes(state)
-        ? farmerReportType === "return_to_heat"
-          ? "Needs attention"
-          : farmerReportType
-            ? "Update received"
-            : dueDate
-              ? (() => {
-                  const due = new Date(dueDate);
-                  const today = new Date();
-                  // Compare dates only (ignore time)
-                  const dueDateOnly = new Date(
-                    due.getFullYear(),
-                    due.getMonth(),
-                    due.getDate(),
-                  );
-                  const todayOnly = new Date(
-                    today.getFullYear(),
-                    today.getMonth(),
-                    today.getDate(),
-                  );
-
-                  if (dueDateOnly < todayOnly) {
-                    return "Overdue"; // Past due date
-                  } else if (dueDateOnly.getTime() === todayOnly.getTime()) {
-                    return "Follow-up due"; // TODAY is the due date
-                  } else {
-                    return `Due ${formatWorkDate(dueDate)}`; // Future due date
-                  }
-                })()
-              : "Follow-up due"
+      isPregnancyLossReview
+        ? "Pregnancy Loss Review"
         : state === "completed" && healthCompletionPresentation
-          ? healthCompletionPresentation.statusLabel
-          : statusLabelFor(state),
+          ? healthCompletionPresentation.title
+          : titleFor(workType, attemptNumber),
+    statusLabel:
+      isPregnancyLossReview && !["completed", "cancelled"].includes(state)
+        ? "Needs review"
+        : workType === "breeding_follow_up" &&
+          !["completed", "cancelled"].includes(state)
+          ? farmerReportType
+            ? "Needs review"
+            : temporalStatusLabel || "Follow-up due"
+          : state === "completed" && healthCompletionPresentation
+            ? healthCompletionPresentation.statusLabel
+            : temporalStatusLabel || statusLabelFor(state),
     actionLabel,
     scheduledDate,
     visitPeriod: period,
@@ -530,22 +540,71 @@ export function normalizeWorkflowStatus(
     return "cancelled";
   }
 
+  if (
+    item.statusLabel === "Needs review" ||
+    item.requestKind === "breeding_observation_review"
+  ) {
+    return "needs_review";
+  }
+
+  const isPregnancyLossReview = Boolean(
+    item.sourceType === "farmer_pregnancy_loss_report" ||
+      item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+      item.type === "pregnancy_loss_review" ||
+      item.workflowType === "PregnancyLossReview" ||
+      item.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+      item.farmerObservation?.reportType === "pregnancy_loss" ||
+      item.context?.reportId,
+  );
+  if (isPregnancyLossReview) {
+    return "needs_review";
+  }
+
+  const isBreedingFollowUp =
+    item.workType === "breeding_follow_up" ||
+    item.workflowType === "BreedingFollowUp" ||
+    item.taskType === "BreedingFollowUp" ||
+    item.raw?.taskType === "BreedingFollowUp" ||
+    item.serviceType === "Breeding Follow-up";
+  const hasFarmerReport = Boolean(
+    item.context?.reportType ||
+      item.raw?.metadata?.reportType ||
+      item.metadata?.reportType ||
+      item.raw?.farmerOutcomeReport ||
+      item.farmerOutcomeReport,
+  );
+  if (isBreedingFollowUp && hasFarmerReport) {
+    return "needs_review";
+  }
+
   const serviceType = normalizeServiceType(item);
+  const rawHandlingMethod =
+    item.handlingMethod ||
+    item.raw?.handlingMethod ||
+    item.triage?.handlingMethod ||
+    item.resolution?.handlingMethod;
+  const handlingMethod = normalizedValue(rawHandlingMethod);
+  const scheduledVisitDate = item.schedule?.date || item.scheduledDate;
   const scheduleState = deriveScheduleState(
-    item.schedule?.date || item.scheduledDate || item.dueDate,
+    scheduledVisitDate || item.dueDate,
     now,
   );
+  const isVisitBased =
+    serviceType === "ai" ||
+    (serviceType === "health" &&
+      (handlingMethod === "farm_visit" || Boolean(scheduledVisitDate)));
+  const temporalStatus: RequestWorkStatus | null =
+    scheduleState === "due_today"
+      ? isVisitBased
+        ? "scheduled_today"
+        : "due_today"
+      : scheduleState === "scheduled" && !isVisitBased
+        ? "upcoming"
+        : scheduleState;
 
   if (serviceType === "health") {
-    const rawHandlingMethod =
-      item.handlingMethod ||
-      item.raw?.handlingMethod ||
-      item.triage?.handlingMethod ||
-      item.resolution?.handlingMethod;
-    const handlingMethod = normalizedValue(rawHandlingMethod);
-
     if (handlingMethod === "farm_visit") {
-      if (scheduleState) return scheduleState;
+      if (temporalStatus) return temporalStatus;
       return "needs_scheduling";
     }
 

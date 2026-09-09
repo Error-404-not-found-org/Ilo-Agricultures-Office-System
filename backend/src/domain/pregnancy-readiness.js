@@ -9,6 +9,16 @@ import {
 
 export const PREGNANCY_DIAGNOSIS_MINIMUM_DAYS = LEGACY_PREGNANCY_DIAGNOSIS_DAYS;
 export const FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS = HEAT_RETURN_MONITORING_POLICY.observationWindowStartDays;
+export const FARMER_BREEDING_OBSERVATION_REMINDER_MAXIMUM_DAYS = HEAT_RETURN_MONITORING_POLICY.technicianFollowUpDays;
+
+export const isFarmerBreedingObservationReminderDay = (daysPostAI) => {
+  const days = Number(daysPostAI);
+  return (
+    Number.isFinite(days) &&
+    days >= FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS &&
+    days <= FARMER_BREEDING_OBSERVATION_REMINDER_MAXIMUM_DAYS
+  );
+};
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const COMPLETED_AI_STATUSES = new Set(["done", "resolved", "completed"]);
 

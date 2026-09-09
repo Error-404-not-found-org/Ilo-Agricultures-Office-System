@@ -9,6 +9,8 @@ import { ANIMAL_REPRODUCTIVE_STATUS } from "../domain/livestock-workflow.js";
 import { assertPregnancyDiagnosisWindow } from "../domain/pregnancy-readiness.js";
 import {
   LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
+  normalizePregnancyDiagnosisMethod,
+  PREGNANCY_METHOD_CODES,
   PREGNANCY_DIAGNOSIS_RESULTS,
 } from "../domain/pregnancy-confirmation-policy.js";
 import {
@@ -422,6 +424,7 @@ export const confirmPregnancyDiagnosis = ({
 }) => {
   assertAuthorizedActor(actor);
   const officialResult = normalizeResult(result);
+  const normalizedMethodCode = normalizePregnancyDiagnosisMethod(methodCode);
   const confirmedAt = diagnosisDate ? new Date(diagnosisDate) : new Date();
   if (Number.isNaN(confirmedAt.getTime())) {
     throw new AppError("A valid diagnosis date is required.", {
@@ -470,7 +473,7 @@ export const confirmPregnancyDiagnosis = ({
         insemination,
         pregnancy: existing,
         actor,
-        methodCode: existing.confirmation?.methodCode || methodCode || null,
+        methodCode: existing.confirmation?.methodCode || normalizedMethodCode || null,
         policyVersion: existing.confirmation?.policyVersion || clientPolicyVersion || null,
         session,
       });
@@ -483,6 +486,18 @@ export const confirmPregnancyDiagnosis = ({
         pregnancyReadiness: null,
         alreadyRecorded: true,
       };
+    }
+    if (!normalizedMethodCode) {
+      throw new AppError("Select a diagnostic method before saving the pregnancy diagnosis.", {
+        status: 422,
+        code: "PREGNANCY_DIAGNOSIS_METHOD_REQUIRED",
+      });
+    }
+    if (!PREGNANCY_METHOD_CODES.includes(normalizedMethodCode)) {
+      throw new AppError("The selected diagnostic method is not supported.", {
+        status: 422,
+        code: "INVALID_CHECK_METHOD",
+      });
     }
     const initialTask = await findInitialConfirmationTask({
       taskId,
@@ -510,7 +525,7 @@ export const confirmPregnancyDiagnosis = ({
       diagnosisDate: confirmedAt,
       policy: policyResolution.policy,
       species: animal.species,
-      methodCode,
+      methodCode: normalizedMethodCode,
       clientPolicyVersion,
     });
     if (
@@ -533,7 +548,7 @@ export const confirmPregnancyDiagnosis = ({
       });
     }
     const selectedPolicyMethod = policyResolution.policy?.methods?.find(
-      (method) => method.methodCode === methodCode,
+      (method) => method.methodCode === normalizedMethodCode,
     );
     if (
       selectedPolicyMethod &&
@@ -570,7 +585,7 @@ export const confirmPregnancyDiagnosis = ({
         actor,
         confirmationStage,
         thresholdSnapshot,
-        methodCode: readiness.policyMode === "method_based" ? methodCode : null,
+        methodCode: normalizedMethodCode,
         policyVersion: readiness.policyVersion,
         recheckRequired,
         recheckDueAt: recheckRequired ? recheckDueAt : null,
@@ -585,7 +600,7 @@ export const confirmPregnancyDiagnosis = ({
         inseminationId: insemination._id,
         pregnancyDiagnosis: { date: confirmedAt, result: officialResult },
         confirmation: {
-          methodCode: readiness.policyMode === "method_based" ? methodCode : null,
+          methodCode: normalizedMethodCode,
           stage: confirmationStage,
           confirmedAt,
           confirmedBy: actor._id,
@@ -628,7 +643,7 @@ export const confirmPregnancyDiagnosis = ({
             activityLogs: {
               event: "Pregnancy Diagnosis",
               date: confirmedAt,
-              description: `${officialResult} diagnosis recorded${methodCode ? ` using ${methodCode}` : " under legacy policy"}.`,
+              description: `${officialResult} diagnosis recorded using ${normalizedMethodCode}.`,
             },
           },
         },
@@ -643,10 +658,10 @@ export const confirmPregnancyDiagnosis = ({
         sourceType: "Pregnancy",
         sourceId: pregnancy._id,
         title: "Pregnancy check recorded",
-        summary: `${officialResult}${methodCode ? ` via ${methodCode}` : " under the legacy Day-60 policy"}.`,
+        summary: `${officialResult} via ${normalizedMethodCode}.`,
         metadata: {
           inseminationId: insemination._id,
-          methodCode: methodCode || null,
+          methodCode: normalizedMethodCode,
           policyVersion: readiness.policyVersion,
           confirmationStage,
           recheckRequired: false,
@@ -665,7 +680,7 @@ export const confirmPregnancyDiagnosis = ({
         },
         metadata: {
           inseminationId: insemination._id,
-          methodCode: methodCode || null,
+          methodCode: normalizedMethodCode,
           policyVersion: readiness.policyVersion,
           earliestThresholdSnapshot: thresholdSnapshot,
         },
@@ -679,7 +694,7 @@ export const confirmPregnancyDiagnosis = ({
       insemination,
       pregnancy,
       actor,
-      methodCode,
+      methodCode: normalizedMethodCode,
       policyVersion: readiness.policyVersion,
       session,
     });
@@ -689,7 +704,7 @@ export const confirmPregnancyDiagnosis = ({
           insemination,
           pregnancy,
           actor,
-          methodCode,
+          methodCode: normalizedMethodCode,
           policyVersion: readiness.policyVersion,
           dueDate: recheckDueAt,
           session,

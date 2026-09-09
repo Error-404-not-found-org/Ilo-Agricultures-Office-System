@@ -21,6 +21,7 @@ for (const [day, expected] of [
   [0, false],
   [17, false],
   [18, true],
+  [21, true],
   [25, true],
   [26, true],
   [30, true],
@@ -40,6 +41,42 @@ for (const [day, expected] of [
     assert.equal(readiness.isAvailable, expected);
   });
 }
+
+test("direct and Farmer-requested AI use the same observation readiness", () => {
+  const commonAttempt = {
+    status: "done",
+    inseminationDate: new Date(readinessAt.getTime() - 18 * DAY).toISOString(),
+    pregnancyReadiness: { daysPostAI: 18 },
+  };
+
+  const direct = getFarmerBreedingObservationReadiness(
+    { ...commonAttempt, entryMode: "direct" } as any,
+    readinessAt,
+  );
+  const requested = getFarmerBreedingObservationReadiness(
+    { ...commonAttempt, requestId: "request-1" } as any,
+    readinessAt,
+  );
+
+  assert.deepEqual(direct, requested);
+  assert.equal(direct.isAvailable, true);
+});
+
+test("an authoritatively resolved attempt cannot accept another observation", () => {
+  const readiness = getFarmerBreedingObservationReadiness(
+    {
+      status: "resolved",
+      inseminationDate: new Date(
+        readinessAt.getTime() - 30 * DAY,
+      ).toISOString(),
+      pregnancyReadiness: { daysPostAI: 30 },
+    },
+    readinessAt,
+  );
+
+  assert.equal(readiness.isAvailable, false);
+  assert.equal(readiness.state, "resolved");
+});
 
 const firstAttempt = {
   _id: "attempt-1",

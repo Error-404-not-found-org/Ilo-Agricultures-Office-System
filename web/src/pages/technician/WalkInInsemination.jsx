@@ -130,7 +130,6 @@ export default function WalkInInsemination() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedFarmerId, setSelectedFarmerId] = useState("");
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
-  const [isOverriding, setIsOverriding] = useState(false);
 
   const [formData, setFormData] = useState(() => ({
     firstName: "",
@@ -303,23 +302,6 @@ export default function WalkInInsemination() {
     },
   });
 
-  const overrideMutation = useMutation({
-    mutationFn: async (animalId) => {
-      return await axiosInstance.patch(
-        `/animals/${animalId}/reproductive-status`,
-        {
-          status: "Normal",
-          note: "Technician override: Farmer confirmed animal is not pregnant during field visit.",
-        },
-      );
-    },
-    onSuccess: () => {
-      toast.success("Animal status reset to Normal.");
-      queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
-      setIsOverriding(true);
-    },
-  });
-
   // --- HANDLERS ---
   const handleAnimalChange = (animalId) => {
     setSelectedAnimalId(animalId);
@@ -418,8 +400,10 @@ export default function WalkInInsemination() {
     ) {
       return toast.error("Please provide both Sire Breed and Sire Code.");
     }
-    if (showPregnancyWarning && !isOverriding) {
-      return toast.error("Please resolve the pregnancy warning before saving.");
+    if (showPregnancyWarning) {
+      return toast.error(
+        "Complete the pregnancy diagnosis or recheck before recording another AI service.",
+      );
     }
 
     mutation.mutate(submissionData);
@@ -791,22 +775,11 @@ export default function WalkInInsemination() {
                                 Pregnancy Warning
                               </h4>
                               <p className="text-[10px] font-medium text-error/75 mt-1">
-                                Asset recorded as PREGNANT. Insemination is
-                                risky without field confirmation.
+                                Animal recorded as pregnant. Complete the assigned
+                                pregnancy diagnosis or recheck before recording another AI service.
                               </p>
                             </div>
                           </div>
-                          <button
-                            onClick={() =>
-                              overrideMutation.mutate(selectedAnimalId)
-                            }
-                            disabled={overrideMutation.isPending}
-                            className="btn btn-error btn-sm shrink-0 px-5 rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer"
-                          >
-                            {overrideMutation.isPending
-                              ? "Updating..."
-                              : "Override Status"}
-                          </button>
                         </div>
                       </motion.div>
                     )}
@@ -1348,7 +1321,7 @@ export default function WalkInInsemination() {
                   onClick={handleSubmit}
                   disabled={
                     mutation.isPending ||
-                    (showPregnancyWarning && !isOverriding) ||
+                    showPregnancyWarning ||
                     (isTaskWorkflow && taskContext?.taskType !== "AI")
                   }
                   className={`w-full h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${

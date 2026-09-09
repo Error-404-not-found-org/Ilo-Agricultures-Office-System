@@ -352,6 +352,43 @@ test("Calving: natural birth creates a female calf and all canonical records", a
   });
 });
 
+test("Calving: Farmer live birth, mixed, and stillbirth keep the canonical delivery path", async () => {
+  const farmerActor = { _id: ids.farmer, role: "farmer" };
+  const scenarios = [
+    {
+      outcome: "live_birth",
+      calves: [{ earTag: "F-LIVE-1", sex: "F" }],
+      nonLivingCalves: [],
+      numberOfCalves: 1,
+    },
+    {
+      outcome: "mixed",
+      calves: [{ earTag: "F-MIXED-1", sex: "M" }],
+      nonLivingCalves: [{ sex: "F" }],
+      numberOfCalves: 2,
+    },
+    {
+      outcome: "stillbirth",
+      calves: [],
+      nonLivingCalves: [{ sex: "F" }],
+      numberOfCalves: 1,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await withHarness({}, async (state) => {
+      const result = await persistCalving(validInput({
+        ...scenario,
+        actor: farmerActor,
+      }));
+      assert.equal(result.outcome, scenario.outcome);
+      assert.equal(state.calvings.length, 1);
+      assert.equal(state.motherUpdates.length, 1);
+      assert.equal(state.pregnancyUpdates.length, 1);
+      assert.equal(state.inseminationUpdates.length, 1);
+    });
+  }
+});
 test("Calving: a response taking longer than five seconds still creates one lifecycle result", async () => {
   await withHarness({ calvingDelayMs: 5100 }, async (state) => {
     const result = await persistCalving(validInput());
@@ -388,6 +425,40 @@ test("Calving: cesarean is a live-birth outcome", async () => {
     assert.equal(result.calving.outcome, "live_birth");
     assert.equal(result.offspring.length, 1);
   });
+});
+
+test("Calving: delivery outcomes require a valid delivery method", async () => {
+  await assert.rejects(
+    persistCalving(validInput({ outcome: "live_birth", calvingEase: undefined })),
+    { code: "CALVING_EASE_REQUIRED" },
+  );
+  await assert.rejects(
+    persistCalving(validInput({ outcome: "mixed", calvingEase: "Abortion" })),
+    { code: "CALVING_EASE_INVALID" },
+  );
+});
+
+test("Calving schema requires ease for delivery but not abortion", () => {
+  const common = {
+    animalId: ids.mother,
+    farmerId: ids.farmer,
+    pregnancyId: ids.pregnancy,
+    inseminationId: ids.insemination,
+  };
+  const deliveryError = new Calving({ ...common, outcome: "live_birth" }).validateSync();
+  assert.equal(deliveryError?.errors.calvingEase?.kind, "required");
+
+  const abortion = new Calving({ ...common, outcome: "abortion" });
+  assert.equal(abortion.validateSync(), undefined);
+  assert.equal(abortion.calvingEase, undefined);
+
+  const legacyAbortion = new Calving({
+    ...common,
+    outcome: "abortion",
+    calvingEase: "Natural",
+  });
+  assert.equal(legacyAbortion.validateSync(), undefined);
+  assert.equal(legacyAbortion.calvingEase, "Natural");
 });
 
 test("Calving: mother update clears expected date and increments parity once", async () => {
@@ -493,6 +564,7 @@ test("Calving: a confirmed early pregnancy loss bypasses only the live-birth min
       calves: [],
     }));
     assert.equal(result.calving.outcome, "abortion");
+    assert.equal("calvingEase" in result.calving, false);
     assert.equal(result.offspring.length, 0);
     assert.equal(state.inserted.length, 0);
   });
@@ -569,6 +641,7 @@ test("Calving: abortion creates no Animal and does not increment parity", async 
     }));
     assert.equal(result.offspring.length, 0);
     assert.equal(result.calving.outcome, "abortion");
+    assert.equal("calvingEase" in result.calving, false);
     assert.equal(state.inserted.length, 0);
     assert.equal(state.motherUpdates[0].update.$inc, undefined);
     assert.equal(state.pregnancyUpdates[0][1].$set.cycleStatus, "lost");
@@ -579,7 +652,8 @@ test("Calving: abortion creates no Animal and does not increment parity", async 
 test("Calving: stillbirth stores embedded details without active livestock", async () => {
   await withHarness({}, async (state) => {
     const result = await persistCalving(validInput({
-      calvingEase: "Stillbirth",
+      outcome: "stillbirth",
+      calvingEase: "Natural",
       calves: [{ sex: "F", color: "Brown" }],
     }));
     assert.equal(result.offspring.length, 0);
@@ -589,6 +663,22 @@ test("Calving: stillbirth stores embedded details without active livestock", asy
     assert.equal(state.motherUpdates[0].update.$set.reproductiveStatus, "Post-partum");
     assert.equal(state.motherUpdates[0].update.$unset.expectedCalvingDate, 1);
     assert.match(state.notifications[0].document.message, /stillbirth/i);
+  });
+});
+
+test("Calving: abortion omits a client-sent delivery method from persistence and audit", async () => {
+  await withHarness({}, async (state) => {
+    const result = await persistCalving(validInput({
+      outcome: "abortion",
+      calvingEase: "Natural",
+      calves: [],
+      numberOfCalves: 0,
+    }));
+    assert.equal("calvingEase" in result.calving, false);
+    assert.equal("calvingEase" in state.audits[0].document.after, false);
+    assert.equal(state.motherUpdates[0].update.$inc, undefined);
+    assert.equal(state.pregnancyUpdates[0][1].$set.cycleStatus, "lost");
+    assert.equal(state.inseminationUpdates[0][1].$set.breedingCycleStatus, "lost");
   });
 });
 

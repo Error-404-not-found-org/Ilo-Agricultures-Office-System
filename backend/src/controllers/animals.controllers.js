@@ -624,7 +624,6 @@ export const deleteAnimal = async (req, res) => {
 export const updateReproductiveStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, note } = req.body;
 
     if (!["technician", "admin"].includes(req.user?.role)) {
       return res.status(403).json({
@@ -670,39 +669,13 @@ export const updateReproductiveStatus = async (req, res) => {
       allowUnassignedTaskClaim: false,
     });
 
-    // --- HARDENED REHEAT LOGIC ---
-    if (status === "In Heat") {
-      // If they observed a reheat, the last insemination attempt is officially a failure
-      if (lastInsem) {
-        lastInsem.isSuccess = false;
-        lastInsem.outcome = "Failed (Re-heat)";
-        lastInsem.comment =
-          (lastInsem.comment || "") +
-          ` | Reheat observed on ${new Date().toLocaleDateString()}`;
-        await lastInsem.save();
-        console.log(
-          `[Reheat Sync] Insemination ${lastInsem._id} marked as Failed (Re-heat).`,
-        );
-      }
-
-      // Clear any future calving dates since she's back in heat
-      animal.expectedCalvingDate = undefined;
-    }
-
-    animal.reproductiveStatus = status;
-
-    animal.activityLogs = animal.activityLogs || [];
-    animal.activityLogs.push({
-      event: "Reproductive Status Update",
-      date: new Date(),
-      description: `Farmer observed: ${status}. Note: ${note || "Observed during field check."}`,
+    // Ownership alone cannot replace the records and atomic updates made by
+    // the canonical AI, pregnancy diagnosis, and calving workflows.
+    return res.status(409).json({
+      message:
+        "Reproductive status must be changed through the AI, pregnancy diagnosis, or calving workflow. Use the assigned pregnancy work to verify return to heat or a negative diagnosis.",
+      code: "REPRODUCTIVE_STATUS_WORKFLOW_REQUIRED",
     });
-
-    await animal.save();
-
-    res
-      .status(200)
-      .json({ message: "Animal status updated successfully", animal });
   } catch (error) {
     console.error("Update Reproductive Status Error:", error);
     res.status(error.status || 500).json({
@@ -747,6 +720,13 @@ export const recordCalving = async (req, res) => {
       taskId,
     } = req.body;
 
+    if (req.user.role === "farmer" && submittedOutcome === "abortion") {
+      return res.status(422).json({
+        message:
+          "Pregnancy loss must be reviewed by a Technician. Submit a pregnancy-loss report instead.",
+        code: "PREGNANCY_LOSS_REQUIRES_REVIEW",
+      });
+    }
     // 1. Validate Mother & Pregnancy
     const mother = await Animal.findOne({ _id: animalId, deletedAt: null });
     if (!mother)

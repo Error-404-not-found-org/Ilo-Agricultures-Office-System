@@ -852,6 +852,33 @@ test("Official record detail: calving separates occurrence date from entry time 
       recorder.body.data.attachments[0].category,
       "offspring_identity",
     );
+
+    Calving.findOne = () =>
+      queryResult({
+        _id: "calving-loss-1",
+        animalId: animal,
+        date: calvingDate,
+        createdAt: enteredAt,
+        outcome: "abortion",
+        calvingEase: "Natural",
+        numberOfCalves: 0,
+        calves: [],
+        nonLivingCalves: [],
+      });
+    const lossRecorder = responseRecorder();
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-1",
+          recordKind: "calving",
+          recordId: "calving-loss-1",
+        },
+      },
+      lossRecorder.response,
+    );
+    assert.equal(lossRecorder.statusCode, 200);
+    assert.equal(lossRecorder.body.data.details.calvingEase, "Not applicable");
   } finally {
     Animal.findOne = originals.animal;
     Calving.findOne = originals.calving;

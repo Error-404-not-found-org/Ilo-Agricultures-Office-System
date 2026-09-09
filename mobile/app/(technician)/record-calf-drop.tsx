@@ -33,6 +33,13 @@ import {
     TechnicianPickerSheet,
 } from '@/components/technician/TechnicianFormUI';
 import { AnimalSummaryCard } from '@/features/farmer-ui/components/AnimalSummaryCard';
+import {
+    calculateEarliestLiveDeliveryDate,
+    differenceInManilaCalendarDays,
+    omitInapplicableCalvingEase,
+    validateCalvingOutcomeVitality,
+} from '@/features/breeding/utils/calvingUiSemantics';
+
 
 interface CalfEntry {
     sex: string;
@@ -56,13 +63,7 @@ const CALF_COLOR_OPTIONS = [
 ];
 
 const getCalendarDayDifference = (laterValue: string, earlierValue: string) => {
-    const later = new Date(laterValue);
-    const earlier = new Date(earlierValue);
-    if (Number.isNaN(later.getTime()) || Number.isNaN(earlier.getTime())) return null;
-
-    const laterDay = Date.UTC(later.getUTCFullYear(), later.getUTCMonth(), later.getUTCDate());
-    const earlierDay = Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth(), earlier.getUTCDate());
-    return Math.floor((laterDay - earlierDay) / 86400000);
+    return differenceInManilaCalendarDays(laterValue, earlierValue);
 };
 
 export default function RecordCalfDropScreen() {
@@ -119,7 +120,7 @@ export default function RecordCalfDropScreen() {
             onSuccess: (result) => {
                 if (result.status === 'synced') {
                     toast.success("Calving recorded successfully!");
-                    [
+                    const queriesToInvalidate: any[] = [
                         technicianKeys.dashboard(),
                         recordsQueryKeys.official,
                         tasksQueryKeys.all,
@@ -130,7 +131,11 @@ export default function RecordCalfDropScreen() {
                         breedingKeys.tracker(motherId),
                         animalRecordKeys.records(motherId),
                         notificationKeys.all,
-                    ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+                    ];
+                    if (taskId) {
+                        queriesToInvalidate.push(tasksQueryKeys.details(taskId));
+                    }
+                    queriesToInvalidate.forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
                     router.back();
                 }
             },
@@ -286,6 +291,11 @@ export default function RecordCalfDropScreen() {
 
     const isLiveBirth = outcome === 'live_birth';
     const isAbortion = outcome === 'abortion';
+    const isMixedInvalid =
+        outcome === 'mixed' &&
+        (calves.filter((c) => c.isLiving !== false).length < 1 ||
+            calves.filter((c) => c.isLiving === false).length < 1);
+
     const handleOutcomeSelect = (value: string) => {
         const nextOutcome = value as typeof outcome;
         setOutcome(nextOutcome);
@@ -324,6 +334,66 @@ export default function RecordCalfDropScreen() {
         setCalves(newCalves);
     };
 
+    const aiDate = selectedPregnancy?.insemination?.inseminationDate;
+    const diagnosisDate = selectedPregnancy?.pregnancyDiagnosis?.date;
+    const expectedCalvingDate = selectedPregnancy?.targetCalvingDate || selectedAnimal?.expectedCalvingDate;
+    const calvingReadiness = selectedPregnancy?.calvingReadiness;
+    const selectedGestationDays = aiDate && date
+        ? getCalendarDayDifference(date, aiDate)
+        : (typeof calvingReadiness?.gestationDays === 'number' ? calvingReadiness.gestationDays : null);
+    const minimumGestationDays = typeof calvingReadiness?.minimumDays === 'number'
+        ? calvingReadiness.minimumDays
+        : null;
+    const averageGestationDays = typeof calvingReadiness?.averageGestationDays === 'number'
+        ? calvingReadiness.averageGestationDays
+        : null;
+    const isDeliveryEligible = Boolean(
+        minimumGestationDays !== null &&
+        selectedGestationDays !== null &&
+        selectedGestationDays >= minimumGestationDays
+    );
+    const daysRemaining = minimumGestationDays !== null && selectedGestationDays !== null
+        ? Math.max(0, minimumGestationDays - selectedGestationDays)
+        : (calvingReadiness?.daysRemaining ?? null);
+    const earliestCalvingDate = calvingReadiness?.earliestEligibleDate;
+    const earliestLiveDeliveryDateFormatted = (() => {
+        const d = earliestCalvingDate
+            ? new Date(earliestCalvingDate)
+            : calculateEarliestLiveDeliveryDate(aiDate, minimumGestationDays);
+        if (!d || Number.isNaN(d.getTime())) return null;
+        return d.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+        });
+    })();
+
+    const expectedCalvingDateFormatted = (() => {
+        const dateVal = calvingReadiness?.expectedCalvingDate || expectedCalvingDate;
+        if (!dateVal) return null;
+        const d = new Date(dateVal);
+        if (Number.isNaN(d.getTime())) return null;
+        return d.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            timeZone: "Asia/Manila",
+        });
+    })();
+
+    const initialOutcomeSetRef = useRef(false);
+
+    useEffect(() => {
+        if (!selectedPregnancy || initialOutcomeSetRef.current) return;
+        if (minimumGestationDays !== null && selectedGestationDays !== null) {
+            if (selectedGestationDays < minimumGestationDays) {
+                setOutcome('abortion');
+                setCalves([]);
+            }
+            initialOutcomeSetRef.current = true;
+        }
+    }, [selectedPregnancy, minimumGestationDays, selectedGestationDays]);
+
     const validateCalvingForm = () => {
         toast.dismiss();
         if (!motherId || !pregnancyId) {
@@ -341,9 +411,19 @@ export default function RecordCalfDropScreen() {
             return false;
         }
 
+        const aiDateValue = selectedPregnancy?.insemination?.inseminationDate;
+        if (aiDateValue && new Date(date).getTime() < new Date(aiDateValue).getTime()) {
+            toast.error("Event date cannot be before the artificial insemination date.");
+            return false;
+        }
+        const diagnosisDateValue = selectedPregnancy?.pregnancyDiagnosis?.date;
+        if (diagnosisDateValue && new Date(date).getTime() < new Date(diagnosisDateValue).getTime()) {
+            toast.error("Event date cannot be before the pregnancy diagnosis date.");
+            return false;
+        }
+
         if (outcome !== 'abortion') {
             const readiness = selectedPregnancy?.calvingReadiness;
-            const aiDateValue = selectedPregnancy?.insemination?.inseminationDate;
             const gestationDays = aiDateValue
                 ? getCalendarDayDifference(date, aiDateValue)
                 : null;
@@ -352,10 +432,10 @@ export default function RecordCalfDropScreen() {
                 return false;
             }
             if (gestationDays < readiness.minimumDays) {
-                const availableDate = readiness.earliestEligibleDate
+                const availableDate = earliestLiveDeliveryDateFormatted || (readiness.earliestEligibleDate
                     ? new Date(readiness.earliestEligibleDate).toLocaleDateString()
-                    : `Day ${readiness.minimumDays}`;
-                toast.error(`Live-birth recording is too early at Day ${gestationDays}. It becomes available ${availableDate}.`);
+                    : `Day ${readiness.minimumDays}`);
+                toast.error(`Delivery recording is available from Day ${readiness.minimumDays} (${availableDate}). Currently at Day ${gestationDays}.`);
                 return false;
             }
         }
@@ -375,6 +455,15 @@ export default function RecordCalfDropScreen() {
 
         if (isAbortion) return true;
 
+        const vitalityValidation = validateCalvingOutcomeVitality({
+            outcome,
+            calves: normalizedCalves,
+        });
+        if (!vitalityValidation.isValid && vitalityValidation.error) {
+            toast.error(vitalityValidation.error);
+            return false;
+        }
+
         const incompleteIndex = normalizedCalves.findIndex((calf) =>
             calf.isLiving !== false
                 ? !["F", "M"].includes(calf.sex) || !calf.earTag || !calf.color
@@ -389,10 +478,6 @@ export default function RecordCalfDropScreen() {
         }
 
         const livingCalves = normalizedCalves.filter((calf) => calf.isLiving !== false);
-        if (outcome === 'mixed' && (livingCalves.length === 0 || livingCalves.length === normalizedCalves.length)) {
-            toast.error('Mixed outcome requires at least one living and one stillborn calf.');
-            return false;
-        }
         const duplicateEarTag = livingCalves.find((calf, index) =>
             livingCalves.findIndex(
                 (item) => item.earTag.toLowerCase() === calf.earTag.toLowerCase(),
@@ -413,7 +498,7 @@ export default function RecordCalfDropScreen() {
         submitLockRef.current = true;
         setSaving(true);
         try {
-            const payload = {
+            const payload = omitInapplicableCalvingEase({
                 pregnancyId,
                 animalId: motherId,
                 date,
@@ -432,7 +517,7 @@ export default function RecordCalfDropScreen() {
                 })),
                 technicianNote: note,
                 taskId: taskId || undefined,
-            };
+            });
 
             await calvingMutation.mutateAsync(payload);
         } catch {
@@ -471,26 +556,11 @@ export default function RecordCalfDropScreen() {
         a.breed?.toLowerCase().includes(searchAnimalQuery.toLowerCase())
     );
 
-    const aiDate = selectedPregnancy?.insemination?.inseminationDate;
-    const diagnosisDate = selectedPregnancy?.pregnancyDiagnosis?.date;
-    const expectedCalvingDate = selectedPregnancy?.targetCalvingDate || selectedAnimal?.expectedCalvingDate;
-    const calvingReadiness = selectedPregnancy?.calvingReadiness;
-    const selectedGestationDays = aiDate && date
-        ? getCalendarDayDifference(date, aiDate)
-        : null;
-    const minimumGestationDays = typeof calvingReadiness?.minimumDays === 'number'
-        ? calvingReadiness.minimumDays
-        : null;
-    const isLiveOutcomeTooEarly = outcome !== 'abortion' && (
-        minimumGestationDays === null ||
-        selectedGestationDays === null ||
-        selectedGestationDays < minimumGestationDays
-    );
-    const earliestCalvingDate = calvingReadiness?.earliestEligibleDate;
+    const isLiveOutcomeTooEarly = outcome !== 'abortion' && !isDeliveryEligible;
     const calvingReadinessMessage = minimumGestationDays === null || selectedGestationDays === null
         ? 'Authoritative calving readiness is unavailable. Refresh the selected animal before recording a live-birth outcome.'
         : selectedGestationDays < minimumGestationDays
-            ? `Selected date is Day ${selectedGestationDays}. Live-birth, mixed, and stillbirth records open on Day ${minimumGestationDays}${earliestCalvingDate ? ` (${new Date(earliestCalvingDate).toLocaleDateString()})` : ''}. Select Abortion only for a confirmed pregnancy loss.`
+            ? `Selected date is Day ${selectedGestationDays}. Live-birth, mixed, and stillbirth records open on Day ${minimumGestationDays}${earliestLiveDeliveryDateFormatted ? ` (${earliestLiveDeliveryDateFormatted})` : ''}. Select Abortion only for a confirmed pregnancy loss.`
             : `Calving window is open at Day ${selectedGestationDays}.`;
     const eventTiming = (() => {
         if (!expectedCalvingDate || !date) return 'Timing unavailable';
@@ -608,7 +678,7 @@ export default function RecordCalfDropScreen() {
                                     </Text>
                                     <Text
                                         style={{
-                                            color: colors.textSecondary,
+                                            color: colors.warningForeground,
                                             fontFamily: 'Outfit_400Regular',
                                             fontSize: 12,
                                             lineHeight: 18,
@@ -617,6 +687,143 @@ export default function RecordCalfDropScreen() {
                                         {calvingReadinessMessage}
                                     </Text>
                                 </View>
+                            </View>
+                        ) : null}
+
+                        {/* Pregnancy Timing & Eligibility Notice */}
+                        {selectedPregnancy && selectedGestationDays !== null && minimumGestationDays !== null && averageGestationDays !== null ? (
+                            <View
+                                style={{
+                                    padding: 14,
+                                    marginBottom: 16,
+                                    borderRadius: 14,
+                                    borderWidth: 1,
+                                    borderColor: isDeliveryEligible
+                                        ? (isDark ? '#065f46' : '#bbf7d0')
+                                        : (isDark ? 'rgba(245, 158, 11, 0.3)' : '#fed7aa'),
+                                    backgroundColor: isDeliveryEligible
+                                        ? (isDark ? 'rgba(6, 78, 59, 0.2)' : '#f0fdf4')
+                                        : (isDark ? 'rgba(245, 158, 11, 0.08)' : '#fffbeb'),
+                                }}
+                            >
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                    <Text
+                                        style={{
+                                            fontSize: 10,
+                                            fontFamily: 'Outfit_800ExtraBold',
+                                            letterSpacing: 1.2,
+                                            textTransform: 'uppercase',
+                                            color: isDeliveryEligible
+                                                ? (isDark ? '#34d399' : '#047857')
+                                                : (isDark ? '#fbbf24' : '#b45309'),
+                                        }}
+                                    >
+                                        PREGNANCY TIMING
+                                    </Text>
+                                    <View
+                                        style={{
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 2,
+                                            borderRadius: 8,
+                                            backgroundColor: isDeliveryEligible
+                                                ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#dcfce7')
+                                                : (isDark ? 'rgba(245, 158, 11, 0.2)' : '#fef3c7'),
+                                        }}
+                                    >
+                                        <Text
+                                            style={{
+                                                fontSize: 10,
+                                                fontFamily: 'Outfit_700Bold',
+                                                color: isDeliveryEligible
+                                                    ? (isDark ? '#34d399' : '#15803d')
+                                                    : (isDark ? '#fbbf24' : '#b45309'),
+                                            }}
+                                        >
+                                            {isDeliveryEligible ? 'Delivery Window Open' : 'Early Pregnancy'}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {expectedCalvingDateFormatted ? (
+                                    <Text
+                                        style={{
+                                            fontSize: 12,
+                                            fontFamily: 'Outfit_600SemiBold',
+                                            color: colors.textSecondary,
+                                            marginBottom: 2,
+                                        }}
+                                    >
+                                        Expected calving: {expectedCalvingDateFormatted}
+                                    </Text>
+                                ) : null}
+
+                                <Text
+                                    style={{
+                                        fontSize: 15,
+                                        fontFamily: 'Outfit_700Bold',
+                                        color: colors.textPrimary,
+                                        marginBottom: 4,
+                                    }}
+                                >
+                                    Day {selectedGestationDays}{averageGestationDays ? ` of approximately ${averageGestationDays}` : ''}
+                                </Text>
+
+                                {!isDeliveryEligible ? (
+                                    <View style={{ gap: 2 }}>
+                                        <Text
+                                            style={{
+                                                fontSize: 12,
+                                                fontFamily: 'Outfit_600SemiBold',
+                                                color: isDark ? '#fbbf24' : '#b45309',
+                                            }}
+                                        >
+                                            Delivery recording available from Day {minimumGestationDays}
+                                            {daysRemaining !== null ? ` · ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} remaining` : ''}
+                                        </Text>
+                                        {earliestLiveDeliveryDateFormatted ? (
+                                            <Text
+                                                style={{
+                                                    fontSize: 11,
+                                                    fontFamily: 'Outfit_400Regular',
+                                                    color: colors.textSecondary,
+                                                }}
+                                            >
+                                                Delivery recording available from: {earliestLiveDeliveryDateFormatted}. Abortion is not blocked by the delivery recording threshold.
+                                            </Text>
+                                        ) : null}
+                                    </View>
+                                ) : (
+                                    <Text
+                                        style={{
+                                            fontSize: 12,
+                                            fontFamily: 'Outfit_500Medium',
+                                            color: isDark ? '#34d399' : '#047857',
+                                        }}
+                                    >
+                                        Delivery recording is available (Day {selectedGestationDays} ≥ {minimumGestationDays}). All delivery outcomes are available.
+                                    </Text>
+                                )}
+                            </View>
+                        ) : selectedPregnancy && minimumGestationDays === null ? (
+                            <View
+                                style={{
+                                    padding: 12,
+                                    marginBottom: 16,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.4)' : '#f8fafc',
+                                }}
+                            >
+                                <Text
+                                    style={{
+                                        fontSize: 12,
+                                        fontFamily: 'Outfit_500Medium',
+                                        color: colors.textSecondary,
+                                    }}
+                                >
+                                    Authoritative calving readiness is unavailable for this record. Refresh the animal or verify the delivery recording window before continuing.
+                                </Text>
                             </View>
                         ) : null}
 
@@ -646,16 +853,100 @@ export default function RecordCalfDropScreen() {
 
                             <View>
                                 <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Outcome</Text>
-                                <View className="flex-row flex-wrap gap-2 mb-4">
+                                <View className="flex-row flex-wrap gap-2 mb-2">
                                     {[
-                                        ['live_birth', 'Live Birth'], ['mixed', 'Mixed'],
-                                        ['stillbirth', 'Stillbirth'], ['abortion', 'Abortion'],
-                                    ].map(([value, label]) => (
-                                        <TouchableOpacity key={value} onPress={() => handleOutcomeSelect(value)} className={`px-4 py-2.5 rounded-xl border ${outcome === value ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
-                                            <Text className={`font-outfit-bold text-[11px] ${outcome === value ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{label}</Text>
-                                        </TouchableOpacity>
-                                    ))}
+                                        ['live_birth', 'Live Birth'],
+                                        ['mixed', 'Mixed'],
+                                        ['stillbirth', 'Stillbirth'],
+                                        ['abortion', 'Abortion'],
+                                    ].map(([value, label]) => {
+                                        const isDelivery = value !== 'abortion';
+                                        const isOptionDisabled = isDelivery && !isDeliveryEligible;
+                                        const isSelected = outcome === value;
+
+                                        return (
+                                            <TouchableOpacity
+                                                key={value}
+                                                disabled={isOptionDisabled}
+                                                onPress={() => handleOutcomeSelect(value)}
+                                                style={{
+                                                    opacity: isOptionDisabled ? 0.45 : 1,
+                                                }}
+                                                className={`px-4 py-2.5 rounded-xl border ${
+                                                    isSelected
+                                                        ? isOptionDisabled
+                                                            ? 'bg-amber-600/70 border-amber-600'
+                                                            : 'bg-emerald-600 border-emerald-600'
+                                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+                                                }`}
+                                            >
+                                                <Text
+                                                    className={`font-outfit-bold text-[11px] ${
+                                                        isSelected
+                                                            ? 'text-white'
+                                                            : isOptionDisabled
+                                                                ? 'text-slate-400 dark:text-slate-600'
+                                                                : 'text-slate-600 dark:text-slate-300'
+                                                    }`}
+                                                >
+                                                    {label}
+                                                    {isOptionDisabled && minimumGestationDays ? ` (Day ${minimumGestationDays}+)` : ''}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
                                 </View>
+
+                                {!isDeliveryEligible && (
+                                    <View
+                                        style={{
+                                            marginBottom: 12,
+                                            padding: 10,
+                                            borderRadius: 10,
+                                            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc',
+                                            borderWidth: 1,
+                                            borderColor: isDark ? '#334155' : '#e2e8f0',
+                                        }}
+                                    >
+                                        <Text
+                                            style={{
+                                                fontSize: 11,
+                                                fontFamily: 'Outfit_500Medium',
+                                                color: colors.textSecondary,
+                                                lineHeight: 16,
+                                            }}
+                                        >
+                                            {minimumGestationDays !== null
+                                                ? `Live Birth, Mixed, and Stillbirth are disabled until Day ${minimumGestationDays} (delivery recording is not available yet). Abortion is not blocked by the delivery recording threshold.`
+                                                : 'Delivery outcomes are unavailable until canonical gestation timing is confirmed. Abortion is not blocked by delivery recording threshold timing.'}
+                                        </Text>
+                                    </View>
+                                )}
+
+                                {outcome !== 'abortion' && !isDeliveryEligible ? (
+                                    <View
+                                        style={{
+                                            marginBottom: 12,
+                                            padding: 10,
+                                            borderRadius: 10,
+                                            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
+                                            borderWidth: 1,
+                                            borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#fecaca',
+                                        }}
+                                    >
+                                        <Text
+                                            style={{
+                                                fontSize: 11,
+                                                fontFamily: 'Outfit_600SemiBold',
+                                                color: colors.error || '#ef4444',
+                                                lineHeight: 16,
+                                            }}
+                                        >
+                                            The selected outcome cannot be submitted for this date because delivery recording is not available yet. Switch to Abortion or select a valid delivery date.
+                                        </Text>
+                                    </View>
+                                ) : null}
+
                                 {!isAbortion && <>
                                 <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Delivery Method</Text>
                                 <View className="flex-row flex-wrap gap-2">
@@ -942,9 +1233,27 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : null}
 
+                        {outcome === 'mixed' && isMixedInvalid && (
+                            <View
+                                className="mb-3 p-3 rounded-2xl border flex-row items-center gap-2.5"
+                                style={{
+                                    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#fffbeb',
+                                    borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#fde68a',
+                                }}
+                            >
+                                <AlertTriangle size={16} color={isDark ? '#fbbf24' : '#d97706'} />
+                                <Text
+                                    className="flex-1 text-xs font-outfit-bold"
+                                    style={{ color: isDark ? '#fef3c7' : '#92400e' }}
+                                >
+                                    Mixed delivery must include at least one living and one stillborn calf.
+                                </Text>
+                            </View>
+                        )}
+
                         <Button
                             size="lg"
-                            className="mb-4"
+                            className={`mb-4 ${isMixedInvalid ? 'opacity-60' : ''}`}
                             onPress={handleSave}
                             loading={submissionLocked}
                             disabled={submissionLocked || isLiveOutcomeTooEarly}
@@ -1046,7 +1355,7 @@ export default function RecordCalfDropScreen() {
               title="Submit Calving Registry?"
               message={isLiveBirth
                 ? `This will create ${calves.length} living offspring record${calves.length > 1 ? "s" : ""} for ${motherTag || "the selected mother"}.`
-                : `This will record a ${calvingEase.toLowerCase()} without creating living livestock profiles for ${motherTag || "the selected mother"}.`}
+                : `This will record ${isAbortion ? "a pregnancy loss" : `a ${outcome.replaceAll("_", " ")}`} without creating living livestock profiles for ${motherTag || "the selected mother"}.`}
               confirmText="Submit"
               cancelText="Review"
               isDestructive={false}

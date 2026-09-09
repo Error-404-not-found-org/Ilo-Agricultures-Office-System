@@ -21,7 +21,7 @@ const formatDate = (date) => {
 
 const getInitialCalvingForm = (pregnancyData = null) => ({
     pregnancyId: pregnancyData?._id || pregnancyData?.id || '',
-    animalId: pregnancyData?.animalId?._id || pregnancyData?.animalId || '',
+    animalId: (typeof pregnancyData?.animalId === "string" ? pregnancyData.animalId : pregnancyData?.animalId?._id || pregnancyData?.animalId?.id) || '',
     date: getManilaDateKey(),
     calvingEase: 'Natural',
     outcome: 'live_birth',
@@ -34,8 +34,8 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     const queryClient = useQueryClient();
     const workflowIdentity = String(
         taskId || pregnancyData?._id || pregnancyData?.id ||
-        preSelectedAnimal?._id || preSelectedAnimal ||
-        preSelectedFarmer?._id || preSelectedFarmer || "standalone-calving",
+        preSelectedAnimal?._id || preSelectedAnimal?.id || (typeof preSelectedAnimal === "string" ? preSelectedAnimal : "") ||
+        preSelectedFarmer?._id || preSelectedFarmer?.id || (typeof preSelectedFarmer === "string" ? preSelectedFarmer : "") || "standalone-calving",
     );
     const submitInFlightRef = useRef(false);
     const activeWorkflowIdentityRef = useRef(isOpen ? workflowIdentity : null);
@@ -58,6 +58,10 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     const [submissionError, setSubmissionError] = useState("");
 
     const [formData, setFormData] = useState(() => getInitialCalvingForm(pregnancyData));
+    const isMixedInvalid =
+        formData.outcome === "mixed" &&
+        (formData.calves.filter((c) => c.isLiving).length < 1 ||
+            formData.calves.filter((c) => !c.isLiving).length < 1);
 
     // Reset state for a new workflow and handle Escape while idle.
     useEffect(() => {
@@ -82,11 +86,16 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                 submitInFlightRef.current = false;
                 setFormData(getInitialCalvingForm(pregnancyData));
                 if (preSelectedFarmer) {
-                    setSelectedFarmerId(preSelectedFarmer._id || preSelectedFarmer);
+                    setSelectedFarmerId(preSelectedFarmer._id || preSelectedFarmer.id || (typeof preSelectedFarmer === "string" ? preSelectedFarmer : ''));
                     setSearchFarmer(preSelectedFarmer.name || '');
                 }
-                if (preSelectedAnimal) {
-                    setSelectedAnimalId(preSelectedAnimal._id || preSelectedAnimal);
+                const initialAnimalId =
+                    preSelectedAnimal?._id ||
+                    preSelectedAnimal?.id ||
+                    (typeof preSelectedAnimal === "string" ? preSelectedAnimal : "") ||
+                    (typeof pregnancyData?.animalId === "string" ? pregnancyData.animalId : pregnancyData?.animalId?._id || pregnancyData?.animalId?.id || "");
+                if (initialAnimalId) {
+                    setSelectedAnimalId(initialAnimalId);
                 }
             });
         } else {
@@ -289,7 +298,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
             : formData.outcome === "stillbirth" ? formData.calves : [];
 
         if (formData.outcome === "mixed" && (livingCalves.length === 0 || nonLivingCalves.length === 0)) {
-            rejectSubmission("A mixed outcome requires at least one living and one non-living calf.");
+            rejectSubmission("Mixed delivery must include at least one living and one stillborn calf.");
             return;
         }
 
@@ -306,7 +315,12 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
             return;
         }
 
-        let payload = { ...formData, taskId };
+        const { calvingEase, ...basePayload } = formData;
+        let payload = {
+            ...basePayload,
+            ...(formData.outcome === "abortion" ? {} : { calvingEase }),
+            taskId,
+        };
 
         // Handle Mixed outcome logic
         if (formData.outcome === 'mixed') {
@@ -326,8 +340,28 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
 
     if (!isOpen) return null;
 
-    const motherEarTag = pregnancyData?.animalId?.earTag ||
-        (animals.find(a => a._id === selectedAnimalId)?.earTag || "Selected Animal");
+    const resolvedAnimalId =
+        (typeof pregnancyData?.animalId === "string"
+            ? pregnancyData.animalId
+            : pregnancyData?.animalId?._id || pregnancyData?.animalId?.id) ||
+        selectedAnimalId;
+
+    const animalFromList = animals.find(
+        (a) => a._id === resolvedAnimalId || a.id === resolvedAnimalId,
+    );
+
+    const motherEarTag =
+        (preSelectedAnimal && typeof preSelectedAnimal === "object"
+            ? preSelectedAnimal.earTag || preSelectedAnimal.name
+            : null) ||
+        animalHistory?.animal?.earTag ||
+        animalHistory?.animal?.name ||
+        animalFromList?.earTag ||
+        animalFromList?.name ||
+        (typeof preSelectedAnimal === "string" && preSelectedAnimal.trim()
+            ? preSelectedAnimal.trim()
+            : null) ||
+        "Selected Animal";
 
     return (
         <AnimatePresence>
@@ -553,8 +587,9 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                             </div>
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className={labelClass}>Outcome</label>
+                                            <label htmlFor="record-calving-outcome" className={labelClass}>Outcome</label>
                                             <select
+                                                id="record-calving-outcome"
                                                 value={formData.outcome}
                                                 onChange={(e) => setFormData({...formData, outcome: e.target.value})}
                                                 className={`${selectClass} cursor-pointer`}
@@ -565,9 +600,10 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                                 <option value="abortion">Abortion (Pregnancy Loss)</option>
                                             </select>
                                         </div>
-                                        <div className="space-y-1.5">
-                                            <label className={labelClass}>Delivery Method / Ease</label>
+                                        {formData.outcome !== "abortion" && <div className="space-y-1.5">
+                                            <label htmlFor="record-calving-ease" className={labelClass}>Delivery Method / Ease</label>
                                             <select
+                                                id="record-calving-ease"
                                                 value={formData.calvingEase}
                                                 onChange={(e) => setFormData({...formData, calvingEase: e.target.value})}
                                                 className={`${selectClass} cursor-pointer`}
@@ -577,7 +613,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                                 <option value="Difficult">Difficult</option>
                                                 <option value="Cesarean">Cesarean</option>
                                             </select>
-                                        </div>
+                                        </div>}
                                         <div className="space-y-1.5">
                                             <label className={labelClass}>Number of Calves</label>
                                             <div className="flex items-center gap-2">
@@ -749,30 +785,38 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="p-6 border-t border-base-300 bg-base-200/20 flex gap-4">
-                        <button
-                            type="button"
-                            onClick={() => !mutation.isPending && onClose()}
-                            disabled={mutation.isPending}
-                            className="btn btn-ghost flex-1"
-                        >
-                            Discard
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleSave}
-                            disabled={mutation.isPending || (!pregnancyData && !activePregnancy)}
-                            className="btn btn-primary flex-2"
-                        >
-                            {mutation.isPending ? (
-                                <span className="loading loading-spinner loading-xs"></span>
-                            ) : (
-                                <>
-                                    <ClipboardCheck size={16} />
-                                    <span>Save calving record</span>
-                                </>
-                            )}
-                        </button>
+                    <div className="p-6 border-t border-base-300 bg-base-200/20 space-y-3">
+                        {formData.outcome === "mixed" && isMixedInvalid && (
+                            <div className="flex items-center gap-2 p-3 text-xs font-semibold rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                                <AlertCircle size={16} className="shrink-0 text-amber-500" />
+                                <span>Mixed delivery must include at least one living and one stillborn calf.</span>
+                            </div>
+                        )}
+                        <div className="flex gap-4">
+                            <button
+                                type="button"
+                                onClick={() => !mutation.isPending && onClose()}
+                                disabled={mutation.isPending}
+                                className="btn btn-ghost flex-1"
+                            >
+                                Discard
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={mutation.isPending || (!pregnancyData && !activePregnancy)}
+                                className={`btn btn-primary flex-2 ${isMixedInvalid ? "opacity-60" : ""}`}
+                            >
+                                {mutation.isPending ? (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                ) : (
+                                    <>
+                                        <ClipboardCheck size={16} />
+                                        <span>Save calving record</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
                 <button type="button" className="modal-backdrop" onClick={() => !mutation.isPending && onClose()} aria-label="Close calving form" />

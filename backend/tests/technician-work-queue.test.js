@@ -1813,4 +1813,63 @@ test("Technician Work Queue backend contract", async (t) => {
       );
     },
   );
+
+  await t.test(
+    "assigned pregnancy-loss review appears only in the confirming Technician My Work",
+    async () => {
+      state.inseminations = [];
+      state.healthRequests = [];
+      state.tasks = [
+        taskRecord({
+          _id: "assigned-pregnancy-loss-review",
+          technicianId: ids.technician,
+          taskType: "BreedingFollowUp",
+          sourceType: "farmer_pregnancy_loss_report",
+          status: "Pending",
+          dueDate: new Date(),
+          relatedRecordType: "pregnancy",
+          relatedRecordId: ids.pregnancy,
+          metadata: {
+            workflowStage: "pregnancy_loss_review",
+            reportId: "507f1f77bcf86cd799439027",
+            pregnancyId: ids.pregnancy,
+            animalId: ids.animal,
+            farmerId: ids.farmer,
+            reportStatus: "pending_review",
+          },
+        }),
+      ];
+
+      const myWork = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", type: "pregnancy", page: "1", limit: "20" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        myWork.response,
+      );
+      const assigned = myWork.body.data.find(
+        (item) => item.id === "assigned-pregnancy-loss-review",
+      );
+      assert.ok(assigned);
+      assert.equal(assigned.workflowType, "PregnancyLossReview");
+      assert.equal(assigned.allowedAction, "REVIEW_PREGNANCY_LOSS");
+
+      const otherTechnicianOpenRequests = responseRecorder();
+      await getTechnicianRequests(
+        {
+          query: {
+            type: "pregnancy_loss_review",
+            assignment: "unassigned",
+            page: "1",
+            limit: "20",
+          },
+          user: { ...technicianUser, _id: ids.otherTechnician },
+        },
+        otherTechnicianOpenRequests.response,
+      );
+      assert.deepEqual(otherTechnicianOpenRequests.body.requests, []);
+    },
+  );
+
 });

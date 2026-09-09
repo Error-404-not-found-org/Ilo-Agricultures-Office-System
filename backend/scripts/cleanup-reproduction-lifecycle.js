@@ -49,8 +49,12 @@ export const validateManifest = (manifest) => {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("Manifest must be a JSON object.");
   if (manifest.manifestVersion !== 1 || !manifest.seedBatch || !manifest.databaseName) throw new Error("Manifest header is missing or unsupported.");
   if (!manifest.farmer?.id || !manifest.technician?.id) throw new Error("Manifest account identity is incomplete.");
-  if (!Array.isArray(manifest.scenarioNames) || manifest.scenarioNames.length !== SCENARIO_NAMES.length ||
-      manifest.scenarioNames.some((value, index) => value !== SCENARIO_NAMES[index])) {
+  const isFullRun = Array.isArray(manifest.scenarioNames) && manifest.scenarioNames.length === SCENARIO_NAMES.length;
+  const isSingleRun = Array.isArray(manifest.scenarioNames) && manifest.scenarioNames.length === 1 && SCENARIO_NAMES.includes(manifest.scenarioNames[0]);
+  if (!isFullRun && !isSingleRun) {
+    throw new Error("Manifest scenario list does not match the lifecycle seeder.");
+  }
+  if (isFullRun && manifest.scenarioNames.some((value, index) => value !== SCENARIO_NAMES[index])) {
     throw new Error("Manifest scenario list does not match the lifecycle seeder.");
   }
   if (!Array.isArray(manifest.earTags) || !manifest.earTags.length || manifest.earTags.some((value) => !String(value).startsWith(SEED_PREFIX))) {

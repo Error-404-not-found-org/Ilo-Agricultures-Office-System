@@ -6,13 +6,12 @@ import {
   Download,
   Eye,
   FileImage,
-  FileText,
   HeartPulse,
-  Paperclip,
   PawPrint,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Modal from "../ui/Modal";
+import ImagePreviewModal from "../ui/ImagePreviewModal";
 import {
   downloadRecordAttachment,
   normalizeRecordAttachments,
@@ -39,6 +38,19 @@ const humanize = (value) =>
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const formatDiagnosticMethod = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["palpation", "rectal_palpation"].includes(normalized)) {
+    return "Manual Palpation";
+  }
+  if (["visual_observation", "clinical_examination"].includes(normalized)) {
+    return "Visual Assessment";
+  }
+  if (normalized === "farmer_interview") return "Farmer Interview";
+  if (["other", "other_approved"].includes(normalized)) return "Other";
+  return humanize(value);
+};
 
 const Value = ({ label, children }) => (
   <div>
@@ -72,6 +84,9 @@ const AttachmentsSection = ({
     >
       Attachments
     </h4>
+    <p className="mb-2 text-sm text-base-content/60">
+      {attachments.length} saved {attachments.length === 1 ? "photo" : "photos"}
+    </p>
     <ul className="list overflow-hidden rounded-box border border-base-300 bg-base-100">
       {attachments.map((attachment) => (
         <li
@@ -133,6 +148,10 @@ const RecordDetails = ({
 }) => {
   const details = record.details || {};
   const animal = record.animalId || {};
+  const isRequestBacked = ["health_request", "ai_request"].includes(
+    record.sourceKind,
+  );
+  const isHealthRequest = record.sourceKind === "health_request";
 
   return (
     <div className="space-y-6">
@@ -147,7 +166,7 @@ const RecordDetails = ({
                 {animal.animalId || animal.earTag || "Animal not recorded"}
               </h4>
               <p className="text-sm text-base-content/65">
-                {record.farmerId?.name || "Farmer not recorded"}
+                {record.farmerId?.name || record.farmer?.name || "Farmer not recorded"}
               </p>
             </div>
           </div>
@@ -159,14 +178,27 @@ const RecordDetails = ({
         </div>
       </section>
 
-      <DetailSection title="Official service details">
-        <Value label={details.serviceDateLabel || record.dateLabel || "Service date"}>
+      <DetailSection
+        title={isRequestBacked ? "Request details" : "Official service details"}
+      >
+        <Value
+          label={details.serviceDateLabel || record.dateLabel || "Service date"}
+        >
           {formatDate(details.serviceDate || record.date, record.datePrecision)}
         </Value>
-        <Value label="Technician">
+        <Value label="Performed by">
           {record.technician?.name || details.technician || "Not recorded"}
         </Value>
-        {record.type === "ai" && (
+        {isRequestBacked && (
+          <Value label="Status">{humanize(details.status)}</Value>
+        )}
+        {isRequestBacked && details.cancellationReason && (
+          <Value label="Cancellation reason">{details.cancellationReason}</Value>
+        )}
+        {isRequestBacked && details.cancellationResponseReason && (
+          <Value label="Closure note">{details.cancellationResponseReason}</Value>
+        )}
+        {record.type === "ai" && !isRequestBacked && (
           <>
             <Value label="Attempt">
               {details.attemptNumber == null
@@ -189,19 +221,73 @@ const RecordDetails = ({
         {record.type === "health" && (
           <>
             <Value
-              label={details.isDirectHealthService ? "Service type" : "Request type"}
+              label={
+                details.isDirectHealthService ? "Service type" : "Request type"
+              }
             >
               {humanize(details.serviceType || details.requestType)}
             </Value>
-            <Value label="Treatment or service">
-              {details.treatment || details.advice || "Not recorded"}
-            </Value>
-            <Value label="Diagnosis">{valueOrRecorded(details.diagnosis)}</Value>
-            <Value label="Medication">{valueOrRecorded(details.medicine)}</Value>
-            <Value label="Dosage">{valueOrRecorded(details.dosage)}</Value>
-            <Value label="Follow-up date">
-              {formatDate(details.followUpDate)}
-            </Value>
+            {Array.isArray(details.requestDetails?.observedSigns) &&
+              details.requestDetails.observedSigns.length > 0 && (
+                <Value label="Observed signs">
+                  {details.requestDetails.observedSigns
+                    .map((sign) => humanize(sign))
+                    .join(", ")}
+                </Value>
+              )}
+            {details.requestDetails?.farmerDescription && (
+              <Value label="Farmer description">
+                {details.requestDetails.farmerDescription}
+              </Value>
+            )}
+            {details.advice && <Value label="Advice">{details.advice}</Value>}
+            {details.pickupItem && (
+              <Value label="Item available for pickup">{details.pickupItem}</Value>
+            )}
+            {details.pickupAvailable === true && (
+              <Value label="Availability">Available for pickup</Value>
+            )}
+            {details.pickupInstructions && (
+              <Value label="Pickup instructions">{details.pickupInstructions}</Value>
+            )}
+            {details.dosageOrUseInstructions && (
+              <Value label="Dosage / Use instructions">
+                {details.dosageOrUseInstructions}
+              </Value>
+            )}
+            {details.withdrawalGuidance && (
+              <Value label="Withdrawal guidance">{details.withdrawalGuidance}</Value>
+            )}
+            {(details.withdrawalPeriod || details.withdrawalPeriodDays !== undefined) && (
+              <Value label="Withdrawal period">
+                {details.withdrawalPeriod ||
+                  (details.withdrawalPeriodDays !== undefined ? `${details.withdrawalPeriodDays} ${details.withdrawalPeriodDays === 1 ? "day" : "days"}` : "")}
+              </Value>
+            )}
+            {details.withdrawalEndDate && (
+              <Value label="Withdrawal ends">
+                {formatDate(details.withdrawalEndDate)}
+              </Value>
+            )}
+            {!isRequestBacked && details.cancellationReason && (
+              <Value label="Cancellation reason">{details.cancellationReason}</Value>
+            )}
+            {!isRequestBacked && details.cancellationResponseReason && (
+              <Value label="Closure note">{details.cancellationResponseReason}</Value>
+            )}
+            {!isHealthRequest && (
+              <>
+                <Value label="Treatment or service">
+                  {details.treatment || "Not recorded"}
+                </Value>
+                <Value label="Diagnosis">{valueOrRecorded(details.diagnosis)}</Value>
+                <Value label="Medication">{valueOrRecorded(details.medicine)}</Value>
+                <Value label="Dosage">{valueOrRecorded(details.dosage)}</Value>
+              </>
+            )}
+            {details.followUpDate && (
+              <Value label="Follow-up date">{formatDate(details.followUpDate)}</Value>
+            )}
           </>
         )}
         {record.type === "pregnancy" && (
@@ -210,7 +296,7 @@ const RecordDetails = ({
               {valueOrRecorded(details.outcome)}
             </Value>
             <Value label="Check method">
-              {humanize(details.diagnosticMethod)}
+              {formatDiagnosticMethod(details.diagnosticMethod)}
             </Value>
             <Value label="Linked AI attempt">
               {details.relatedAttempt == null
@@ -224,11 +310,11 @@ const RecordDetails = ({
         )}
         {record.type === "calving" && (
           <>
-            <Value label="Outcome">
-              {humanize(details.calvingOutcome)}
-            </Value>
+            <Value label="Outcome">{humanize(details.calvingOutcome)}</Value>
             <Value label="Calving ease">
-              {valueOrRecorded(details.calvingEase)}
+              {details.calvingOutcome === "abortion"
+                ? "Not applicable"
+                : valueOrRecorded(details.calvingEase)}
             </Value>
             <Value label="Number of calves">
               {valueOrRecorded(details.numberOfCalves)}
@@ -236,33 +322,40 @@ const RecordDetails = ({
             <Value label="Living / stillborn">
               {details.livingCalfCount == null && details.stillbornCount == null
                 ? "Not recorded"
-                : String(details.livingCalfCount || 0) + " / " + String(details.stillbornCount || 0)}
+                : String(details.livingCalfCount || 0) +
+                  " / " +
+                  String(details.stillbornCount || 0)}
             </Value>
           </>
         )}
       </DetailSection>
 
-      {record.type === "calving" && Array.isArray(details.calves) && details.calves.length > 0 && (
-        <DetailSection title="Calves">
-          {details.calves.map((calf, index) => (
-            <Value
-              key={calf.animalId || calf.earTag || index}
-              label={"Calf " + String(index + 1)}
-            >
-              {[calf.earTag ? "Tag " + calf.earTag : null, calf.sex]
-                .filter(Boolean)
-                .join(" � ") || "Details not recorded"}
-            </Value>
-          ))}
-        </DetailSection>
-      )}
+      {record.type === "calving" &&
+        Array.isArray(details.calves) &&
+        details.calves.length > 0 && (
+          <DetailSection title="Calves">
+            {details.calves.map((calf, index) => (
+              <Value
+                key={calf.animalId || calf.earTag || index}
+                label={"Calf " + String(index + 1)}
+              >
+                {[calf.earTag ? "Tag " + calf.earTag : null, calf.sex]
+                  .filter(Boolean)
+                  .join(" � ") || "Details not recorded"}
+              </Value>
+            ))}
+          </DetailSection>
+        )}
 
-      {(details.technicianNote || details.advice || details.farmerNotes) && (
+      {((!isRequestBacked && (details.technicianNote || details.advice)) ||
+        details.farmerNotes) && (
         <DetailSection title="Notes">
-          {details.technicianNote && (
+          {!isRequestBacked && details.technicianNote && (
             <Value label="Technician notes">{details.technicianNote}</Value>
           )}
-          {details.advice && <Value label="Advice">{details.advice}</Value>}
+          {!isRequestBacked && details.advice && (
+            <Value label="Advice">{details.advice}</Value>
+          )}
           {details.farmerNotes && (
             <Value label="Farmer notes">{details.farmerNotes}</Value>
           )}
@@ -279,12 +372,7 @@ const RecordDetails = ({
         />
       )}
 
-      <div className="alert alert-info alert-soft text-sm">
-        <FileText size={18} aria-hidden="true" />
-        <span>
-          Official record ID: <span className="font-mono">{record.sourceId}</span>
-        </span>
-      </div>
+
     </div>
   );
 };
@@ -335,10 +423,33 @@ export default function OfficialRecordDetailModal({ recordIdentity, onClose }) {
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [downloadingUrl, setDownloadingUrl] = useState("");
   const [downloadError, setDownloadError] = useState("");
+  const [retainedRecordIdentity, setRetainedRecordIdentity] =
+    useState(recordIdentity);
+  if (
+    recordIdentity &&
+    (recordIdentity.animalId !== retainedRecordIdentity?.animalId ||
+      recordIdentity.recordKind !== retainedRecordIdentity?.recordKind ||
+      recordIdentity.recordId !== retainedRecordIdentity?.recordId)
+  ) {
+    setRetainedRecordIdentity(recordIdentity);
+  }
 
-  const { animalId, recordKind, recordId } = recordIdentity || {};
-  const { data: response, isLoading, isError } = useQuery({
-    queryKey: ["technician", "official-record-detail", animalId, recordKind, recordId],
+  // Keep the selected record rendered while the native dialog finishes its
+  // exit transition. Clearing the query identity here collapses the body first.
+  const visibleRecordIdentity = recordIdentity || retainedRecordIdentity;
+  const { animalId, recordKind, recordId } = visibleRecordIdentity || {};
+  const {
+    data: response,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: [
+      "technician",
+      "official-record-detail",
+      animalId,
+      recordKind,
+      recordId,
+    ],
     queryFn: async () => {
       const res = await axiosInstance.get(
         "/animals/" + animalId + "/records/" + recordKind + "/" + recordId,
@@ -350,7 +461,7 @@ export default function OfficialRecordDetailModal({ recordIdentity, onClose }) {
 
   const record = response || null;
   const attachments = record ? normalizeRecordAttachments(record) : [];
-  const title = record?.title || "Official record";
+  const title = record?.title || "Record details";
   const icon =
     record?.type === "health" ? (
       <HeartPulse size={20} />
@@ -359,6 +470,10 @@ export default function OfficialRecordDetailModal({ recordIdentity, onClose }) {
     ) : (
       <CalendarDays size={20} />
     );
+  const openAttachmentPreview = (attachment) => {
+    setDownloadError("");
+    setPreviewAttachment(attachment);
+  };
 
   const closeRecord = () => {
     setPreviewAttachment(null);
@@ -387,7 +502,7 @@ export default function OfficialRecordDetailModal({ recordIdentity, onClose }) {
         isOpen={Boolean(recordIdentity)}
         onClose={closeRecord}
         title={title}
-        subtitle="Read-only official record"
+        subtitle="Read-only saved activity"
         icon={icon}
         size="xl"
         closeOnEscape
@@ -401,17 +516,14 @@ export default function OfficialRecordDetailModal({ recordIdentity, onClose }) {
         {isLoading && <RecordSkeleton />}
         {isError && (
           <div role="alert" className="alert alert-error alert-soft">
-            The official record could not be loaded. Please try again.
+            This saved activity could not be loaded. Please try again.
           </div>
         )}
         {!isLoading && !isError && record && (
           <RecordDetails
             record={record}
             attachments={attachments}
-            onPreview={(attachment) => {
-              setDownloadError("");
-              setPreviewAttachment(attachment);
-            }}
+            onPreview={openAttachmentPreview}
             onDownload={downloadAttachment}
             downloadingUrl={downloadingUrl}
             downloadError={downloadError}
@@ -419,57 +531,16 @@ export default function OfficialRecordDetailModal({ recordIdentity, onClose }) {
         )}
       </Modal>
 
-      <Modal
-        isOpen={Boolean(previewAttachment)}
+      <ImagePreviewModal
+        images={attachments}
+        selectedImage={previewAttachment}
+        onSelectImage={setPreviewAttachment}
         onClose={() => setPreviewAttachment(null)}
-        title={previewAttachment?.displayName || "Attachment preview"}
-        subtitle="Attachment preview"
-        icon={<Paperclip size={20} />}
-        size="4xl"
-        closeOnEscape
-        closeOnBackdropClick
-        actions={
-          <>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={() => downloadAttachment(previewAttachment)}
-              disabled={downloadingUrl === previewAttachment?.url}
-            >
-              {downloadingUrl === previewAttachment?.url ? (
-                <span className="loading loading-spinner loading-xs" />
-              ) : (
-                <Download size={16} aria-hidden="true" />
-              )}
-              Download
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={() => setPreviewAttachment(null)}
-            >
-              Close preview
-            </button>
-          </>
-        }
-      >
-        {previewAttachment && (
-          <div className="space-y-3">
-            <figure className="flex min-h-48 items-center justify-center overflow-hidden rounded-box bg-base-200 p-2 sm:min-h-72">
-              <img
-                src={previewAttachment.url}
-                alt={`Preview of ${previewAttachment.displayName}`}
-                className="max-h-[58vh] max-w-full object-contain"
-              />
-            </figure>
-            {downloadError && (
-              <div role="alert" className="alert alert-error alert-soft text-sm">
-                {downloadError}
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
+        title="Attachment preview"
+        onDownload={downloadAttachment}
+        downloadingUrl={downloadingUrl}
+        errorMessage={downloadError}
+      />
     </>
   );
 }

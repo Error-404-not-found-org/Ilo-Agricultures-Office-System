@@ -2,9 +2,11 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import {
   aiRequestKeys,
+  animalKeys,
+  breedingKeys,
   healthRequestKeys,
   notificationKeys,
-} from "@/lib/queryKeys";
+} from "../../../lib/queryKeys.ts";
 
 type NotificationData = Record<string, unknown> | undefined | null;
 
@@ -18,10 +20,17 @@ export const getNotificationInvalidationKeys = (data: NotificationData) => {
       : {};
   const type = String(data?.type || metadata.type || "").toLowerCase();
   const linkType = String(data?.linkType || metadata.linkType || "").toLowerCase();
+  const category = String(data?.category || metadata.category || "").toLowerCase();
+  const eventType = String(data?.eventType || metadata.eventType || "").toLowerCase();
   const requestId =
     text(data?.requestId) ||
     text(metadata.requestId) ||
     (linkType === "request" ? text(data?.relatedId) : null);
+  const animalId =
+    text(data?.animalId) ||
+    text(metadata.animalId) ||
+    (linkType === "animal" ? text(data?.relatedId) : null);
+
   const keys: (readonly unknown[])[] = [notificationKeys.all];
 
   if (["ai", "ai-request", "insemination"].includes(type)) {
@@ -31,6 +40,15 @@ export const getNotificationInvalidationKeys = (data: NotificationData) => {
   } else if (["health", "health-request"].includes(type)) {
     keys.push(healthRequestKeys.all);
     if (requestId) keys.push(healthRequestKeys.detail(requestId));
+  }
+
+  if (category === "pregnancy" || eventType.includes("pregnancy") || (animalId && linkType === "animal")) {
+    keys.push(animalKeys.all);
+    if (animalId) {
+      keys.push(animalKeys.detail(animalId));
+      keys.push(breedingKeys.tracker(animalId));
+      keys.push(["animals", animalId, "pregnancy-loss-reports"]);
+    }
   }
 
   return keys;

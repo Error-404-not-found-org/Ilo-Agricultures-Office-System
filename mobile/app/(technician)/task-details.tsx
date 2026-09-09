@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   TouchableOpacity,
@@ -8,7 +8,7 @@ import {
   Linking,
   Image,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -34,8 +34,12 @@ import {
   getBreedingObservationSignLabel,
 } from "@/features/breeding/utils/breedingObservationPresentation";
 import { FarmerBreedingObservationCard } from "@/features/breeding/components/FarmerBreedingObservationCard";
+import { FarmerPregnancyReportCard } from "@/features/breeding/components/FarmerPregnancyReportCard";
 import { PregnancyConfirmationWindow } from "@/features/breeding/components/PregnancyConfirmationWindow";
 import BreedingFollowUpTaskView from "@/features/breeding/components/BreedingFollowUpTaskView";
+import PregnancyLossReviewTaskView from "@/features/breeding/components/PregnancyLossReviewTaskView";
+import { isExplicitCalvingVisitTask } from "@/features/breeding/utils/calvingUiSemantics";
+import { PREGNANCY_DIAGNOSIS_UI } from "@/features/breeding/utils/pregnancyDiagnosisPresentation";
 
 const formatDisplayDate = (value: unknown, includeWeekday = false) => {
   if (!value) return null;
@@ -140,13 +144,15 @@ function PregnancyConfirmationTaskView({
         ? insemination.approvedBy?.name
         : null;
   const breedingReference = [
-    ["AI Date", formatDisplayDate(aiDate)],
     [
-      "AI Attempt",
+      PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.LAST_INSEMINATION,
+      formatDisplayDate(aiDate),
+    ],
+    [
+      PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.ATTEMPT,
       insemination?.attemptNumber ? `#${insemination.attemptNumber}` : null,
     ],
-    ["Sire", sire || null],
-    ["AI Technician", technicianName],
+    [PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.SIRE, sire || null],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
 
   const hasFarmerObservation = Boolean(
@@ -171,7 +177,7 @@ function PregnancyConfirmationTaskView({
             { color: colors.primary, marginBottom: 12 },
           ]}
         >
-          Animal & Farmer
+          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_ANIMAL_FARMER}
         </Text>
 
         {animal ? (
@@ -340,7 +346,7 @@ function PregnancyConfirmationTaskView({
             { color: colors.primary, marginBottom: 4 },
           ]}
         >
-          Breeding Reference
+          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_BREEDING_REFERENCE}
         </Text>
         <View>
           {breedingReference.map(([label, value], index) => (
@@ -355,42 +361,21 @@ function PregnancyConfirmationTaskView({
         </View>
       </View>
 
-      {/* 3. Farmer Update */}
-      {hasFarmerObservation ? (
-        <View style={{ marginBottom: 20 }}>
-          <FarmerBreedingObservationCard observation={insemination} />
-        </View>
-      ) : (
-        <View
-          style={[
-            styles.pdCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <Text
-            style={[
-              styles.pdSectionTitle,
-              { color: colors.primary, marginBottom: 8 },
-            ]}
-          >
-            Farmer Follow-up
-          </Text>
-          <Text
-            style={{
-              color: colors.textSecondary,
-              fontFamily: "Outfit_400Regular",
-            }}
-          >
-            No update has been received from the farmer.
-          </Text>
-        </View>
-      )}
-
-      {/* 4. Pregnancy Confirmation Window */}
+      {/* 3. Pregnancy Diagnosis Window */}
       <PregnancyConfirmationWindow
         pregnancyReadiness={pregnancyReadiness}
         aiDate={aiDate}
       />
+
+      {/* 4. Farmer Update */}
+      <FarmerPregnancyReportCard insemination={insemination} />
+
+      {/* Breeding Observation if present */}
+      {hasFarmerObservation ? (
+        <View style={{ marginBottom: 20 }}>
+          <FarmerBreedingObservationCard observation={insemination} />
+        </View>
+      ) : null}
 
       {/* 5. Primary Action */}
       {!isClaimed ? (
@@ -428,8 +413,8 @@ function PregnancyConfirmationTaskView({
           }}
           accessibilityLabel={
             initialPregnancyCheckLocked
-              ? "Confirmation not yet available"
-              : "Record pregnancy confirmation"
+              ? "Diagnosis not yet available"
+              : "Start pregnancy diagnosis"
           }
           disabled={completing || initialPregnancyCheckLocked}
           style={[
@@ -448,8 +433,8 @@ function PregnancyConfirmationTaskView({
               <CheckCircle size={20} color="#fff" />
               <Text style={styles.pdBtnText}>
                 {initialPregnancyCheckLocked
-                  ? "Confirmation Not Yet Available"
-                  : "Record Pregnancy Confirmation"}
+                  ? PREGNANCY_DIAGNOSIS_UI.PAGE_1.CTA_DIAGNOSIS_LOCKED
+                  : PREGNANCY_DIAGNOSIS_UI.PAGE_1.CTA_START_DIAGNOSIS}
               </Text>
             </>
           )}
@@ -493,6 +478,13 @@ export default function TaskDetailsScreen() {
   const { taskDetailsQuery, claimTaskMutation, completeTaskMutation } =
     useTechnicianTasks(String(id));
   const { data: task, isLoading, refetch } = taskDetailsQuery;
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
   const pregnancyWorkflowStage =
     task?.metadata?.workflowStage ||
     task?.workflowStage ||
@@ -565,7 +557,7 @@ export default function TaskDetailsScreen() {
         };
       }
       return {
-        label: "Record Pregnancy Check",
+        label: PREGNANCY_DIAGNOSIS_UI.PAGE_1.CTA_START_DIAGNOSIS,
         pathname: "/(technician)/pregnancy-verification",
       };
     }
@@ -676,6 +668,18 @@ export default function TaskDetailsScreen() {
     );
   }
 
+  if (
+    task.sourceType === "farmer_pregnancy_loss_report" ||
+    task.workflowType === "PregnancyLossReview" ||
+    task.allowedAction === "REVIEW_PREGNANCY_LOSS"
+  ) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <PregnancyLossReviewTaskView task={task} onReviewed={refetch} />
+      </View>
+    );
+  }
+
   if (task.taskType === "BreedingFollowUp") {
     const hasFarmerUpdate = Boolean(
       task.insemination?.observationSource === "farmer" &&
@@ -727,17 +731,31 @@ export default function TaskDetailsScreen() {
   const visitPeriod = String(
     task.visitPeriod || task.metadata?.visitPeriod || "",
   ).toLowerCase();
+  const isExplicitCalvingVisit = isExplicitCalvingVisitTask(task);
   const serviceTitle = isCalvingTask
-    ? "Calving assistance"
+    ? (isExplicitCalvingVisit ? "Calving assistance" : "Calving monitoring")
     : humanize(task.taskType || "Farm visit");
   const visitDate = formatDisplayDate(task.dueDate, true);
+  let calvingPregnancyStatus: string | null = null;
+  if (isCalvingTask) {
+    if (pregnancy?.cycleStatus === "lost") {
+      calvingPregnancyStatus = "Lost";
+    } else if (pregnancy?.cycleStatus === "completed") {
+      calvingPregnancyStatus = "Completed";
+    } else if (animal?.reproductiveStatus === "Post-partum") {
+      calvingPregnancyStatus = "Completed";
+    } else if (task?.status === "Completed") {
+      calvingPregnancyStatus = "Completed";
+    } else if (pregnancy?.pregnancyDiagnosis?.result) {
+      calvingPregnancyStatus = humanize(pregnancy.pregnancyDiagnosis.result);
+    }
+  }
+
   const pregnancyDetails = isCalvingTask
     ? [
         [
           "Pregnancy status",
-          pregnancy?.pregnancyDiagnosis?.result
-            ? humanize(pregnancy.pregnancyDiagnosis.result)
-            : null,
+          calvingPregnancyStatus,
         ],
         [
           "Pregnancy confirmed",
@@ -750,7 +768,7 @@ export default function TaskDetailsScreen() {
           ),
         ],
         [
-          "Confirmation method",
+          "Diagnosis method",
           pregnancy?.confirmation?.methodCode
             ? humanize(pregnancy.confirmation.methodCode)
             : null,
@@ -816,9 +834,9 @@ export default function TaskDetailsScreen() {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
           {task?.taskType === "PD"
-            ? "Pregnancy Confirmation"
-            : task?.taskType === "Calving"
-              ? "Calving Monitoring"
+            ? "Pregnancy Diagnosis"
+            : isCalvingTask
+              ? (isExplicitCalvingVisit ? "Calving Visit" : "Calving Monitoring")
               : "Task Details"}
         </Text>
       </View>
@@ -852,7 +870,9 @@ export default function TaskDetailsScreen() {
                     <Text
                       style={[styles.summaryEyebrow, { color: colors.primary }]}
                     >
-                      {isCalvingTask ? "CALVING VISIT" : "FIELD VISIT"}
+                      {isCalvingTask
+                        ? (isExplicitCalvingVisit ? "CALVING VISIT" : "CALVING FOLLOW-UP")
+                        : "FIELD VISIT"}
                     </Text>
                     <Text
                       style={[
@@ -891,7 +911,9 @@ export default function TaskDetailsScreen() {
                           { color: colors.textSecondary },
                         ]}
                       >
-                        Scheduled visit
+                        {isCalvingTask && !isExplicitCalvingVisit
+                          ? "Due date"
+                          : "Scheduled visit"}
                       </Text>
                       <Text
                         style={[
@@ -915,7 +937,9 @@ export default function TaskDetailsScreen() {
                       { color: colors.textSecondary },
                     ]}
                   >
-                    Visit date not scheduled
+                    {isCalvingTask && !isExplicitCalvingVisit
+                      ? "Due date not set"
+                      : "Visit date not scheduled"}
                   </Text>
                 )}
 
@@ -926,7 +950,7 @@ export default function TaskDetailsScreen() {
                       { color: colors.textSecondary },
                     ]}
                   >
-                    {task.category || "Routine"}
+                    {task.category || (isCalvingTask && !isExplicitCalvingVisit ? "Follow-up" : "Routine")}
                   </Text>
                   {task.priority ? (
                     <Text
@@ -1068,7 +1092,7 @@ export default function TaskDetailsScreen() {
                 </View>
 
                 {/* Navigate Button */}
-                {isClaimed && destinationQuery ? (
+                {isClaimed && destinationQuery && (!isCalvingTask || isExplicitCalvingVisit) ? (
                   <TouchableOpacity
                     style={[
                       styles.navigateBtn,
@@ -1120,7 +1144,7 @@ export default function TaskDetailsScreen() {
                       { color: isDark ? "#34d399" : "#00643B" },
                     ]}
                   >
-                    Visit / Task Description
+                    {isCalvingTask && !isExplicitCalvingVisit ? "Task Description" : "Visit / Task Description"}
                   </Text>
                 </View>
                 <View

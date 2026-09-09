@@ -29,6 +29,7 @@ export interface OfflineMutationParams {
   description: string;
   entityType?: string;
   reconcileOnTimeout?: boolean;
+  reconcileServerState?: (api: AxiosInstance) => Promise<any | null>;
 }
 
 export type OfflineMutationLifecycleState =
@@ -142,6 +143,18 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
     onLifecycleStateChange?.("reconciling");
 
     while (Date.now() < deadline) {
+      if (params.reconcileServerState) {
+        try {
+          const canonical = await params.reconcileServerState(api);
+          if (canonical) {
+            onLifecycleStateChange?.("synced");
+            return { status: "synced", data: canonical };
+          }
+        } catch {
+          // Continue with standard reconciliation
+        }
+      }
+
       await wait(RECONCILIATION_RETRY_DELAY_MS);
       onLifecycleStateChange?.("replaying");
       try {
@@ -151,6 +164,20 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
       } catch (error: any) {
         if (error?.response?.data?.code === "IDEMPOTENCY_IN_PROGRESS") {
           onLifecycleStateChange?.("reconciling");
+          if (params.reconcileServerState) {
+            for (let retry = 0; retry < 5 && Date.now() < deadline; retry++) {
+              await wait(1500);
+              try {
+                const canonical = await params.reconcileServerState(api);
+                if (canonical) {
+                  onLifecycleStateChange?.("synced");
+                  return { status: "synced", data: canonical };
+                }
+              } catch {
+                // keep checking
+              }
+            }
+          }
           continue;
         }
         if (!isNetworkFailure(error)) throw error;

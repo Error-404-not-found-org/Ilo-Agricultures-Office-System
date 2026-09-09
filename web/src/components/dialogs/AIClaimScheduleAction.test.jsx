@@ -199,6 +199,30 @@ describe("Unified AI Request modal", () => {
     expect(detailsDialog).toHaveTextContent("Farmer request photos (3)");
   });
 
+  it("opens request photos in the shared multi-image preview", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        photos: [
+          "https://example.test/one.jpg",
+          "https://example.test/two.jpg",
+        ],
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enlarge request image 1" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Farmer request photo" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Image 1 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View next image" }));
+    expect(
+      screen.getByRole("img", { name: "Preview of Photo 2" }),
+    ).toHaveAttribute("src", "https://example.test/two.jpg");
+  });
+
   it("renders a historical imageUrl-only request once", () => {
     renderModal({
       initialRequest: {

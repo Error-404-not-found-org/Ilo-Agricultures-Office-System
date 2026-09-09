@@ -8,7 +8,6 @@ import {
   MapPin,
   Phone,
   Tag,
-  Activity,
   MessageSquareText,
   Image as ImageIcon,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import {
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import Modal from "../ui/Modal";
+import ImagePreviewModal from "../ui/ImagePreviewModal";
 import UserAvatar from "../ui/UserAvatar";
 import {
   getHealthVisitPeriodAvailability,
@@ -41,9 +41,6 @@ const humanizeStatus = (status) =>
     .replaceAll("-", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const humanizeObservation = (value) =>
-  humanizeStatus(String(value || "").replace(/([a-z])([A-Z])/g, "$1 $2"));
-
 const formatRequestDate = (dateString) => {
   if (!dateString) return "Not specified";
   try {
@@ -61,6 +58,20 @@ const formatRequestDate = (dateString) => {
   }
 };
 
+const getAIRequestPhotos = (request) => [
+  ...new Set(
+    [
+      ...(Array.isArray(request?.photos) ? request.photos : []),
+      request?.imageUrl,
+      ...(Array.isArray(request?.attachments?.urls)
+        ? request.attachments.urls
+        : []),
+    ]
+      .filter((url) => typeof url === "string" && url.trim())
+      .map((url) => url.trim()),
+  ),
+];
+
 const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
   const farmerName =
     request.farmerDetails?.name || request.farmer || "Unknown farmer";
@@ -69,42 +80,28 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
     request.farmerPhone ||
     request.farmerDetails?.phone ||
     "Not provided";
-  const animalName =
-    request.animalName || request.animal || request.animalTag || "Unknown";
   const animalTag = request.animalTag || request.earTag || null;
-  const heatSigns = Array.isArray(request.raw?.requestDetails?.heatSigns)
-    ? request.raw.requestDetails.heatSigns
-    : Array.isArray(request.heatSigns)
-      ? request.heatSigns
-      : [];
   const submittedAt = request.requestSubmissionDate || request.createdAt;
 
-  const attachmentUrls = [
-    ...new Set(
-      [
-        ...(Array.isArray(request.photos) ? request.photos : []),
-        request.imageUrl,
-        ...(Array.isArray(request.attachments?.urls)
-          ? request.attachments.urls
-          : []),
-      ]
-        .filter((url) => typeof url === "string" && url.trim())
-        .map((url) => url.trim()),
-    ),
-  ];
-
+  const attachmentUrls = getAIRequestPhotos(request);
   const [showAllPhotos, setShowAllPhotos] = useState(false);
   const displayedPhotos = showAllPhotos
     ? attachmentUrls
     : attachmentUrls.slice(0, 4);
   const hasMorePhotos = attachmentUrls.length > 4;
 
-  const requestNotes =
+  const rawNotes =
+    request.raw?.comment ||
     request.taskDetails ||
     request.raw?.farmerDescription ||
     request.raw?.farmerNotes ||
     request.raw?.notes ||
     null;
+
+  const requestNotes =
+    rawNotes && rawNotes.startsWith("Additional Notes:\n")
+      ? rawNotes.substring(18).trim()
+      : rawNotes;
 
   return (
     <div className="space-y-5">
@@ -143,90 +140,68 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
       </section>
 
       {/* Request Details Section */}
-      <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-sm font-bold uppercase tracking-wider text-base-content/60">
-            Request Details
-          </h4>
-          <span className="badge badge-sm badge-primary">
-            {humanizeStatus(request.status)}
-          </span>
-        </div>
-
-        <div className="space-y-4">
-          {/* Location and Contact */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-              <MapPin size={16} className="shrink-0 text-primary" />
-              <span className="truncate text-base-content/70">
-                {request.locationLabel ||
-                  request.location ||
-                  request.farmerDetails?.location ||
-                  "Location unknown"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-              <Phone size={16} className="shrink-0 text-primary" />
-              <span className="truncate text-base-content/70">{phone}</span>
-            </div>
+      {!compact && (
+        <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-bold uppercase tracking-wider text-base-content/60">
+              Request Details
+            </h4>
+            <span className="badge badge-sm badge-primary">
+              {humanizeStatus(request.status)}
+            </span>
           </div>
 
-          {/* Animal */}
-          <div className="grid gap-3 sm:grid-cols-1">
-            <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-              <Tag size={16} className="shrink-0 text-primary" />
-              <span className="truncate text-base-content/70">
-                Animal Ear tag:{" "}
-                <strong className="text-base-content">{animalTag}</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Farmer Notes */}
-          {requestNotes && (
-            <div className="bg-base-100 rounded-lg p-4 border border-base-300">
-              <div className="flex items-start gap-2">
-                <MessageSquareText
-                  size={16}
-                  className="shrink-0 mt-0.5 text-primary"
-                />
-                <div className="flex-1">
-                  <strong className="text-base-content block mb-2 text-sm">
-                    Farmer Notes:
-                  </strong>
-                  <p className="text-sm text-base-content/80 leading-relaxed whitespace-pre-wrap">
-                    {requestNotes}
-                  </p>
-                </div>
+          <div className="space-y-4">
+            {/* Location and Contact */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
+                <MapPin size={16} className="shrink-0 text-primary" />
+                <span className="truncate text-base-content/70">
+                  {request.locationLabel ||
+                    request.location ||
+                    request.farmerDetails?.location ||
+                    "Location unknown"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
+                <Phone size={16} className="shrink-0 text-primary" />
+                <span className="truncate text-base-content/70">{phone}</span>
               </div>
             </div>
-          )}
 
-          {/* Observed Signs */}
-          {heatSigns.length > 0 && (
-            <div className="bg-base-100 rounded-lg p-4 border border-base-300">
-              <div className="flex items-start gap-2">
-                <Activity size={16} className="shrink-0 mt-0.5 text-primary" />
-                <div className="flex-1">
-                  <strong className="text-base-content block mb-3 text-sm">
-                    Observed Heat Signs:
-                  </strong>
-                  <div className="flex flex-wrap gap-2">
-                    {heatSigns.map((sign, index) => (
-                      <div
-                        key={index}
-                        className="badge badge-primary badge-lg gap-1.5 px-3 py-2.5 text-xs font-medium capitalize"
-                      >
-                        {humanizeObservation(sign)}
-                      </div>
-                    ))}
+            {/* Animal */}
+            <div className="grid gap-3 sm:grid-cols-1">
+              <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
+                <Tag size={16} className="shrink-0 text-primary" />
+                <span className="truncate text-base-content/70">
+                  Animal Ear tag:{" "}
+                  <strong className="text-base-content">{animalTag}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Farmer Notes */}
+            {requestNotes && (
+              <div className="bg-base-100 rounded-lg p-4 border border-base-300">
+                <div className="flex items-start gap-2">
+                  <MessageSquareText
+                    size={16}
+                    className="shrink-0 mt-0.5 text-primary"
+                  />
+                  <div className="flex-1">
+                    <strong className="text-base-content block mb-2 text-sm">
+                      Farmer Notes:
+                    </strong>
+                    <p className="text-sm text-base-content/80 leading-relaxed whitespace-pre-wrap">
+                      {requestNotes}
+                    </p>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </section>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Photos Section - Enhanced for multiple photos */}
       {!compact && attachmentUrls.length > 0 && (
@@ -308,6 +283,7 @@ export default function AIRequestModal({
   const [previewImage, setPreviewImage] = useState(null);
 
   const request = modalState?.request || null;
+  const requestPhotos = getAIRequestPhotos(request);
   const view = modalState?.view === "schedule" ? "schedule" : "details";
   const isOpen = Boolean(request?.workflowType === "AI");
   const canClaimAndSchedule = request?.allowedAction === "CLAIM_AND_SCHEDULE";
@@ -664,29 +640,13 @@ export default function AIRequestModal({
           </div>
         )}
       </Modal>
-      <Modal
-        isOpen={Boolean(previewImage)}
+      <ImagePreviewModal
+        images={requestPhotos}
+        selectedImage={previewImage}
+        onSelectImage={setPreviewImage}
         onClose={() => setPreviewImage(null)}
         title="Farmer request photo"
-        size="lg"
-        actions={
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => setPreviewImage(null)}
-          >
-            Close
-          </button>
-        }
-      >
-        {previewImage ? (
-          <img
-            src={previewImage}
-            alt="Enlarged Farmer-submitted AI request"
-            className="max-h-[70vh] w-full rounded-box object-contain"
-          />
-        ) : null}
-      </Modal>
+      />
     </>
   );
 }

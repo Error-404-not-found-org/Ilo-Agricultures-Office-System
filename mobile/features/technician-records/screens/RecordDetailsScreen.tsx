@@ -15,6 +15,7 @@ import { useTheme } from "@/lib/theme";
 import { safeBack } from "@/utils/navigation";
 import { useOfficialRecordDetail } from "@/features/farmer-reports/hooks/useOfficialRecordDetail";
 import type { OfficialRecordKind } from "@/features/farmer-reports/types/farmerReports.types";
+import { isPregnancyLossCalving } from "@/features/animal-records/utils/recordPresentation";
 import { TechnicianOfficialRecordContent } from "../components/TechnicianOfficialRecordContent";
 
 const OFFICIAL_KINDS = new Set<OfficialRecordKind>([
@@ -88,13 +89,20 @@ export default function RecordDetailsScreen() {
 
   const getHeaderTitle = () => {
     if (!record) return "Record Details";
+    if (["health_request", "ai_request"].includes(record.sourceKind)) {
+      return record.title || "Request Details";
+    }
     switch (record.type) {
       case "ai":
         return "Artificial Insemination";
       case "pregnancy":
         return "Pregnancy Check";
       case "calving":
-        return "Calving Record";
+        return isPregnancyLossCalving(
+          (record as any)?.sourcePayload || record?.details || record,
+        )
+          ? "Pregnancy Loss Record"
+          : "Calving Record";
       case "health":
         return "Health Record";
       default:

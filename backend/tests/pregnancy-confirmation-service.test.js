@@ -332,12 +332,13 @@ test("unconfigured deployments preserve the legacy Day-60 diagnosis contract", a
       inseminationId: ids.insemination,
       result: "Pregnant",
       diagnosisDate: stubs.now,
+      methodCode: "palpation",
       taskId: ids.task,
       actor,
     });
     assert.equal(result.pregnancyReadiness.policyMode, "legacy_day_60");
     assert.equal(result.pregnancyReadiness.isEligible, true);
-    assert.equal(result.pregnancy.confirmation.methodCode, null);
+    assert.equal(result.pregnancy.confirmation.methodCode, "rectal_palpation");
     assert.equal(result.pregnancy.confirmation.stage, "legacy_unclassified");
     assert.equal(result.pregnancy.confirmation.policyVersion, "legacy-day-60");
     assert.equal(result.pregnancy.confirmation.earliestThresholdSnapshot, 60);
@@ -356,7 +357,7 @@ test("method policy rejects missing, disabled, early, stale, and unauthorized su
     );
   }
   for (const input of [
-    { daysPostAI: 35, methodCode: undefined, code: "DIAGNOSTIC_METHOD_REQUIRED" },
+    { daysPostAI: 35, methodCode: undefined, code: "PREGNANCY_DIAGNOSIS_METHOD_REQUIRED" },
     { daysPostAI: 35, methodCode: "blood_pag", code: "DIAGNOSTIC_METHOD_DISABLED" },
     { daysPostAI: 29, methodCode: "ultrasound", code: "METHOD_NOT_YET_READY" },
     { daysPostAI: 35, methodCode: "ultrasound", policyVersion: "stale", code: "PREGNANCY_POLICY_CHANGED" },
@@ -677,6 +678,60 @@ test("diagnostic follow-up task updates the linked Pregnancy instead of creating
     assert.equal(followUpTask.status, "Completed");
   } finally {
     Pregnancy.updateOne = originalPregnancyUpdate;
+    stubs.restore();
+  }
+});
+
+test("all Oton pilot method values are accepted and normalized for new diagnoses", async () => {
+  const methods = [
+    ["palpation", "rectal_palpation"],
+    ["visual_observation", "clinical_examination"],
+    ["farmer_interview", "clinical_examination"],
+    ["other", "other_approved"],
+  ];
+  for (const [submitted, stored] of methods) {
+    const stubs = installDiagnosisStubs({ daysPostAI: 60, configuredPolicy: null });
+    try {
+      const result = await confirmPregnancyDiagnosis({
+        animalId: ids.animal,
+        inseminationId: ids.insemination,
+        result: "Pregnant",
+        diagnosisDate: stubs.now,
+        methodCode: submitted,
+        taskId: ids.task,
+        actor,
+      });
+      assert.equal(result.pregnancy.confirmation.methodCode, stored);
+    } finally {
+      stubs.restore();
+    }
+  }
+});
+
+test("a legacy methodless diagnosis remains readable and can reconcile its matching task", async () => {
+  const existing = {
+    _id: ids.pregnancy,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-07-01") },
+    confirmation: { methodCode: null, policyVersion: "legacy-day-60" },
+  };
+  const stubs = installDiagnosisStubs({
+    daysPostAI: 60,
+    configuredPolicy: null,
+    existingPregnancy: existing,
+  });
+  try {
+    const result = await confirmPregnancyDiagnosis({
+      animalId: ids.animal,
+      inseminationId: ids.insemination,
+      result: "Pregnant",
+      diagnosisDate: stubs.now,
+      taskId: ids.task,
+      actor,
+    });
+    assert.equal(result.alreadyRecorded, true);
+    assert.equal(result.pregnancy.confirmation.methodCode, null);
+  } finally {
     stubs.restore();
   }
 });

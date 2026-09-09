@@ -7,6 +7,7 @@ import {
 import { User } from "../models/user.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
+import { PregnancyLossReport } from "../models/pregnancy-loss-report.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import mongoose from "mongoose";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
@@ -96,6 +97,11 @@ const INSEMINATION_DETAIL_FIELDS = [
   "farmerObservationSigns",
   "farmerObservationNotes",
   "evidencePhotos",
+  "farmerPregnancyReport",
+  "farmerPregnancyReportedAt",
+  "farmerPregnancyNotes",
+  "farmerPregnancyPhotos",
+  "pregnancyReportVerificationStatus",
   "pregnancyId",
 ].join(" ");
 
@@ -570,6 +576,22 @@ export const getTaskById = async (req, res) => {
           deletedAt: null,
         }).populate("inseminationId", INSEMINATION_DETAIL_FIELDS);
       }
+    }
+
+    if (
+      task.taskType === "BreedingFollowUp" &&
+      task.sourceType === "farmer_pregnancy_loss_report" &&
+      task.metadata?.reportId
+    ) {
+      taskObj.pregnancyLossReport = await PregnancyLossReport.findById(
+        task.metadata.reportId,
+      )
+        .populate("pregnancyId")
+        .populate(
+          "inseminationId",
+          "inseminationDate attemptNumber sireBreed sireCode",
+        )
+        .populate("reviewedBy", "name");
     }
 
     if (["CD", "Calving"].includes(task.taskType)) {

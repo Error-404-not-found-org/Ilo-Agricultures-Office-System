@@ -24,6 +24,7 @@ import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import HealthRequestActionModal from "../../components/dialogs/HealthRequestActionModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
+import PregnancyLossReviewModal from "../../components/dialogs/PregnancyLossReviewModal";
 import Modal from "../../components/ui/Modal";
 import { getTaskReadiness } from "../../constants/technicianWorkflow";
 import { getTaskPrimaryActionLabel } from "../../utils/taskNavigation";
@@ -122,21 +123,43 @@ const getOfficialRecordIdentity = (task) => {
 export default function WorkQueue({ embedded = false }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const deepLinkTaskId = searchParams.get("taskId");
+  const deepLinkRequestId = searchParams.get("requestId");
+  const hasDeepLink = Boolean(deepLinkTaskId || deepLinkRequestId);
   const [typeFilter, setTypeFilter] = useState(
     () => searchParams.get("typeFilter") || "all",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
   const [breedingFollowUp, setBreedingFollowUp] = useState(null);
+  const [pregnancyLossReviewTask, setPregnancyLossReviewTask] = useState(null);
   const [breedingFollowUpStep, setBreedingFollowUpStep] = useState("overview");
   const [followUpDraft, setFollowUpDraft] = useState({
     reportType: "possible_pregnancy",
     notes: "",
   });
   const [currentPage, setCurrentPage] = useState(1);
+  const [previewImage, setPreviewImage] = useState(null);
   const itemsPerPage = 8;
+
+  const handleCloseModal = () => {
+    setSelectedTaskWrapper(null);
+    setSelectedWorkDetails(null);
+    setBreedingFollowUp(null);
+    setPregnancyLossReviewTask(null);
+    setPreviewImage(null);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("taskId");
+        next.delete("requestId");
+        return next;
+      },
+      { replace: true }
+    );
+  };
   const formatRelativeSchedule = (value) => {
     if (!value) return "No date recorded";
     const targetDate = new Date(value);
@@ -316,7 +339,29 @@ export default function WorkQueue({ embedded = false }) {
   };
 
   const openTask = (task) => {
+    if (
+      task.sourceType === "farmer_pregnancy_loss_report" ||
+      task.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+      task.workflowType === "PregnancyLossReview" ||
+      task.allowedAction === "REVIEW_PREGNANCY_LOSS"
+    ) {
+      setPregnancyLossReviewTask(task);
+      return;
+    }
+
+    const timingDate = task.timing?.date || task.schedule?.date;
+    const isFuture = timingDate && new Date(timingDate).setHours(0,0,0,0) > new Date().setHours(0,0,0,0);
+    const readiness = getTaskReadiness(task.raw || task);
+
+    if (!readiness.ready || isFuture) {
+      setSelectedWorkDetails(task);
+      return;
+    }
+
     switch (task.allowedAction) {
+      case "REVIEW_PREGNANCY_LOSS":
+        setPregnancyLossReviewTask(task);
+        return;
       case "RECORD_SERVICE":
         if (task.workflowType === "AI" && !isMongoId(task.workflowId)) {
           toast.error("This AI work item has an invalid workflow identifier.");
@@ -900,16 +945,25 @@ export default function WorkQueue({ embedded = false }) {
               }
             : null
         }
-        preSelectedFarmer={selectedTaskWrapper?.farmer?.id || null}
-        preSelectedAnimal={selectedTaskWrapper?.animal?.id || null}
+        preSelectedFarmer={selectedTaskWrapper?.farmer || null}
+        preSelectedAnimal={selectedTaskWrapper?.animal || null}
         taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
         onSuccess={() =>
           queryClient.invalidateQueries({ queryKey: ["technician"] })
         }
       />
+      <PregnancyLossReviewModal
+        isOpen={Boolean(pregnancyLossReviewTask)}
+        onClose={handleCloseModal}
+        task={pregnancyLossReviewTask}
+        onSuccess={() => {
+          handleCloseModal();
+          queryClient.invalidateQueries({ queryKey: ["technician"] });
+        }}
+      />
       <Modal
         isOpen={Boolean(selectedWorkDetails)}
-        onClose={() => setSelectedWorkDetails(null)}
+        onClose={handleCloseModal}
         title={
           selectedWorkDetails?.title ||
           selectedWorkDetails?.serviceType ||
