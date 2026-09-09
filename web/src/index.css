@@ -419,3 +419,20 @@ html {
     transform: scaleX(0);
   }
 }
+
+/* Form controls active/focus state: eliminate double/extra outline ring */
+:where(input, select, textarea, .input, .select, .textarea):focus,
+:where(input, select, textarea, .input, .select, .textarea):focus-within,
+:where(input, select, textarea, .input, .select, .textarea):focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: none !important;
+}
+
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-within,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-visible {
+  border-color: var(--color-error) !important;
+}
+

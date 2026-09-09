@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Info, Stethoscope, X } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import {
   buildTechnicianInvitationPayload,
@@ -112,26 +112,52 @@ export default function TechnicianInviteDialog({ open, onClose }) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-base-300 pb-3">
-          <div>
-            <h2 id="invite-technician-title" className="text-lg font-extrabold text-base-content">
-              Invite Technician
-            </h2>
-            <p className="mt-1 text-xs font-medium text-base-content/80">
-              Create a municipal Field Officer account and assign service capabilities.
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <Stethoscope className="size-5" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 id="invite-technician-title" className="text-lg font-extrabold text-base-content">
+                Invite Technician
+              </h2>
+              <p className="mt-0.5 text-xs font-medium text-base-content/80">
+                Create a municipal Field Officer account and assign service capabilities.
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close Technician invitation"
-            className="btn btn-ghost btn-sm btn-circle"
+            className="btn btn-ghost btn-sm btn-circle cursor-pointer"
           >
             <X size={16} aria-hidden="true" />
           </button>
         </div>
 
-        <fieldset className="fieldset rounded-box border border-base-300 p-4">
-          <legend className="fieldset-legend text-sm font-bold text-base-content">Technician information</legend>
+        {/* Soft Guidance Banner (matching PregnancyLossReviewModal palette) */}
+        <div className="alert alert-info/15 border-info/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+          <Info className="h-4 w-4 shrink-0 text-info mt-0.5" />
+          <div>
+            <p className="font-bold text-base-content">
+              Technician Account & Capability Assignment
+            </p>
+            <p className="mt-0.5 leading-relaxed text-base-content/75">
+              An invitation email will be sent with onboarding credentials. Assigned capabilities determine service request matching.
+            </p>
+          </div>
+        </div>
+
+        <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <span
+              className="text-[10px] font-extrabold uppercase tracking-widest text-primary"
+              aria-hidden="true"
+            >
+              Technician Information
+            </span>
+          </div>
+          <legend className="sr-only">Technician information</legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="fieldset">
               <span className="label font-semibold">First name</span>
@@ -184,16 +210,27 @@ export default function TechnicianInviteDialog({ open, onClose }) {
           </div>
         </fieldset>
 
-        <fieldset className="fieldset rounded-box border border-base-300 p-4">
-          <legend className="fieldset-legend text-sm font-bold text-base-content">Field area</legend>
-          <p className="rounded-field bg-base-200 px-4 py-2.5 font-semibold">
-            Oton, Iloilo
-          </p>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <span
+              className="text-[10px] font-extrabold uppercase tracking-widest text-primary"
+              aria-hidden="true"
+            >
+              Field Area
+            </span>
+          </div>
+          <legend className="sr-only">Field area</legend>
+          <div className="rounded-xl border border-base-300 bg-base-100/70 px-4 py-2.5">
+            <span className="text-[11px] font-semibold text-base-content/60 block">Assigned Municipality</span>
+            <p className="font-bold text-sm text-base-content mt-0.5">
+              Oton, Iloilo
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="fieldset">
               <span className="label font-semibold">Barangay</span>
               <select
-                className="select w-full"
+                className="select w-full cursor-pointer"
                 value={form.barangay}
                 onChange={(event) => updateField("barangay", event.target.value)}
                 required
@@ -221,31 +258,50 @@ export default function TechnicianInviteDialog({ open, onClose }) {
           </div>
         </fieldset>
 
-        <fieldset className="fieldset rounded-box border border-base-300 p-4">
-          <legend className="fieldset-legend text-sm font-bold text-base-content">Capabilities</legend>
-          <p className="label font-medium text-base-content/80">
+        <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <span
+              className="text-[10px] font-extrabold uppercase tracking-widest text-primary"
+              aria-hidden="true"
+            >
+              Capabilities
+            </span>
+          </div>
+          <legend className="sr-only">Capabilities</legend>
+          <p className="label font-medium text-base-content/80 text-xs">
             Select the services this Technician is qualified to receive.
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {TECHNICIAN_CAPABILITIES.map((capability) => (
-              <label
-                key={capability.id}
-                className="flex min-h-12 cursor-pointer items-center gap-3 rounded-field border border-base-300 bg-base-200 px-4 py-2 hover:border-primary"
-              >
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-primary checkbox-sm"
-                  checked={capabilities.includes(capability.id)}
-                  onChange={() => toggleCapability(capability.id)}
-                />
-                <span className="font-semibold">{capability.label}</span>
-              </label>
-            ))}
+            {TECHNICIAN_CAPABILITIES.map((capability) => {
+              const isChecked = capabilities.includes(capability.id);
+              return (
+                <label
+                  key={capability.id}
+                  className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 py-2.5 transition-all ${
+                    isChecked
+                      ? "border-primary/50 bg-primary/5 shadow-xs"
+                      : "border-base-300 bg-base-100/70 hover:bg-base-100 hover:border-base-content/20"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-primary checkbox-sm cursor-pointer"
+                    checked={isChecked}
+                    onChange={() => toggleCapability(capability.id)}
+                  />
+                  <span className="font-semibold text-xs text-base-content">{capability.label}</span>
+                </label>
+              );
+            })}
           </div>
         </fieldset>
 
         <div className="modal-action border-t border-base-300 pt-4">
-          <button type="button" onClick={onClose} className="btn btn-sm">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn btn-ghost btn-sm text-base-content/70 cursor-pointer"
+          >
             Cancel
           </button>
           <button
