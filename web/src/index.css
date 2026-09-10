@@ -430,9 +430,9 @@ html {
   box-shadow: none !important;
 }
 
-:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus,
-:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-within,
-:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-visible {
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"], :user-invalid):focus,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"], :user-invalid):focus-within,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"], :user-invalid):focus-visible {
   border-color: var(--color-error) !important;
 }
 

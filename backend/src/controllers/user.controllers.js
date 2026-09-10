@@ -636,7 +636,8 @@ export const createTechnician = async (req, res) => {
           : clerkUsers?.data || [];
         if (usersList.length > 0) {
           return res.status(409).json({
-            message: "A Clerk account already exists for this email. Review the existing BreedSmart profile before continuing.",
+            message:
+              "An account with this email already exists in BreedSmart. Please check the Users Directory or use a different email.",
             code: "CLERK_USER_EXISTS",
           });
         }
