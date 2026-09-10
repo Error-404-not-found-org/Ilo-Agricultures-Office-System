@@ -35,6 +35,10 @@ export const classifyStaffBootstrapFailure = (error) => {
   const payload = error?.response?.data;
   const code = payload?.code || error?.code;
 
+  if (code === "STAFF_PROFILE_NOT_FOUND") {
+    return { kind: "access-denied", message: UNKNOWN_STAFF_ACCESS_MESSAGE };
+  }
+
   if (status === 404 || MISSING_PROFILE_CODES.has(code)) {
     return { kind: "missing-profile", message: MISSING_BREEDSMART_PROFILE_MESSAGE };
   }

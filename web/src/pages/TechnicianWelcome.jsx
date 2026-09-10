@@ -74,7 +74,7 @@ export default function TechnicianWelcome() {
       try {
         const token = await getToken();
         const response = await axiosInstance.post(
-          "/user/bootstrap",
+          "/user/staff-bootstrap",
           {},
           { headers: { Authorization: `Bearer ${token}` } },
         );

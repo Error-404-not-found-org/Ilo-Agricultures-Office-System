@@ -4,9 +4,10 @@ import mongoose from "mongoose";
 import { User } from "../src/models/user.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { ENV } from "../src/config/env.js";
-import { resolveOrSyncUser } from "../src/services/auth-user.service.js";
-import { bootstrapUser } from "../src/controllers/user.controllers.js";
+import { resolveOrSyncUser, resolveStaffUser } from "../src/services/auth-user.service.js";
+import { bootstrapUser, staffBootstrapUser } from "../src/controllers/user.controllers.js";
 import { requireClerkAuthentication, protectedRoute } from "../src/middleware/auth.middleware.js";
+import { resolveUserMiddleware } from "../src/middleware/resolveUser.middleware.js";
 
 // We mock clerkClient.users.getUser
 mock.method(clerkClient.users, "getUser", async () => ({}));
@@ -282,6 +283,122 @@ describe("User Sync Bootstrap Hotfix Tests", () => {
 
       assert.strictEqual(res.status.mock.calls[0].arguments[0], 503);
       assert.strictEqual(res.json.mock.calls[0].arguments[0].code, "USER_SYNC_UNAVAILABLE");
+    });
+  });
+
+  describe("Staff-only bootstrap", () => {
+    it("returns existing linked Technician and Admin roles unchanged", async () => {
+      await User.create({ name: "Tech", email: "tech-linked@example.com", clerkId: "clerk_staff_tech", role: "technician", isVerified: true });
+      await User.create({ name: "Admin", email: "admin-linked@example.com", clerkId: "clerk_staff_admin", role: "admin", isVerified: true });
+
+      const technician = await resolveStaffUser("clerk_staff_tech");
+      const admin = await resolveStaffUser("clerk_staff_admin");
+
+      assert.strictEqual(technician.role, "technician");
+      assert.strictEqual(admin.role, "admin");
+    });
+
+    it("claims a pre-provisioned Technician by verified normalized email without recreating it", async () => {
+      const existing = await User.create({ name: "Invited Tech", email: "invited.tech@example.com", role: "technician", profileClaimStatus: "unclaimed", isVerified: false });
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "INVITED.TECH@example.com", verification: { status: "verified" } }] });
+
+      const resolved = await resolveStaffUser("clerk_invited_tech");
+
+      assert.strictEqual(resolved._id.toString(), existing._id.toString());
+      assert.strictEqual(resolved.clerkId, "clerk_invited_tech");
+      assert.strictEqual(resolved.role, "technician");
+      assert.strictEqual(resolved.profileClaimStatus, "claimed");
+      assert.strictEqual(await User.countDocuments({ normalizedEmail: "invited.tech@example.com" }), 1);
+    });
+
+    it("safely links an existing Admin by verified email and preserves its role", async () => {
+      const existing = await User.create({ name: "Existing Admin", email: "staff.admin@example.com", role: "admin", isVerified: true });
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "staff.admin@example.com", verification: { status: "verified" } }] });
+
+      const resolved = await resolveStaffUser("clerk_staff_admin_email");
+
+      assert.strictEqual(resolved._id.toString(), existing._id.toString());
+      assert.strictEqual(resolved.clerkId, "clerk_staff_admin_email");
+      assert.strictEqual(resolved.role, "admin");
+    });
+
+    it("returns an existing Farmer without linking, changing, duplicating, or deleting it", async () => {
+      const existing = await User.create({ name: "Existing Farmer", email: "farmer.staff@example.com", role: "farmer", profileClaimStatus: "unclaimed", isVerified: false });
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "farmer.staff@example.com", verification: { status: "verified" } }] });
+
+      const resolved = await resolveStaffUser("clerk_farmer_staff_attempt");
+      const stored = await User.findById(existing._id);
+
+      assert.strictEqual(resolved.role, "farmer");
+      assert.strictEqual(stored.clerkId, undefined);
+      assert.strictEqual(stored.profileClaimStatus, "unclaimed");
+      assert.strictEqual(stored.deletedAt, null);
+      assert.strictEqual(await User.countDocuments({}), 1);
+    });
+
+    it("rejects a completely unknown Clerk account and creates zero MongoDB users", async () => {
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "unknown.staff@example.com", verification: { status: "verified" } }] });
+      const before = await User.countDocuments({});
+
+      await assert.rejects(
+        () => resolveStaffUser("clerk_unknown_staff"),
+        (error) => error.code === "STAFF_PROFILE_NOT_FOUND" && error.status === 404,
+      );
+
+      assert.strictEqual(await User.countDocuments({}), before);
+      assert.strictEqual(await User.countDocuments({ role: "farmer" }), 0);
+    });
+
+    it("rejects unverified email and preserves identity conflicts", async () => {
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "unverified.staff@example.com", verification: { status: "unverified" } }] });
+      await assert.rejects(
+        () => resolveStaffUser("clerk_unverified_staff"),
+        (error) => error.code === "EMAIL_NOT_VERIFIED" && error.status === 403,
+      );
+
+      await User.create({ name: "Linked Tech", email: "linked-conflict@example.com", clerkId: "clerk_original_staff", role: "technician", isVerified: true });
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "linked-conflict@example.com", verification: { status: "verified" } }] });
+      await assert.rejects(
+        () => resolveStaffUser("clerk_conflicting_staff"),
+        (error) => error.code === "IDENTITY_LINK_CONFLICT" && error.status === 409,
+      );
+    });
+
+    it("preserves suspended/deleted restrictions and retryable Clerk failures", async () => {
+      await User.create({ name: "Suspended Tech", email: "suspended-tech@example.com", clerkId: "clerk_suspended_staff", role: "technician", status: "suspended", isVerified: true });
+      await User.create({ name: "Deleted Admin", email: "deleted-admin@example.com", clerkId: "clerk_deleted_staff", role: "admin", deletedAt: new Date(), isVerified: true });
+
+      await assert.rejects(() => resolveStaffUser("clerk_suspended_staff"), (error) => error.code === "ACCOUNT_SUSPENDED");
+      await assert.rejects(() => resolveStaffUser("clerk_deleted_staff"), (error) => error.code === "ACCOUNT_DELETED");
+
+      clerkClient.users.getUser.mock.mockImplementation(async () => { throw new Error("Clerk unavailable"); });
+      await assert.rejects(
+        () => resolveStaffUser("clerk_unavailable_staff"),
+        (error) => error.code === "USER_SYNC_UNAVAILABLE" && error.status === 503 && error.retryable === true,
+      );
+    });
+
+    it("bypasses generic provisioning before the staff controller and returns a controlled 404", async () => {
+      mockClerkUser({ emailAddresses: [{ id: "email_1", emailAddress: "middleware-unknown@example.com", verification: { status: "verified" } }] });
+      const req = {
+        method: "POST",
+        originalUrl: "/api/user/staff-bootstrap",
+        path: "/api/user/staff-bootstrap",
+        auth: { userId: "clerk_middleware_unknown" },
+      };
+      let nextCalled = false;
+
+      await resolveUserMiddleware(req, {}, () => { nextCalled = true; });
+      assert.strictEqual(nextCalled, true);
+      assert.strictEqual(req.user, undefined);
+      assert.strictEqual(await User.countDocuments({}), 0);
+
+      const res = { status: mock.fn(() => res), json: mock.fn() };
+      requireClerkAuthentication(req, res, () => {});
+      await staffBootstrapUser(req, res);
+      assert.strictEqual(res.status.mock.calls[0].arguments[0], 404);
+      assert.strictEqual(res.json.mock.calls[0].arguments[0].code, "STAFF_PROFILE_NOT_FOUND");
+      assert.strictEqual(await User.countDocuments({}), 0);
     });
   });
 });
