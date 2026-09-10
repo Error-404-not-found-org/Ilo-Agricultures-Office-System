@@ -6,8 +6,8 @@ import { toast } from "sonner-native";
 
 import { useApi } from "@/lib/api";
 import { useTechnicianDashboardQuery } from "@/features/technician/hooks/useTechnicianDashboard";
-import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 import { normalizeTechnicianWorkItems } from "@/features/technician-requests/utils/requestWorkPresentation";
+import { normalizeTechnicianDashboardStats } from "../utils/dashboardStats";
 
 export function useTechnicianDashboardScreen() {
   const api = useApi();
@@ -22,12 +22,13 @@ export function useTechnicianDashboardScreen() {
     isRefetching: refreshing,
     refetch: refetchDashboard,
   } = useTechnicianDashboardQuery(isEnabled);
-  const { tasksQuery: workQueueQuery } = useTechnicianTasks(undefined, {
-    scope: "mine",
-  });
   const workItems = useMemo(
-    () => normalizeTechnicianWorkItems(workQueueQuery.data?.data),
-    [workQueueQuery.data?.data],
+    () => normalizeTechnicianWorkItems(data?.agendaItems),
+    [data?.agendaItems],
+  );
+  const dashboardStats = useMemo(
+    () => normalizeTechnicianDashboardStats(data?.stats),
+    [data?.stats],
   );
   const todayWorkItems = useMemo(
     () =>
@@ -71,7 +72,6 @@ export function useTechnicianDashboardScreen() {
   const onRefresh = async () => {
     await Promise.all([
       refetchDashboard(),
-      workQueueQuery.refetch(),
       refetchUnread(),
       refetchUser(),
     ]);
@@ -131,7 +131,8 @@ export function useTechnicianDashboardScreen() {
     unreadCount: unreadData?.count || 0,
     workItems,
     todayWorkItems,
-    workLoading: workQueueQuery.isLoading,
+    dashboardStats,
+    workLoading: loading,
     pendingRequests: data?.pendingRequests || [],
     profileWarningVisible,
     setProfileWarningVisible,

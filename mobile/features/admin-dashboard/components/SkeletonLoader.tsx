@@ -112,43 +112,52 @@ export function SkeletonCard({
 }
 
 /**
- * 2x3 analytics-style grid skeleton matching AnalyticsGrid layout.
+ * Compact three-metric skeleton matching the Admin Home Overview layout.
  */
 export function SkeletonGrid() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
-  const SkeletonStatCard = () => (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 20,
-        padding: 16,
-        width: "48%",
-        marginBottom: 12,
-      }}
-    >
-      <SkeletonRow width={40} height={40} borderRadius={12} style={{ marginBottom: 10 }} />
-      <SkeletonRow width="50%" height={20} style={{ marginBottom: 6 }} />
-      <SkeletonRow width="70%" height={12} />
+  const SkeletonMetric = () => (
+    <View style={{ flex: 1, alignItems: "center", paddingHorizontal: 4 }}>
+      <SkeletonRow
+        width={36}
+        height={36}
+        borderRadius={10}
+        style={{ marginBottom: 8 }}
+      />
+      <SkeletonRow width="42%" height={20} style={{ marginBottom: 6 }} />
+      <SkeletonRow width="75%" height={12} />
     </View>
   );
 
   return (
     <View style={{ paddingHorizontal: 24, marginBottom: 20 }}>
-      {/* Section title skeleton */}
-      <SkeletonRow width="55%" height={16} style={{ marginBottom: 12 }} />
+      <SkeletonRow width="30%" height={16} style={{ marginBottom: 12 }} />
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <SkeletonStatCard key={i} />
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "stretch",
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 16,
+          paddingHorizontal: 8,
+          paddingVertical: 14,
+        }}
+      >
+        {Array.from({ length: 3 }).map((_, i) => (
+          <React.Fragment key={i}>
+            {i > 0 ? (
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+            ) : null}
+            <SkeletonMetric />
+          </React.Fragment>
         ))}
       </View>
     </View>
   );
 }
-
 /**
  * Moowie-style skeleton for the insights card.
  */

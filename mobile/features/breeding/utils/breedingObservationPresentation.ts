@@ -40,11 +40,30 @@ export const FARMER_BREEDING_OBSERVATION_MINIMUM_DAYS = 18;
 export const FARMER_BREEDING_OBSERVATION_REMINDER_MAXIMUM_DAYS = 25;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const COMPLETED_AI_STATUSES = new Set(["done", "completed", "resolved"]);
+const TERMINAL_AI_OUTCOMES = new Set([
+  "Pregnant",
+  "Failed (Re-heat)",
+  "Failed (Aborted)",
+  "Failed (Negative PD)",
+]);
+
+const hasResolvedBreedingOutcome = (
+  attempt?: BreedingObservationAttempt | null,
+) =>
+  String(attempt?.status || "").toLowerCase() === "resolved" ||
+  typeof attempt?.isSuccess === "boolean" ||
+  (TERMINAL_AI_OUTCOMES.has(String(attempt?.outcome || "")) &&
+    attempt?.outcomeVerificationStatus === "verified");
 
 export type FarmerBreedingObservationReadiness = {
   isAvailable: boolean;
   daysPostAI: number | null;
-  state: "not_completed" | "missing_date" | "too_early" | "available";
+  state:
+    | "not_completed"
+    | "resolved"
+    | "missing_date"
+    | "too_early"
+    | "available";
   availableDate: Date | null;
   message: string;
 };
@@ -72,6 +91,16 @@ export const getFarmerBreedingObservationReadiness = (
       availableDate: null,
       message:
         "Breeding observations are available after the AI service is completed.",
+    };
+  }
+
+  if (hasResolvedBreedingOutcome(attempt)) {
+    return {
+      isAvailable: false,
+      daysPostAI: null,
+      state: "resolved",
+      availableDate: null,
+      message: "This insemination attempt already has a confirmed outcome.",
     };
   }
 

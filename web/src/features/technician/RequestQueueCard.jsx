@@ -1,119 +1,210 @@
-import { Check, ChevronRight, Clock, Lock, MapPin, X } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  Clock3,
+  Images,
+  MapPin,
+  TriangleAlert,
+  XCircle,
+} from "lucide-react";
+import UserAvatar from "../../components/ui/UserAvatar";
 import { getTechnicianStatus } from "../../constants/technicianWorkflow";
+import {
+  getRequestAssigneeId,
+  getRequestStatusPresentation,
+} from "../../utils/requestBoardViews";
+
+const normalizedStatus = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
+
+const uniquePhotoCount = (request) => {
+  const raw = request?.raw || request || {};
+
+  const urls = [
+    ...(Array.isArray(raw?.photos) ? raw.photos : []),
+    ...(Array.isArray(raw?.farmerRequest?.photos) ? raw.farmerRequest.photos : []),
+    ...(Array.isArray(request.attachments?.urls) ? request.attachments.urls : []),
+    raw?.photoUrl,
+    raw?.imageUrl,
+    raw?.farmerRequest?.photoUrl,
+  ];
+
+  const normalizedUrls = new Set(
+    urls
+      .filter((url) => typeof url === "string" && url.trim().length > 0)
+      .map((url) => url.trim())
+  );
+
+  return Math.max(Number(request.attachments?.count || 0), normalizedUrls.size);
+};
 
 export default function RequestQueueCard({
   request,
   currentUserId,
   isUpdating,
+  canClaim,
+  canCancel,
   onOpen,
-  onClaim,
-  onDecline,
+  onCancel,
 }) {
-  const assignedId =
-    request.raw?.approvedBy?._id ||
-    request.raw?.approvedBy ||
-    request.raw?.handledBy?._id ||
-    request.raw?.handledBy ||
-    request.raw?.technicianId?._id ||
-    request.raw?.technicianId ||
-    null;
-  const assignedName =
-    request.raw?.approvedBy?.name ||
-    request.raw?.handledBy?.name ||
-    request.raw?.technicianId?.name ||
-    "another technician";
-  const isAssignedToMe =
-    assignedId && currentUserId && String(assignedId) === String(currentUserId);
-  const isAssignedToOther =
-    assignedId && currentUserId && String(assignedId) !== String(currentUserId);
-  const status = getTechnicianStatus(request.status);
-  const isUnassignedPending = request.status === "pending" && !assignedId;
-  const isClaimedVerification =
-    request.status === "pending" &&
-    request.type === "breeding_verification" &&
-    isAssignedToMe;
+  const assigneeId = getRequestAssigneeId(request);
+  const isMine =
+    assigneeId &&
+    currentUserId &&
+    String(assigneeId) === String(currentUserId);
+  const isAvailable =
+    normalizedStatus(request.status) === "pending" && !assigneeId;
+  const isAI =
+    request.workflowType === "AI" ||
+    request.type === "insemination" ||
+    request.serviceType === "ai";
+  const isUrgentHealth =
+    request.type === "health" && (request.urgency === "emergency" || request.urgency === "high");
+  const photoCount = uniquePhotoCount(request);
+  const status =
+    getRequestStatusPresentation(request) ||
+    getTechnicianStatus(request.status);
+  const ownership = isMine
+    ? { label: "Claimed by You", badgeClass: "badge-success badge-soft" }
+    : status;
+  const animalLabel = `Tag ${request.animalTag || "Not recorded"}`;
+  const animalContext = [request.species, request.breed]
+    .filter((value) => value && value !== "Not recorded")
+    .join(" · ");
+  const hasSchedule =
+    request.date &&
+    !["Not scheduled", "Date unavailable"].includes(request.date);
+
+  const handlePrimaryAction = () => {
+    onOpen(request);
+  };
+
+  const primaryLabel =
+    isAvailable && canClaim ? "Review Request" : "View Request";
 
   return (
-    <article className="card card-border bg-base-100 shadow-sm">
-      <div className="card-body gap-4 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`badge badge-sm ${request.badgeClass}`}>
-                {request.serviceBadge}
-              </span>
-              <span className={`badge badge-sm badge-soft ${status.badgeClass}`}>
-                {status.label}
-              </span>
+    <article className="card bg-base-100 border border-base-300 shadow-sm transition-all hover:shadow-md overflow-hidden">
+      <div className="card-body p-3.5 sm:p-4">
+        {/* Top Header: Farmer Info and Badges */}
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <UserAvatar
+              name={request.farmer}
+              imageUrl={request.farmerImageUrl}
+              size={36}
+              sizeClass="h-9 w-9 sm:h-10 sm:w-10"
+              className="shrink-0"
+            />
+            <div className="min-w-0">
+              <h3 className="truncate text-[15px] sm:text-base font-bold text-base-content leading-tight">
+                {request.farmer}
+              </h3>
+              <p className="truncate text-xs sm:text-[13px] font-medium text-base-content/65 mt-0.5">
+                {animalLabel}
+              </p>
             </div>
-            <h3 className="mt-2 font-semibold text-base-content">
-              {request.serviceLabel}
-            </h3>
-            <p className="mt-1 text-sm text-base-content/65">{request.task}</p>
           </div>
-          <span className="shrink-0 text-xs font-semibold text-base-content/45">
-            #{String(request.id).slice(0, 6).toUpperCase()}
-          </span>
+          
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <span
+              className={`badge badge-sm badge-soft font-semibold ${isAI ? "badge-info" : "badge-error"}`}
+            >
+              {isAI ? "AI Request" : "Health Request"}
+            </span>
+            <span className={`badge badge-sm font-medium ${ownership.badgeClass}`}>
+              {ownership.label}
+            </span>
+          </div>
         </div>
 
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-base-content/50">Farmer</dt>
-            <dd className="font-semibold text-base-content">{request.farmer}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-base-content/50">Location</dt>
-            <dd className="flex items-start gap-1 font-medium text-base-content/75">
-              <MapPin size={14} className="mt-0.5 shrink-0 text-primary" />
-              {request.location}
-            </dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs text-base-content/50">Requested or scheduled</dt>
-            <dd className="flex items-center gap-1 font-medium text-base-content/75">
-              <Clock size={14} className="text-primary" /> {request.date}
-            </dd>
-          </div>
-        </dl>
-
-        {isAssignedToOther && (
-          <div className="alert alert-warning py-2 text-sm">
-            <Lock size={15} />
-            <span>Assigned to {assignedName}. You can open it in read-only mode.</span>
+        {/* Badges Row (Urgent / Photos) */}
+        {(isUrgentHealth || photoCount > 0) && (
+          <div className="flex items-center gap-2 mb-1">
+            {isUrgentHealth && (
+              <span className="badge badge-sm badge-error font-semibold gap-1">
+                <TriangleAlert size={12} aria-hidden="true" />
+                Urgent
+              </span>
+            )}
+            {photoCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-xs font-semibold text-base-content/60"
+                aria-label={`${photoCount} Farmer request photo${photoCount === 1 ? "" : "s"}`}
+              >
+                <Images size={14} aria-hidden="true" />
+                {photoCount} photo{photoCount === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
         )}
 
-        <div className="card-actions justify-end border-t border-base-300 pt-3">
-          {isUnassignedPending && (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm text-error"
-                disabled={isUpdating}
-                onClick={() => onDecline(request)}
-              >
-                <X size={14} /> Decline for me
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={isUpdating}
-                onClick={() => onClaim(request)}
-              >
-                <Check size={14} /> Claim
-              </button>
-            </>
+        {/* Request Context Info */}
+        <div className="bg-base-200/50 rounded-xl p-3 space-y-2 mt-1.5">
+          {animalContext && (
+            <div className="flex items-start gap-2 text-[13px]">
+              <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Animal</span>
+              <span className="font-semibold text-base-content/80 line-clamp-1">{animalContext}</span>
+            </div>
           )}
-          {!isUnassignedPending && (
+          <div className="flex items-start gap-2 text-[13px]">
+             <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Location</span>
+             <div className="flex items-start gap-1 font-semibold text-base-content/80 flex-1">
+               <MapPin size={14} className="shrink-0 text-primary mt-0.5" aria-hidden="true" />
+               <span className="line-clamp-1">{request.location}</span>
+             </div>
+          </div>
+          <div className="flex items-start gap-2 text-[13px]">
+             <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Submitted</span>
+             <div className="flex items-center gap-1 font-semibold text-base-content/80 flex-1">
+               <Clock3 size={14} className="shrink-0 text-primary" aria-hidden="true" />
+               <span>{request.formattedSentAt || "Date unavailable"}</span>
+             </div>
+          </div>
+          {hasSchedule && (
+            <div className="flex items-start gap-2 text-[13px]">
+               <span className="font-medium text-base-content/55 w-16 shrink-0 text-[10px] uppercase tracking-wider mt-0.5">Visit</span>
+               <div className="flex items-center gap-1 font-semibold text-primary flex-1">
+                 <CalendarDays size={14} className="shrink-0" aria-hidden="true" />
+                 <span>{request.date}</span>
+               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Task Details / Remarks */}
+        {request.taskDetails && (
+          <p className="line-clamp-2 text-[13px] leading-relaxed text-base-content/70 mt-0.5 italic border-l-2 border-base-300 pl-2.5">
+            "{request.taskDetails}"
+          </p>
+        )}
+
+        {/* Card Actions */}
+        <div className="card-actions items-center justify-between border-t border-base-200 mt-1.5 pt-3">
+          {canCancel && isMine ? (
             <button
               type="button"
-              className={`btn btn-sm ${isClaimedVerification ? "btn-primary" : ""}`}
-              onClick={() => onOpen(request)}
+              className="btn btn-ghost btn-sm text-error hover:bg-error/10"
+              disabled={isUpdating}
+              onClick={() => onCancel(request)}
             >
-              {isClaimedVerification ? "Verify observation" : "Open details"}
-              <ChevronRight size={14} />
+              <XCircle size={15} aria-hidden="true" />
+              Cancel request
             </button>
+          ) : (
+            <span />
           )}
+          <button
+            type="button"
+            className={`btn btn-sm px-5 ${isAvailable && canClaim ? "btn-primary shadow-sm shadow-primary/20" : ""}`}
+            disabled={isUpdating}
+            onClick={handlePrimaryAction}
+          >
+            {primaryLabel}
+            <ChevronRight size={15} aria-hidden="true" />
+          </button>
         </div>
       </div>
     </article>

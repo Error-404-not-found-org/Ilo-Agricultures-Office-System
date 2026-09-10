@@ -36,10 +36,10 @@ export default function Select({
           required={required}
           aria-invalid={Boolean(error)}
           aria-describedby={describedBy}
-          className={`select select-bordered w-full bg-base-100 text-sm text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+          className={`select select-bordered w-full bg-base-100 text-sm text-base-content focus:outline-none focus:border-primary focus-visible:outline-none focus-visible:border-primary ${
             error
               ? "select-error"
-              : "focus:outline-primary"
+              : ""
           }`}
         >
           {placeholder && <option value="" disabled>{placeholder}</option>}

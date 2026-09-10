@@ -63,7 +63,7 @@ test("Farmer-Reported Pregnancy Foundation Tests", async (t) => {
       reproductiveStatus: "Likely Pregnant"
     });
 
-    const req = mockReq({ notes: "New pregnancy notes", evidencePhotos: ["newphoto.jpg"] }, { _id: farmerId, role: "farmer" });
+    const req = mockReq({ notes: "New pregnancy notes", evidencePhotos: ["https://res.cloudinary.com/demo/image/upload/v1/newphoto.jpg"] }, { _id: farmerId, role: "farmer" });
     const res = mockRes();
 
     await submitFarmerPregnancyReport(req, res);
@@ -71,7 +71,7 @@ test("Farmer-Reported Pregnancy Foundation Tests", async (t) => {
     assert.equal(res.statusCode, 200, res.body?.message);
     assert.equal(originalRequest.farmerPregnancyReport, true);
     assert.equal(originalRequest.farmerPregnancyNotes, "New pregnancy notes");
-    assert.deepEqual(originalRequest.farmerPregnancyPhotos, ["newphoto.jpg"]);
+    assert.deepEqual(originalRequest.farmerPregnancyPhotos, ["https://res.cloudinary.com/demo/image/upload/v1/newphoto.jpg"]);
     assert.equal(originalRequest.pregnancyReportVerificationStatus, "pending");
 
     assert.equal(originalRequest.farmerOutcomeReport, "possible_pregnancy");

@@ -1,15 +1,27 @@
-import { View, Text, TouchableOpacity, FlatList, StatusBar, ActivityIndicator } from 'react-native';
-import React from 'react';
-import Header from '@/components/Header';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SearchBar, AsyncState, StatusBadge, CustomDialog, SelectDropdown } from '@/components/shared';
-import { useAdminAnimals } from '../hooks/useAdminAnimals';
-import { RegistryHealthSummary } from '../components/RegistryHealthSummary';
-import { ScreenLayout } from '@/components/ScreenLayout';
-import { useTheme } from '@/lib/theme';
+import React from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import Header from "@/components/Header";
+import {
+  AsyncState,
+  SearchBar,
+  SelectDropdown,
+  StatusBadge,
+} from "@/components/shared";
+import { ScreenLayout } from "@/components/ScreenLayout";
+import { useTheme } from "@/lib/theme";
+import { useAdminAnimals } from "../hooks/useAdminAnimals";
+import type { AnimalItem } from "../types/adminAnimals.types";
 
-const PRIMARY = '#1e3a5f';
+const PRIMARY = "#1e3a5f";
 
 export default function AdminAnimalsScreen() {
   const router = useRouter();
@@ -19,7 +31,9 @@ export default function AdminAnimalsScreen() {
     searchQuery,
     setSearchQuery,
     animals,
-    rawAnimalsCount,
+    matchingAnimalsCount,
+    registrySummary,
+    isSummaryLoading,
     isLoading,
     isError,
     isFetchingNextPage,
@@ -27,124 +41,186 @@ export default function AdminAnimalsScreen() {
     isRefetching,
     handleLoadMore,
     handleRefresh,
-    handleArchiveAnimal,
-
-    // Health Indicators
-    duplicateEarTags,
-    missingBreed,
-    missingBirthdate,
-    incompleteRecords,
-
-    // Filters
     speciesFilter,
     setSpeciesFilter,
-    breedFilter,
-    setBreedFilter,
-    barangayFilter,
-    setBarangayFilter,
+    reproductiveStatusFilter,
+    setReproductiveStatusFilter,
     availableSpecies,
-    availableBreeds,
-    availableBarangays,
-  } = useAdminAnimals(search || '');
+    availableReproductiveStatuses,
+  } = useAdminAnimals(search || "");
 
-  const [activeAnimalForDialog, setActiveAnimalForDialog] = React.useState<any | null>(null);
-  const [optionsVisible, setOptionsVisible] = React.useState(false);
-  const [confirmArchiveVisible, setConfirmArchiveVisible] = React.useState(false);
-  const [noticeVisible, setNoticeVisible] = React.useState(false);
-
-  const checkAnimalIncomplete = (item: any) => {
-    const hasTag = !!item.earTag || !!item.animalId;
-    const hasBreed = !!item.breed && item.breed.toLowerCase() !== "unknown" && item.breed.toLowerCase() !== "mixed";
-    const hasDob = !!item.dob || !!item.birthDate || !!item.dateOfBirth;
-    const hasOwner = !!item.farmerId?.name;
-    return !hasTag || !hasBreed || !hasDob || !hasOwner;
-  };
+  const metrics = [
+    {
+      label: "Total Animals",
+      value: registrySummary?.total,
+      icon: "paw" as const,
+      color: "#2563eb",
+    },
+    {
+      label: "Confirmed Pregnant",
+      value: registrySummary?.pregnant,
+      icon: "heart-pulse" as const,
+      color: "#16a34a",
+    },
+    {
+      label: "Total Cattle",
+      value: registrySummary?.cattle,
+      icon: "cow" as const,
+      color: "#0284c7",
+    },
+    {
+      label: "Available for Breeding",
+      value: registrySummary?.available,
+      icon: "chart-timeline-variant" as const,
+      color: "#d97706",
+    },
+  ];
 
   const headerElement = (
     <View style={{ marginBottom: 8 }}>
-      <Text style={{ fontSize: 24, fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary, marginBottom: 16 }}>
-        Animals Directory
+      <Text
+        style={{
+          color: colors.textPrimary,
+          fontFamily: "Outfit_800ExtraBold",
+          fontSize: 24,
+          marginBottom: 14,
+        }}
+      >
+        Animals
       </Text>
 
-      {/* Registry Health Section */}
-      {rawAnimalsCount > 0 && (
-        <View style={{ marginBottom: 16 }}>
-          <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>
-            Registry Health Metrics
-          </Text>
-          <RegistryHealthSummary
-            duplicateEarTags={duplicateEarTags}
-            missingBreed={missingBreed}
-            missingBirthdate={missingBirthdate}
-            incompleteRecords={incompleteRecords}
-          />
-        </View>
-      )}
+      <View
+        accessibilityLabel="Animal registry overview"
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        {metrics.map((metric) => (
+          <View
+            key={metric.label}
+            style={{
+              alignItems: "center",
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: 16,
+              borderWidth: 1,
+              flexBasis: "47%",
+              flexDirection: "row",
+              flexGrow: 1,
+              gap: 10,
+              minHeight: 74,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: isDark
+                  ? "rgba(255,255,255,0.06)"
+                  : metric.color + "12",
+                borderRadius: 12,
+                height: 34,
+                justifyContent: "center",
+                width: 34,
+              }}
+            >
+              <MaterialCommunityIcons
+                name={metric.icon}
+                size={18}
+                color={metric.color}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_800ExtraBold",
+                  fontSize: 19,
+                }}
+              >
+                {isSummaryLoading ? "—" : (metric.value ?? 0)}
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 11,
+                  lineHeight: 14,
+                }}
+              >
+                {metric.label}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
 
-      {/* Search Bar */}
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder="Search by tag, ID, or owner..."
+        placeholder="Search by tag or owner..."
       />
-
-      {/* Result Count */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4 }}>
-        <Text style={{ fontSize: 12, fontFamily: 'Outfit_600SemiBold', color: colors.textSecondary }}>
-          Showing {animals.length} animals
-        </Text>
+      <View
+        style={{ flexDirection: "row", gap: 8, marginBottom: 12, marginTop: 4 }}
+      >
+        <SelectDropdown
+          label="Species"
+          options={availableSpecies.map((value) => ({ label: value, value }))}
+          value={speciesFilter}
+          onChange={setSpeciesFilter}
+          variant="pill"
+          flex={1}
+        />
+        <SelectDropdown
+          label="Reproductive Status"
+          options={availableReproductiveStatuses.map((value) => ({
+            label: value,
+            value,
+          }))}
+          value={reproductiveStatusFilter}
+          onChange={setReproductiveStatusFilter}
+          variant="pill"
+          flex={1}
+        />
       </View>
-
-      {/* Filters Section (Horizontal Dropdown Row) */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, marginTop: 4 }}>
-        {availableSpecies.length > 2 && (
-          <SelectDropdown
-            label="Species"
-            options={availableSpecies.map(s => ({ label: s, value: s }))}
-            value={speciesFilter}
-            onChange={setSpeciesFilter}
-          />
-        )}
-
-        {availableBreeds.length > 2 && (
-          <SelectDropdown
-            label="Breed"
-            options={availableBreeds.map(b => ({ label: b, value: b }))}
-            value={breedFilter}
-            onChange={setBreedFilter}
-            searchable={true}
-          />
-        )}
-
-        {availableBarangays.length > 2 && (
-          <SelectDropdown
-            label="Barangay"
-            options={availableBarangays.map(bg => ({ label: bg, value: bg }))}
-            value={barangayFilter}
-            onChange={setBarangayFilter}
-            searchable={true}
-          />
-        )}
-      </View>
+      <Text
+        style={{
+          color: colors.textSecondary,
+          fontFamily: "Outfit_600SemiBold",
+          fontSize: 12,
+          marginBottom: 10,
+        }}
+      >
+        {matchingAnimalsCount}{" "}
+        {matchingAnimalsCount === 1 ? "animal" : "animals"}
+      </Text>
     </View>
   );
 
   return (
     <ScreenLayout edges={[]}>
       <StatusBar barStyle="light-content" />
-      <View className="absolute top-0 left-0 right-0 h-[220px]" style={{ backgroundColor: PRIMARY }} />
+      <View
+        className="absolute top-0 left-0 right-0 h-[220px]"
+        style={{ backgroundColor: PRIMARY }}
+      />
       <Header />
       <View
         style={{
-          flex: 1,
-          backgroundColor: isDark ? colors.background : '#F0F4FF',
+          backgroundColor: isDark ? colors.background : "#F0F4FF",
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,
+          elevation: 8,
+          flex: 1,
+          marginTop: 8,
           paddingHorizontal: 24,
           paddingTop: 24,
-          marginTop: 8,
-          elevation: 8,
-          shadowColor: '#000',
+          shadowColor: "#000",
           shadowOpacity: 0.1,
           shadowRadius: 15,
         }}
@@ -160,260 +236,183 @@ export default function AdminAnimalsScreen() {
           onRefresh={handleRefresh}
           ListHeaderComponent={headerElement}
           ListEmptyComponent={() => {
-            if (isLoading && animals.length === 0) return <AsyncState state="loading" />;
-            if (isError) return <AsyncState state="error" message="Failed to load animals." onAction={handleRefresh} />;
-            return <AsyncState state="empty" title="No animals found" message="Try searching or adjusting filters." />;
+            if (isLoading && animals.length === 0)
+              return <AsyncState state="loading" />;
+            if (isError)
+              return (
+                <AsyncState
+                  state="error"
+                  message="Failed to load animals."
+                  onAction={handleRefresh}
+                />
+              );
+            return (
+              <AsyncState
+                state="empty"
+                title="No animals found"
+                message="Try searching or adjusting filters."
+              />
+            );
           }}
           ListFooterComponent={
             isFetchingNextPage && hasNextPage ? (
-              <View style={{ paddingVertical: 20, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ alignItems: "center", paddingVertical: 20 }}>
                 <ActivityIndicator color={PRIMARY} size="small" />
-                <Text style={{ marginTop: 8, fontSize: 12, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 12,
+                    marginTop: 8,
+                  }}
+                >
                   Loading more animals...
                 </Text>
               </View>
             ) : null
           }
-          renderItem={({ item }) => {
-            const isIncomplete = checkAnimalIncomplete(item);
-            return (
-              <AnimalCard
-                item={item}
-                isIncomplete={isIncomplete}
-                onPress={() => {
-                  router.push({ pathname: "/(admin)/animal-details" as any, params: { id: item._id } });
-                }}
-                onLongPress={() => {
-                  setActiveAnimalForDialog(item);
-                  setOptionsVisible(true);
-                }}
-              />
-            );
-          }}
+          renderItem={({ item }) => (
+            <AnimalCard
+              item={item}
+              onPress={() =>
+                router.push({
+                  pathname: "/(admin)/animal-details" as never,
+                  params: { id: item._id },
+                })
+              }
+            />
+          )}
         />
       </View>
-
-      {/* Notice Dialog */}
-      <CustomDialog
-        visible={noticeVisible}
-        title="Details View"
-        description="Animal Details view is not yet implemented for the Administrator role."
-        onClose={() => setNoticeVisible(false)}
-        icon={
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: "rgba(59,130,246,0.1)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <MaterialCommunityIcons name="information-outline" size={26} color="#3b82f6" />
-          </View>
-        }
-        actions={[
-          {
-            text: "Close",
-            variant: "cancel",
-            onPress: () => setNoticeVisible(false)
-          }
-        ]}
-      />
-
-      {/* Animal Options Dialog */}
-      <CustomDialog
-        visible={optionsVisible}
-        title={activeAnimalForDialog?.earTag ? `Animal Tag: #${activeAnimalForDialog.earTag}` : "Animal Options"}
-        description="Manage registry records for this biological asset."
-        onClose={() => setOptionsVisible(false)}
-        icon={
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: "rgba(124,58,237,0.1)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <MaterialCommunityIcons name="cow" size={26} color="#7c3aed" />
-          </View>
-        }
-        actions={[
-          {
-            text: "Archive/Delete Animal",
-            variant: "danger",
-            onPress: () => {
-              setOptionsVisible(false);
-              setConfirmArchiveVisible(true);
-            }
-          },
-          {
-            text: "Cancel",
-            variant: "cancel",
-            onPress: () => setOptionsVisible(false)
-          }
-        ]}
-      />
-
-      {/* Confirm Deletion Dialog */}
-      <CustomDialog
-        visible={confirmArchiveVisible}
-        title="Confirm Deletion"
-        description={`Are you sure you want to archive animal #${activeAnimalForDialog?.earTag || activeAnimalForDialog?._id}? This will soft-delete the animal from field operations.`}
-        onClose={() => setConfirmArchiveVisible(false)}
-        icon={
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: "rgba(220,38,38,0.1)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <MaterialCommunityIcons name="delete-alert" size={26} color="#dc2626" />
-          </View>
-        }
-        actions={[
-          {
-            text: "Archive",
-            variant: "danger",
-            onPress: () => {
-              setConfirmArchiveVisible(false);
-              if (activeAnimalForDialog) handleArchiveAnimal(activeAnimalForDialog._id);
-            }
-          },
-          {
-            text: "Cancel",
-            variant: "cancel",
-            onPress: () => setConfirmArchiveVisible(false)
-          }
-        ]}
-      />
     </ScreenLayout>
   );
 }
 
-// ── Animal Card Component ─────────────────────────────────────
 interface AnimalCardProps {
-  item: any;
-  isIncomplete: boolean;
+  item: AnimalItem;
   onPress: () => void;
-  onLongPress: () => void;
 }
 
-const AnimalCard = React.memo(function AnimalCard({ item, isIncomplete, onPress, onLongPress }: AnimalCardProps) {
+const AnimalCard = React.memo(function AnimalCard({
+  item,
+  onPress,
+}: AnimalCardProps) {
   const { colors, isDark } = useTheme();
+  const identifier = item.earTag
+    ? `Tag #${item.earTag}`
+    : item.animalId || `ID ${item._id.slice(-6).toUpperCase()}`;
 
   return (
     <TouchableOpacity
-      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`View details for animal ${identifier}`}
+      accessibilityHint="Opens the animal record, including administrative actions"
+      activeOpacity={0.72}
       onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={400}
       style={{
         backgroundColor: colors.card,
-        borderRadius: 24,
-        padding: 20,
-        marginBottom: 14,
-        borderWidth: 1,
         borderColor: colors.border,
-        shadowColor: '#000',
-        shadowOpacity: isDark ? 0 : 0.03,
-        shadowRadius: 8,
-        elevation: isDark ? 0 : 2,
+        borderRadius: 18,
+        borderWidth: 1,
+        elevation: isDark ? 0 : 1,
+        marginBottom: 12,
+        padding: 15,
+        shadowColor: "#000",
+        shadowOpacity: isDark ? 0 : 0.025,
+        shadowRadius: 6,
       }}
     >
-      {/* Header Row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ alignItems: "flex-start", flexDirection: "row", gap: 12 }}>
+        <View
+          style={{
+            alignItems: "center",
+            backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#eff6ff",
+            borderRadius: 14,
+            height: 42,
+            justifyContent: "center",
+            width: 42,
+          }}
+        >
+          <MaterialCommunityIcons
+            name={
+              item.species?.toLowerCase().includes("swine")
+                ? "pig-variant-outline"
+                : "cow"
+            }
+            size={21}
+            color={PRIMARY}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
           <View
             style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+              alignItems: "flex-start",
+              flexDirection: "row",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_800ExtraBold",
+                  fontSize: 16,
+                }}
+              >
+                {identifier}
+              </Text>
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  marginTop: 2,
+                }}
+              >
+                {item.species || "Species not recorded"} ·{" "}
+                {item.breed || "Breed not recorded"}
+              </Text>
+            </View>
+            <StatusBadge
+              label={item.reproductiveStatus || "Not recorded"}
+              variant={
+                item.reproductiveStatus === "Pregnant" ? "success" : "default"
+              }
+            />
+          </View>
+          <View
+            style={{
+              alignItems: "center",
+              flexDirection: "row",
+              gap: 6,
+              marginTop: 10,
             }}
           >
             <MaterialCommunityIcons
-              name={item.species?.toLowerCase() === 'pig' ? 'pig-variant-outline' : 'cow'}
-              size={20}
-              color={PRIMARY}
+              name="account-outline"
+              size={15}
+              color={colors.textSecondary}
+            />
+            <Text
+              numberOfLines={1}
+              style={{
+                color: colors.textSecondary,
+                flex: 1,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 13,
+              }}
+            >
+              Owner: {item.farmerId?.name || "Unassigned"}
+            </Text>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={18}
+              color={colors.textMuted}
             />
           </View>
-          <View>
-            <Text style={{ fontSize: 16, fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }}>
-              {item.earTag ? `Tag: #${item.earTag}` : `ID: ${item._id?.slice(-6).toUpperCase()}`}
-            </Text>
-            <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: colors.textMuted }}>
-              {item.breed || 'Unknown Breed'} · {item.species || 'Unknown Species'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {isIncomplete && <StatusBadge label="Incomplete" variant="warning" />}
-          {item.reproductiveStatus && (
-            <StatusBadge
-              label={item.reproductiveStatus}
-              variant={item.reproductiveStatus === 'Pregnant' ? 'success' : 'default'}
-            />
-          )}
         </View>
       </View>
-
-      {/* Details Card */}
-      <View
-        style={{
-          gap: 6,
-          padding: 14,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#f8fafc',
-          borderRadius: 16,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <MaterialCommunityIcons name="account" size={14} color={colors.textSecondary} />
-          <Text style={{ fontSize: 13, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>
-            Owner:{' '}
-            <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>
-              {item.farmerId?.name || 'Unassigned'}
-            </Text>
-          </Text>
-        </View>
-
-        {item.farmerId?.address?.barangay && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <MaterialCommunityIcons name="map-marker" size={14} color={colors.textSecondary} />
-            <Text style={{ fontSize: 13, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>
-              Barangay:{' '}
-              <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }}>
-                {item.farmerId.address.barangay}
-              </Text>
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Quick Action Hint */}
-      <Text
-        style={{
-          fontSize: 12,
-          fontFamily: 'Outfit_500Medium',
-          color: colors.textMuted,
-          textAlign: 'center',
-          marginTop: 8,
-          opacity: 0.6,
-        }}
-      >
-        Long press to archive · Tap to view details
-      </Text>
     </TouchableOpacity>
   );
 });

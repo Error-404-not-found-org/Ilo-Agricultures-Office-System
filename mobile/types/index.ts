@@ -273,6 +273,7 @@ export interface AIRequest extends ServiceRequest {
   verificationTaskId?: string;
   approvedBy?: string | Technician;
   technicianId?: string | Technician;
+  technicianDisplayName?: string;
   nextAction?: ReproductionNextAction | null;
   nextActionAt?: string | null;
   pregnancyFollowUpTask?: Record<string, any> | null;
@@ -306,6 +307,7 @@ export interface HealthRequest extends ServiceRequest {
     };
   };
     assignedTechnicianId?: string | Technician;
+    technicianDisplayName?: string;
     medicalRecordId?: string | null;
   }
 

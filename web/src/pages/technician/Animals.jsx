@@ -278,7 +278,7 @@ export default function AnimalRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{animals.map((animal) => <AnimalCard key={animal.id} animal={animal} onOpen={openAnimal} onEdit={editAnimal} />)}</div>
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
-                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                  <table className="table table-pin-rows w-full text-left min-w-250">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Animal</th>
@@ -286,7 +286,7 @@ export default function AnimalRegistry() {
                         <th className="p-3.5">Location</th>
                         <th className="p-3.5">Status</th>
                         <th className="p-3.5">Last AI</th>
-                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                        <th className="p-3.5 pr-6 text-right w-25">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-base-300">

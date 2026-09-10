@@ -2,26 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useClerk } from "@clerk/clerk-react";
 import {
   AlertTriangle,
-  BarChart3,
-  Briefcase,
   Camera,
-  Check,
-  ChevronRight,
   Loader2,
   LogOut,
   Mail,
   MapPin,
   Moon,
   Phone,
-  Settings,
   ShieldCheck,
-  Star,
   Sun,
   Trash2,
   User,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import axiosInstance from "../../lib/axios";
 import { applyTheme, getStoredTheme, isDarkTheme } from "../../lib/theme";
 import {
@@ -43,7 +36,7 @@ const emptyEditForm = {
   barangay: "",
   city: "",
   district: "",
-  province: "Iloilo",
+  province: "",
   imageUrl: "",
 };
 
@@ -55,105 +48,30 @@ const profileFormFromUser = (user = {}) => ({
   barangay: user.address?.barangay || "",
   city: user.address?.city || "",
   district: user.address?.district || "",
-  province: user.address?.province || "Iloilo",
+  province: user.address?.province || "",
   imageUrl: user.imageUrl || "",
 });
 
-function ProfileStat({ icon: Icon, label, value, loading }) {
+function DetailRow({ icon: Icon, label, value }) {
   return (
-    <div className="stat min-w-0 place-items-center px-2 py-4 text-center sm:px-5">
-      <div className="stat-figure m-0 mb-1 text-primary">
-        <Icon size={19} aria-hidden="true" />
-      </div>
-      <div className="stat-value text-xl font-black text-base-content sm:text-2xl">
-        {loading ? <span className="skeleton block h-7 w-12" /> : value}
-      </div>
-      <div className="stat-title text-[10px] font-bold text-base-content/65">
+    <div className="min-w-0">
+      <dt className="flex items-center gap-3 text-sm text-base-content/80">
+        <Icon size={18} className="shrink-0" aria-hidden="true" />
         {label}
-      </div>
+      </dt>
+      <dd className="mt-1 break-words pl-8 text-sm font-medium">
+        {value || "Not set"}
+      </dd>
     </div>
-  );
-}
-
-function DetailRow({ icon: Icon, label, value, onClick }) {
-  const content = (
-    <>
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60">
-        <Icon size={18} aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block text-xs font-semibold text-base-content/60">
-          {label}
-        </span>
-        <span className="mt-0.5 block text-sm font-bold text-base-content text-pretty">
-          {value || "Not set"}
-        </span>
-      </span>
-      {onClick ? (
-        <ChevronRight
-          size={17}
-          className="shrink-0 text-base-content/40"
-          aria-hidden="true"
-        />
-      ) : null}
-    </>
-  );
-
-  return (
-    <li className="list-row rounded-none px-4 py-4 sm:px-5">
-      {onClick ? (
-        <button
-          type="button"
-          onClick={onClick}
-          className="-m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl p-2 transition-colors hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.99] sm:gap-4"
-        >
-          {content}
-        </button>
-      ) : (
-        <div className="flex items-center gap-3 sm:gap-4">{content}</div>
-      )}
-    </li>
-  );
-}
-
-function NavigationRow({ icon: Icon, label, description, to }) {
-  return (
-    <li className="list-row rounded-none px-4 py-3 sm:px-5">
-      <Link
-        to={to}
-        className="-m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl p-2 transition-colors hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.99] sm:gap-4"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60">
-          <Icon size={18} aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-base-content">
-            {label}
-          </span>
-          <span className="mt-0.5 block text-xs text-base-content/60">
-            {description}
-          </span>
-        </span>
-        <ChevronRight
-          size={17}
-          className="shrink-0 text-base-content/40"
-          aria-hidden="true"
-        />
-      </Link>
-    </li>
   );
 }
 
 function SectionPanel({ title, description, children }) {
   return (
-    <section className="overflow-hidden rounded-box border border-base-300 bg-base-100">
-      <div className="border-b border-base-300 px-5 py-4">
-        <h2 className="text-base font-bold text-base-content">{title}</h2>
-        {description ? (
-          <p className="mt-1 max-w-[65ch] text-xs leading-relaxed text-base-content/65">
-            {description}
-          </p>
-        ) : null}
+    <section className="space-y-4 py-6">
+      <div>
+        <h2 className="text-base font-semibold text-base-content">{title}</h2>
+        {description ? <p className="mt-1 max-w-prose text-sm text-base-content/80">{description}</p> : null}
       </div>
       {children}
     </section>
@@ -162,11 +80,16 @@ function SectionPanel({ title, description, children }) {
 
 export default function TechMyProfile() {
   const toast = useToast();
-  const { signOut } = useClerk();
+  const { signOut, openUserProfile } = useClerk();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [theme, setTheme] = useState(getStoredTheme);
+  const [formError, setFormError] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [isReadingPhoto, setIsReadingPhoto] = useState(false);
 
   const {
     data: dbUser,
@@ -178,15 +101,8 @@ export default function TechMyProfile() {
     queryKey: ["technician", "profile-me"],
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/profile");
-      return res.data || {};
-    },
-  });
-
-  const { data: analytics = {}, isLoading: isAnalyticsLoading } = useQuery({
-    queryKey: ["technician", "analytics-me"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/technician/analytics");
-      return res.data || {};
+      if (!res.data?._id) throw new Error("Your profile is unavailable. Please try again.");
+      return res.data;
     },
   });
 
@@ -216,9 +132,9 @@ export default function TechMyProfile() {
           barangay: data.barangay,
           city: data.city,
           district: data.city === ILOILO_CITY_NAME ? data.district : "",
-          province: data.province || "Iloilo",
+          province: data.province,
           zipCode: dbUser?.address?.zipCode || "",
-          region: dbUser?.address?.region || "Region VI",
+          region: dbUser?.address?.region || "",
         },
         imageUrl: data.imageUrl,
       };
@@ -229,10 +145,12 @@ export default function TechMyProfile() {
       await queryClient.invalidateQueries({
         queryKey: ["technician", "profile-me"],
       });
+      setNotice("Profile updated successfully.");
       toast.success("Profile updated successfully.");
       setIsEditing(false);
     },
     onError: (error) => {
+      setFormError(error.response?.data?.message || "Profile could not be updated. Please try again.");
       toast.error(
         error.response?.data?.message ||
           error.message ||
@@ -266,15 +184,27 @@ export default function TechMyProfile() {
 
   const handleSave = (event) => {
     event.preventDefault();
+    if (profileMutation.isPending || isReadingPhoto) return;
+    if (!editForm.name.trim()) {
+      setFormError("Enter your full name.");
+      event.currentTarget.elements.namedItem("name")?.focus();
+      return;
+    }
+    setFormError("");
     profileMutation.mutate(editForm);
   };
 
   const handleCancel = () => {
+    if (profileMutation.isPending || isReadingPhoto) return;
+    setFormError("");
     setEditForm(profileFormFromUser(dbUser));
     setIsEditing(false);
   };
 
   const openEditor = () => {
+    setFormError("");
+    setNotice("");
+    profileMutation.reset();
     setEditForm(profileFormFromUser(dbUser));
     setIsEditing(true);
   };
@@ -283,31 +213,62 @@ export default function TechMyProfile() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith("image/")) {
+      setFormError("Choose an image file for your profile photo.");
+      return;
+    }
+    setFormError("");
+    setIsReadingPhoto(true);
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onload = () => {
       setEditForm((current) => ({
         ...current,
         imageUrl: String(reader.result || ""),
       }));
     };
+    reader.onerror = () => setFormError("The photo could not be read. Choose it again.");
+    reader.onloadend = () => setIsReadingPhoto(false);
     reader.readAsDataURL(file);
   };
 
   const handleThemeChange = () => {
     const nextTheme = isDarkTheme(theme) ? "breedsmart" : "breedsmart-dark";
-    setTheme(applyTheme(nextTheme));
+    try {
+      setTheme(applyTheme(nextTheme));
+      setNotice("Appearance saved for this browser.");
+    } catch {
+      setAccountError("Appearance could not be saved. Check your browser storage settings.");
+    }
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    setAccountError("");
+    setIsSigningOut(true);
+    try { await signOut(); }
+    catch { setAccountError("Sign out failed. Please try again."); }
+    finally { setIsSigningOut(false); }
   };
+
+  const handleManageAccount = () => {
+    setAccountError("");
+    try { openUserProfile(); }
+    catch { setAccountError("Account settings could not be opened. Please try again."); }
+  };
+
+  const hasUnsavedChanges = isEditing && JSON.stringify(editForm) !== JSON.stringify(profileFormFromUser(dbUser));
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warnBeforeUnload = (event) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   if (isProfileLoading) {
     return (
       <div className={`${ui.page} font-sans`}>
-        <Topbar title="My Profile" subtitle="Loading your account details" />
-        <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-4 md:p-6">
-          <div className="skeleton h-64 w-full rounded-box" />
+        <Topbar title="Profile" subtitle="Loading your account details" />
+        <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 p-4 md:p-6">
+          <div className="skeleton h-24 w-full rounded-box" />
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="skeleton h-72 w-full rounded-box" />
             <div className="skeleton h-72 w-full rounded-box" />
@@ -320,7 +281,7 @@ export default function TechMyProfile() {
   if (isProfileError) {
     return (
       <div className={`${ui.page} font-sans`}>
-        <Topbar title="My Profile" subtitle="Account and dispatch details" />
+        <Topbar title="Profile" subtitle="Personal information and account preferences" />
         <main className="mx-auto flex w-full max-w-3xl flex-1 items-center p-4 md:p-6">
           <div role="alert" className="alert alert-error alert-soft w-full">
             <AlertTriangle size={20} aria-hidden="true" />
@@ -352,13 +313,7 @@ export default function TechMyProfile() {
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : "FI";
-  const totalVisits =
-    Number(analytics?.totalInsem || 0) +
-    Number(analytics?.totalHealth_Month || 0);
-  const successRate = Number(analytics?.successRate || 0);
-  const rating =
-    totalVisits > 0 ? (4 + successRate / 100).toFixed(1) : "N/A";
+    : "";
   const address = dbUser?.address
     ? [
         dbUser.address.street,
@@ -382,223 +337,61 @@ export default function TechMyProfile() {
 
   return (
     <div className={`${ui.page} font-sans`}>
-      <Topbar
-        title="My Profile"
-        subtitle="Account details, field activity, and dispatch availability"
-      />
-
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-4 pb-12 md:p-6 md:pb-12">
-        <section aria-labelledby="profile-name">
-          <div className="relative overflow-hidden rounded-box bg-primary px-6 pb-16 pt-9 text-center text-primary-content sm:pt-11">
-            <div className="avatar avatar-placeholder">
-              <div className="size-24 rounded-full border-4 border-primary-content/20 bg-base-100 text-primary sm:size-28">
-                {dbUser?.imageUrl ? (
-                  <img
-                    src={dbUser.imageUrl}
-                    alt={`${dbUser.name || "Technician"} profile`}
-                    className="object-cover"
-                  />
-                ) : (
-                  <span className="text-2xl font-black">{initials}</span>
-                )}
+      <Topbar title="Profile" subtitle="Personal information and account preferences" />
+      <main className="mx-auto w-full max-w-3xl flex-1 p-4 pb-10 md:p-6">
+        <div className="rounded-box bg-base-100 px-5 sm:px-7">
+          <header className="flex flex-wrap items-center gap-4 py-6">
+            <div className="avatar avatar-placeholder shrink-0">
+              <div className="size-16 rounded-full bg-base-200 text-base-content">
+                {dbUser.imageUrl ? <img src={dbUser.imageUrl} width={64} height={64} alt="" className="object-cover" />
+                  : initials ? <span className="text-xl font-semibold">{initials}</span> : <User size={28} aria-hidden="true" />}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={openEditor}
-              className="btn btn-circle btn-sm absolute left-1/2 top-25 translate-x-5 bg-base-100 text-primary shadow-sm sm:top-29 sm:translate-x-7"
-              aria-label="Edit profile and photo"
-            >
-              <Camera size={15} aria-hidden="true" />
-            </button>
-
-            <h1
-              id="profile-name"
-              className="mt-4 text-2xl font-black tracking-tight text-primary-content text-balance"
-            >
-              {dbUser?.name || "Technician"}
-            </h1>
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary-content/10 px-3 py-1 text-xs font-bold text-primary-content">
-              <ShieldCheck size={14} aria-hidden="true" />
-              Agricultural Technician
+            <div className="min-w-0 flex-1 basis-40">
+              <h1 className="break-words text-xl font-semibold text-balance">{dbUser.name || "Technician profile"}</h1>
+              <p className="mt-1 text-sm text-base-content/80">Technician</p>
+              {serviceMunicipalities.length > 0 && <p className="mt-1 break-words text-sm text-base-content/80">Service area: {serviceMunicipalities.join(", ")}</p>}
             </div>
-            <p className="mx-auto mt-3 max-w-md text-sm text-primary-content/80 text-pretty">
-              {dbUser?.address?.barangay
-                ? `Serving ${dbUser.address.barangay}, ${dbUser.address.city || "Iloilo"}`
-                : "Add your service location so farmers can reach you."}
-            </p>
-          </div>
-
-          <div className="stats stats-horizontal relative mx-3 -mt-9 grid grid-cols-3 overflow-hidden rounded-box border border-base-300 bg-base-100 sm:mx-auto sm:max-w-2xl">
-            <ProfileStat
-              icon={Briefcase}
-              label="Visits"
-              value={totalVisits}
-              loading={isAnalyticsLoading}
-            />
-            <ProfileStat
-              icon={Check}
-              label="Success"
-              value={`${successRate}%`}
-              loading={isAnalyticsLoading}
-            />
-            <ProfileStat
-              icon={Star}
-              label="Rating"
-              value={rating}
-              loading={isAnalyticsLoading}
-            />
-          </div>
-        </section>
-
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
-          <div className="space-y-6">
-            <SectionPanel
-              title="Account details"
-              description="Contact information used for farmer coordination and service dispatch."
-            >
-              <ul className="list divide-y divide-base-300 p-0">
-                <DetailRow
-                  icon={Mail}
-                  label="Email address"
-                  value={dbUser?.email}
-                />
-                <DetailRow
-                  icon={Phone}
-                  label="Phone number"
-                  value={dbUser?.phoneNumber}
-                  onClick={openEditor}
-                />
-                <DetailRow
-                  icon={MapPin}
-                  label="Service address"
-                  value={address}
-                  onClick={openEditor}
-                />
-              </ul>
+            <button type="button" className="btn" onClick={openEditor}>Edit profile</button>
+          </header>
+          <p role="status" className="text-sm text-base-content">{notice}</p>
+          <div className="divide-y divide-base-300">
+            <SectionPanel title="Personal information" description="Your BreedSmart contact details.">
+              <dl className="grid gap-5 sm:grid-cols-2">
+                <DetailRow icon={User} label="Full name" value={dbUser.name} />
+                <DetailRow icon={Mail} label="Email address" value={dbUser.email} />
+                <DetailRow icon={Phone} label="Phone number" value={dbUser.phoneNumber} />
+                <DetailRow icon={MapPin} label="Contact address" value={address} />
+              </dl>
             </SectionPanel>
-
-            <SectionPanel
-              title="Dispatch profile"
-              description="Availability and coverage assigned to your field account."
-            >
-              <ul className="list divide-y divide-base-300 p-0">
-                <li className="list-row rounded-none px-4 py-4 sm:px-5">
-                  <label className="flex cursor-pointer items-center gap-3 sm:gap-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-info">
-                      <Briefcase size={18} aria-hidden="true" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-base-content">
-                        Accepting requests
-                      </span>
-                      <span className="mt-0.5 block text-xs text-base-content/60">
-                        {acceptsNewRequests
-                          ? "Active for new farmer requests"
-                          : "Not accepting new requests"}
-                      </span>
-                    </span>
-                    {dispatchMutation.isPending ? (
-                      <span className="loading loading-spinner loading-sm text-primary" />
-                    ) : (
-                      <input
-                        type="checkbox"
-                        className="toggle toggle-primary"
-                        checked={acceptsNewRequests}
-                        onChange={(event) =>
-                          dispatchMutation.mutate(event.target.checked)
-                        }
-                        aria-label="Accept new farmer requests"
-                      />
-                    )}
-                  </label>
-                </li>
-                <DetailRow
-                  icon={MapPin}
-                  label="Service municipalities"
-                  value={serviceMunicipalities.join(", ") || "None assigned"}
-                />
-                <DetailRow
-                  icon={ShieldCheck}
-                  label="Service capabilities"
-                  value={serviceCapabilities.join(", ") || "None assigned"}
-                />
-              </ul>
-
-              {serviceMunicipalities.length === 0 ? (
-                <div
-                  role="alert"
-                  className="alert alert-warning alert-soft m-4 mt-0 text-sm"
-                >
-                  <AlertTriangle size={18} aria-hidden="true" />
-                  <span>No official service coverage has been assigned.</span>
-                </div>
-              ) : null}
+            <SectionPanel title="Account & preferences">
+              <label className="flex cursor-pointer items-center justify-between gap-4">
+                <span className="flex items-start gap-3">
+                  {darkModeEnabled ? <Moon size={18} className="mt-1 shrink-0" aria-hidden="true" /> : <Sun size={18} className="mt-1 shrink-0" aria-hidden="true" />}
+                  <span><span className="block text-sm font-medium">Dark mode</span><span className="mt-1 block text-sm text-base-content/80">Saved for this browser.</span></span>
+                </span>
+                <input type="checkbox" className="toggle shrink-0" checked={darkModeEnabled} onChange={handleThemeChange} aria-label="Use dark mode" />
+              </label>
             </SectionPanel>
-          </div>
-
-          <div className="space-y-6">
-            <SectionPanel
-              title="System and support"
-              description="Display preferences and commonly used account destinations."
-            >
-              <ul className="list divide-y divide-base-300 p-0">
-                <li className="list-row rounded-none px-4 py-3 sm:px-5">
-                  <label className="flex cursor-pointer items-center gap-3 sm:gap-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/60">
-                      {darkModeEnabled ? (
-                        <Moon size={18} aria-hidden="true" />
-                      ) : (
-                        <Sun size={18} aria-hidden="true" />
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-base-content">
-                        Theme mode
-                      </span>
-                      <span className="mt-0.5 block text-xs text-base-content/60">
-                        {darkModeEnabled ? "Dark mode" : "Light mode"}
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      className="toggle toggle-primary"
-                      checked={darkModeEnabled}
-                      onChange={handleThemeChange}
-                      aria-label="Use dark mode"
-                    />
-                  </label>
-                </li>
-                <NavigationRow
-                  icon={Briefcase}
-                  label="Service schedule"
-                  description="Review visits and upcoming field work"
-                  to="/technician/schedule"
-                />
-                <NavigationRow
-                  icon={BarChart3}
-                  label="My performance"
-                  description="Open service and outcome analytics"
-                  to="/technician/analytics"
-                />
-                <NavigationRow
-                  icon={Settings}
-                  label="Portal settings"
-                  description="Manage notifications and account security"
-                  to="/technician/settings"
-                />
-              </ul>
+            <SectionPanel title="Request availability" description="Your existing availability and assigned service coverage.">
+              <label className="flex cursor-pointer items-center justify-between gap-4">
+                <span><span className="block text-sm font-medium">Accepting requests</span><span className="mt-1 block text-sm text-base-content/80">{acceptsNewRequests ? "Active for new farmer requests" : "Not accepting new requests"}</span></span>
+                <input type="checkbox" className="toggle shrink-0" checked={acceptsNewRequests} disabled={dispatchMutation.isPending} onChange={(event) => dispatchMutation.mutate(event.target.checked)} aria-label="Accept new farmer requests" />
+              </label>
+              {dispatchMutation.isPending && <p role="status" className="text-sm">Saving availability…</p>}
+              {dispatchMutation.isError && <p role="alert" className="text-sm">{dispatchMutation.error?.response?.data?.message || "Availability could not be saved. Please try again."}</p>}
+              <dl className="grid gap-5 sm:grid-cols-2">
+                <DetailRow icon={MapPin} label="Service municipalities" value={serviceMunicipalities.join(", ") || "None assigned"} />
+                <DetailRow icon={ShieldCheck} label="Service capabilities" value={serviceCapabilities.join(", ") || "None assigned"} />
+              </dl>
             </SectionPanel>
-
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="btn btn-error btn-soft btn-block min-h-12"
-            >
-              <LogOut size={18} aria-hidden="true" />
-              Log out account
-            </button>
+            <SectionPanel title="Account & security" description="Manage sign-in details and security in your account settings.">
+              <div className="flex flex-wrap gap-3">
+                <button type="button" className="btn" onClick={handleManageAccount}><ShieldCheck size={17} aria-hidden="true" />Manage account</button>
+                <button type="button" className="btn" onClick={handleSignOut} disabled={isSigningOut}><LogOut size={17} aria-hidden="true" />{isSigningOut ? "Signing out…" : "Sign out"}</button>
+              </div>
+              {accountError && <p role="alert" className="text-sm">{accountError}</p>}
+            </SectionPanel>
           </div>
         </div>
       </main>
@@ -607,8 +400,9 @@ export default function TechMyProfile() {
         isOpen={isEditing}
         onClose={handleCancel}
         title="Edit profile"
-        subtitle="Update the contact details farmers use to coordinate services."
+        subtitle="Update your BreedSmart contact details. Manage sign-in details separately in Manage account."
         size="xl"
+        bodyClassName="overscroll-contain"
         closeOnEscape
         actions={
           <>
@@ -616,6 +410,7 @@ export default function TechMyProfile() {
               type="button"
               className="btn btn-sm btn-ghost"
               onClick={handleCancel}
+              disabled={profileMutation.isPending || isReadingPhoto}
             >
               Cancel
             </button>
@@ -623,12 +418,12 @@ export default function TechMyProfile() {
               type="submit"
               form="technician-profile-form"
               className="btn btn-sm btn-primary"
-              disabled={profileMutation.isPending}
+              disabled={profileMutation.isPending || isReadingPhoto}
             >
               {profileMutation.isPending ? (
                 <>
-                  <Loader2 size={15} className="animate-spin" />
-                  Saving
+                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                  Saving…
                 </>
               ) : (
                 "Save changes"
@@ -642,13 +437,19 @@ export default function TechMyProfile() {
           onSubmit={handleSave}
           className="space-y-5"
         >
+          {formError && <p role="alert" className="text-sm text-base-content">{formError}</p>}
+          {isReadingPhoto && <p role="status">Reading photo…</p>}
+          <fieldset disabled={profileMutation.isPending || isReadingPhoto} className="min-w-0 space-y-5">
+          <legend className="sr-only">Profile information</legend>
           <div className="flex flex-col gap-4 rounded-box bg-base-200 p-4 sm:flex-row sm:items-center">
             <div className="avatar avatar-placeholder shrink-0">
-              <div className="size-20 rounded-full bg-base-100 text-primary">
+              <div className="size-20 rounded-full bg-base-100 text-base-content">
                 {editForm.imageUrl ? (
                   <img
                     src={editForm.imageUrl}
                     alt="Profile preview"
+                    width={80}
+                    height={80}
                     className="object-cover"
                   />
                 ) : (
@@ -658,17 +459,19 @@ export default function TechMyProfile() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-base-content">Profile photo</p>
-              <p className="mt-1 text-xs text-base-content/65">
+              <p className="mt-1 text-xs text-base-content/80">
                 Choose a clear image that farmers can recognize.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <label className="btn btn-sm cursor-pointer">
+                <label className="btn btn-sm cursor-pointer focus-within:outline-2 focus-within:outline-offset-2">
                   <Camera size={15} aria-hidden="true" />
                   Choose photo
                   <input
                     type="file"
                     accept="image/*"
-                    className="hidden"
+                    aria-label="Choose profile photo"
+                    name="photo"
+                    className="sr-only"
                     onChange={handleImageChange}
                   />
                 </label>
@@ -699,6 +502,7 @@ export default function TechMyProfile() {
               <input
                 type="text"
                 className="input w-full"
+                name="name"
                 value={editForm.name}
                 onChange={(event) =>
                   setEditForm((current) => ({
@@ -716,7 +520,9 @@ export default function TechMyProfile() {
               </span>
               <input
                 type="email"
+                spellCheck={false}
                 className="input w-full"
+                name="email"
                 value={editForm.email}
                 onChange={(event) =>
                   setEditForm((current) => ({
@@ -736,8 +542,11 @@ export default function TechMyProfile() {
             </span>
             <input
               type="tel"
+              aria-label="Phone number"
+              aria-describedby="profile-phone-help"
               className="input w-full"
-              value={editForm.phone}
+              name="phone"
+                value={editForm.phone}
               onChange={(event) =>
                 setEditForm((current) => ({
                   ...current,
@@ -746,19 +555,20 @@ export default function TechMyProfile() {
               }
               pattern="09[0-9]{9}"
               maxLength={11}
-              placeholder="09XXXXXXXXX"
+              placeholder="09123456789"
+              title="Use 11 digits beginning with 09."
               autoComplete="tel"
               required
             />
-            <span className="text-xs text-base-content/65">
+            <span id="profile-phone-help" className="text-sm text-base-content/80">
               Use an 11-digit Philippine mobile number beginning with 09.
             </span>
           </label>
 
           <div className="border-t border-base-300 pt-5">
-            <h3 className="font-bold text-base-content">Service address</h3>
-            <p className="mt-1 text-xs text-base-content/65">
-              Select the location used for field coordination.
+            <h3 className="font-bold text-base-content">Contact address</h3>
+            <p className="mt-1 text-xs text-base-content/80">
+              This is your contact address, separate from assigned service coverage.
             </p>
           </div>
 
@@ -769,7 +579,8 @@ export default function TechMyProfile() {
             <input
               type="text"
               className="input w-full"
-              value={editForm.street}
+              name="street"
+                value={editForm.street}
               onChange={(event) =>
                 setEditForm((current) => ({
                   ...current,
@@ -788,6 +599,7 @@ export default function TechMyProfile() {
               </span>
               <select
                 className="select w-full"
+                name="city"
                 value={editForm.city}
                 onChange={(event) =>
                   setEditForm((current) => ({
@@ -815,7 +627,8 @@ export default function TechMyProfile() {
                 </span>
                 <select
                   className="select w-full"
-                  value={editForm.district}
+                  name="district"
+                value={editForm.district}
                   onChange={(event) =>
                     setEditForm((current) => ({
                       ...current,
@@ -841,6 +654,7 @@ export default function TechMyProfile() {
               </span>
               <select
                 className="select w-full"
+                name="barangay"
                 value={editForm.barangay}
                 onChange={(event) =>
                   setEditForm((current) => ({
@@ -863,6 +677,7 @@ export default function TechMyProfile() {
               </select>
             </label>
           </div>
+          </fieldset>
         </form>
       </Modal>
     </div>

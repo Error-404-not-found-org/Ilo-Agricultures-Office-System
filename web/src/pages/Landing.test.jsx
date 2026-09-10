@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,10 @@ vi.mock("sonner", () => ({
 
 vi.mock("../lib/axios", () => ({
   default: { post: vi.fn() },
+}));
+
+vi.mock("./landing/hooks/useLandingAnimations", () => ({
+  default: vi.fn(),
 }));
 
 vi.mock("./landing/components/PublicNavbar", () => ({
@@ -116,6 +120,8 @@ describe("Landing staff role resolution", () => {
       expect(mocks.toastError).toHaveBeenCalledWith("Staff access only", {
         description:
           "This account is registered as a Farmer. Please use the BreedSmart mobile app to continue.",
+        closeButton: false,
+        className: "landing-progress-toast",
       });
     });
     expect(mocks.toastError).toHaveBeenCalledTimes(1);
@@ -125,7 +131,7 @@ describe("Landing staff role resolution", () => {
     expect(window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBeNull();
   });
 
-  it("replaces the landing page with a neutral state while rejection is pending", async () => {
+  it("shows signing you out on the landing page while rejection is pending", async () => {
     let finishSignOut;
     mocks.signOut.mockImplementation(
       (callback) => new Promise((resolve) => {
@@ -138,7 +144,10 @@ describe("Landing staff role resolution", () => {
     useUser.mockReturnValue({
       isLoaded: true,
       isSignedIn: true,
-      user: { publicMetadata: { role: "farmer" } },
+      user: {
+        emailAddresses: [{ emailAddress: "farmer@breedsmart.test" }],
+        publicMetadata: { role: "farmer" },
+      },
     });
     markStaffSignIn();
     axiosInstance.post.mockResolvedValue({
@@ -150,7 +159,8 @@ describe("Landing staff role resolution", () => {
     await waitFor(() => {
       expect(screen.getByText("Signing you out…")).toBeInTheDocument();
     });
-    expect(screen.queryByText("PublicNavbar")).not.toBeInTheDocument();
+    expect(screen.getByText("PublicNavbar")).toBeInTheDocument();
+    expect(screen.getByText("farmer@breedsmart.test")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Sign Out/i })).not.toBeInTheDocument();
 
     await act(async () => {
@@ -161,6 +171,8 @@ describe("Landing staff role resolution", () => {
       expect(mocks.toastError).toHaveBeenCalledWith("Staff access only", {
         description:
           "This account is registered as a Farmer. Please use the BreedSmart mobile app to continue.",
+        closeButton: false,
+        className: "landing-progress-toast",
       });
     });
   });
@@ -190,6 +202,8 @@ describe("Landing staff role resolution", () => {
     expect(mocks.toastError).toHaveBeenCalledWith("Staff access only", {
       description:
         "This account is registered as a Farmer. Please use the BreedSmart mobile app to continue.",
+      closeButton: false,
+      className: "landing-progress-toast",
     });
     await waitFor(() => {
       expect(screen.getByTestId("route-state")).toHaveTextContent("null");
@@ -217,6 +231,41 @@ describe("Landing staff role resolution", () => {
     },
   );
 
+  it("keeps Clerk authenticated and offers retry when the BreedSmart server is unavailable", async () => {
+    markStaffSignIn();
+    axiosInstance.post
+      .mockRejectedValueOnce({
+        response: {
+          status: 503,
+          data: {
+            code: "USER_SYNC_UNAVAILABLE",
+            retryable: true,
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { user: { role: "admin" } } });
+
+    renderLanding();
+
+    expect(await screen.findByRole("heading", { name: "Connection problem" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/could not reach the server to verify your staff profile/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/not registered/i)).not.toBeInTheDocument();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent(
+        "/admin/dashboard",
+      );
+    });
+    expect(axiosInstance.post).toHaveBeenCalledTimes(2);
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
   it("signs an unrecognized profile out with the generic access message", async () => {
     markStaffSignIn();
     axiosInstance.post.mockResolvedValue({
@@ -234,12 +283,14 @@ describe("Landing staff role resolution", () => {
         {
           description:
             "This account does not have access to the BreedSmart staff workspace. Contact your BreedSmart administrator.",
+          closeButton: false,
+          className: "landing-progress-toast",
         },
       );
     });
   });
 
-  it("signs out safely when no BreedSmart profile can be confirmed", async () => {
+  it("reports a genuine missing BreedSmart profile separately and signs out safely", async () => {
     markStaffSignIn();
     axiosInstance.post.mockRejectedValue({
       response: { status: 404, data: { message: "Profile not found" } },
@@ -252,10 +303,12 @@ describe("Landing staff role resolution", () => {
     });
     await waitFor(() => {
       expect(mocks.toastError).toHaveBeenCalledWith(
-        "Staff account not recognized",
+        "BreedSmart profile not found",
         {
           description:
-            "This account does not have access to the BreedSmart staff workspace. Contact your BreedSmart administrator.",
+            "This Clerk account is authenticated but is not registered in BreedSmart. Contact your BreedSmart administrator.",
+          closeButton: false,
+          className: "landing-progress-toast",
         },
       );
     });
@@ -278,5 +331,69 @@ describe("Landing staff role resolution", () => {
     });
     expect(axiosInstance.post).not.toHaveBeenCalled();
     expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("renders the compact MongoDB-style signing in card over the hero while staff authentication is resolving", async () => {
+    let resolveBootstrap;
+    axiosInstance.post.mockReturnValue(
+      new Promise((resolve) => {
+        resolveBootstrap = resolve;
+      }),
+    );
+    useUser.mockReturnValue({
+      isLoaded: true,
+      isSignedIn: true,
+      user: {
+        primaryEmailAddress: { emailAddress: "test.staff@example.com" },
+        publicMetadata: {},
+      },
+    });
+    markStaffSignIn();
+
+    renderLanding();
+
+    expect(screen.getByText("Signing in...")).toBeInTheDocument();
+    expect(screen.getByText("test.staff@example.com")).toBeInTheDocument();
+    expect(screen.getByText("BreedSmart.")).toBeInTheDocument();
+    expect(screen.getByText("LandingHero")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveBootstrap({ data: { user: { role: "admin" } } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent(
+        "/admin/dashboard",
+      );
+    });
+  });
+});
+
+
+describe("Public landing availability", () => {
+  it("does not verify a signed-out visitor when the backend is down", () => {
+    sessionStorage.clear();
+    axiosInstance.post.mockClear().mockRejectedValue(new Error("Network unavailable"));
+    useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
+    useAuth.mockReturnValue({ getToken: vi.fn() });
+    useClerk.mockReturnValue({ signOut: mocks.signOut });
+    renderLanding();
+    expect(screen.getByText("LandingHero")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent(/^\/$/);
+    expect(axiosInstance.post).not.toHaveBeenCalled();
+  });
+
+  it("lets a staff visitor return to public content after a connection failure", async () => {
+    sessionStorage.setItem(STAFF_SIGN_IN_INTENT_KEY, "true");
+    axiosInstance.post.mockReset().mockRejectedValue(new Error("Network unavailable"));
+    useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: { publicMetadata: { role: "technician" } } });
+    useAuth.mockReturnValue({ getToken: vi.fn().mockResolvedValue("token") });
+    useClerk.mockReturnValue({ signOut: mocks.signOut });
+    renderLanding();
+    expect(await screen.findByRole("heading", { name: "Connection problem" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Return to public site" }));
+    expect(screen.getByText("LandingHero")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent(/^\/$/);
+    expect(sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBeNull();
   });
 });

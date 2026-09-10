@@ -190,9 +190,13 @@ test("FARMER HEALTH", async (t) => {
   await t.test("photos stored", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: ["p1.jpg", "p2.jpg"] }, "farmer", farmerId);
+    const photoUrls = [
+      "https://res.cloudinary.com/demo/image/upload/v1/p1.jpg",
+      "https://res.cloudinary.com/demo/image/upload/v1/p2.jpg",
+    ];
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: photoUrls }, "farmer", farmerId);
     await createHealthRequest(req, res);
-    assert.deepEqual(res.body.request.photos, ["p1.jpg", "p2.jpg"]);
+    assert.deepEqual(res.body.request.photos, photoUrls);
   });
   await t.test("structured request details survive POST and persistence", async () => {
     const animalId = new mongoose.Types.ObjectId();
@@ -364,6 +368,7 @@ test("HEALTH SCHEDULING", async (t) => {
     const updated = await HealthRequest.findById(hr._id);
     assert.equal(updated.visitPeriod, "morning");
     assert.equal(updated.scheduledDate.toISOString(), "2026-10-10T04:00:00.000Z");
+    assert.equal(updated.handlingMethod, "farm_visit");
   });
   await t.test("valid Afternoon", async () => {
     const animalId = new mongoose.Types.ObjectId();
@@ -385,6 +390,8 @@ test("HEALTH SCHEDULING", async (t) => {
     req.params.id = hr._id;
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 200);
+    const updated = await HealthRequest.findById(hr._id);
+    assert.equal(updated.handlingMethod, "farm_visit");
     assert.equal(hasVisitScheduleChanged(
       new Date("2026-10-10T04:00:00.000Z"), "afternoon",
       new Date("2026-10-10T04:00:00.000Z"), "morning"
@@ -451,11 +458,13 @@ test("HEALTH START", async (t) => {
   await t.test("scheduled allowed", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-ST2", species: "Carabao", breed: "Native" });
-    const reqScheduled = await HealthRequest.create({ farmerId, animalId, symptoms: "s", status: "scheduled", handledBy: techId, scheduledDate: new Date(), visitPeriod: "morning" });
+    const reqScheduled = await HealthRequest.create({ farmerId, animalId, symptoms: "s", status: "scheduled", handledBy: techId, scheduledDate: new Date(), visitPeriod: "morning", handlingMethod: "farm_visit" });
     const { req, res } = reqRes({ status: "in-progress" }, "technician", techId);
     req.params.id = reqScheduled._id;
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 200);
+    const updated = await HealthRequest.findById(reqScheduled._id);
+    assert.equal(updated.handlingMethod, "farm_visit");
   });
   await t.test("legacy schedule without period allowed", async () => {
     const animalId = new mongoose.Types.ObjectId();
@@ -514,7 +523,7 @@ test("HEALTH START", async (t) => {
     await updateHealthRequestStatus(req, res);
     assert.equal(res.statusCode, 403);
   });
-  await t.test("Admin behavior preserved", async () => {
+  await t.test("Admin clinical mutation remains forbidden", async () => {
     const adminId = new mongoose.Types.ObjectId();
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-ST8", species: "Carabao", breed: "Native" });
@@ -522,6 +531,9 @@ test("HEALTH START", async (t) => {
     const { req, res } = reqRes({ status: "in-progress" }, "admin", adminId);
     req.params.id = reqOwned._id;
     await updateHealthRequestStatus(req, res);
-    assert.equal(res.statusCode, 200);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, "TECHNICIAN_CLINICAL_ROLE_REQUIRED");
+    const unchanged = await HealthRequest.findById(reqOwned._id);
+    assert.equal(unchanged.status, "scheduled");
   });
 });

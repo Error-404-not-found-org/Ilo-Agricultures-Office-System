@@ -167,9 +167,11 @@ const toAttentionItem = (milestone: FarmerMilestone): FarmerAttentionItem | null
 
   if (milestone.type === "heat_check") {
     const elapsedDays = Number(daysPostAI);
-    displayTitle = `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} after insemination`;
-    displaySubtitle = animalReference;
-    guidance = "Has your animal returned to heat?";
+    displayTitle = "Breeding Update";
+    displaySubtitle = animalReference
+      ? `${animalReference} · ${elapsedDays} day${elapsedDays === 1 ? "" : "s"} after insemination`
+      : `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} after insemination`;
+    guidance = "Has your animal shown signs of heat since insemination?";
     actionLabel = "Give Update";
     actionKind = "report_signs";
   } else if (isCalving) {

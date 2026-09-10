@@ -24,9 +24,15 @@ import {
   getReceiveRequestsPresentation,
 } from "@/features/admin-users/utils/dispatchPresentation";
 import { getAdminRequestLocation } from "@/features/admin-requests/utils/adminRequestPresentation";
+import type { UserItem } from "@/features/admin-users/types/adminUsers.types";
+import { getAdminTechnicianWorkloadSummary } from "../services/adminWorkload.service";
+import {
+  mergeTechniciansWithWorkload,
+  type TechnicianWorkloadViewRow,
+} from "../utils/adminWorkloadPresentation";
 
 const PRIMARY = "#1e3a5f";
-const TABS = ["Workload Overview", "Unassigned Requests", "Performance Board"];
+const TABS = ["Workload Overview", "Unassigned Requests"];
 
 export default function TechnicianWorkloadScreen() {
   const { colors } = useTheme();
@@ -41,7 +47,7 @@ export default function TechnicianWorkloadScreen() {
     refetch: refetchTechs,
     isRefetching: isRefetchingTechs,
     isError: isTechsError,
-  } = useQuery<any[]>({
+  } = useQuery<UserItem[]>({
     queryKey: ["admin-technicians-list"],
     queryFn: async () => {
       const res = await api.get("/admin/list-users?role=technician");
@@ -50,7 +56,19 @@ export default function TechnicianWorkloadScreen() {
     staleTime: 1000 * 60 * 2,
   });
 
-  // 2. Fetch AI Requests
+  const {
+    data: workloadSummary = [],
+    isLoading: isWorkloadLoading,
+    refetch: refetchWorkload,
+    isRefetching: isRefetchingWorkload,
+    isError: isWorkloadError,
+  } = useQuery({
+    queryKey: ["admin-technician-workload-summary"],
+    queryFn: () => getAdminTechnicianWorkloadSummary(api),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  // The capped request lists remain only for the separate unassigned queue.
   const {
     data: aiRequests = [],
     isLoading: isAiLoading,
@@ -59,6 +77,7 @@ export default function TechnicianWorkloadScreen() {
     isError: isAiError,
   } = useQuery<any[]>({
     queryKey: ["admin-ai-requests"],
+    enabled: activeTab === 1,
     queryFn: async () => {
       const res = await api.get("/ai-request?limit=100");
       return Array.isArray(res.data?.data)
@@ -79,6 +98,7 @@ export default function TechnicianWorkloadScreen() {
     isError: isHealthError,
   } = useQuery<any[]>({
     queryKey: ["admin-health-requests"],
+    enabled: activeTab === 1,
     queryFn: async () => {
       const res = await api.get("/health-request?limit=100");
       return Array.isArray(res.data?.data)
@@ -90,61 +110,33 @@ export default function TechnicianWorkloadScreen() {
     staleTime: 1000 * 60 * 2,
   });
 
-  const isLoading = isTechsLoading || isAiLoading || isHealthLoading;
-  const isError = isTechsError || isAiError || isHealthError;
-  const isRefreshing = isRefetchingTechs || isRefetchingAi || isRefetchingHealth;
+  const isLoading =
+    isTechsLoading ||
+    (activeTab === 0 ? isWorkloadLoading : isAiLoading || isHealthLoading);
+  const isError =
+    isTechsError ||
+    (activeTab === 0 ? isWorkloadError : isAiError || isHealthError);
+  const isRefreshing =
+    isRefetchingTechs ||
+    (activeTab === 0
+      ? isRefetchingWorkload
+      : isRefetchingAi || isRefetchingHealth);
 
   const handleRefresh = async () => {
+    if (activeTab === 0) {
+      await Promise.all([refetchTechs(), refetchWorkload()]);
+      return;
+    }
+
     await Promise.all([refetchTechs(), refetchAi(), refetchHealth()]);
   };
 
-  // Compute workloads per technician
   const technicianWorkloads = useMemo(() => {
-    return technicians.map((tech) => {
-      const techId = tech._id;
-
-      // Filter AI requests assigned to this technician
-      const techAi = aiRequests.filter(
-        (r) => (r.technicianId?._id || r.technicianId || r.approvedBy?._id || r.approvedBy) === techId
-      );
-      // Filter Health requests assigned to this technician
-      const techHealth = healthRequests.filter(
-        (r) => (r.handledBy?._id || r.handledBy || r.assignedTechnicianId?._id || r.assignedTechnicianId) === techId
-      );
-
-      const activeAi = techAi.filter((r) => ["approved", "in-progress", "scheduled"].includes(r.status));
-      const activeHealth = techHealth.filter((r) => ["assigned", "scheduled", "in-progress", "in_progress"].includes(r.status));
-
-      const completedAi = techAi.filter((r) => r.status === "done" || r.status === "completed");
-      const completedHealth = techHealth.filter((r) => r.status === "resolved" || r.status === "done");
-
-      const scheduledAi = techAi.filter((r) => r.status === "scheduled");
-      const scheduledHealth = techHealth.filter((r) => r.status === "scheduled");
-
-      // AI success rate calculation
-      const diagnosedAi = completedAi.filter((r) => r.outcome === "Pregnant" || r.outcome === "Failed (Re-heat)" || r.outcome === "Failed (Negative PD)");
-      const successfulAi = completedAi.filter((r) => r.outcome === "Pregnant" || r.isSuccess === true);
-      const aiSuccessRate = diagnosedAi.length > 0 ? Math.round((successfulAi.length / diagnosedAi.length) * 100) : null;
-
-      // Overdue check (scheduled date is in the past and request is not completed)
-      const now = Date.now();
-      const overdueAi = techAi.filter(
-        (r) => ["approved", "scheduled", "in-progress"].includes(r.status) && r.scheduledDate && new Date(r.scheduledDate).getTime() < now
-      ).length;
-      const overdueHealth = techHealth.filter(
-        (r) => ["assigned", "scheduled", "in-progress", "in_progress"].includes(r.status) && r.scheduledDate && new Date(r.scheduledDate).getTime() < now
-      ).length;
-
-      return {
-        ...tech,
-        activeRequests: activeAi.length + activeHealth.length,
-        completedRequests: completedAi.length + completedHealth.length,
-        scheduledVisits: scheduledAi.length + scheduledHealth.length,
-        aiSuccessRate,
-        overdueCount: overdueAi + overdueHealth,
-      };
+    return mergeTechniciansWithWorkload({
+      technicians,
+      workload: workloadSummary,
     });
-  }, [technicians, aiRequests, healthRequests]);
+  }, [technicians, workloadSummary]);
 
   // Unassigned Generic / Pending requests queue
   const unassignedRequests = useMemo(() => {
@@ -158,11 +150,6 @@ export default function TechnicianWorkloadScreen() {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [aiRequests, healthRequests]);
-
-  // Leaders rankings based on completed requests and AI success rate
-  const leaderboard = useMemo(() => {
-    return [...technicianWorkloads].sort((a, b) => b.completedRequests - a.completedRequests);
-  }, [technicianWorkloads]);
 
   const renderTabContent = () => {
     if (isLoading) {
@@ -189,7 +176,7 @@ export default function TechnicianWorkloadScreen() {
       return (
         <FlatList
           data={technicianWorkloads}
-          keyExtractor={(item) => item._id}
+          keyExtractor={(item) => item.technicianId}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[PRIMARY]} />}
           ListEmptyComponent={
             <View style={{ padding: 40, alignItems: "center" }}>
@@ -202,7 +189,12 @@ export default function TechnicianWorkloadScreen() {
           renderItem={({ item }) => (
             <TechnicianWorkloadCard
               item={item}
-              onPress={() => router.push({ pathname: "/(admin)/user-details" as any, params: { id: item._id } })}
+              onPress={() =>
+                router.push({
+                  pathname: "/(admin)/user-details" as any,
+                  params: { id: item.technicianId },
+                })
+              }
             />
           )}
         />
@@ -265,67 +257,6 @@ export default function TechnicianWorkloadScreen() {
       );
     }
 
-    if (activeTab === 2) {
-      return (
-        <FlatList
-          data={leaderboard}
-          keyExtractor={(item) => item._id}
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[PRIMARY]} />}
-          renderItem={({ item, index }) => (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 16,
-                marginBottom: 10,
-                flexDirection: "row",
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
-            >
-              <View
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: index === 0 ? "#fef08a" : index === 1 ? "#e2e8f0" : "rgba(30,58,95,0.05)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 16,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontFamily: "Outfit_800ExtraBold",
-                    color: index === 0 ? "#a16207" : index === 1 ? "#475569" : colors.textPrimary,
-                  }}
-                >
-                  {index + 1}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
-                  {item.name || "Technician"}
-                </Text>
-                <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>
-                  Cases Resolved: {item.completedRequests} cases
-                </Text>
-              </View>
-              {item.aiSuccessRate !== null && (
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Success rate</Text>
-                  <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: "#16a34a" }}>
-                    {item.aiSuccessRate}%
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-        />
-      );
-    }
   };
 
   return (
@@ -389,7 +320,13 @@ export default function TechnicianWorkloadScreen() {
   );
 }
 
-function TechnicianWorkloadCard({ item, onPress }: { item: any; onPress: () => void }) {
+function TechnicianWorkloadCard({
+  item,
+  onPress,
+}: {
+  item: TechnicianWorkloadViewRow;
+  onPress: () => void;
+}) {
   const { colors, isDark } = useTheme();
   const readiness = getDispatchReadinessPresentation(item);
   const receiveRequests = getReceiveRequestsPresentation(item.dispatchProfile);
@@ -406,16 +343,20 @@ function TechnicianWorkloadCard({ item, onPress }: { item: any; onPress: () => v
     >
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <Text style={{ flex: 1, fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>{item.name || "Technician"}</Text>
-        <View style={{ backgroundColor: item.activeRequests > 3 ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
-          <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: item.activeRequests > 3 ? "#ef4444" : "#10b981" }}>{item.activeRequests > 3 ? "High workload" : "Workload manageable"}</Text>
+        <View style={{ backgroundColor: "rgba(30,58,95,0.08)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
+          <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: PRIMARY }}>
+            {item.activeWorkloadTotal} active
+          </Text>
         </View>
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }}>
-        <Metric label="Active work" value={item.activeRequests} background={metricBackground} />
-        <Metric label="Scheduled visits" value={item.scheduledVisits} background={metricBackground} />
-        <Metric label="Completed work" value={item.completedRequests} background={metricBackground} />
-        <Metric label="AI success rate" value={item.aiSuccessRate !== null ? `${item.aiSuccessRate}%` : "—"} background={metricBackground} accent />
+        <Metric label="AI requests" value={item.counts.ai} background={metricBackground} />
+        <Metric label="Health requests" value={item.counts.health} background={metricBackground} />
+        <Metric label="Pregnancy tasks" value={item.counts.pregnancy} background={metricBackground} />
+        <Metric label="Calving tasks" value={item.counts.calving} background={metricBackground} />
+        <Metric label="Other tasks" value={item.counts.tasks} background={metricBackground} />
+        <Metric label="Total active" value={item.activeWorkloadTotal} background={metricBackground} accent />
       </View>
 
       <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12, gap: 7 }}>
@@ -428,12 +369,6 @@ function TechnicianWorkloadCard({ item, onPress }: { item: any; onPress: () => v
         <InfoLine icon={<BriefcaseBusiness size={15} color={colors.textMuted} />} text={capabilities.length ? capabilities.join(", ") : "No capabilities assigned"} />
       </View>
 
-      {item.overdueCount > 0 ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: "rgba(239,68,68,0.08)", padding: 10, borderRadius: 12, marginTop: 12 }}>
-          <MaterialCommunityIcons name="clock-alert-outline" size={15} color="#ef4444" />
-          <Text style={{ flex: 1, fontSize: 12, fontFamily: "Outfit_700Bold", color: "#ef4444" }}>{item.overdueCount} delayed or overdue service logs need follow-up.</Text>
-        </View>
-      ) : null}
     </TouchableOpacity>
   );
 }

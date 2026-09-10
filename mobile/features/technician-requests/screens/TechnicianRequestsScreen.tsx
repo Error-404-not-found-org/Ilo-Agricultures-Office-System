@@ -19,6 +19,7 @@ import {
 } from "@/constants/address";
 
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
+import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 import { RequestListCard } from "../components/RequestListCard";
 import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
 import type { RequestItem } from "../types/technicianRequests.types";
@@ -45,14 +46,10 @@ export default function TechnicianRequestsScreen({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { section, workState } = useLocalSearchParams<{
+  const { section } = useLocalSearchParams<{
     section?: string | string[];
-    workState?: string | string[];
   }>();
   const normalizedSection = Array.isArray(section) ? section[0] : section;
-  const normalizedWorkState = Array.isArray(workState)
-    ? workState[0]
-    : workState;
 
   const {
     search,
@@ -78,6 +75,17 @@ export default function TechnicianRequestsScreen({
     isRefetching,
     handleRefresh,
   } = useTechnicianRequests();
+  const { tasksQuery: myWorkTasksQuery } = useTechnicianTasks(undefined, {
+    scope: "mine",
+    workState: "active",
+    limit: 1,
+  });
+  const myWorkCount = myWorkTasksQuery.data?.counts?.all || 0;
+  const availableCount =
+    !areOpenRequestCountsLoading && openRequestCounts
+      ? (openRequestCounts.ai || 0) + (openRequestCounts.health || 0)
+      : 0;
+
   const [activeSection, setActiveSection] =
     useState<RequestSection>("openRequests");
 
@@ -257,11 +265,11 @@ export default function TechnicianRequestsScreen({
 
   const hasOpenRequestFilters = Boolean(
     search.trim() ||
-      type !== "all" ||
-      municipality ||
-      barangay ||
-      nearLat ||
-      sortBy !== "newest",
+    type !== "all" ||
+    municipality ||
+    barangay ||
+    nearLat ||
+    sortBy !== "newest",
   );
 
   return (
@@ -313,24 +321,47 @@ export default function TechnicianRequestsScreen({
                   : "transparent",
             }}
           >
-            <Text
-              style={{
-                fontFamily: "Outfit_700Bold",
-                color:
-                  activeSection === "openRequests"
-                    ? colors.primary
-                    : isDark
-                      ? "#94a3b8"
-                      : "#64748b",
-                fontSize: 13,
-              }}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
             >
-              Open Requests
-              {!areOpenRequestCountsLoading &&
-              openRequestCounts.all !== undefined
-                ? `  ${openRequestCounts.all}`
-                : ""}
-            </Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  color:
+                    activeSection === "openRequests"
+                      ? colors.primary
+                      : isDark
+                        ? "#94a3b8"
+                        : "#64748b",
+                  fontSize: 13,
+                }}
+              >
+                Open Requests
+              </Text>
+              {availableCount > 0 && (
+                <View
+                  style={{
+                    backgroundColor: colors.primary,
+                    borderRadius: 10,
+                    paddingHorizontal: 6,
+                    paddingVertical: 1,
+                    minWidth: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color: "#fff",
+                      fontSize: 11,
+                    }}
+                  >
+                    {availableCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -352,20 +383,49 @@ export default function TechnicianRequestsScreen({
                   : "transparent",
             }}
           >
-            <Text
-              style={{
-                fontFamily: "Outfit_700Bold",
-                color:
-                  activeSection === "myWork"
-                    ? colors.primary
-                    : isDark
-                      ? "#94a3b8"
-                      : "#64748b",
-                fontSize: 13,
-              }}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
             >
-              My Work
-            </Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  color:
+                    activeSection === "myWork"
+                      ? colors.primary
+                      : isDark
+                        ? "#94a3b8"
+                        : "#64748b",
+                  fontSize: 13,
+                }}
+              >
+                My Work
+              </Text>
+              {myWorkCount > 0 && (
+                <View
+                  style={{
+                    backgroundColor: isDark
+                      ? "rgba(255,255,255,0.15)"
+                      : "#e2e8f0",
+                    borderRadius: 10,
+                    paddingHorizontal: 6,
+                    paddingVertical: 1,
+                    minWidth: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_600SemiBold",
+                      color: isDark ? "#cbd5e1" : "#475569",
+                      fontSize: 11,
+                    }}
+                  >
+                    {myWorkCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -584,11 +644,7 @@ export default function TechnicianRequestsScreen({
             }
           />
         ) : (
-          <TechnicianMyWorkPanel
-            initialWorkState={
-              normalizedWorkState === "completed" ? "completed" : "active"
-            }
-          />
+          <TechnicianMyWorkPanel />
         )}
       </View>
     </ScreenLayout>

@@ -85,26 +85,3 @@ export function getRequestStatusPresentation(
 
   return null;
 }
-
-export function isActiveRequestAssignedTo(request, technicianId) {
-  if (!technicianId) return false;
-
-  const assigneeId = getRequestAssigneeId(request);
-  const status = String(request.status || "")
-    .trim()
-    .toLowerCase()
-    .replaceAll("_", "-");
-  const isTerminal = [
-    "done",
-    "completed",
-    "resolved",
-    "rejected",
-    "cancelled",
-  ].includes(status);
-
-  return Boolean(
-    assigneeId &&
-      String(assigneeId) === String(technicianId) &&
-      !isTerminal,
-  );
-}

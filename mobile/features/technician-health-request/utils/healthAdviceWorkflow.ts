@@ -85,7 +85,7 @@ export const isHealthAdviceEligible = (request: any) => {
   }
 
   if (status === "pending") return true;
-  return hasOwner && ["triaged", "assigned", "approved"].includes(status);
+  return hasOwner && ["triaged", "assigned", "approved", "claimed"].includes(status);
 };
 
 export const validateHealthAdviceDraft = (draft: HealthAdviceDraft) => {

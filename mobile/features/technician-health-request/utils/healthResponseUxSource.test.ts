@@ -40,7 +40,7 @@ test("confirmed responses use refresh-before-replace without a timer", () => {
   assert.match(technicianSource, /runConfirmedHealthResponseSubmission/);
   assert.match(
     technicianSource,
-    /router\.replace\(TECHNICIAN_MY_WORK_COMPLETED_TARGET/,
+    /router\.replace\(TECHNICIAN_RECORDS_TARGET/,
   );
   assert.match(technicianSource, /Advice sent to farmer/);
   assert.match(technicianSource, /Pickup information sent to farmer/);

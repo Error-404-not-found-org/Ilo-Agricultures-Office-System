@@ -202,17 +202,6 @@ export function FarmerHomeScreen() {
       return;
     }
 
-    if (item.actionKind === "request_pregnancy_check") {
-      router.push({
-        pathname: "/(farmer)/report-breeding-observation",
-        params: {
-          animalId,
-          requestId: item.relatedId,
-          defaultReport: item.farmerObservation?.reportType || "unsure",
-        },
-      } as never);
-      return;
-    }
 
     if (item.actionKind === "record_calving" && item.relatedId) {
       router.push({

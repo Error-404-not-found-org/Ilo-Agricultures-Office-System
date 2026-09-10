@@ -32,17 +32,22 @@ describe("Admin authority migration source safety", () => {
 
   it("removes rejected generic insemination edit and delete consumers", () => {
     const profile = read("src/pages/admin/LivestockProfile.jsx");
-    const ledger = read("src/pages/technician/BreedingLedger.jsx");
+    const app = read("src/App.jsx");
 
     expect(profile).not.toContain("EditInseminationModal");
-    expect(ledger).not.toContain("/insemination/${record.id}");
+    expect(app).not.toContain('import("./pages/technician/BreedingLedger")');
+    expect(app).toContain('<Navigate to="/technician/records" replace />');
   });
 
   it("uses canonical Technician creation from the active Web registration form", () => {
-    const technicians = read("src/pages/admin/Technicians.jsx");
+    const users = read("src/pages/admin/Users.jsx");
+    const invitationDialog = read(
+      "src/components/dialogs/TechnicianInviteDialog.jsx",
+    );
 
-    expect(technicians).toContain("createTechnician(payload)");
-    expect(technicians).toContain("serviceCapabilities: inviteCapabilities");
-    expect(technicians).not.toContain("/user/create-invited-user");
+    expect(users).toContain("TechnicianInviteDialog");
+    expect(invitationDialog).toContain("createTechnician(payload)");
+    expect(invitationDialog).toContain("serviceCapabilities: capabilities");
+    expect(invitationDialog).not.toContain("/user/create-invited-user");
   });
 });

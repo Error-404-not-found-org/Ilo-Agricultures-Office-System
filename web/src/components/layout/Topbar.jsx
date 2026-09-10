@@ -147,9 +147,7 @@ export default function Topbar({
           </div>
         )}
 
-        {isAdmin && (
-          <ThemeToggle showTooltip tooltipPosition="bottom" />
-        )}
+        <ThemeToggle showTooltip tooltipPosition="bottom" />
 
         {/* Custom Extra Slots (e.g. refresh, filters, dropdowns) */}
         {children}

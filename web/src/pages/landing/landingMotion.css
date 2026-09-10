@@ -1,0 +1,37 @@
+/* Separate translate/scale from GSAP's transform so hover never fights reveals. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  [data-landing-motion] :is([data-motion-hero-cta], [data-motion-cta] a, [data-motion-cta] button, footer button) {
+    transition: translate 180ms ease-out, scale 150ms ease-out, background-color 180ms ease-out;
+  }
+  [data-landing-motion] :is([data-motion-hero-cta], [data-motion-cta] a, [data-motion-cta] button, footer button):hover {
+    translate: 0 -3px;
+  }
+  [data-landing-motion] :is(a, button):active {
+    scale: 0.98;
+  }
+  [data-landing-motion] #developers [data-motion-item] img {
+    transition: scale 250ms ease-out;
+  }
+  [data-landing-motion] #developers [data-motion-item]:is(:hover, :focus-within) img {
+    scale: 1.07;
+  }
+  [data-landing-motion] footer a {
+    text-underline-offset: 5px;
+  }
+  [data-landing-motion] footer a:hover {
+    text-decoration: underline;
+  }
+}
+
+[data-landing-motion] :is(a, button):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has([data-landing-motion]) { scroll-behavior: auto; }
+  [data-landing-motion] *, [data-landing-motion] *::before, [data-landing-motion] *::after {
+    transition-duration: 0s !important;
+    animation: none !important;
+  }
+}

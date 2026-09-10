@@ -111,6 +111,7 @@ const formatSubmittedDate = (value: unknown) => {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "Asia/Manila",
   });
 };
 
@@ -329,7 +330,7 @@ export default function HealthRequestDetailScreen() {
   const cancellationResponseReason = getRequestText(
     request.cancellationResponseReason,
   );
-  const handlerName = getRequestText(handler?.name);
+  const handlerName = getRequestText(request.technicianDisplayName) || getRequestText(handler?.name);
   const hasHandlerReference = Boolean(
     handlerName ||
       (typeof handler === "string" ? getRequestText(handler) : handler?._id),

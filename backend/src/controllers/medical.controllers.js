@@ -5,6 +5,10 @@ import { notifyUserBestEffort } from "../services/notification-delivery.service.
 import { getPagination } from "../utils/pagination.js";
 import { sendList } from "../utils/api-response.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
+import {
+  isDirectHealthServiceType,
+  medicalRecordTypeForHealthService,
+} from "../domain/direct-health-record.js";
 
 export const addMedicalRecord = async (req, res) => {
   try {
@@ -48,6 +52,11 @@ export const addMedicalRecord = async (req, res) => {
       );
     }
 
+    const serviceType = details?.serviceType;
+    if (serviceType && !isDirectHealthServiceType(serviceType)) {
+      return res.status(400).json({ message: "Invalid Health service type" });
+    }
+
     const finalDetails = {
       ...details,
       withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
@@ -58,7 +67,7 @@ export const addMedicalRecord = async (req, res) => {
       animalId,
       farmerId: animal.farmerId,
       technicianId: req.user._id,
-      type,
+      type: serviceType ? medicalRecordTypeForHealthService(serviceType) : type,
       date: parsedServiceDate,
       isHistoricalEntry: Boolean(isHistoricalEntry),
       lateEntryReason: isHistoricalEntry ? String(lateEntryReason).trim() : undefined,

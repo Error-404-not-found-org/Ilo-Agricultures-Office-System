@@ -6,6 +6,8 @@ import {
 const idOf = (value) =>
   value?._id || value?.id || (typeof value === "string" ? value : null);
 
+const CANONICAL_MY_WORK_PATH = "/technician/requests?section=myWork";
+
 export const getTaskRelationship = (item = {}) => {
   const raw = item.raw || item;
   const metadata = raw.metadata || item.metadata || {};
@@ -39,8 +41,8 @@ export const getCalendarTarget = (item = {}) => {
   if (relation.taskId) {
     return {
       kind: "task",
-      path: "/technician/work-queue",
-      search: `?taskId=${encodeURIComponent(relation.taskId)}`,
+      path: "/technician/requests",
+      search: `?section=myWork&taskId=${encodeURIComponent(relation.taskId)}`,
       workflowStage: relation.workflowStage,
     };
   }
@@ -58,11 +60,17 @@ export const getTaskPrimaryActionLabel = (task = {}) => {
   const { allowedAction, workflowType } = task;
 
   switch (allowedAction) {
+    case "REVIEW_PREGNANCY_LOSS":
+      return "Review Pregnancy Loss";
     case "CLAIM":
       return "Claim Task";
     case "SCHEDULE_VISIT":
       return "Schedule Visit";
+    case "HANDLE_REQUEST":
+      return "Handle Request";
     case "START_SERVICE":
+      if (["Health", "health"].includes(workflowType))
+        return "Record Health Assistance";
       return "Start Service";
     case "RECORD_SERVICE": {
       if (workflowType === "PD") {
@@ -262,17 +270,28 @@ const SAFE_RETURN_PATHS = [
 ];
 
 export const sanitizeReturnTo = (path) => {
-  if (!path) return "/technician/work-queue";
+  if (!path) return CANONICAL_MY_WORK_PATH;
   const basePath = path.split("?")[0];
+  if (basePath === "/technician/work-queue") {
+    const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
+    const params = new URLSearchParams(query);
+    params.set("section", "myWork");
+    params.delete("workflowState");
+    params.delete("workState");
+    params.delete("workStateFilter");
+    params.delete("scope");
+    params.delete("statusFilter");
+    return `/technician/requests?${params.toString()}`;
+  }
   if (SAFE_RETURN_PATHS.includes(basePath)) {
     return path;
   }
-  return "/technician/work-queue";
+  return CANONICAL_MY_WORK_PATH;
 };
 
 export const buildTaskNavigationState = (
   taskContext,
-  returnTo = "/technician/work-queue",
+  returnTo = CANONICAL_MY_WORK_PATH,
 ) => {
   return {
     taskContext,

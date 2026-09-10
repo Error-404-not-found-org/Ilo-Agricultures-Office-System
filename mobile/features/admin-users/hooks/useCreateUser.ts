@@ -5,8 +5,9 @@ import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { createUser, createTechnician } from '../services/adminUsers.service';
 import { OTON_MUNICIPALITY } from '../utils/dispatchPayloadBuilders';
+import type { OperationalUserRole } from '../types/adminUsers.types';
 
-type Role = 'farmer' | 'technician' | 'admin';
+type Role = OperationalUserRole;
 
 export const useCreateUser = () => {
   const api = useApi();
@@ -45,7 +46,7 @@ export const useCreateUser = () => {
       toast.error('First and last name are required.');
       return;
     }
-    if ((role === 'technician' || role === 'admin') && !trimmedEmail) {
+    if (role === 'technician' && !trimmedEmail) {
       toast.error('Email is required for staff accounts.');
       return;
     }
@@ -101,7 +102,7 @@ export const useCreateUser = () => {
       toast.success(
         role === 'farmer'
           ? 'Farmer profile created.'
-          : `${role === 'technician' ? 'Technician' : 'Administrator'} invitation sent.`,
+          : 'Technician invitation sent.',
       );
       setCreatedAccount({
         id: result?.technician?._id || result?.user?._id || result?._id,

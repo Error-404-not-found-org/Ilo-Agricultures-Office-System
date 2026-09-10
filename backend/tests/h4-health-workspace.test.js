@@ -144,7 +144,8 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
       handledBy: mockTechId,
       serviceStartedAt: new Date(),
       scheduledDate: new Date(),
-      visitPeriod: "Morning"
+      visitPeriod: "Morning",
+      handlingMethod: "farm_visit"
     });
 
     const task = await Task.create({
@@ -185,6 +186,7 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
 
     const hrAfter = await HealthRequest.findById(hr._id);
     assert.strictEqual(hrAfter.status, "resolved");
+    assert.strictEqual(hrAfter.handlingMethod, "farm_visit");
 
     const taskAfter = await Task.findById(task._id);
     assert.strictEqual(taskAfter.status, "Completed");

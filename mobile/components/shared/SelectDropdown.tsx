@@ -103,9 +103,9 @@ export function SelectDropdown({
             : isPill
               ? isDark
                 ? "rgba(255,255,255,0.07)"
-                : "#f1f2ef"
+                : "#ffffff"
               : colors.card,
-          borderWidth: error ? 2 : (isPill ? 0 : 1.5),
+          borderWidth: error ? 2 : (isPill ? 1 : 1.5),
           borderColor: error ? colors.error : (isHighlighted ? colors.primary : colors.border),
           borderRadius: isPill ? 999 : 14,
           paddingHorizontal: isPill ? 14 : 12,

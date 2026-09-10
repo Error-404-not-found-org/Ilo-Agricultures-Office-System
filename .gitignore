@@ -17,6 +17,7 @@ backend/scripts/*
 .agents/
 SKILL.md
 
+
 # Test Folders
 test/
 tests/
@@ -45,6 +46,10 @@ lint-output.txt
 clean_architecture_guide.txt
 delete_guide.txt
 study_notes.txt
+SEEDER_GUIDE.md
+design-qa.md
+/AGENTS.MD
+/AGENTS.md
 
 # Checklists & QA Checklists
 BreedSmart_QA_Checklist.txt

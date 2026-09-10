@@ -35,6 +35,11 @@ export const getHealthRequests = async (api: AxiosInstance) => {
   return response.data;
 };
 
+/**
+ * @deprecated No active screen calls this legacy Technician deletion helper.
+ * Official reproductive records are immutable; Admin correction uses the
+ * protected Admin archive workflow. Retained only for compatibility cleanup.
+ */
 export const deleteLedgerRecord = async (api: AxiosInstance, { id, type }: { id: string; type: string }) => {
   const endpoint = type === 'health-request' 
     ? `/health-request/${id}` 

@@ -9,6 +9,7 @@ import {
   normalizeTechnicianWorkItems,
   summarizeTechnicianWork,
 } from "../../technician-requests/utils/requestWorkPresentation.ts";
+import { normalizeTechnicianDashboardStats } from "./dashboardStats.ts";
 
 const filters = {
   workState: "active" as const,
@@ -62,19 +63,45 @@ test("malformed or missing Work Queue data fails safely without fake items", asy
   }
 });
 
-test("Technician Dashboard passes query.data.data to the array normalizer", () => {
+test("Technician Dashboard uses its authoritative agenda instead of a Work Queue page", () => {
   const source = readMobileSource(
     "features/technician-dashboard/hooks/useTechnicianDashboardScreen.ts",
   );
 
   assert.match(
     source,
-    /normalizeTechnicianWorkItems\(workQueueQuery\.data\?\.data\)/,
+    /normalizeTechnicianWorkItems\(data\?\.agendaItems\)/,
   );
-  assert.doesNotMatch(
-    source,
-    /normalizeTechnicianWorkItems\(workQueueQuery\.data\s*\|\|/,
+  assert.doesNotMatch(source, /useTechnicianTasks/);
+});
+
+test("Dashboard summary keeps backend totals even when active work exceeds one page", () => {
+  const stats = normalizeTechnicianDashboardStats({
+    dueToday: 27,
+    overdue: 8,
+    completedToday: 4,
+    aiCompletedToday: 4,
+    totalInsemMonth: 18,
+    successRate: "85.0%",
+  });
+
+  assert.deepEqual(stats, {
+    dueToday: 27,
+    overdue: 8,
+    completedToday: 4,
+    aiCompletedToday: 4,
+    totalInsemMonth: 18,
+    successRate: "85.0%",
+  });
+
+  const card = readMobileSource(
+    "features/technician-dashboard/components/TechnicianStatsCard.tsx",
   );
+  assert.match(card, /label: "Inseminated today"/);
+  assert.match(card, /stats\.aiCompletedToday/);
+  assert.match(card, /stats\.totalInsemMonth/);
+  assert.match(card, /stats\.successRate/);
+  assert.doesNotMatch(card, /summarizeTechnicianWork/);
 });
 
 test("other Work Queue consumers use the canonical data array", () => {

@@ -1,7 +1,19 @@
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
 @import "tailwindcss";
 @plugin "daisyui" {
   themes: false;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 /* LoFi-derived light foundation with BreedSmart semantic brand overrides. */
@@ -76,13 +88,93 @@
   --noise: 0;
 }
 
-
 @theme {
   --font-sans: "Outfit", sans-serif;
 }
 
 html {
   font-family: "Outfit", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+} 
+/* Clerk Modal Positioning */
+.cl-modalBackdrop {
+  align-items: flex-start !important;
+  padding-top: 5vh !important;
+  animation: fadeIn 0.3s ease-out !important;
+}
+
+.cl-modalContent {
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth transition for modal close */
+.cl-modalContent.closing {
+  animation: slideUp 0.2s ease-in forwards !important;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+
+/* AppLayout owns vertical scrolling. Legacy page roots may still declare
+   viewport height/overflow utilities, so normalize only the routed root. */
+.admin-main-scroll > * {
+  width: 100%;
+  min-height: 100%;
+  height: auto !important;
+  overflow-y: visible !important;
+}
+
+.drawer-side > .admin-sidebar {
+  height: 100vh;
+  min-height: 0;
+}
+
+@supports (height: 100dvh) {
+  .drawer-side > .admin-sidebar {
+    height: 100dvh;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .admin-main-scroll {
+    padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+  }
+
+  .admin-sidebar-footer {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
 }
 
 .auth-shell :where(a, button, input, select, textarea):focus-visible {
@@ -291,3 +383,56 @@ html {
 .fc.fc-media-screen {
   @apply min-h-125;
 }
+
+/* Landing page countdown progress toast */
+[data-sonner-toast].landing-progress-toast {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+[data-sonner-toast].landing-progress-toast [data-close-button] {
+  display: none !important;
+}
+
+[data-sonner-toast].landing-progress-toast::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  background: currentColor;
+  opacity: 0.35;
+  transform-origin: left;
+  animation: landing-toast-progress 4000ms linear forwards;
+}
+
+[data-sonner-toast].landing-progress-toast:hover::after {
+  animation-play-state: paused;
+}
+
+@keyframes landing-toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* Form controls active/focus state: eliminate double/extra outline ring */
+:where(input, select, textarea, .input, .select, .textarea):focus,
+:where(input, select, textarea, .input, .select, .textarea):focus-within,
+:where(input, select, textarea, .input, .select, .textarea):focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: none !important;
+}
+
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-within,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-visible {
+  border-color: var(--color-error) !important;
+}
+

@@ -1,7 +1,7 @@
 import {
   formatAnimalReference,
   getFullAnimalReference,
-} from "../../farmer-dashboard/utils/farmerDashboard.transforms";
+} from "../../farmer-dashboard/utils/farmerDashboard.transforms.ts";
 
 export const ANIMAL_RECORD_CATEGORY_OPTIONS = [
   { label: "All", value: "All" },
@@ -77,41 +77,37 @@ const pregnancyRecheck = (status: unknown): RecordBadgePresentation | null => {
   if (status === "loss_detected") {
     return { label: "Pregnancy loss recorded", domain: "pregnancy", variant: "danger" };
   }
-  if (status === "follow_up_required") {
-    return { label: "Diagnostic follow-up required", domain: "task", variant: "warning" };
-  }
   return null;
 };
 
-const calvingOutcome = (record: any) => {
-  const living = Number(record.livingCalfCount ?? record.calves?.length ?? 0);
-  const stillborn = Number(record.stillbornCount ?? record.nonLivingCalves?.length ?? 0);
-  const outcome = String(record.outcome || "").toLowerCase();
+export const isPregnancyLossCalving = (calving: any): boolean => {
+  if (!calving || typeof calving !== "object") return false;
+  const outcome = String(
+    calving.outcome ||
+    calving.calvingOutcome ||
+    calving.details?.calvingOutcome ||
+    ""
+  ).toLowerCase();
+  return (
+    outcome === "abortion" ||
+    Boolean(calving.isAbortion) ||
+    Boolean(calving.pregnancyLossReportId) ||
+    Boolean(calving.details?.pregnancyLossReportId) ||
+    calving.title === "Pregnancy Loss Record"
+  );
+};
 
-  if (outcome === "mixed" || (living > 0 && stillborn > 0)) {
+const calvingOutcome = (record: any) => {
+  if (isPregnancyLossCalving(record)) {
     return {
-      title: "Mixed delivery",
-      summary: `${living} living, ${stillborn} stillborn`,
-      badge: "Mixed delivery",
-    };
-  }
-  if (outcome === "stillbirth" || stillborn > 0) {
-    return {
-      title: "Calving outcome recorded",
-      summary: "Stillbirth",
-      badge: "Pregnancy loss recorded",
-    };
-  }
-  if (outcome === "abortion") {
-    return {
-      title: "Calving outcome recorded",
-      summary: "Pregnancy loss",
+      title: "Pregnancy Loss Record",
+      summary: "Pregnancy loss recorded",
       badge: "Pregnancy loss recorded",
     };
   }
   return {
-    title: "Calving recorded",
-    summary: `${living} living calf${living === 1 ? "" : "ves"}`,
+    title: "Calving Record",
+    summary: "Calving recorded",
     badge: "Calving recorded",
   };
 };
@@ -227,21 +223,22 @@ export const formatAnimalRecord = (
   }
 
   if (kind === "calving") {
+    const isLoss = isPregnancyLossCalving(record);
     const outcome = calvingOutcome(record);
     const offspring = (record.calves || [])
       .map((calf: any) => formatAnimalReference(calf))
       .filter((value: string) => value !== "Animal");
     return {
       title: `${outcome.title} · ${animalReference}`,
-      pageTitle: "Calving Record",
-      category: "Calving",
+      pageTitle: isLoss ? "Pregnancy Loss Record" : "Calving Record",
+      category: isLoss ? "Reproduction" : "Calving",
       date,
       animalReference,
       fullAnimalReference,
       badges: [{
         label: outcome.badge,
         domain: "calving",
-        variant: outcome.badge === "Calving recorded" ? "success" : "danger",
+        variant: isLoss ? "danger" : "success",
       }],
       details: [
         outcome.summary,

@@ -42,6 +42,8 @@ describe("request and work presentation", () => {
     [{ workflowType: "AI" }, "ai"],
     [{ workflowType: "Health" }, "health"],
     [{ workflowType: "PD" }, "pregnancy"],
+    [{ sourceType: "farmer_pregnancy_loss_report" }, "pregnancy"],
+    [{ workflowType: "PregnancyLossReview" }, "pregnancy"],
     [{ taskType: "CD" }, "calving"],
     [{ taskType: "unmapped_internal_value" }, "unknown"],
   ])("normalizes service contracts without title guessing", (item, expected) => {
@@ -53,17 +55,83 @@ describe("request and work presentation", () => {
     expect(getServicePresentation("unknown").label).toBe("Other service");
   });
 
-  it("derives urgency from local calendar dates", () => {
-    const now = new Date(2026, 7, 4, 16, 30);
-    expect(deriveScheduleState(new Date(2026, 7, 3, 23, 59), now)).toBe(
-      "overdue",
-    );
-    expect(deriveScheduleState(new Date(2026, 7, 4, 0, 1), now)).toBe(
+  it("derives timing from Asia/Manila calendar dates", () => {
+    const now = new Date("2026-08-04T04:00:00.000Z");
+    expect(deriveScheduleState("2026-08-03", now)).toBe("overdue");
+    expect(deriveScheduleState("2026-08-04", now)).toBe("due_today");
+    expect(deriveScheduleState("2026-08-05", now)).toBe("scheduled");
+  });
+
+  it.each([
+    [
+      "AI scheduled today",
+      { workflowType: "AI", status: "scheduled", scheduledDate: "2026-09-05" },
+      "scheduled_today",
+      "Scheduled Today",
+    ],
+    [
+      "Health Farm Visit scheduled today",
+      {
+        workflowType: "Health",
+        status: "scheduled",
+        handlingMethod: "farm_visit",
+        scheduledDate: "2026-09-05",
+      },
+      "scheduled_today",
+      "Scheduled Today",
+    ],
+    [
+      "Pregnancy Check due today",
+      { workflowType: "PD", status: "Pending", dueDate: "2026-09-05" },
       "due_today",
-    );
-    expect(deriveScheduleState(new Date(2026, 7, 5, 0, 1), now)).toBe(
+      "Due Today",
+    ],
+    [
+      "Breeding Follow-up due today",
+      {
+        workflowType: "BreedingFollowUp",
+        status: "Pending",
+        dueDate: "2026-09-05",
+      },
+      "due_today",
+      "Due Today",
+    ],
+    [
+      "AI scheduled in the future",
+      { workflowType: "AI", status: "scheduled", scheduledDate: "2026-09-06" },
       "scheduled",
+      "Scheduled",
+    ],
+    [
+      "Health Farm Visit scheduled in the future",
+      {
+        workflowType: "Health",
+        status: "scheduled",
+        handlingMethod: "farm_visit",
+        scheduledDate: "2026-09-06",
+      },
+      "scheduled",
+      "Scheduled",
+    ],
+    [
+      "reproductive task due in the future",
+      { workflowType: "PD", status: "Pending", dueDate: "2026-09-06" },
+      "upcoming",
+      "Upcoming",
+    ],
+    [
+      "past unfinished work",
+      { workflowType: "PD", status: "Pending", dueDate: "2026-09-04" },
+      "overdue",
+      "Overdue",
+    ],
+  ])("%s has source-aware timing language", (_name, item, status, label) => {
+    const normalized = normalizeWorkflowStatus(
+      item,
+      new Date("2026-09-05T04:00:00.000Z"),
     );
+    expect(normalized).toBe(status);
+    expect(getWorkflowStatusPresentation(normalized).label).toBe(label);
   });
 
   it("lets terminal states override schedule urgency", () => {
@@ -82,5 +150,131 @@ describe("request and work presentation", () => {
     expect(normalizeWorkflowStatus({ workflowType: "AI", status: "in-progress" })).toBe(
       "scheduled",
     );
+  });
+
+  describe("canonical Health handling method state matrix", () => {
+    it("1. claimed Health without handling method returns needs_response (no false scheduled or needs_scheduling)", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_response");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs response",
+      );
+    });
+
+    it("2. Health with advice returns needs_response without visit scheduling", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+        handlingMethod: "advice",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_response");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs response",
+      );
+    });
+
+    it("3. Health with office_pickup returns needs_response without visit scheduling", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+        handlingMethod: "office_pickup",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_response");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs response",
+      );
+    });
+
+    it("4. Health with farm_visit and NO schedule date returns needs_scheduling", () => {
+      const item = {
+        workflowType: "Health",
+        status: "assigned",
+        handlingMethod: "farm_visit",
+      };
+      const workflowStatus = normalizeWorkflowStatus(item);
+      expect(workflowStatus).toBe("needs_scheduling");
+      expect(getWorkflowStatusPresentation(workflowStatus).label).toBe(
+        "Needs scheduling",
+      );
+    });
+
+    it("5. Health with farm_visit and scheduledDate uses temporal presentation", () => {
+      const now = new Date(2026, 7, 4, 10, 0);
+      const future = normalizeWorkflowStatus(
+        {
+          workflowType: "Health",
+          status: "assigned",
+          handlingMethod: "farm_visit",
+          scheduledDate: "2026-08-05",
+        },
+        now,
+      );
+      expect(future).toBe("scheduled");
+      expect(getWorkflowStatusPresentation(future).label).toBe("Scheduled");
+
+      const today = normalizeWorkflowStatus(
+        {
+          workflowType: "Health",
+          status: "assigned",
+          handlingMethod: "farm_visit",
+          scheduledDate: "2026-08-04",
+        },
+        now,
+      );
+      expect(today).toBe("scheduled_today");
+      expect(getWorkflowStatusPresentation(today).label).toBe(
+        "Scheduled Today",
+      );
+
+      const overdue = normalizeWorkflowStatus(
+        {
+          workflowType: "Health",
+          status: "assigned",
+          handlingMethod: "farm_visit",
+          scheduledDate: "2026-08-03",
+        },
+        now,
+      );
+      expect(overdue).toBe("overdue");
+      expect(getWorkflowStatusPresentation(overdue).label).toBe("Overdue");
+    });
+
+    it("never exposes user-facing 'triaged' label", () => {
+      expect(getWorkflowStatusPresentation("triaged").label).toBe(
+        "Needs response",
+      );
+      expect(getWorkflowStatusPresentation("triaged").label).not.toMatch(
+        /triage/i,
+      );
+    });
+
+    it("presents farmer pregnancy loss reports as Needs review in work queues", () => {
+      const taskBySource = {
+        sourceType: "farmer_pregnancy_loss_report",
+        status: "Pending",
+      };
+      expect(normalizeWorkflowStatus(taskBySource)).toBe("needs_review");
+      expect(getWorkflowStatusPresentation(normalizeWorkflowStatus(taskBySource)).label).toBe(
+        "Needs review",
+      );
+
+      const taskByAction = {
+        allowedAction: "REVIEW_PREGNANCY_LOSS",
+        status: "Pending",
+      };
+      expect(normalizeWorkflowStatus(taskByAction)).toBe("needs_review");
+
+      const taskByWorkflowType = {
+        workflowType: "PregnancyLossReview",
+        status: "Pending",
+      };
+      expect(normalizeWorkflowStatus(taskByWorkflowType)).toBe("needs_review");
+    });
   });
 });

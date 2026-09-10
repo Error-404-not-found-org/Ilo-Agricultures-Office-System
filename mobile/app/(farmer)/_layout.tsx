@@ -21,11 +21,13 @@ export default function FarmerLayout() {
       <Stack.Screen name="ask-moowie" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="record-calving" />
+      <Stack.Screen name="report-pregnancy-loss" />
       <Stack.Screen name="pregnancy-tracker" />
       <Stack.Screen name="health-request-detail" />
       <Stack.Screen name="ai-request-detail" />
       <Stack.Screen name="health-report-preview" />
       <Stack.Screen name="animal-record-detail" />
+      <Stack.Screen name="record-details" />
       <Stack.Screen name="ai-report-preview" />
       <Stack.Screen name="sync-center" />
       <Stack.Screen name="breeding-calendar" />

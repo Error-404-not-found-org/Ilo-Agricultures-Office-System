@@ -158,3 +158,76 @@ test("Farmer breeding milestones expose canonical identifiers, readiness, and ac
   assert.equal(String(calving.taskId), ids.calvingTask);
   assert.equal(failedAttemptMilestone, undefined);
 });
+
+test("Backend heat_check milestone strictly respects Day 18–25 observation window", async (t) => {
+  const originals = {
+    inseminationFind: Insemination.find,
+    pregnancyFind: Pregnancy.find,
+    calvingFind: Calving.find,
+    taskFind: Task.find,
+    configFindOne: Config.findOne,
+  };
+
+  const animal = {
+    _id: ids.animal,
+    animalId: "COW-1825",
+    earTag: "EAR-1825",
+    species: "Cattle",
+    breed: "Angus",
+  };
+
+  t.after(() => {
+    Insemination.find = originals.inseminationFind;
+    Pregnancy.find = originals.pregnancyFind;
+    Calving.find = originals.calvingFind;
+    Task.find = originals.taskFind;
+    Config.findOne = originals.configFindOne;
+  });
+
+  Pregnancy.find = () => queryResult([]);
+  Calving.find = () => queryResult([]);
+  Task.find = () => queryResult([]);
+  Config.findOne = () => queryResult(null);
+
+  const testDays = [17, 18, 21, 25, 26];
+
+  for (const days of testDays) {
+    const attemptId = `507f1f77bcf86cd7994390${days}`;
+    Insemination.find = () => queryResult([
+      {
+        _id: attemptId,
+        farmerId: ids.farmer,
+        animalId: animal,
+        status: "done",
+        isSuccess: null,
+        inseminationDate: daysAgo(days),
+        farmerOutcomeReport: null,
+      },
+    ]);
+
+    const recorder = { statusCode: 200, body: null };
+    const response = {
+      status(code) { recorder.statusCode = code; return this; },
+      json(payload) { recorder.body = payload; return this; },
+    };
+
+    await getBreedingMilestones(
+      { user: { _id: ids.farmer, role: "farmer" } },
+      response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    const heat = recorder.body.find((item) => item.type === "heat_check");
+
+    if (days >= 18 && days <= 25) {
+      assert.ok(heat, `Day ${days} post-AI MUST generate heat_check milestone`);
+      assert.equal(String(heat.relatedId), attemptId);
+    } else {
+      assert.equal(
+        heat,
+        undefined,
+        `Day ${days} post-AI MUST NOT generate heat_check milestone`,
+      );
+    }
+  }
+});

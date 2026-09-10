@@ -78,6 +78,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     };
     Pregnancy.countDocuments = () => Promise.resolve(0);
     Calving.countDocuments = () => Promise.resolve(0);
+    Task.countDocuments = () => Promise.resolve(0);
     Animal.countDocuments = () => Promise.resolve(0);
     Animal.aggregate = () => Promise.resolve([]);
 

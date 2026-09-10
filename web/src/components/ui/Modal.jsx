@@ -21,6 +21,7 @@ export default function Modal({
   bodyClassName = "",
   closeOnBackdropClick = false,
   closeOnEscape = false,
+  backdropClassName = "bg-neutral/60",
 }) {
   const dialogRef = useRef(null);
   const titleId = `modal-title-${useId().replaceAll(":", "")}`;
@@ -160,13 +161,20 @@ export default function Modal({
         </div>
       </div>
       {closeOnBackdropClick ? (
-        <form method="dialog" className="modal-backdrop bg-neutral/60">
+        <form
+          method="dialog"
+          className={`modal-backdrop ${backdropClassName}`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            onClose?.();
+          }}
+        >
           <button type="submit" aria-label="Close dialog">
             close
           </button>
         </form>
       ) : (
-        <div className="modal-backdrop bg-neutral/60 cursor-default" />
+        <div className={`modal-backdrop ${backdropClassName} cursor-default`} />
       )}
     </dialog>
   );

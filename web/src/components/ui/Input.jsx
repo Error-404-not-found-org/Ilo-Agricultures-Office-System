@@ -44,12 +44,12 @@ export default function Input({
           required={required}
           aria-invalid={Boolean(error)}
           aria-describedby={describedBy}
-          className={`input input-bordered w-full bg-base-100 text-sm text-base-content placeholder:text-base-content/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+          className={`input input-bordered w-full bg-base-100 text-sm text-base-content placeholder:text-base-content/60 focus:outline-none focus:border-primary focus-visible:outline-none focus-visible:border-primary ${
             Icon ? "pl-11" : ""
           } ${
             error
               ? "input-error"
-              : "focus:outline-primary"
+              : ""
           }`}
         />
       </div>

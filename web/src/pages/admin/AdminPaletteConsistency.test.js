@@ -10,18 +10,19 @@ const normalizedAdminFiles = [
   "src/pages/admin/Dashboard.jsx",
   "src/pages/admin/Inseminations.jsx",
   "src/pages/admin/Livestock.jsx",
-  "src/pages/admin/Monitoring.jsx",
   "src/pages/admin/Reports.jsx",
   "src/pages/admin/Settings.jsx",
   "src/pages/admin/SupportTickets.jsx",
   "src/pages/admin/TechnicianProfile.jsx",
-  "src/pages/admin/Technicians.jsx",
+  "src/pages/admin/UserDetails.jsx",
   "src/pages/admin/Users.jsx",
   "src/components/layout/Sidebar.jsx",
   "src/components/layout/Topbar.jsx",
   "src/components/dialogs/AdminRequestActions.jsx",
-  "src/components/dialogs/ActivityDetailsModal.jsx",
   "src/components/dialogs/RequestActionModal.jsx",
+  "src/components/dialogs/TechnicianInviteDialog.jsx",
+  "src/components/admin/users/UserDirectoryCards.jsx",
+  "src/components/admin/users/UserDirectoryTable.jsx",
 ];
 
 const deprecatedPalettePattern =
@@ -49,9 +50,9 @@ describe("Admin semantic palette consistency", () => {
   );
 
   it("uses consistent primary button variants for principal Admin actions", () => {
-    expect(read("src/pages/admin/Technicians.jsx")).toContain(
-      'className="btn btn-primary btn-sm"',
-    );
+    expect(
+      read("src/components/dialogs/TechnicianInviteDialog.jsx"),
+    ).toContain('className="btn btn-primary btn-sm"');
     expect(read("src/pages/admin/Settings.jsx")).toContain(
       'className="btn btn-primary btn-sm"',
     );
@@ -60,14 +61,17 @@ describe("Admin semantic palette consistency", () => {
     );
   });
 
-  it("keeps the Technician roster readable and restores profile avatars", () => {
-    const technicians = read("src/pages/admin/Technicians.jsx");
+  it("keeps canonical Technician directories and profile avatars wired", () => {
+    const users = read("src/pages/admin/Users.jsx");
+    const cards = read("src/components/admin/users/UserDirectoryCards.jsx");
+    const table = read("src/components/admin/users/UserDirectoryTable.jsx");
 
-    expect(technicians).toContain('import UserAvatar from "../../components/ui/UserAvatar"');
-    expect(technicians).toContain("<UserAvatar");
-    expect(technicians).toContain("tech.imageUrl || tech.profileImage");
-    expect(technicians).toContain('className="rounded-full"');
-    expect(technicians).toContain("text-base-content/90");
+    expect(users).toContain("UserDirectoryCards");
+    expect(users).toContain("UserDirectoryTable");
+    expect(cards).toContain("UserAvatar");
+    expect(table).toContain("UserAvatar");
+    expect(cards).toContain("/admin/users/");
+    expect(table).toContain("/admin/users/");
   });
 
   it("preserves the Dashboard and Sidebar structures", () => {

@@ -3,6 +3,10 @@ import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import cloudinary from "../config/cloudinary.js";
+import {
+  uploadImages,
+  cleanupUploadedAssets,
+} from "../services/image-upload.service.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
 import { resolveRequestLocation } from "../domain/geographic/municipalityResolver.js";
 import {
@@ -123,31 +127,87 @@ export const createHealthRequest = async (req, res) => {
     };
 
     if (photos !== undefined) {
-      if (!Array.isArray(photos) || !photos.every(p => typeof p === "string")) {
-        return res.status(400).json({ code: "INVALID_PHOTOS", message: "Photos must be an array of strings." });
+      if (!Array.isArray(photos) || !photos.every((p) => typeof p === "string")) {
+        return res.status(400).json({
+          code: "INVALID_PHOTOS",
+          message: "Photos must be an array of strings.",
+        });
       }
       if (photos.length > 5) {
-        return res.status(400).json({ code: "TOO_MANY_PHOTOS", message: "Maximum of 5 photos allowed." });
+        return res.status(400).json({
+          code: "TOO_MANY_PHOTOS",
+          message: "Maximum of 5 photos allowed.",
+        });
       }
     }
-    const normalizedPhotos = (photos || []).map(p => p.trim()).filter(p => p.length > 0);
 
-    const request = await createHealthRequestWithGuard({
-      farmerId,
-      animalId,
-      requestType: normalizedRequestType,
-      symptoms: normalizedSymptoms,
-      urgency: normalizedUrgency,
-      imageUrl: imageUrl || "",
-      farmerNotes: normalizedRequestDetails
-        ? normalizedRequestDetails.farmerDescription
-        : normalizedFarmerNotes,
-      ...(normalizedRequestDetails
-        ? { requestDetails: normalizedRequestDetails }
-        : {}),
-      photos: normalizedPhotos,
-      dispatch: dispatchSnapshot,
-    });
+    // Candidate image selection per Amendment 2:
+    // - if photos is an array AND contains at least one nonblank image: use photos
+    // - otherwise, if imageUrl is a nonblank string: use [imageUrl]
+    // - otherwise: use []
+    const nonBlankPhotos = Array.isArray(photos)
+      ? photos.filter((p) => typeof p === "string" && p.trim().length > 0)
+      : [];
+
+    let candidatePhotos = [];
+    if (Array.isArray(photos) && nonBlankPhotos.length > 0) {
+      candidatePhotos = photos;
+    } else if (typeof imageUrl === "string" && imageUrl.trim().length > 0) {
+      candidatePhotos = [imageUrl.trim()];
+    } else {
+      candidatePhotos = [];
+    }
+
+    if (candidatePhotos.length > 5) {
+      return res.status(400).json({
+        code: "TOO_MANY_PHOTOS",
+        message: "Maximum of 5 photos allowed.",
+      });
+    }
+
+    let uploadResults = [];
+    try {
+      if (candidatePhotos.length > 0) {
+        uploadResults = await uploadImages(candidatePhotos, {
+          folder: "health_requests",
+        });
+      }
+    } catch (uploadErr) {
+      console.error("[Health Request Image Upload Error]", uploadErr.message);
+      return res.status(uploadErr.status || 400).json({
+        message: uploadErr.message || "Image upload failed.",
+        code: uploadErr.code || "IMAGE_UPLOAD_FAILED",
+      });
+    }
+
+    const normalizedPhotos = uploadResults.map((r) => r.url);
+    const normalizedImageUrl =
+      normalizedPhotos.length > 0 ? normalizedPhotos[0] : "";
+
+    let request;
+    try {
+      request = await createHealthRequestWithGuard({
+        farmerId,
+        animalId,
+        requestType: normalizedRequestType,
+        symptoms: normalizedSymptoms,
+        urgency: normalizedUrgency,
+        imageUrl: normalizedImageUrl,
+        farmerNotes: normalizedRequestDetails
+          ? normalizedRequestDetails.farmerDescription
+          : normalizedFarmerNotes,
+        ...(normalizedRequestDetails
+          ? { requestDetails: normalizedRequestDetails }
+          : {}),
+        photos: normalizedPhotos,
+        dispatch: dispatchSnapshot,
+      });
+    } catch (persistErr) {
+      // If HealthRequest persistence fails after successful Cloudinary upload,
+      // clean up all newly uploaded assets from this operation
+      await cleanupUploadedAssets(uploadResults);
+      throw persistErr;
+    }
 
     console.log(`[Health Request Created] Farmer: ${farmerId} | Animal: ${animal.animalId} | Type: ${requestType} | Urgency: ${urgency}`);
 
@@ -508,6 +568,7 @@ export const updateHealthRequestStatus = async (req, res) => {
     if (status === "scheduled") {
       updateFields.scheduledDate = normalizedScheduledDate;
       updateFields.visitPeriod = normalizedVisitPeriod;
+      updateFields.handlingMethod = "farm_visit";
     }
     if (status === "in-progress" && !existing.serviceStartedAt) {
       updateFields.serviceStartedAt = new Date();

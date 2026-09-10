@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  TECHNICIAN_MY_WORK_COMPLETED_TARGET,
+  TECHNICIAN_RECORDS_TARGET,
   runConfirmedHealthResponseSubmission,
 } from "./healthResponseSubmission.ts";
 
-test("targets the canonical Technician My Work completed view", () => {
-  assert.deepEqual(TECHNICIAN_MY_WORK_COMPLETED_TARGET, {
-    pathname: "/(technician)/(tabs)/technician.requests",
-    params: { section: "myWork", workState: "completed" },
+test("targets the canonical Technician Records view", () => {
+  assert.deepEqual(TECHNICIAN_RECORDS_TARGET, {
+    pathname: "/(technician)/(tabs)/technician.records",
   });
 });
 

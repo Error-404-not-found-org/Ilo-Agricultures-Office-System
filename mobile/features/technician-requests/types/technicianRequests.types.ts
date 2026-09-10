@@ -195,6 +195,7 @@ export type TechnicianWorkTimingKind =
   | "unscheduled";
 
 export type TechnicianWorkState =
+  | "needs_response"
   | "needs_scheduling"
   | "scheduled"
   | "needs_confirmation"
@@ -277,6 +278,7 @@ export interface RequestFilters {
   sortBy?: "newest" | "distance" | "preferredDate" | "oldest";
   municipality?: string;
   barangay?: string;
+  includeOperationalTasks?: boolean;
   includeCounts?: boolean;
 }
 

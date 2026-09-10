@@ -13,6 +13,12 @@ export const buildFarmerHealthRequest = (request) => {
   const result = toPlainHealthRequest(request);
   if (!result) return result;
 
+  const technicianDisplayName =
+    result?.assignedTechnicianId?.name || result?.handledBy?.name || "";
+  if (technicianDisplayName) {
+    result.technicianDisplayName = technicianDisplayName;
+  }
+
   delete result.technicianNote;
   delete result.assignedTechnicianId;
   delete result.activeCaseKey;

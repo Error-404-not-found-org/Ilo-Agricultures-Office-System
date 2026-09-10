@@ -53,7 +53,7 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="drawer lg:drawer-open h-screen bg-base-100 text-base-content font-sans antialiased">
+    <div className="drawer h-dvh min-h-0 bg-base-100 font-sans text-base-content antialiased lg:drawer-open">
       <input
         id="app-navigation-drawer"
         type="checkbox"
@@ -64,8 +64,10 @@ export default function Layout() {
         }}
         aria-label="Open application navigation"
       />
-      <div className="drawer-content flex min-w-0 flex-col h-screen overflow-hidden">
-        <Outlet />
+      <div className="drawer-content flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden">
+        <main className="admin-main-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+          <Outlet />
+        </main>
       </div>
       <div className="drawer-side z-40">
         <label

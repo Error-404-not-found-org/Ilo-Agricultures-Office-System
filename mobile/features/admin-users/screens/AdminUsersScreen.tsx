@@ -35,8 +35,10 @@ import {
   getCapabilityLabels,
   getDispatchReadinessPresentation,
   getFieldAreaLabel,
+  getProfileClaimStatePresentation,
   getReceiveRequestsPresentation,
 } from "../utils/dispatchPresentation";
+import { isOperationalUser } from "../utils/operationalUsers";
 
 const PRIMARY = "#1e3a5f";
 
@@ -44,7 +46,6 @@ const ROLE_COLORS: Record<
   string,
   { bg: string; text: string; accent: string }
 > = {
-  admin: { bg: "#FEF3C7", text: "#92400e", accent: "#d97706" },
   technician: { bg: "#DBEAFE", text: "#1d4ed8", accent: "#2563eb" },
   farmer: { bg: "#D1FAE5", text: "#065f46", accent: "#16a34a" },
 };
@@ -249,13 +250,6 @@ export default function AdminUsersScreen() {
           color="#2563eb"
           isActive={activeStatKey === "technician"}
           onPress={() => handleStatPress("technician")}
-        />
-        <StatChip
-          label="Admins"
-          count={userStats.admins}
-          color="#d97706"
-          isActive={activeStatKey === "admin"}
-          onPress={() => handleStatPress("admin")}
         />
         <StatChip
           label="Suspended"
@@ -543,10 +537,14 @@ const UserCard = React.memo(function UserCard({
   onLongPress: () => void;
 }) {
   const { colors, isDark } = useTheme();
-  const roleStyle = ROLE_COLORS[item.role] || ROLE_COLORS.farmer;
+  if (!isOperationalUser(item)) return null;
+
+  const roleStyle = ROLE_COLORS[item.role];
   const hasImage = !!item.imageUrl;
   const accountState = getAccountStatePresentation(item);
+  const profileClaimState = getProfileClaimStatePresentation(item);
   const dispatchReadiness = getDispatchReadinessPresentation(item);
+  const isProfileUnclaimed = profileClaimState.label === "Not Claimed";
   const fieldArea = getFieldAreaLabel(item.dispatchProfile);
   const capabilities = getCapabilityLabels(item.dispatchProfile);
   const receiveRequests = getReceiveRequestsPresentation(item.dispatchProfile);
@@ -631,21 +629,31 @@ const UserCard = React.memo(function UserCard({
               flexWrap: "wrap",
             }}
           >
-            <StatusBadge
-              label={
-                item.role === "admin"
-                  ? "Administrator"
-                  : item.role === "technician"
-                    ? "Technician"
-                    : "Farmer"
-              }
-            />
-            <StatusBadge label={accountState.label} variant={accountState.tone} />
-            {item.role === "technician" && (
+            {isProfileUnclaimed ? (
               <StatusBadge
-                label={dispatchReadiness.title}
-                variant={dispatchReadiness.tone}
+                label={profileClaimState.label}
+                variant={profileClaimState.tone}
               />
+            ) : (
+              <>
+                <StatusBadge
+                  label={item.role === "technician" ? "Technician" : "Farmer"}
+                />
+                <StatusBadge
+                  label={accountState.label}
+                  variant={accountState.tone}
+                />
+                <StatusBadge
+                  label={profileClaimState.label}
+                  variant={profileClaimState.tone}
+                />
+                {item.role === "technician" && (
+                  <StatusBadge
+                    label={dispatchReadiness.title}
+                    variant={dispatchReadiness.tone}
+                  />
+                )}
+              </>
             )}
           </View>
         </View>
@@ -793,6 +801,8 @@ const UserCard = React.memo(function UserCard({
                 </Text>
               </Text>
             </View>
+            {!isProfileUnclaimed && (
+              <>
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
               {dispatchReadiness.eligible ? (
                 <CircleCheck size={14} color="#16a34a" />
@@ -826,6 +836,8 @@ const UserCard = React.memo(function UserCard({
                 {capabilities.length ? ` · ${capabilities.join(", ")}` : " · No capabilities assigned"}
               </Text>
             </View>
+              </>
+            )}
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
             >

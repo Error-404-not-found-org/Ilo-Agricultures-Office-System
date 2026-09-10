@@ -11,6 +11,8 @@ import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { Task } from "../src/models/task.model.js";
 import { User } from "../src/models/user.model.js";
 import { Animal } from "../src/models/animal.model.js";
+import { Pregnancy } from "../src/models/pregnancy.model.js";
+import { Calving } from "../src/models/calving.model.js";
 
 const ids = {
   technician: "507f1f77bcf86cd799439001",
@@ -33,6 +35,12 @@ const ids = {
   otherHealth: "507f1f77bcf86cd799439018",
   linkedHealthTask: "507f1f77bcf86cd799439019",
   linkedLegacyAiTask: "507f1f77bcf86cd799439020",
+  pregnancy: "507f1f77bcf86cd799439021",
+  calving: "507f1f77bcf86cd799439022",
+  legacyAnimal: "507f1f77bcf86cd799439023",
+  legacyFarmer: "507f1f77bcf86cd799439024",
+  noLocationAnimal: "507f1f77bcf86cd799439025",
+  noLocationFarmer: "507f1f77bcf86cd799439026",
 };
 
 const farmer = {
@@ -244,6 +252,8 @@ const installHarness = (t) => {
     medicalRecordFind: MedicalRecord.find,
     userFind: User.find,
     animalFind: Animal.find,
+    pregnancyFind: Pregnancy.find,
+    calvingFind: Calving.find,
     inseminationCount: Insemination.countDocuments,
     healthCount: HealthRequest.countDocuments,
     taskCount: Task.countDocuments,
@@ -255,6 +265,8 @@ const installHarness = (t) => {
     medicalRecords: [],
     users: [farmer],
     animals: [animal],
+    pregnancies: [],
+    calvings: [],
     queries: { insemination: [], health: [], task: [] },
     limits: { insemination: [], health: [], task: [] },
   };
@@ -290,6 +302,14 @@ const installHarness = (t) => {
     queryResult(
       state.animals.filter((record) => matchesFilter(record, filter)),
     );
+  Pregnancy.find = (filter) =>
+    queryResult(
+      state.pregnancies.filter((record) => matchesFilter(record, filter)),
+    );
+  Calving.find = (filter) =>
+    queryResult(
+      state.calvings.filter((record) => matchesFilter(record, filter)),
+    );
   Insemination.countDocuments = (filter) =>
     singleExecutionCountQuery(
       state.inseminations.filter((record) => matchesFilter(record, filter))
@@ -312,6 +332,8 @@ const installHarness = (t) => {
     MedicalRecord.find = originals.medicalRecordFind;
     User.find = originals.userFind;
     Animal.find = originals.animalFind;
+    Pregnancy.find = originals.pregnancyFind;
+    Calving.find = originals.calvingFind;
     Insemination.countDocuments = originals.inseminationCount;
     HealthRequest.countDocuments = originals.healthCount;
     Task.countDocuments = originals.taskCount;
@@ -455,7 +477,7 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(request.attemptNumber, 2);
       assert.equal(request.previousAttemptId._id, "completed-attempt-1");
       const expectedKeys = [
-        "id", "workflowId", "workflowType", "type", "serviceType",
+        "id", "workflowId", "workflowType", "type", "serviceType", "attachments",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
         "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
         "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt", "farmer",
@@ -533,6 +555,84 @@ test("Technician Work Queue backend contract", async (t) => {
         health: 1,
         pregnancy: 1,
       });
+    },
+  );
+
+  await t.test(
+    "Admin can filter paginated AI and Health requests by assigned Technician",
+    async () => {
+      state.inseminations = [
+        aiRecord({
+          _id: ids.scheduled,
+          approvedBy: ids.technician,
+          technicianId: ids.technician,
+        }),
+        aiRecord({
+          _id: ids.otherScheduled,
+          approvedBy: ids.otherTechnician,
+          technicianId: ids.otherTechnician,
+        }),
+      ];
+      state.healthRequests = [
+        {
+          _id: ids.health,
+          farmerId: farmer,
+          animalId: animal,
+          handledBy: ids.technician,
+          assignedTechnicianId: ids.technician,
+          status: "scheduled",
+          deletedAt: null,
+          createdAt: new Date("2026-08-03T00:00:00.000Z"),
+        },
+        {
+          _id: ids.otherHealth,
+          farmerId: farmer,
+          animalId: animal,
+          handledBy: ids.otherTechnician,
+          assignedTechnicianId: ids.otherTechnician,
+          status: "scheduled",
+          deletedAt: null,
+          createdAt: new Date("2026-08-04T00:00:00.000Z"),
+        },
+      ];
+      state.tasks = [];
+
+      const recorder = responseRecorder();
+      await getTechnicianRequests(
+        {
+          query: {
+            type: "all",
+            status: "all",
+            assignment: "all",
+            assignedTechnicianId: ids.technician,
+            includeOperationalTasks: "false",
+            page: "1",
+            limit: "6",
+          },
+          user: { _id: "507f1f77bcf86cd799439099", role: "admin" },
+        },
+        recorder.response,
+      );
+
+      assert.equal(recorder.statusCode, 200);
+      assert.equal(recorder.body.pagination.total, 2);
+      assert.deepEqual(
+        recorder.body.requests.map((request) => String(request.id)).sort(),
+        [ids.health, ids.scheduled].sort(),
+      );
+
+      const forbidden = responseRecorder();
+      await getTechnicianRequests(
+        {
+          query: {
+            assignment: "all",
+            assignedTechnicianId: ids.otherTechnician,
+          },
+          user: technicianUser,
+        },
+        forbidden.response,
+      );
+      assert.equal(forbidden.statusCode, 403);
     },
   );
 
@@ -715,6 +815,7 @@ test("Technician Work Queue backend contract", async (t) => {
         taskRecord({
           _id: ids.calvingTask,
           taskType: "Calving",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
         }),
       ];
 
@@ -841,6 +942,7 @@ test("Technician Work Queue backend contract", async (t) => {
           handledBy: ids.technician,
           assignedTechnicianId: ids.technician,
           status: "scheduled",
+          handlingMethod: "farm_visit",
           scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
           visitPeriod: "afternoon",
           requestType: "checkup",
@@ -874,7 +976,11 @@ test("Technician Work Queue backend contract", async (t) => {
           taskType: "PD",
           dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
         }),
-        taskRecord({ _id: ids.calvingTask, taskType: "Calving" }),
+        taskRecord({
+          _id: ids.calvingTask,
+          taskType: "Calving",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        }),
       ];
 
       const recorder = responseRecorder();
@@ -889,62 +995,195 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.has(ids.linkedHealthTask), false);
       assert.equal(byId.get(ids.health).taskId, ids.linkedHealthTask);
       assert.equal(byId.get(ids.health).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.health).actionLabel, "Start Visit");
       assert.equal(byId.get(ids.health).schedule.visitPeriod, "afternoon");
       assert.equal(byId.get(ids.health).visitPeriod, "afternoon");
       assert.equal(byId.get(ids.pdTask).workflowType, "PD");
-      assert.equal(byId.get(ids.pdTask).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.pdTask).allowedAction, "RECORD_SERVICE");
+      assert.equal(
+        byId.get(ids.pdTask).actionLabel,
+        "Record Pregnancy Check",
+      );
       assert.equal(byId.get(ids.calvingTask).workflowType, "Calving");
-      assert.equal(byId.get(ids.calvingTask).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.calvingTask).allowedAction, "RECORD_SERVICE");
+      assert.equal(byId.get(ids.calvingTask).actionLabel, "Record Calving");
+
+      state.healthRequests[0] = {
+        ...state.healthRequests[0],
+        handlingMethod: null,
+        visitPeriod: null,
+      };
+      const inconsistentRecorder = responseRecorder();
+      await getWorkQueue(
+        { user: { _id: ids.technician, role: "technician" } },
+        inconsistentRecorder.response,
+      );
+      const inconsistentHealth = inconsistentRecorder.body.data.find(
+        (item) => item.id === ids.health,
+      );
+      assert.equal(inconsistentHealth.allowedAction, "VIEW_DETAILS");
+      assert.equal(inconsistentHealth.actionLabel, "Review Request");
+      assert.equal(
+        inconsistentHealth.stateIssue,
+        "INCOMPLETE_FARM_VISIT_SCHEDULE",
+      );
     },
   );
 
   await t.test(
-    "PD tasks correctly follow the canonical My Work visibility rules",
+    "targeted deep-link lookup remains active-work and owner scoped",
+    async () => {
+      state.inseminations = [
+        aiRecord({ _id: ids.scheduled }),
+        aiRecord({
+          _id: ids.otherScheduled,
+          approvedBy: ids.otherTechnician,
+          technicianId: ids.otherTechnician,
+        }),
+      ];
+      state.healthRequests = [];
+      state.tasks = [
+        taskRecord({
+          _id: ids.pdTask,
+          taskType: "PD",
+          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        }),
+        taskRecord({
+          _id: ids.calvingTask,
+          taskType: "Calving",
+          technicianId: ids.otherTechnician,
+        }),
+      ];
+
+      const ownedRequest = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", requestId: ids.scheduled, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        ownedRequest.response,
+      );
+      assert.deepEqual(ownedRequest.body.data.map((item) => item.id), [ids.scheduled]);
+
+      const foreignRequest = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", requestId: ids.otherScheduled, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        foreignRequest.response,
+      );
+      assert.deepEqual(foreignRequest.body.data, []);
+
+      const ownedTask = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", taskId: ids.pdTask, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        ownedTask.response,
+      );
+      assert.deepEqual(ownedTask.body.data.map((item) => item.id), [ids.pdTask]);
+
+      const foreignTask = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", taskId: ids.calvingTask, page: "1", limit: "1" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        foreignTask.response,
+      );
+      assert.deepEqual(foreignTask.body.data, []);
+    },
+  );
+
+  await t.test(
+    "Pregnancy and Calving tasks follow canonical actionable-date visibility",
     async () => {
       state.inseminations = [];
       state.healthRequests = [];
+      const now = Date.now();
+      const futureDueDate = new Date(now + 24 * 60 * 60 * 1000);
+      const dueDate = new Date(now);
+      const overdueDate = new Date(now - 24 * 60 * 60 * 1000);
       state.tasks = [
         taskRecord({
           _id: "pd-future-pending",
           taskType: "PD",
           status: "Pending",
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+          dueDate: futureDueDate,
         }),
         taskRecord({
           _id: "pd-due-pending",
           taskType: "PD",
           status: "Pending",
-          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
+          dueDate,
         }),
         taskRecord({
-          _id: "pd-missing-due-pending",
+          _id: "pd-overdue-pending",
           taskType: "PD",
           status: "Pending",
-          dueDate: null, // Missing/invalid
+          dueDate: overdueDate,
         }),
         taskRecord({
           _id: "pd-in-progress",
           taskType: "PD",
           status: "In Progress",
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Future due date but in progress
+          dueDate: futureDueDate,
         }),
         taskRecord({
           _id: "pd-completed",
           taskType: "PD",
           status: "Completed",
-          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Completed
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "pd-cancelled",
+          taskType: "PD",
+          status: "Cancelled",
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "calving-future-pending",
+          taskType: "CD",
+          status: "Pending",
+          dueDate: futureDueDate,
+        }),
+        taskRecord({
+          _id: "calving-due-pending",
+          taskType: "Calving",
+          status: "Pending",
+          dueDate,
+        }),
+        taskRecord({
+          _id: "calving-overdue-pending",
+          taskType: "CD",
+          status: "Pending",
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "calving-in-progress",
+          taskType: "Calving",
+          status: "In Progress",
+          dueDate: futureDueDate,
+        }),
+        taskRecord({
+          _id: "calving-completed",
+          taskType: "CD",
+          status: "Completed",
+          dueDate: overdueDate,
+        }),
+        taskRecord({
+          _id: "calving-cancelled",
+          taskType: "Calving",
+          status: "Cancelled",
+          dueDate: overdueDate,
         }),
         taskRecord({
           _id: "general-future-pending",
           taskType: "GeneralVisit",
           status: "Pending",
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        }),
-        taskRecord({
-          _id: "general-completed",
-          taskType: "GeneralVisit",
-          status: "Completed",
-          dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          dueDate: futureDueDate,
         }),
       ];
 
@@ -954,19 +1193,25 @@ test("Technician Work Queue backend contract", async (t) => {
         recorder.response,
       );
 
-      const byId = new Map(recorder.body.data.map((item) => [item.id, item]));
-      assert.equal(byId.has("pd-future-pending"), false, "Future pending PD must be hidden");
-      assert.equal(byId.has("pd-due-pending"), true, "Due pending PD must be visible");
-      assert.equal(byId.has("pd-missing-due-pending"), false, "Missing due date PD must be hidden");
-      assert.equal(byId.has("pd-in-progress"), true, "In Progress PD must be visible regardless of due date");
-      assert.equal(byId.has("pd-completed"), false, "Completed PD must be completely hidden from My Work");
-      assert.equal(byId.has("general-future-pending"), true, "Non-PD future tasks must remain visible");
-      assert.equal(byId.has("general-completed"), false, "Completed tasks must not appear in Active My Work");
+      const visibleIds = new Set(recorder.body.data.map((item) => item.id));
+      assert.equal(visibleIds.has("pd-future-pending"), false);
+      assert.equal(visibleIds.has("pd-due-pending"), true);
+      assert.equal(visibleIds.has("pd-overdue-pending"), true);
+      assert.equal(visibleIds.has("pd-in-progress"), true);
+      assert.equal(visibleIds.has("pd-completed"), false);
+      assert.equal(visibleIds.has("pd-cancelled"), false);
+      assert.equal(visibleIds.has("calving-future-pending"), false);
+      assert.equal(visibleIds.has("calving-due-pending"), true);
+      assert.equal(visibleIds.has("calving-overdue-pending"), true);
+      assert.equal(visibleIds.has("calving-in-progress"), true);
+      assert.equal(visibleIds.has("calving-completed"), false);
+      assert.equal(visibleIds.has("calving-cancelled"), false);
+      assert.equal(visibleIds.has("general-future-pending"), true);
 
       const completedRecorder = responseRecorder();
       await getWorkQueue(
         {
-          query: { workState: "completed", page: "1", limit: "20" },
+          query: { workState: "completed", type: "all" },
           user: { _id: ids.technician, role: "technician" },
         },
         completedRecorder.response,
@@ -974,12 +1219,251 @@ test("Technician Work Queue backend contract", async (t) => {
       const completedById = new Map(
         completedRecorder.body.data.map((item) => [item.id, item]),
       );
+      assert.equal(completedById.get("pd-completed").allowedAction, "VIEW_DETAILS");
       assert.equal(
-        completedById.has("general-completed"),
-        true,
-        "Completed standalone tasks remain available in Completed My Work",
+        completedById.get("calving-completed").allowedAction,
+        "VIEW_DETAILS",
       );
-      assert.equal(completedById.has("pd-completed"), false);
+    },
+  );
+
+  await t.test(
+    "reproductive task state and legacy relationship context remain authoritative",
+    async () => {
+      const overdueDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const aiPerformedAt = new Date("2026-08-03T02:00:00.000Z");
+      const followUpCompletedAt = new Date("2026-08-22T02:00:00.000Z");
+      const pregnancyCompletedAt = new Date("2026-08-23T02:00:00.000Z");
+      const calvingCompletedAt = new Date("2026-08-24T02:00:00.000Z");
+      const legacyFarmer = {
+        _id: ids.legacyFarmer,
+        role: "farmer",
+        name: "Legacy Farmer",
+        address: { barangay: "Poblacion South", municipality: "Oton" },
+      };
+      const legacyAnimal = {
+        _id: ids.legacyAnimal,
+        farmerId: ids.legacyFarmer,
+        name: "Legacy Cow",
+        animalId: "02DP",
+        earTag: "02DP",
+        species: "Cattle",
+        breed: "Native",
+        gender: "Female",
+      };
+      const noLocationFarmer = {
+        _id: ids.noLocationFarmer,
+        role: "farmer",
+        name: "Farmer Without Location",
+      };
+      const noLocationAnimal = {
+        _id: ids.noLocationAnimal,
+        farmerId: ids.noLocationFarmer,
+        animalId: "NO-LOCATION",
+        earTag: "NO-LOCATION",
+        species: "Cattle",
+        breed: "Native",
+        gender: "Female",
+      };
+
+      state.users = [farmer, legacyFarmer, noLocationFarmer];
+      state.animals = [animal, legacyAnimal, noLocationAnimal];
+      state.inseminations = [
+        aiRecord({
+          _id: ids.completed,
+          farmerId: legacyFarmer,
+          animalId: legacyAnimal,
+          status: "done",
+          completedAt: null,
+          inseminationDate: aiPerformedAt,
+          outcomeConfirmedAt: followUpCompletedAt,
+        }),
+      ];
+      state.pregnancies = [
+        {
+          _id: ids.pregnancy,
+          animalId: ids.legacyAnimal,
+          farmerId: ids.legacyFarmer,
+          inseminationId: ids.completed,
+          pregnancyDiagnosis: {
+            date: pregnancyCompletedAt,
+            result: "Pregnant",
+          },
+        },
+      ];
+      state.calvings = [
+        {
+          _id: ids.calving,
+          animalId: ids.legacyAnimal,
+          farmerId: ids.legacyFarmer,
+          pregnancyId: ids.pregnancy,
+          inseminationId: ids.completed,
+          date: calvingCompletedAt,
+        },
+      ];
+      state.healthRequests = [];
+      state.tasks = [
+        taskRecord({
+          _id: "active-follow-up",
+          taskType: "BreedingFollowUp",
+          status: "Pending",
+          dueDate: overdueDate,
+          farmerId: undefined,
+          animalIds: [],
+          relatedRecordType: "insemination",
+          relatedRecordId: ids.completed,
+          metadata: {
+            animalId: ids.legacyAnimal,
+            inseminationId: ids.completed,
+          },
+        }),
+        taskRecord({
+          _id: "active-pregnancy",
+          taskType: "PD",
+          status: "Pending",
+          dueDate: overdueDate,
+          farmerId: undefined,
+          animalIds: [ids.legacyAnimal],
+          metadata: { pregnancyId: ids.pregnancy },
+        }),
+        taskRecord({
+          _id: "active-calving",
+          taskType: "Calving",
+          status: "Pending",
+          dueDate: overdueDate,
+          farmerId: undefined,
+          animalIds: [],
+          metadata: { pregnancyId: ids.pregnancy },
+        }),
+        taskRecord({
+          _id: "active-pregnancy-no-location",
+          taskType: "PD",
+          status: "Pending",
+          dueDate: overdueDate,
+          farmerId: undefined,
+          animalIds: [],
+          metadata: { animalId: ids.noLocationAnimal },
+        }),
+        taskRecord({
+          _id: "completed-follow-up",
+          taskType: "BreedingFollowUp",
+          status: "Completed",
+          dueDate: overdueDate,
+          completedAt: null,
+          farmerId: undefined,
+          animalIds: [],
+          relatedRecordType: "insemination",
+          relatedRecordId: ids.completed,
+          metadata: { inseminationId: ids.completed },
+        }),
+        taskRecord({
+          _id: "completed-pregnancy",
+          taskType: "PD",
+          status: "Completed",
+          dueDate: overdueDate,
+          completedAt: null,
+          farmerId: undefined,
+          animalIds: [],
+          metadata: { pregnancyId: ids.pregnancy },
+        }),
+        taskRecord({
+          _id: "completed-calving",
+          taskType: "CD",
+          status: "Completed",
+          dueDate: overdueDate,
+          completedAt: null,
+          farmerId: undefined,
+          animalIds: [],
+          relatedRecordType: "calving",
+          relatedRecordId: ids.calving,
+          metadata: {},
+        }),
+        taskRecord({
+          _id: "completed-standalone",
+          status: "Completed",
+          dueDate: overdueDate,
+          completedAt: null,
+          updatedAt: new Date("2026-08-25T02:00:00.000Z"),
+        }),
+      ];
+
+      const activeRecorder = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", type: "all", limit: "20" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        activeRecorder.response,
+      );
+      assert.equal(activeRecorder.statusCode, 200);
+      const activeById = new Map(
+        activeRecorder.body.data.map((item) => [item.id, item]),
+      );
+      for (const taskId of [
+        "active-follow-up",
+        "active-pregnancy",
+        "active-calving",
+      ]) {
+        const item = activeById.get(taskId);
+        assert.ok(item, `${taskId} should remain active`);
+        assert.equal(item.overdue, true);
+        assert.equal(item.farmer.id, ids.legacyFarmer);
+        assert.equal(item.farmer.name, "Legacy Farmer");
+        assert.equal(item.farmer.location, "Poblacion South, Oton");
+        assert.equal(item.animal.id, ids.legacyAnimal);
+        assert.equal(item.animal.earTag, "02DP");
+        assert.equal(item.animal.species, "Cattle");
+      }
+      assert.equal(activeById.has(ids.completed), false);
+      assert.equal(activeById.has("completed-pregnancy"), false);
+      assert.equal(
+        activeById.get("active-pregnancy-no-location").farmer.name,
+        "Farmer Without Location",
+      );
+      assert.equal(
+        activeById.get("active-pregnancy-no-location").location,
+        "Unknown Location",
+      );
+
+      const completedRecorder = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "completed", type: "all", limit: "20" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        completedRecorder.response,
+      );
+      assert.equal(completedRecorder.statusCode, 200);
+      const completedById = new Map(
+        completedRecorder.body.data.map((item) => [item.id, item]),
+      );
+      assert.equal(completedById.has("active-follow-up"), false);
+      assert.equal(completedById.has("active-pregnancy"), false);
+      assert.equal(completedById.has("active-calving"), false);
+      assert.equal(completedById.get(ids.completed).completedAt, aiPerformedAt);
+      assert.equal(
+        completedById.get("completed-follow-up").completedAt,
+        followUpCompletedAt,
+      );
+      assert.equal(
+        completedById.get("completed-pregnancy").completedAt,
+        pregnancyCompletedAt,
+      );
+      assert.equal(
+        completedById.get("completed-calving").completedAt,
+        calvingCompletedAt,
+      );
+      assert.equal(
+        completedById.get("completed-calving").context.calvingId,
+        ids.calving,
+      );
+      assert.equal(completedById.get("completed-standalone").completedAt, null);
+      for (const item of completedRecorder.body.data) {
+        assert.equal(item.overdue, false);
+        assert.ok(["VIEW_RECORD", "VIEW_DETAILS"].includes(item.allowedAction));
+      }
+      assert.equal(completedRecorder.body.pagination.total, 5);
+      assert.equal(completedRecorder.body.counts.all, 5);
     },
   );
 
@@ -1329,4 +1813,63 @@ test("Technician Work Queue backend contract", async (t) => {
       );
     },
   );
+
+  await t.test(
+    "assigned pregnancy-loss review appears only in the confirming Technician My Work",
+    async () => {
+      state.inseminations = [];
+      state.healthRequests = [];
+      state.tasks = [
+        taskRecord({
+          _id: "assigned-pregnancy-loss-review",
+          technicianId: ids.technician,
+          taskType: "BreedingFollowUp",
+          sourceType: "farmer_pregnancy_loss_report",
+          status: "Pending",
+          dueDate: new Date(),
+          relatedRecordType: "pregnancy",
+          relatedRecordId: ids.pregnancy,
+          metadata: {
+            workflowStage: "pregnancy_loss_review",
+            reportId: "507f1f77bcf86cd799439027",
+            pregnancyId: ids.pregnancy,
+            animalId: ids.animal,
+            farmerId: ids.farmer,
+            reportStatus: "pending_review",
+          },
+        }),
+      ];
+
+      const myWork = responseRecorder();
+      await getWorkQueue(
+        {
+          query: { workState: "active", type: "pregnancy", page: "1", limit: "20" },
+          user: { _id: ids.technician, role: "technician" },
+        },
+        myWork.response,
+      );
+      const assigned = myWork.body.data.find(
+        (item) => item.id === "assigned-pregnancy-loss-review",
+      );
+      assert.ok(assigned);
+      assert.equal(assigned.workflowType, "PregnancyLossReview");
+      assert.equal(assigned.allowedAction, "REVIEW_PREGNANCY_LOSS");
+
+      const otherTechnicianOpenRequests = responseRecorder();
+      await getTechnicianRequests(
+        {
+          query: {
+            type: "pregnancy_loss_review",
+            assignment: "unassigned",
+            page: "1",
+            limit: "20",
+          },
+          user: { ...technicianUser, _id: ids.otherTechnician },
+        },
+        otherTechnicianOpenRequests.response,
+      );
+      assert.deepEqual(otherTechnicianOpenRequests.body.requests, []);
+    },
+  );
+
 });

@@ -63,7 +63,7 @@ export const isHealthOfficePickupEligible = (request: any) => {
   }
 
   if (status === "pending") return true;
-  return hasOwner && ["triaged", "assigned", "approved"].includes(status);
+  return hasOwner && ["triaged", "assigned", "approved", "claimed"].includes(status);
 };
 
 export const validateHealthOfficePickupDraft = (

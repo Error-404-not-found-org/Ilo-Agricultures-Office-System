@@ -15,6 +15,9 @@ import {
   assertUserAccess,
   assertAdmin,
   assertTechnicianOrAdmin,
+  assertOperationallyManageableUser,
+  assertOperationalUserRole,
+  getOperationalUserRoleFilter,
 } from "../policies/user.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { sendOtpSms, verifyOtpSms } from "../services/sms.service.js";
@@ -23,7 +26,10 @@ import {
   normalizePhilippineMobileNumber,
 } from "../utils/phone.js";
 import { resolveOrSyncUser } from "../services/auth-user.service.js";
-import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import {
+  getPregnancyCheckReadiness,
+  isFarmerBreedingObservationReminderDay,
+} from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
 import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
@@ -781,6 +787,8 @@ export const createInvitedUser = async (req, res) => {
     const requesterRole = req.user?.role;
     const targetRole = role || "farmer";
 
+    assertOperationalUserRole(targetRole);
+
     if (requesterRole === "technician" && targetRole !== "farmer") {
       return res
         .status(403)
@@ -1095,7 +1103,7 @@ export const getUsers = async (req, res) => {
       }
       query.role = "farmer";
     } else {
-      if (role) query.role = role;
+      query.role = getOperationalUserRoleFilter(role);
     }
 
     // Search by name or email
@@ -1260,7 +1268,10 @@ export const getUsers = async (req, res) => {
     res.status(200).json(responseData);
   } catch (error) {
     console.error("Error fetching users:", error);
-    res.status(500).json({ message: "Failed to fetch users" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch users",
+      code: error.code,
+    });
   }
 };
 
@@ -1274,6 +1285,8 @@ export const deleteUser = async (req, res) => {
     if (!user || user.deletedAt) {
       return res.status(404).json({ message: "User not found" });
     }
+
+    assertOperationallyManageableUser(user);
 
     // Attempt to suspend/deactivate Clerk user
     if (user.clerkId) {
@@ -1300,6 +1313,7 @@ export const deleteUser = async (req, res) => {
       .json({
         message:
           error.message || "Internal server error while deactivating user.",
+        code: error.code,
       });
   }
 };
@@ -1308,12 +1322,15 @@ export const deleteUser = async (req, res) => {
 export const listAllUsersForAdmin = async (req, res) => {
   try {
     const { role } = req.query;
-    const query = role ? { role } : {};
+    const query = { role: getOperationalUserRoleFilter(role) };
     const users = await User.find(query).select("-__v -pushToken").lean();
     res.status(200).json(users);
   } catch (error) {
     console.error("Error listing users for admin:", error);
-    res.status(500).json({ message: "Failed to list users" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to list users",
+      code: error.code,
+    });
   }
 };
 
@@ -1321,8 +1338,11 @@ export const getArchivedUsers = async (req, res) => {
   try {
     assertAdmin(req.user);
     const { role } = req.query;
-    const query = { deletedAt: { $ne: null } };
-    if (role && role !== "all") query.role = role;
+    const requestedRole = role === "all" ? undefined : role;
+    const query = {
+      deletedAt: { $ne: null },
+      role: getOperationalUserRoleFilter(requestedRole),
+    };
 
     const users = await User.find(query)
       .select("-__v -pushToken")
@@ -1334,7 +1354,10 @@ export const getArchivedUsers = async (req, res) => {
     console.error("[getArchivedUsers ERROR]", error);
     res
       .status(error.status || 500)
-      .json({ message: error.message || "Failed to fetch archived users." });
+      .json({
+        message: error.message || "Failed to fetch archived users.",
+        code: error.code,
+      });
   }
 };
 
@@ -1440,7 +1463,7 @@ export const getUserById = async (req, res) => {
           $or: [{ actorId: id }, { entityId: id }],
         })
           .sort({ createdAt: -1 })
-          .limit(30)
+          .limit(5)
           .lean();
       } catch (err) {
         console.error("Error fetching activity history:", err);
@@ -1452,7 +1475,7 @@ export const getUserById = async (req, res) => {
           const sessions = await clerkClient.sessions.getSessionList({
             userId: user.clerkId,
           });
-          loginHistory = sessions.map((s) => ({
+          loginHistory = sessions.slice(0, 5).map((s) => ({
             id: s.id,
             status: s.status,
             lastActiveAt: s.lastActiveAt,
@@ -1512,6 +1535,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       const healthHistory = await HealthRequest.find({
         handledBy: id,
@@ -1519,6 +1543,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       serviceHistory = [
         ...insHistory.map((i) => ({ ...i, type: "ai" })),
@@ -1526,7 +1551,7 @@ export const getUserById = async (req, res) => {
       ].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      ).slice(0, 5);
     } else if (user.role === "farmer") {
       const technicianScope = isTechnicianFarmerDetail
         ? {
@@ -1610,6 +1635,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       const healthHistory = await HealthRequest.find({
         farmerId: id,
@@ -1618,6 +1644,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalId", "earTag breed species")
         .sort({ createdAt: -1 })
+        .limit(5)
         .lean();
       const taskHistory = await Task.find({
         farmerId: id,
@@ -1625,7 +1652,7 @@ export const getUserById = async (req, res) => {
       })
         .populate("animalIds", "earTag animalId breed species")
         .sort({ createdAt: -1 })
-        .limit(20)
+        .limit(5)
         .lean();
       serviceHistory = [
         ...insHistory.map((i) => ({ ...i, type: "ai" })),
@@ -1643,7 +1670,7 @@ export const getUserById = async (req, res) => {
       ].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      ).slice(0, 5);
 
       // Fetch custom technician field notes
       try {
@@ -1927,8 +1954,11 @@ export const updateUser = async (req, res) => {
     res.status(200).json({ message: "User updated successfully", user });
   } catch (error) {
     console.error("Error updating user:", error);
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
+    if (error.status || error.statusCode) {
+      return res.status(error.status || error.statusCode).json({
+        message: error.message,
+        code: error.code,
+      });
     }
     if (error.name === "ValidationError") {
       const isBarangayError =
@@ -2150,8 +2180,8 @@ export const getBreedingMilestones = async (req, res) => {
           }
         : null;
 
-      // Heat Watch (21 days) - show between day 15 and day 25 post-AI
-      if (daysSinceAI >= 15 && daysSinceAI <= 25) {
+      // Heat Watch (21 days) - canonical farmer observation reminder window (day 18 to 25 post-AI)
+      if (isFarmerBreedingObservationReminderDay(daysSinceAI)) {
         const heatDate = new Date(aiDate);
         heatDate.setDate(heatDate.getDate() + 21);
 
@@ -2408,6 +2438,8 @@ export const restoreUser = async (req, res) => {
       return res.status(400).json({ message: "User is not deactivated" });
     }
 
+    assertOperationallyManageableUser(user);
+
     // Unban User in Clerk
     if (user.clerkId) {
       try {
@@ -2425,9 +2457,10 @@ export const restoreUser = async (req, res) => {
     res.status(200).json({ message: "User successfully restored", data: user });
   } catch (error) {
     console.error("[restoreUser ERROR]", error);
-    res
-      .status(500)
-      .json({ message: "Failed to restore user", error: error.message });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to restore user",
+      code: error.code,
+    });
   }
 };
 

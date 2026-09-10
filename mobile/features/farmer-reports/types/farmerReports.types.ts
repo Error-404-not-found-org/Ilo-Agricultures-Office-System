@@ -103,6 +103,8 @@ export interface ActivityFeedItem {
     lateEntryReason?: string;
 
     requestType?: string;
+    serviceType?: string;
+    isDirectHealthService?: boolean;
     requestDetails?: {
       version?: number;
       assistanceRequested?: string;
@@ -120,6 +122,13 @@ export interface ActivityFeedItem {
     dosage?: string;
     advice?: string;
     followUpDate?: string;
+    pickupItem?: string;
+    pickupAvailable?: boolean;
+    pickupInstructions?: string;
+    dosageOrUseInstructions?: string;
+    withdrawalGuidance?: string;
+    cancellationReason?: string;
+    cancellationResponseReason?: string;
     withdrawalPeriod?: string;
     withdrawalPeriodDays?: number;
     withdrawalEndDate?: string;

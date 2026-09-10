@@ -1,681 +1,833 @@
-import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import {
-  Calendar,
+  AlertTriangle,
+  ArrowUpRight,
+  CalendarDays,
+  Clock3,
   MapPin,
   Phone,
-  ExternalLink,
+  Tag,
+  User,
+  Building2,
+  Calendar,
+  Info,
+  AlertCircle,
 } from "lucide-react";
 
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
-import Modal from "../../components/ui/Modal";
-import UserAvatar from "../../components/ui/UserAvatar";
-import AIServiceModal from "../../components/dialogs/AIServiceModal";
-import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
-import {
-  getRequestWorkflowSummary,
-  getTaskWorkflowSummary,
-} from "../../utils/reproductionWorkflow";
 import PageMeta from "../../components/layout/PageMeta";
+import Modal from "../../components/ui/Modal";
 import {
-  VisitCalendarFilters,
-  VisitLegendCard,
-  UpcomingVisitsCard,
-} from "../../components/calendar/CalendarComponents";
+  buildScheduleItems,
+  formatScheduleDate,
+  getPhilippineTodayKey,
+} from "../../utils/technicianSchedulePresentation";
 
-// Helper to resolve styles based on visit types
-const getVisitStyles = (visitType) => {
-  const t = visitType?.toLowerCase() || "";
-  if (t.includes("check-up") || t.includes("clinical")) {
-    return {
-      bg: "bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/15",
-      text: "text-emerald-700 dark:text-emerald-300",
-      dot: "bg-emerald-500",
-    };
-  }
-  if (t.includes("vaccination")) {
-    return {
-      bg: "bg-amber-50 border-amber-100 dark:bg-amber-500/10 dark:border-amber-500/15",
-      text: "text-amber-700 dark:text-amber-300",
-      dot: "bg-amber-500",
-    };
-  }
-  if (t.includes("ai service") || t.includes("insemination")) {
-    return {
-      bg: "bg-blue-50 border-blue-100 dark:bg-blue-500/10 dark:border-blue-500/15",
-      text: "text-blue-700 dark:text-blue-300",
-      dot: "bg-blue-500",
-    };
-  }
-  if (t.includes("deworming")) {
-    return {
-      bg: "bg-purple-50 border-purple-100 dark:bg-purple-500/10 dark:border-purple-500/15",
-      text: "text-purple-700 dark:text-purple-300",
-      dot: "bg-purple-500",
-    };
-  }
-  if (t.includes("pregnancy")) {
-    return {
-      bg: "bg-rose-50 border-rose-100 dark:bg-rose-500/10 dark:border-rose-500/15",
-      text: "text-rose-700 dark:text-rose-300",
-      dot: "bg-rose-500",
-    };
-  }
-  return {
-    bg: "bg-teal-50 border-teal-100 dark:bg-teal-500/10 dark:border-teal-500/15",
-    text: "text-teal-700 dark:text-teal-300",
-    dot: "bg-teal-500",
-  };
+const KIND_BADGES = {
+  ai: "badge-info",
+  health: "badge-success",
+  pregnancy: "badge-secondary",
+  breeding_follow_up: "badge-secondary",
+  calving: "badge-warning",
+  task: "badge-neutral",
 };
 
-const getAgendaServiceLabel = (item = {}) => {
-  const type = String(item.taskType || item.type || "").toLowerCase();
-  if (item.type === "task" && type === "pd") {
-    return getTaskWorkflowSummary(item.raw || item).stageLabel;
-  }
-  const serviceType = item.serviceType || item.raw?.requestType;
-  if (serviceType) return String(serviceType).replaceAll("_", " ");
-  if (["ai", "insemination"].includes(type)) return "AI Service";
-  if (["pd", "pregnancy", "pregnancy_check"].includes(type)) return "Pregnancy Diagnosis";
-  if (["health", "treatment"].includes(type)) return "General Check-up";
-  if (type === "vaccination") return "Vaccination";
-  if (type === "deworming") return "Deworming";
-  if (["cd", "calving"].includes(type)) return "Calving Assistance";
-  return item.taskType ? String(item.taskType).replaceAll("_", " ") : "Other Services";
+const TIMING_BADGES = {
+  overdue: "badge-error",
+  due: "badge-warning",
+  upcoming: "badge-ghost",
 };
 
-const getShortServiceBadge = (serviceLabel = "") => {
-  const s = String(serviceLabel).toLowerCase();
-  if (s.includes("artificial insemination") || s.includes("ai")) return "AI";
-  if (s.includes("health")) return "HEALTH";
-  if (s.includes("pregnancy")) return "PREGNANCY";
-  if (s.includes("vaccin")) return "VACCINATION";
-  if (s.includes("deworm")) return "DEWORMING";
-  if (s.includes("calv")) return "CALVING";
-  return "SERVICE";
+const titleCase = (value) =>
+  String(value || "")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const cleanTaskTitle = (title, timingState) => {
+  let clean = String(title || "Work details");
+  if (timingState !== "overdue" && timingState !== "due") {
+    clean = clean.replace(/\s+Due$/i, "");
+  }
+  return clean;
 };
 
-const getCleanTaskTitle = (item = {}, serviceType = "") => {
-  const type = String(item.type || item.taskType || "").toLowerCase();
-  const rawTask = String(item.task || "");
-  if (
-    type.includes("insemination") ||
-    type === "ai" ||
-    serviceType.includes("Artificial Insemination") ||
-    serviceType.includes("AI")
-  ) {
-    const attempt = item.raw?.attemptNumber || 1;
-    return `Artificial Insemination · Attempt ${attempt}`;
+const getSubtitle = (kind) => {
+  if (kind === "pregnancy" || kind === "breeding_follow_up") {
+    return "Scheduled follow-up";
   }
-  if (type.includes("health") || serviceType.includes("Health")) {
-    return "Health Assistance";
-  }
-  if (
-    type.includes("pregnancy") ||
-    type === "pd" ||
-    serviceType.includes("Pregnancy")
-  ) {
-    return "Pregnancy Diagnosis";
-  }
-  return rawTask.split("-")[0]?.trim() || serviceType;
+  return "Upcoming work details";
 };
 
-const getAgendaWorkflowSummary = (item = {}) =>
-  item.type === "task"
-    ? getTaskWorkflowSummary(item.raw || item)
-    : getRequestWorkflowSummary({
-        ...item,
-        type: item.type,
-        serviceLabel: getAgendaServiceLabel(item),
-      });
+const getDateLabel = (kind) => {
+  if (kind === "pregnancy") return "Pregnancy check date";
+  if (kind === "calving") return "Expected calving date";
+  if (kind === "ai" || kind === "health") return "Scheduled visit";
+  return "Due date";
+};
 
-export default function DeploymentSchedule() {
-  const queryClient = useQueryClient();
+const formatPurpose = (item) => {
+  let purpose = item.raw?.notes || item.raw?.description || item.scheduleLabel;
+
+  if (item.scheduleKind === "pregnancy" && item.raw?.notes) {
+    purpose = item.raw.notes
+      .replace(/Pregnancy Diagnosis \(PD\)/gi, "Pregnancy diagnosis")
+      .replace(/ for Animal Tag #?[A-Z0-9]+/gi, "")
+      .trim();
+  }
+  return purpose;
+};
+
+const farmerNameOf = (item) =>
+  item.farmerName ||
+  item.farmer?.name ||
+  item.farmer ||
+  item.raw?.farmerId?.name ||
+  "Farmer not recorded";
+
+const animalReferenceOf = (item) =>
+  item.animalTag ||
+  item.animal?.earTag ||
+  item.animal?.name ||
+  item.raw?.animalId?.earTag ||
+  item.raw?.animalId?.animalId ||
+  item.raw?.animalIds?.[0]?.earTag ||
+  item.raw?.animalIds?.[0]?.animalId ||
+  null;
+
+const locationOf = (item) =>
+  item.farmLocationLabel ||
+  item.location ||
+  item.raw?.farmerId?.address?.barangay ||
+  null;
+
+function ScheduleWorkList({
+  items,
+  emptyMessage,
+  emptyHint,
+  onOpen,
+  hideTimingBadge = false,
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-box border border-dashed border-base-300 bg-base-200/40 px-5 py-10 text-center">
+        <CalendarDays
+          aria-hidden="true"
+          className="mx-auto mb-3 text-base-content/35"
+          size={28}
+        />
+        <p className="font-semibold text-base-content">{emptyMessage}</p>
+        <p className="mt-1 text-sm text-base-content/60">{emptyHint}</p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-1.5 p-1.5">
+      {items.map((item) => {
+        const animal = animalReferenceOf(item);
+        const location = locationOf(item);
+        const timingLabel = titleCase(item.timingState);
+        const navigation = item.navigationTarget;
+
+        return (
+          <li
+            key={String(item.taskId || item.id || item._id)}
+            className="group flex items-start gap-3 rounded-lg border border-base-300 bg-base-200/40 px-3 py-2.5 transition-colors hover:bg-base-200/70"
+          >
+            <div className="mt-0.5 shrink-0 rounded-lg bg-primary/10 p-2 text-primary group-hover:bg-primary/20 transition-colors">
+              {item.scheduleKind === "ai" || item.scheduleKind === "health" ? (
+                <CalendarDays aria-hidden="true" size={16} />
+              ) : (
+                <Clock3 aria-hidden="true" size={16} />
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className={
+                    "badge badge-xs " +
+                    (KIND_BADGES[item.scheduleKind] || "badge-neutral")
+                  }
+                >
+                  {item.scheduleLabel}
+                </span>
+                {!hideTimingBadge && (
+                  <span
+                    className={
+                      "badge badge-xs " +
+                      (TIMING_BADGES[item.timingState] || "badge-ghost")
+                    }
+                  >
+                    {timingLabel}
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-1.5 truncate text-sm font-semibold text-base-content">
+                {farmerNameOf(item)}
+              </p>
+              <div className="mt-0.5 flex flex-col gap-0.5 text-xs text-base-content/60">
+                {animal ? (
+                  <span className="truncate">Animal {animal}</span>
+                ) : null}
+                {location ? (
+                  <span className="flex items-center gap-1 truncate">
+                    <MapPin aria-hidden="true" size={11} className="shrink-0" />
+                    <span className="truncate">{location}</span>
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium text-base-content">
+                  {formatScheduleDate(item.scheduleDate)}
+                </span>
+                {item.periodLabel ? (
+                  <span className="text-xs text-base-content/55">
+                    · {item.periodLabel}
+                  </span>
+                ) : null}
+              </div>
+              {navigation ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs mt-1.5 h-auto px-0 text-primary hover:bg-transparent hover:text-primary/80"
+                  onClick={() => onOpen(navigation, item)}
+                >
+                  {navigation.label}
+                  <ArrowUpRight aria-hidden="true" size={13} />
+                </button>
+              ) : null}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export default function TechnicianSchedule() {
   const navigate = useNavigate();
+  const [selectedDateKey, setSelectedDateKey] = useState(
+    getPhilippineTodayKey(),
+  );
 
-  // ---- FETCH LOGGED-IN TECHNICIAN USER PROFILE ----
-  const { data: dbUser } = useQuery({
-    queryKey: ["user", "me"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/user/me");
-      return res.data;
-    },
-  });
-
-  // ---- FILTERS STATES ----
-  const [selectedRange, setSelectedRange] = useState("all");
-  const [selectedFarm, setSelectedFarm] = useState("all");
-  const [selectedType, setSelectedType] = useState("all");
-
-  // ---- MODAL STATES ----
-  const [isAppointmentMenuOpen, setIsAppointmentMenuOpen] = useState(false);
-  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
-
-  // ---- DATE POPUP MODAL STATE ----
-  const [selectedDayModal, setSelectedDayModal] = useState({
-    isOpen: false,
-    formattedDate: "",
-    requests: [],
-  });
-
-  // ---- FETCH INTEGRATED SCHEDULE DATA ----
-  const { data: rawAgenda = [], isLoading, isError } = useQuery({
+  const {
+    data: rawAgenda = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["technician", "schedule"],
     queryFn: async () => {
-      const res = await axiosInstance.get(
-        "/technician/dashboard-data?fullAgenda=true"
+      const response = await axiosInstance.get(
+        "/technician/dashboard-data?fullAgenda=true&includeFutureDateBoundTasks=true",
       );
-      return res.data.agendaItems || [];
+      return Array.isArray(response.data?.agendaItems)
+        ? response.data.agendaItems
+        : [];
     },
+    staleTime: 30_000,
   });
 
-  // ---- FILTER AGENDA TO ONLY DISPLAY REQUESTS CLAIMED BY THIS SPECIFIC TECHNICIAN ----
-  const claimedAgenda = useMemo(() => {
-    const list = Array.isArray(rawAgenda) ? rawAgenda : [];
-    const myId = dbUser?._id || dbUser?.id;
+  const scheduleItems = useMemo(
+    () => buildScheduleItems(rawAgenda),
+    [rawAgenda],
+  );
 
-    return list.filter((item) => {
-      const raw = item.raw || item;
-      const status = String(item.status || raw.status || "").toLowerCase();
-
-      // Exclude unclaimed / pending requests
-      if (status === "pending" || status === "unassigned") return false;
-
-      // Admins view full claimed schedule
-      if (dbUser?.role === "admin") return true;
-
-      // If user profile not loaded yet, default to active non-pending
-      if (!myId) return true;
-
-      const techIds = [
-        raw.approvedBy?._id,
-        raw.approvedBy,
-        raw.handledBy?._id,
-        raw.handledBy,
-        raw.technicianId?._id,
-        raw.technicianId,
-        raw.assignedTechnicianId?._id,
-        raw.assignedTechnicianId,
-        raw.createdBy?._id,
-        raw.createdBy,
-        item.approvedBy,
-        item.handledBy,
-        item.technicianId,
-      ]
-        .filter(Boolean)
-        .map((id) => String(id));
-
-      if (techIds.length === 0) return true;
-      return techIds.includes(String(myId));
+  const groupedByDate = useMemo(() => {
+    const groups = new Map();
+    scheduleItems.forEach((item) => {
+      if (!item.scheduleDateKey) return;
+      const existing = groups.get(item.scheduleDateKey) || [];
+      existing.push(item);
+      groups.set(item.scheduleDateKey, existing);
     });
-  }, [rawAgenda, dbUser]);
+    return groups;
+  }, [scheduleItems]);
 
-  // ---- GROUP SCHEDULED REQUESTS BY DAY (YYYY-MM-DD) ----
-  const dayGroupedRequests = useMemo(() => {
-    const map = new Map();
-    (claimedAgenda || []).forEach((item) => {
-      const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
-      if (!itemDateVal) return;
-      const d = new Date(itemDateVal);
-      if (Number.isNaN(d.getTime())) return;
-
-      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const serviceType = getAgendaServiceLabel(item);
-      const farm = item.farmLocationLabel || item.location || "Location unavailable";
-
-      // Apply Filter constraints
-      if (selectedFarm !== "all" && farm !== selectedFarm) return;
-      if (selectedType !== "all" && serviceType !== selectedType) return;
-      if (selectedRange !== "all") {
-        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        if (monthKey !== selectedRange) return;
-      }
-
-      if (!map.has(dateKey)) {
-        map.set(dateKey, {
-          dateKey,
-          dateObj: d,
-          requests: [],
-        });
-      }
-      map.get(dateKey).requests.push(item);
-    });
-    return map;
-  }, [claimedAgenda, selectedFarm, selectedType, selectedRange]);
-
-  // ---- MAP TO SUMMARY COUNT EVENTS FOR FULLCALENDAR ----
-  const events = useMemo(() => {
-    return [...dayGroupedRequests.values()].map(({ dateKey, requests, dateObj }) => {
-      const formattedDate = dateObj.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-      const count = requests.length;
-      return {
-        id: `summary-${dateKey}`,
+  const calendarEvents = useMemo(
+    () =>
+      Array.from(groupedByDate.entries()).map(([dateKey, items]) => ({
+        id: "schedule-" + dateKey,
         start: dateKey,
-        title: `${count} ${count === 1 ? "request" : "requests"}`,
         allDay: true,
-        extendedProps: {
-          isSummaryCount: true,
-          dateKey,
-          formattedDate,
-          requests,
-        },
-      };
-    });
-  }, [dayGroupedRequests]);
+        title:
+          String(items.length) +
+          (items.length === 1 ? " work item" : " work items"),
+        extendedProps: { dateKey },
+      })),
+    [groupedByDate],
+  );
 
-  const rangeOptions = useMemo(() => {
-    const months = new Map();
-    (claimedAgenda || []).forEach((item) => {
-      const dateVal = item.scheduledDate || item.preferredDate || item.displayDate;
-      const date = dateVal ? new Date(dateVal) : null;
-      if (!date || Number.isNaN(date.getTime())) return;
-      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      months.set(
-        value,
-        date.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+  const selectedDayItems = groupedByDate.get(selectedDateKey) || [];
+  const overdueItems = scheduleItems.filter(
+    (item) => item.timingState === "overdue",
+  );
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [previewItem, setPreviewItem] = useState(null);
+
+  const previewTaskId = searchParams.get("previewTaskId");
+  const previewRequestId = searchParams.get("previewRequestId");
+
+  useEffect(() => {
+    if (previewTaskId) {
+      const matched = scheduleItems.find(
+        (item) => String(item.taskId || item.id || item._id) === previewTaskId,
       );
-    });
-    return [...months.entries()].map(([value, label]) => ({ value, label }));
-  }, [claimedAgenda]);
+      if (matched) {
+        setPreviewItem(matched);
+      }
+    } else if (previewRequestId) {
+      const matched = scheduleItems.find(
+        (item) =>
+          String(item.workflowId || item.requestId || item.id || item._id) ===
+          previewRequestId,
+      );
+      if (matched) {
+        setPreviewItem(matched);
+      }
+    }
+  }, [previewTaskId, previewRequestId, scheduleItems]);
 
-  const farmOptions = useMemo(() => {
-    const farms = (claimedAgenda || []).map(
-      (item) => item.farmLocationLabel || item.location
-    ).filter(Boolean);
-    return [...new Set(farms)].sort();
-  }, [claimedAgenda]);
-
-  const typeOptions = useMemo(() => {
-    const types = (claimedAgenda || []).map((item) => getAgendaServiceLabel(item)).filter(Boolean);
-    return [...new Set(types)].sort();
-  }, [claimedAgenda]);
-
-  // ---- FILTER UPCOMING VISITS LIST FOR SIDEBAR ----
-  const upcomingVisits = useMemo(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return (claimedAgenda || [])
-      .filter((item) => {
-        const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
-        if (!itemDateVal) return false;
-        const d = new Date(itemDateVal);
-        d.setHours(0, 0, 0, 0);
-        return d.getTime() >= now.getTime();
-      })
-      .slice(0, 5)
-      .map((item) => ({
-        id: item.id || item._id,
-        serviceType: getAgendaServiceLabel(item),
-        animalName: item.animalTag || item.task || "Animal not recorded",
-        farmName: item.farmLocationLabel || item.location || "Location unavailable",
-        time: item.time || "Time unavailable",
-        date: new Date(item.scheduledDate || item.preferredDate || item.displayDate).toLocaleDateString(undefined, {
-          month: "short",
-          day: "numeric",
-        }),
-        contextLabel: `${getAgendaWorkflowSummary(item).sourceLabel} · ${getAgendaWorkflowSummary(item).nextActionLabel}`,
-      }));
-  }, [claimedAgenda]);
-
-  // ---- CALENDAR CLICK HANDLERS ----
-  const handleEventClick = (clickInfo) => {
-    clickInfo.jsEvent.preventDefault();
-    const extProps = clickInfo.event.extendedProps;
-    if (extProps.requests) {
-      setSelectedDayModal({
-        isOpen: true,
-        formattedDate: extProps.formattedDate,
-        requests: extProps.requests,
-      });
+  const closePreview = () => {
+    setPreviewItem(null);
+    if (previewTaskId || previewRequestId) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("previewTaskId");
+          next.delete("previewRequestId");
+          return next;
+        },
+        { replace: true },
+      );
     }
   };
 
-  const handleDateClick = (arg) => {
-    const dateKey = arg.dateStr;
-    const group = dayGroupedRequests.get(dateKey);
-    const dateObj = new Date(dateKey);
-    const formattedDate = !Number.isNaN(dateObj.getTime())
-      ? dateObj.toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        })
-      : dateKey;
-    setSelectedDayModal({
-      isOpen: true,
-      formattedDate,
-      requests: group ? group.requests : [],
-    });
-  };
-
-  const renderEventContent = (eventInfo) => {
-    const count = eventInfo.event.extendedProps.requests?.length || 1;
-    const requests = eventInfo.event.extendedProps.requests || [];
-    const formattedDate = eventInfo.event.extendedProps.formattedDate || "";
-
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setSelectedDayModal({
-            isOpen: true,
-            formattedDate,
-            requests,
-          });
-        }}
-        className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs font-black bg-primary text-primary-content rounded-xl shadow-xs hover:opacity-90 transition-all cursor-pointer border-none"
-      >
-        <Calendar size={13} className="shrink-0" />
-        <span>
-          {count} {count === 1 ? "request" : "requests"}
-        </span>
-      </button>
-    );
+  const openWork = (target, item) => {
+    if (
+      target?.action === "preview" ||
+      target?.isUpcoming ||
+      item?.timingState === "upcoming"
+    ) {
+      setPreviewItem(item);
+      return;
+    }
+    navigate(target.path + target.search);
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
+    <div className="min-h-full bg-base-200/40">
+      {/* FullCalendar styles */}
+      <style>{`
+        /* ── All themes — interactivity + consistent typography ── */
+        .fc-daygrid-day { cursor: pointer; }
+        .fc-daygrid-day-frame { transition: background-color 0.15s ease; }
+        .fc-daygrid-day:hover .fc-daygrid-day-frame {
+          background-color: color-mix(in oklch, var(--color-primary) 7%, transparent);
+        }
+        .fc-day-selected .fc-daygrid-day-frame {
+          background-color: color-mix(in oklch, var(--color-primary) 14%, transparent);
+          outline: 2px solid color-mix(in oklch, var(--color-primary) 55%, transparent);
+          outline-offset: -2px;
+          border-radius: 4px;
+        }
+
+        /* Typography — same in both themes */
+        .fc-col-header-cell-cushion {
+          font-weight: 700;
+          font-size: 0.65rem;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          text-decoration: none !important;
+          padding: 8px 4px;
+        }
+        .fc-daygrid-day-number {
+          font-size: 0.75rem;
+          font-weight: 500;
+          padding: 4px 6px;
+          opacity: 0.75;
+        }
+        .fc-day-today .fc-daygrid-day-number {
+          font-weight: 800;
+          opacity: 1;
+          border-radius: 9999px;
+          width: 1.6rem;
+          height: 1.6rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 2px;
+        }
+        .fc-toolbar-title {
+          font-weight: 800;
+          font-size: 1.05rem;
+        }
+        .fc-button-primary {
+          border-radius: 0.5rem !important;
+          font-weight: 600 !important;
+          font-size: 0.78rem !important;
+          box-shadow: none !important;
+          transition: all 0.15s ease !important;
+        }
+
+        /* ── Light mode only — colors ────────────────────────── */
+        [data-theme="breedsmart"] .fc-col-header-cell {
+          background-color: color-mix(in oklch, var(--color-primary) 14%, var(--color-base-100));
+          border-bottom: 2px solid color-mix(in oklch, var(--color-primary) 30%, transparent);
+        }
+        [data-theme="breedsmart"] .fc-col-header-cell-cushion {
+          color: var(--color-primary) !important;
+          text-decoration: none !important;
+        }
+        [data-theme="breedsmart"] .fc-day-today {
+          background-color: color-mix(in oklch, var(--color-primary) 6%, transparent) !important;
+        }
+        [data-theme="breedsmart"] .fc-day-today .fc-daygrid-day-number {
+          color: var(--color-primary);
+          background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+        }
+        [data-theme="breedsmart"] .fc-daygrid-day-number {
+          color: var(--color-base-content);
+        }
+        [data-theme="breedsmart"] .fc-toolbar-title {
+          color: var(--color-base-content);
+        }
+        [data-theme="breedsmart"] .fc-button-primary {
+          background-color: transparent !important;
+          border: 1px solid var(--color-base-300) !important;
+          color: var(--color-base-content) !important;
+        }
+        [data-theme="breedsmart"] .fc-button-primary:hover:not(:disabled) {
+          background-color: color-mix(in oklch, var(--color-primary) 10%, transparent) !important;
+          border-color: color-mix(in oklch, var(--color-primary) 50%, transparent) !important;
+          color: var(--color-primary) !important;
+        }
+        [data-theme="breedsmart"] .fc-button-primary:focus {
+          box-shadow: none !important;
+          outline: 2px solid color-mix(in oklch, var(--color-primary) 50%, transparent) !important;
+          outline-offset: 1px !important;
+        }
+        [data-theme="breedsmart"] .fc-today-button:not(:disabled) {
+          background-color: var(--color-primary) !important;
+          border-color: var(--color-primary) !important;
+          color: var(--color-primary-content) !important;
+        }
+        [data-theme="breedsmart"] .fc-today-button:hover:not(:disabled) {
+          opacity: 0.85 !important;
+        }
+        [data-theme="breedsmart"] .fc-scrollgrid-section > td,
+        [data-theme="breedsmart"] .fc-daygrid-day {
+          border-color: color-mix(in oklch, var(--color-base-300) 70%, transparent) !important;
+        }
+
+        /* ── Slim scrollbar for panel lists ─────────────────────── */
+        .schedule-scroll { scrollbar-width: thin; scrollbar-color: var(--color-base-300) transparent; }
+        .schedule-scroll::-webkit-scrollbar { width: 4px; }
+        .schedule-scroll::-webkit-scrollbar-track { background: transparent; }
+        .schedule-scroll::-webkit-scrollbar-thumb { background-color: var(--color-base-300); border-radius: 9999px; }
+        .schedule-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--color-base-content/30); }
+      `}</style>
+
       <PageMeta
-        title="Deployment Schedule | BreedSmart"
-        description="View and manage technician visits and artificial inseminations"
+        title="Schedule | BreedSmart"
+        description="Owned scheduled visits and due field work."
       />
-
-      {/* Topbar Layout */}
       <Topbar
-        title="Deployment Schedule"
-        subtitle="Operational Timeline — manage and track field service deployments"
+        title="Schedule"
+        subtitle="See your scheduled visits and due field work."
       />
 
-      {/* Main Workspace */}
-      <main className="p-6 space-y-6">
-        <VisitCalendarFilters
-          selectedRange={selectedRange}
-          setSelectedRange={setSelectedRange}
-          selectedFarm={selectedFarm}
-          setSelectedFarm={setSelectedFarm}
-          selectedType={selectedType}
-          setSelectedType={setSelectedType}
-          rangeOptions={rangeOptions}
-          farmOptions={farmOptions}
-          typeOptions={typeOptions}
-          isAppointmentMenuOpen={isAppointmentMenuOpen}
-          setIsAppointmentMenuOpen={setIsAppointmentMenuOpen}
-          onOpenAIModal={() => setIsAIModalOpen(true)}
-          onOpenHealthModal={() => setIsHealthModalOpen(true)}
-        />
+      <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        {isError ? (
+          <div role="alert" className="alert alert-error">
+            <AlertTriangle aria-hidden="true" size={20} />
+            <div>
+              <p className="font-semibold">Schedule could not be loaded.</p>
+              <p className="text-sm">Check your connection, then try again.</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => refetch()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
 
-        {/* 2-Column Responsive Layout */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* Main Calendar View (Left side) */}
-          <div className="col-span-12 xl:col-span-8">
-            <div id="deployment-calendar" className="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xs">
+        {/* Calendar (left) + Right column: Selected Day stacked over Overdue */}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
+          {/* Calendar */}
+          <section
+            aria-label="Schedule calendar"
+            className="card border border-base-300 bg-base-100 shadow-sm"
+          >
+            <div className="card-body p-3 sm:p-4">
               {isLoading ? (
-                <div className="h-100 flex items-center justify-center">
-                  <span className="loading loading-spinner loading-md text-primary"></span>
-                </div>
-              ) : isError ? (
-                <div className="alert alert-error" role="alert">
-                  Schedule data is unavailable. Refresh the page to try again.
+                <div className="space-y-2" aria-label="Loading schedule">
+                  {/* Toolbar row */}
+                  <div className="flex items-center justify-between pb-1">
+                    <div className="flex gap-1.5">
+                      <div className="skeleton h-7 w-7 rounded-md" />
+                      <div className="skeleton h-7 w-7 rounded-md" />
+                      <div className="skeleton h-7 w-16 rounded-md" />
+                    </div>
+                    <div className="skeleton h-5 w-32 rounded" />
+                    <div className="skeleton h-7 w-10 rounded-md opacity-0 pointer-events-none" />
+                  </div>
+                  {/* Day-name header */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 7 }).map((_, i) => (
+                      <div key={i} className="skeleton h-6 rounded-sm" />
+                    ))}
+                  </div>
+                  {/* Week rows */}
+                  {Array.from({ length: 5 }).map((_, row) => (
+                    <div key={row} className="grid grid-cols-7 gap-1">
+                      {Array.from({ length: 7 }).map((_, col) => (
+                        <div
+                          key={col}
+                          className="skeleton h-20 sm:h-24 rounded-sm"
+                        />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <div className="custom-calendar breedsmart-calendar">
+                <div className="overflow-x-auto">
                   <FullCalendar
-                    plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                    plugins={[dayGridPlugin, interactionPlugin]}
                     initialView="dayGridMonth"
+                    initialDate={selectedDateKey}
                     headerToolbar={{
                       left: "prev,next today",
                       center: "title",
-                      right: "dayGridMonth,timeGridWeek",
+                      right: "",
                     }}
-                    buttonText={{
-                      today: "Today",
-                      month: "Month",
-                      week: "Week",
-                    }}
-                    events={events}
-                    selectable={true}
-                    dateClick={handleDateClick}
-                    eventClick={handleEventClick}
-                    eventContent={renderEventContent}
+                    buttonText={{ today: "Today" }}
+                    height="auto"
+                    fixedWeekCount={false}
+                    dayMaxEvents={1}
+                    events={calendarEvents}
+                    dayCellClassNames={(arg) =>
+                      arg.dateStr === selectedDateKey ? ["fc-day-selected"] : []
+                    }
+                    dateClick={(info) => setSelectedDateKey(info.dateStr)}
+                    eventClick={(info) =>
+                      setSelectedDateKey(info.event.extendedProps.dateKey)
+                    }
+                    eventBackgroundColor="var(--color-primary)"
+                    eventBorderColor="var(--color-primary)"
+                    eventTextColor="var(--color-primary-content)"
                   />
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* Sidebar Cards Panel (Right side - Mini Calendar Widget Removed) */}
-          <div className="col-span-12 xl:col-span-4 space-y-6">
-            {/* Color Legend Widget */}
-            <VisitLegendCard />
+          {/* Right column — Selected Day + Overdue stacked */}
+          <div className="flex flex-col gap-6">
+            {/* Selected Day Detail */}
+            <section
+              aria-labelledby="selected-day-heading"
+              className="card border border-base-300 bg-base-100 shadow-sm"
+            >
+              <div className="card-body gap-4 p-4 sm:p-5">
+                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-base-300 pb-4">
+                  <div>
+                    <p className="text-sm font-medium text-primary">
+                      Selected Day Work
+                    </p>
+                    <h2
+                      id="selected-day-heading"
+                      className="text-xl font-bold text-base-content"
+                    >
+                      {formatScheduleDate(selectedDateKey)}
+                    </h2>
+                  </div>
+                  <span className="badge badge-outline">
+                    {selectedDayItems.length}{" "}
+                    {selectedDayItems.length === 1 ? "item" : "items"}
+                  </span>
+                </div>
+                <div className="schedule-scroll lg:max-h-64 lg:overflow-y-auto">
+                  <ScheduleWorkList
+                    items={selectedDayItems}
+                    emptyMessage="No date-bound work is scheduled for this day."
+                    emptyHint="Click a date on the calendar to review scheduled visits and due field work."
+                    onOpen={openWork}
+                  />
+                </div>
+              </div>
+            </section>
 
-            {/* Upcoming Visits Widget */}
-            <UpcomingVisitsCard
-              visits={upcomingVisits}
-              onViewAllClick={() => {
-                setSelectedRange("all");
-                setSelectedFarm("all");
-                setSelectedType("all");
-                document.getElementById("deployment-calendar")?.scrollIntoView({ behavior: "smooth" });
-              }}
-            />
+            {/* Overdue — stacked directly below selected day */}
+            <section
+              aria-labelledby="overdue-heading"
+              className="card border border-base-300 bg-base-100 shadow-sm"
+            >
+              <div className="card-body gap-4 p-4 sm:p-5">
+                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-base-300 pb-4">
+                  <div>
+                    <p className="text-sm font-medium text-error">Overdue</p>
+                    <h2
+                      id="overdue-heading"
+                      className="text-xl font-bold text-base-content"
+                    >
+                      Unfinished dated work
+                    </h2>
+                  </div>
+                  <span className="badge badge-error badge-outline">
+                    {overdueItems.length}
+                  </span>
+                </div>
+                <div className="schedule-scroll lg:max-h-64 lg:overflow-y-auto">
+                  <ScheduleWorkList
+                    items={overdueItems}
+                    emptyMessage="No overdue date-bound work."
+                    emptyHint="You are up to date on unfinished scheduled work."
+                    onOpen={openWork}
+                    hideTimingBadge
+                  />
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </main>
 
-      {/* ===== POPUP LISTING MODAL FOR SPECIFIC DATE ===== */}
+      {/* Enhanced Modal Design */}
       <Modal
-        isOpen={selectedDayModal.isOpen}
-        onClose={() => setSelectedDayModal({ isOpen: false, formattedDate: "", requests: [] })}
-        title={`Scheduled Requests — ${selectedDayModal.formattedDate}`}
-        subtitle={
-          selectedDayModal.requests.length === 0
-            ? "No service requests scheduled for this date"
-            : `${selectedDayModal.requests.length} request${selectedDayModal.requests.length !== 1 ? "s" : ""} scheduled`
+        isOpen={Boolean(previewItem)}
+        onClose={closePreview}
+        title={
+          previewItem
+            ? cleanTaskTitle(
+                previewItem.scheduleLabel ||
+                  previewItem.taskType ||
+                  previewItem.serviceType,
+                previewItem.timingState,
+              )
+            : "Work details"
         }
-        size="6xl"
-      >
-        <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 py-2">
-          {selectedDayModal.requests.length === 0 ? (
-            <div className="text-center py-16 text-base-content/60 text-xs font-semibold">
-              There are no service requests scheduled on this date.
-            </div>
-          ) : (
-            selectedDayModal.requests.map((item) => {
-              const serviceType = getAgendaServiceLabel(item);
-              const shortBadge = getShortServiceBadge(serviceType);
-              const cleanTitle = getCleanTaskTitle(item, serviceType);
-              const styles = getVisitStyles(serviceType);
-
-              const earTag =
-                item.animalTag ||
-                item.raw?.animalId?.earTag ||
-                item.raw?.animalId?.animalId ||
-                item.raw?.animalIds?.[0]?.earTag ||
-                item.raw?.animalIds?.[0]?.animalId ||
-                "Not recorded";
-
-              const breed =
-                item.raw?.animalId?.breed ||
-                item.breed ||
-                item.raw?.animalIds?.[0]?.breed ||
-                "Livestock";
-
-              const farmerName =
-                item.farmerName ||
-                item.farmer ||
-                item.raw?.farmerId?.name ||
-                item.raw?.farmer?.name ||
-                "Farmer unavailable";
-
-              const farmerPhone =
-                item.farmerPhone ||
-                item.phone ||
-                item.raw?.farmerId?.phoneNumber ||
-                item.raw?.farmerId?.phone ||
-                item.raw?.farmer?.phoneNumber ||
-                item.raw?.farmer?.phone ||
-                item.raw?.farmerPhone ||
-                item.raw?.phone ||
-                "No phone listed";
-
-              const farmerImageUrl =
-                item.farmerImageUrl ||
-                item.raw?.farmerId?.avatarUrl ||
-                item.raw?.farmerId?.profilePicture ||
-                item.raw?.farmerId?.avatar ||
-                null;
-
-              const taskDetails =
-                item.raw?.symptoms ||
-                item.raw?.issueDescription ||
-                item.raw?.diagnosis ||
-                item.raw?.treatment ||
-                item.raw?.farmerObservation ||
-                item.raw?.observationNotes ||
-                item.raw?.notes ||
-                item.raw?.remarks ||
-                item.raw?.taskDescription ||
-                item.raw?.description ||
-                item.task ||
-                serviceType;
-
-              const isReInsemination =
-                (serviceType.toLowerCase().includes("insemination") || serviceType.toLowerCase().includes("ai")) &&
-                Boolean(item.raw?.previousAttemptId);
-
-              const location =
-                item.farmLocationLabel || item.location || "Location unavailable";
-              const time = item.time || "Time unavailable";
-              const dateVal =
-                item.scheduledDate || item.preferredDate || item.displayDate;
-              const formattedDate = dateVal
-                ? new Date(dateVal).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : selectedDayModal.formattedDate;
-
-              return (
-                <div
-                  key={item.id || item._id}
-                  className="grid grid-cols-12 gap-5 items-center p-5 sm:p-6 rounded-2xl border border-base-300 bg-base-100 shadow-xs hover:border-primary/50 hover:shadow-md transition-all text-xs"
+        subtitle={previewItem ? getSubtitle(previewItem.scheduleKind) : ""}
+        size="lg"
+        closeOnBackdropClick={true}
+        closeOnEscape={true}
+        actions={
+          <div className="flex gap-2">
+            {previewItem?.timingState !== "upcoming" &&
+              previewItem?.navigationTarget?.action !== "preview" && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => {
+                    const nav = previewItem?.navigationTarget;
+                    if (nav) {
+                      closePreview();
+                      navigate(nav.path + nav.search);
+                    }
+                  }}
                 >
-                  {/* 1. FARMER & CONTACT */}
-                  <div className="col-span-12 md:col-span-3 min-w-0 flex items-center gap-3">
-                    <UserAvatar
-                      src={farmerImageUrl}
-                      name={farmerName}
-                      size="md"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[10px] font-black text-base-content/40 uppercase tracking-widest block">
-                        Farmer
-                      </span>
-                      <h4 className="font-bold text-base text-base-content leading-snug truncate" title={farmerName}>
-                        {farmerName}
-                      </h4>
-                      <p className="text-sm font-bold text-primary flex items-center gap-1.5 mt-0.5 truncate">
-                        <Phone size={13} className="shrink-0 text-primary" />
-                        <span className="truncate">{farmerPhone}</span>
-                      </p>
-                    </div>
-                  </div>
+                  {previewItem?.navigationTarget?.label || "Open"}
+                  <ArrowUpRight size={15} aria-hidden="true" />
+                </button>
+              )}
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={closePreview}
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        {previewItem && (
+          <div className="space-y-5">
+            {/* Status Banner */}
+            <div
+              role="status"
+              className={`alert ${previewItem.timingState === "overdue" ? "alert-error" : previewItem.timingState === "due" ? "alert-warning" : "alert-info"} alert-soft py-3`}
+            >
+              <Clock3 className="size-5 shrink-0" aria-hidden="true" />
+              <div className="flex flex-col">
+                <span className="font-medium">
+                  {previewItem.timingState === "overdue"
+                    ? `Overdue - Scheduled for ${formatScheduleDate(previewItem.scheduleDate)}`
+                    : previewItem.timingState === "due"
+                      ? `Due today - ${formatScheduleDate(previewItem.scheduleDate)}`
+                      : `Scheduled for ${formatScheduleDate(previewItem.scheduleDate)}`}
+                </span>
+                <span className="text-xs opacity-80 mt-0.5">
+                  {previewItem.timingState === "upcoming"
+                    ? "Recording becomes available when due."
+                    : "Please complete this work as soon as possible."}
+                </span>
+              </div>
+            </div>
 
-                  {/* 2. SERVICE DETAILS & ANIMAL */}
-                  <div className="col-span-12 md:col-span-4 min-w-0 space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border shrink-0 ${styles.bg} ${styles.text}`}
-                      >
-                        {shortBadge}
-                      </span>
-                      <span className="font-black text-base text-base-content leading-tight truncate">
-                        {cleanTitle}
-                      </span>
-                      {isReInsemination && (
-                        <span className="badge badge-sm badge-soft badge-info font-bold text-xs shrink-0">
-                          Re-insemination
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-bold text-base-content/90 mt-1 truncate">
-                      Animal: <span className="text-base-content font-black">{breed}</span> (Tag #{earTag})
-                    </p>
-                    <p className="text-sm font-medium text-base-content/65 mt-0.5 leading-relaxed line-clamp-2">
-                      Details: {taskDetails}
-                    </p>
-                  </div>
-
-                  {/* 3. LOCATION & DATE/TIME */}
-                  <div className="col-span-12 md:col-span-3 min-w-0 space-y-1.5">
-                    <div className="flex items-center gap-2 font-bold text-sm text-base-content/90">
-                      <Calendar size={14} className="text-base-content/40 shrink-0" />
-                      <span>{formattedDate}</span>
-                      <span className="text-primary font-black">· {time}</span>
-                    </div>
-                    <div className="flex items-start gap-2 text-sm font-semibold text-base-content/70 leading-relaxed whitespace-normal wrap-break-word">
-                      <MapPin size={14} className="text-primary shrink-0 mt-0.5" />
-                      <span>Brgy. {location}</span>
-                    </div>
-                  </div>
-
-                  {/* 4. ACTION (Far Right) */}
-                  <div className="col-span-12 md:col-span-2 flex items-center justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const reqId = item.id || item._id || item.raw?._id;
-                        setSelectedDayModal({
-                          isOpen: false,
-                          formattedDate: "",
-                          requests: [],
-                        });
-                        navigate(
-                          `/technician/requests?requestId=${encodeURIComponent(reqId)}&status=all`
-                        );
-                      }}
-                      className="btn btn-sm btn-primary px-4 gap-2 font-black uppercase tracking-wider shadow-xs cursor-pointer w-full md:w-auto"
-                    >
-                      <span>View Details</span>
-                      <ExternalLink size={14} />
-                    </button>
-                  </div>
+            {/* Main Info Grid */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Farmer */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <User size={14} />
+                  Farmer
                 </div>
-              );
-            })
-          )}
-        </div>
+                <p className="font-semibold text-base-content">
+                  {farmerNameOf(previewItem)}
+                </p>
+                {(previewItem.farmerPhone ||
+                  previewItem.raw?.farmerId?.phoneNumber ||
+                  previewItem.raw?.farmerId?.phone) && (
+                  <div className="flex items-center gap-1.5 mt-1 text-xs text-base-content/70">
+                    <Phone size={12} className="shrink-0" />
+                    <span>
+                      {previewItem.farmerPhone ||
+                        previewItem.raw?.farmerId?.phoneNumber ||
+                        previewItem.raw?.farmerId?.phone}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Animal */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <Tag size={14} />
+                  Animal
+                </div>
+                <p className="font-semibold text-base-content">
+                  {animalReferenceOf(previewItem)
+                    ? animalReferenceOf(previewItem)
+                    : "Not recorded"}
+                </p>
+                {(previewItem.animalBreed ||
+                  previewItem.animal?.breed ||
+                  previewItem.raw?.animalId?.breed ||
+                  previewItem.raw?.animalIds?.[0]?.breed) && (
+                  <p className="text-xs text-base-content/70 mt-1">
+                    {previewItem.animalBreed ||
+                      previewItem.animal?.breed ||
+                      previewItem.raw?.animalId?.breed ||
+                      previewItem.raw?.animalIds?.[0]?.breed}
+                    {previewItem.animalSpecies ||
+                    previewItem.animal?.species ||
+                    previewItem.raw?.animalId?.species ||
+                    previewItem.raw?.animalIds?.[0]?.species
+                      ? ` · ${
+                          previewItem.animalSpecies ||
+                          previewItem.animal?.species ||
+                          previewItem.raw?.animalId?.species ||
+                          previewItem.raw?.animalIds?.[0]?.species
+                        }`
+                      : ""}
+                  </p>
+                )}
+              </div>
+
+              {/* Schedule */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <Calendar size={14} />
+                  {getDateLabel(previewItem.scheduleKind)}
+                </div>
+                <p className="font-semibold text-base-content">
+                  {formatScheduleDate(previewItem.scheduleDate)}
+                  {previewItem.periodLabel
+                    ? ` · ${previewItem.periodLabel}`
+                    : ""}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50 flex flex-col justify-center">
+                <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                  <Info size={14} />
+                  Status
+                </div>
+                <div>
+                  <span
+                    className={`badge font-semibold ${
+                      previewItem.timingState === "overdue"
+                        ? "badge-error"
+                        : previewItem.timingState === "due"
+                          ? "badge-warning"
+                          : "badge-neutral"
+                    }`}
+                  >
+                    {previewItem.timingState === "upcoming"
+                      ? "Scheduled"
+                      : titleCase(previewItem.timingState)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Location */}
+            <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
+              <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                <Building2 size={14} />
+                Location
+              </div>
+              <p className="font-semibold text-base-content flex items-center gap-1.5">
+                <MapPin size={14} className="shrink-0 text-base-content/40" />
+                {locationOf(previewItem) || "Not recorded"}
+              </p>
+            </div>
+
+            {/* Purpose */}
+            <div className="rounded-lg border border-base-300 bg-base-200/30 p-4">
+              <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
+                <AlertCircle size={14} />
+                Purpose
+              </div>
+              <p className="font-semibold text-base-content leading-relaxed">
+                {formatPurpose(previewItem)}
+              </p>
+              {(previewItem.raw?.metadata?.sireBreed ||
+                previewItem.raw?.sireBreed) && (
+                <div className="mt-2 pt-2 border-t border-base-300/50">
+                  <p className="text-xs text-base-content/70">
+                    <span className="font-medium">Sire:</span>{" "}
+                    {previewItem.raw?.metadata?.sireBreed ||
+                      previewItem.raw?.sireBreed}
+                    {previewItem.raw?.metadata?.semenCode ||
+                    previewItem.raw?.semenCode
+                      ? ` · Code: ${
+                          previewItem.raw?.metadata?.semenCode ||
+                          previewItem.raw?.semenCode
+                        }`
+                      : ""}
+                  </p>
+                </div>
+              )}
+              {previewItem.raw?.handlingMethod && (
+                <div className="mt-1.5">
+                  <p className="text-xs text-base-content/70">
+                    <span className="font-medium">Handling:</span>{" "}
+                    {String(previewItem.raw.handlingMethod).replaceAll(
+                      "_",
+                      " ",
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
-
-      {/* Appointment Modals */}
-      <AIServiceModal
-        isOpen={isAIModalOpen}
-        onClose={() => {
-          setIsAIModalOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["technician"] });
-        }}
-      />
-
-      <WalkInHealthModal
-        isOpen={isHealthModalOpen}
-        onClose={() => {
-          setIsHealthModalOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["technician"] });
-        }}
-      />
     </div>
   );
 }

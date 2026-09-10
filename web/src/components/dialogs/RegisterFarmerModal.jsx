@@ -3,6 +3,7 @@ import {
   UserPlus,
   Loader2,
   BadgeCheck,
+  Info,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -28,6 +29,8 @@ const RegisterFarmerModal = ({
   onClose,
   onSuccess,
   farmer = null,
+  createEndpoint = "/technician/register-farmer",
+  createRole,
 }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -73,8 +76,9 @@ const RegisterFarmerModal = ({
         const res = await axiosInstance.patch(`/user/${farmer.id || farmer._id}/technician-update`, payload);
         return res.data;
       } else {
-        const res = await axiosInstance.post("/technician/register-farmer", {
+        const res = await axiosInstance.post(createEndpoint, {
           ...data,
+          ...(createRole ? { role: createRole } : {}),
           address: {
             barangay: finalBarangay,
             city: data.city,
@@ -192,34 +196,82 @@ const RegisterFarmerModal = ({
       subtitle={farmer ? "Update the farmer's contact and location details." : "Register a new farmer to the system."}
       icon={<UserPlus size={22} className="text-primary" />}
       size="4xl"
-      bodyClassName="space-y-6"
+      bodyClassName="space-y-4"
       actions={
         <>
-          <button type="button" onClick={onClose} disabled={mutation.isPending} className="btn btn-ghost">Cancel</button>
-          <button type="submit" form="register-farmer-form" disabled={mutation.isPending} className="btn btn-primary px-6">
-            {mutation.isPending ? <><Loader2 size={16} className="animate-spin motion-reduce:animate-none" /> Saving farmer…</> : <><BadgeCheck size={16} /> Save Farmer</>}
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={mutation.isPending}
+            className="btn btn-ghost btn-sm text-base-content/70 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="register-farmer-form"
+            disabled={mutation.isPending}
+            className="btn btn-primary btn-sm px-6 font-bold cursor-pointer"
+          >
+            {mutation.isPending ? (
+              <>
+                <Loader2 size={16} className="animate-spin motion-reduce:animate-none" />
+                Saving farmer…
+              </>
+            ) : (
+              <>
+                <BadgeCheck size={16} />
+                Save Farmer
+              </>
+            )}
           </button>
         </>
       }
     >
-      <form id="register-farmer-form" onSubmit={handleSubmit} className="space-y-6">
-        <fieldset className="fieldset">
-          <legend className="fieldset-legend text-sm font-bold">Personal information</legend>
+      <form id="register-farmer-form" onSubmit={handleSubmit} className="space-y-4">
+        {/* Soft Guidance Banner (matching PregnancyLossReviewModal) */}
+        <div className="alert alert-info/15 border-info/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+          <Info className="h-4 w-4 shrink-0 text-info mt-0.5" />
+          <div>
+            <p className="font-bold text-base-content">
+              {farmer ? "Farmer Profile Management" : "Assisted Farmer Registration"}
+            </p>
+            <p className="mt-0.5 leading-relaxed text-base-content/75">
+              {farmer
+                ? "Update official farmer contact information and municipal residence."
+                : "Register an assisted farmer profile to track artificial insemination and clinical health services."}
+            </p>
+          </div>
+        </div>
+
+        {/* Personal Details Section */}
+        <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
+              Personal Information
+            </span>
+          </div>
+          <legend className="sr-only">Personal information</legend>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
             <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
             <Input id="farmer-phone" label="Contact number" required type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Use an 11-digit Philippine mobile number beginning with 09." placeholder="e.g. 09123456789" />
-            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" />
+            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
           </div>
         </fieldset>
 
-        <fieldset className="fieldset">
-          <legend className="fieldset-legend text-sm font-bold">Location information</legend>
+        {/* Location Details Section */}
+        <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
+              Location Details
+            </span>
+          </div>
+          <legend className="sr-only">Location information</legend>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { const city = event.target.value; setFormData({ ...formData, city, barangay: "" }); setSelectedDistrict(""); }} />
             {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { setSelectedDistrict(event.target.value); setFormData({ ...formData, barangay: "" }); }} />}
-            <Input id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} list="farmer-barangay-options" autoComplete="address-level3" placeholder="Type or select a barangay" />
-            <datalist id="farmer-barangay-options">{targetBarangays.map((barangay) => <option key={barangay} value={toTitleCase(barangay)} />)}</datalist>
+            <Select id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} options={targetBarangays.map((barangay) => ({ value: toTitleCase(barangay), label: toTitleCase(barangay) }))} placeholder="Select a barangay" />
           </div>
         </fieldset>
       </form>

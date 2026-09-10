@@ -13,7 +13,6 @@ const PAGES = [
   ['', 'FarmerDashboard.jsx', 'Farmer Dashboard'],
   // admin
   ['admin', 'Dashboard.jsx',        'Admin Dashboard'],
-  ['admin', 'Technicians.jsx',       'Technicians'],
   ['admin', 'TechnicianProfile.jsx', 'Technician Profile'],
   ['admin', 'Livestock.jsx',         'Livestock'],
   ['admin', 'LivestockProfile.jsx',  'Livestock Profile'],

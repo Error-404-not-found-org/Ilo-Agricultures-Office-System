@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { BadgeCheck, Loader2, PawPrint, Upload } from "lucide-react";
+import { BadgeCheck, Loader2, PawPrint, Upload, Search, X, AlertCircle, UserPlus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -12,6 +12,7 @@ import {
 import Input from "../ui/Input";
 import Modal from "../ui/Modal";
 import Select from "../ui/Select";
+import UserAvatar from "../ui/UserAvatar";
 
 const initialFormData = {
   earTag: "",
@@ -56,8 +57,12 @@ const RegisterLivestockModal = ({
 
   const filteredFarmers = useMemo(() => {
     const query = searchFarmer.trim().toLowerCase();
-    return farmers.filter((farmer) => (farmer.name || "").toLowerCase().includes(query));
+    return farmers.filter((farmer) => (farmer.name || "").toLowerCase().includes(query) || (farmer.phoneNumber || "").toLowerCase().includes(query));
   }, [farmers, searchFarmer]);
+
+  const selectedFarmer = useMemo(() => {
+    return farmers.find((f) => String(f._id) === String(formData.farmerName));
+  }, [farmers, formData.farmerName]);
 
   const mutation = useMutation({
     mutationFn: async (data) => {
@@ -251,43 +256,118 @@ const RegisterLivestockModal = ({
 
         <div className="space-y-6">
           <fieldset className="fieldset">
-            <legend className="fieldset-legend text-sm font-bold">Ownership details</legend>
-            <div className="relative">
-              <Input
-                id="livestock-owner"
-                label="Search owner or farmer"
-                required
-                value={searchFarmer}
-                disabled={Boolean(livestock)}
-                autoComplete="off"
-                role="combobox"
-                aria-expanded={isDropdownOpen && !livestock}
-                aria-controls={ownerListId}
-                aria-autocomplete="list"
-                placeholder="Type farmer name…"
-                onFocus={() => !livestock && setIsDropdownOpen(true)}
-                onChange={(event) => {
-                  setSearchFarmer(event.target.value);
-                  setFormData((current) => ({ ...current, farmerName: "" }));
-                  setIsDropdownOpen(true);
-                }}
-              />
+            <legend className="fieldset-legend text-sm font-bold">Ownership details</legend>            <div className="relative">
+              {preSelectedFarmer ? (
+                <div className="flex h-12 items-center gap-3 rounded-field border border-base-300 bg-base-200 px-4">
+                  <UserAvatar
+                    name={preSelectedFarmer.name}
+                    imageUrl={
+                      preSelectedFarmer.imageUrl ||
+                      preSelectedFarmer.avatarUrl ||
+                      preSelectedFarmer.avatar
+                    }
+                    size={28}
+                    sizeClass="h-7 w-7"
+                  />
+                  <span className="truncate font-semibold">
+                    {preSelectedFarmer.name}
+                  </span>
+                </div>
+              ) : (
+                <label className="input w-full flex items-center gap-2">
+                  {selectedFarmer ? (
+                    <UserAvatar
+                      name={selectedFarmer.name}
+                      imageUrl={
+                        selectedFarmer.imageUrl ||
+                        selectedFarmer.avatarUrl ||
+                        selectedFarmer.avatar
+                      }
+                      size={22}
+                      sizeClass="h-5.5 w-5.5"
+                    />
+                  ) : (
+                    <Search
+                      size={16}
+                      className="shrink-0 text-base-content/40"
+                    />
+                  )}
+                  <input
+                    className="grow min-w-0"
+                    value={searchFarmer}
+                    disabled={Boolean(livestock)}
+                    onChange={(event) => {
+                      setSearchFarmer(event.target.value);
+                      setFormData((current) => ({ ...current, farmerName: "" }));
+                      setIsDropdownOpen(true);
+                    }}
+                    onFocus={() => !livestock && setIsDropdownOpen(true)}
+                    onBlur={() =>
+                      window.setTimeout(
+                        () => setIsDropdownOpen(false),
+                        150,
+                      )
+                    }
+                    placeholder="Search owner or farmer…"
+                  />
+                  {Boolean(searchFarmer || formData.farmerName) && !livestock && (
+                    <button
+                      type="button"
+                      aria-label="Clear farmer selection"
+                      className="btn btn-ghost btn-circle btn-xs shrink-0 text-base-content/50 hover:text-base-content"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setSearchFarmer("");
+                        setFormData((current) => ({ ...current, farmerName: "" }));
+                        setTimeout(() => setIsDropdownOpen(true), 0);
+                      }}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                </label>
+              )}
               {isDropdownOpen && !livestock && (
                 <div
                   id={ownerListId}
                   role="listbox"
                   aria-label="Matching farmers"
-                  className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl"
+                  className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
                 >
                   {isLoadingFarmers ? (
-                    <div className="space-y-2 p-3" role="status" aria-label="Loading farmers">
+                    <div
+                      className="space-y-3 p-4"
+                      role="status"
+                      aria-live="polite"
+                    >
                       <div className="skeleton h-10 w-full" />
                       <div className="skeleton h-10 w-full" />
+                      <span className="sr-only">
+                        Loading registered farmers
+                      </span>
                     </div>
                   ) : isFarmersError ? (
-                    <div className="alert alert-error m-2 w-auto text-sm" role="alert">
-                      <span>{farmersError?.response?.data?.message || "Unable to load farmers."}</span>
-                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchFarmers()}>Try again</button>
+                    <div className="space-y-3 p-4">
+                      <div
+                        role="alert"
+                        className="alert alert-error alert-soft"
+                      >
+                        <AlertCircle size={16} />
+                        <span className="text-sm">
+                          {farmersError?.response?.data?.message ||
+                            "Registered farmers could not be loaded."}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm w-full"
+                        onMouseDown={(event) =>
+                          event.preventDefault()
+                        }
+                        onClick={() => refetchFarmers()}
+                      >
+                        Try again
+                      </button>
                     </div>
                   ) : filteredFarmers.length ? (
                     filteredFarmers.map((farmer) => (
@@ -295,25 +375,50 @@ const RegisterLivestockModal = ({
                         key={farmer._id}
                         type="button"
                         role="option"
-                        aria-selected={formData.farmerName === farmer._id}
+                        aria-selected={
+                          formData.farmerName === farmer._id
+                        }
+                        className="flex w-full cursor-pointer items-center gap-3 rounded-field px-3 py-2.5 text-left hover:bg-base-200"
+                        onMouseDown={(event) =>
+                          event.preventDefault()
+                        }
                         onClick={() => {
                           setFormData((current) => ({ ...current, farmerName: farmer._id }));
                           setSearchFarmer(farmer.name);
                           setIsDropdownOpen(false);
                         }}
-                        className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
                       >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                          {(farmer.name || "Farmer").substring(0, 2).toUpperCase()}
-                        </span>
+                        <UserAvatar
+                          name={farmer.name}
+                          imageUrl={
+                            farmer.imageUrl ||
+                            farmer.avatarUrl ||
+                            farmer.avatar
+                          }
+                          size={36}
+                          sizeClass="h-9 w-9"
+                        />
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-bold text-base-content">{farmer.name}</span>
-                          <span className="block text-xs font-medium text-base-content/60">Farmer</span>
+                          <span className="block truncate font-semibold">
+                            {farmer.name}
+                          </span>
+                          <span className="block truncate text-xs text-base-content/55">
+                            {farmer.phoneNumber || "No phone number"}
+                          </span>
                         </span>
                       </button>
                     ))
                   ) : (
-                    <p className="px-4 py-8 text-center text-sm font-medium text-base-content/60">No farmers found</p>
+                    <div className="space-y-3 p-4 text-center">
+                      <div>
+                        <div className="font-semibold">
+                          Farmer not found
+                        </div>
+                        <div className="text-sm text-base-content/55">
+                          No matching registered farmer is available.
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

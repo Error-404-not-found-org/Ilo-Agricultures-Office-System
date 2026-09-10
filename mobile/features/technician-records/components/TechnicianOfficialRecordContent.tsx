@@ -39,6 +39,7 @@ import { useTheme } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { ImageViewerModal, type ImageViewerItem } from "@/components/shared";
 import { RecordPhotoEvidence } from "@/features/farmer-reports/components/RecordPhotoEvidence";
+import { formatDiagnosticMethodLabel } from "@/features/breeding/utils/technicianBreedingVerification";
 import type {
   OfficialRecordDetail,
   RecordAttachment,
@@ -439,6 +440,10 @@ export function TechnicianOfficialRecordContent({
     );
 
   const getRecordTitle = () => {
+    if ((record.sourceKind as string) === "health_request") {
+      return String(record.title || "HEALTH REQUEST").toUpperCase();
+    }
+    if ((record.sourceKind as string) === "ai_request") return "AI REQUEST";
     switch (record.type) {
       case "ai":
         return "ARTIFICIAL INSEMINATION";
@@ -539,13 +544,27 @@ export function TechnicianOfficialRecordContent({
           icon: <AlertTriangle size={18} color={colors.primary} />,
         }
       : null,
+    hasValue(details.cancellationReason)
+      ? {
+          label: "Cancellation reason",
+          value: details.cancellationReason || "",
+          icon: <AlertTriangle size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.cancellationResponseReason)
+      ? {
+          label: "Closure note",
+          value: details.cancellationResponseReason || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
+        }
+      : null,
   ];
 
   const pregnancyRows: (DisplayRow | null)[] = [
     hasValue(details.diagnosticMethod)
       ? {
           label: "Confirmation method",
-          value: humanize(details.diagnosticMethod),
+          value: formatDiagnosticMethodLabel(details.diagnosticMethod),
           icon: <HandHeartIcon size={18} color={colors.primary} />,
         }
       : null,
@@ -589,10 +608,13 @@ export function TechnicianOfficialRecordContent({
   ];
 
   const calvingRows: (DisplayRow | null)[] = [
-    hasValue(details.calvingEase)
+    details.calvingOutcome === "abortion" || hasValue(details.calvingEase)
       ? {
           label: "Delivery method",
-          value: humanize(details.calvingEase),
+          value:
+            details.calvingOutcome === "abortion"
+              ? "Not applicable"
+              : humanize(details.calvingEase),
           icon: <Activity size={18} color={colors.primary} />,
         }
       : null,
@@ -620,17 +642,17 @@ export function TechnicianOfficialRecordContent({
   ];
 
   const healthRows: (DisplayRow | null)[] = [
-    hasValue(details.requestType)
+    hasValue(details.serviceType || details.requestType)
       ? {
-          label: "Request type",
-          value: humanize(details.requestType),
+          label: details.isDirectHealthService ? "Service type" : "Request type",
+          value: humanize(details.serviceType || details.requestType),
           icon: <HeartPulse size={18} color={colors.primary} />,
         }
       : null,
-    hasValue(details.urgency)
+    hasValue(details.urgency) && (details.urgency?.toLowerCase() === "emergency" || details.urgency?.toLowerCase() === "high")
       ? {
           label: "Urgency",
-          value: humanize(details.urgency),
+          value: details.urgency?.toLowerCase() === "emergency" ? "Needs urgent attention" : humanize(details.urgency),
           icon: <Siren size={18} color={colors.primary} />,
         }
       : null,
@@ -639,6 +661,23 @@ export function TechnicianOfficialRecordContent({
           label: "Concern or symptoms",
           value: details.symptoms || "",
           icon: <Stethoscope size={18} color={colors.primary} />,
+        }
+      : null,
+    Array.isArray(details.requestDetails?.observedSigns) &&
+    details.requestDetails.observedSigns.length > 0
+      ? {
+          label: "Observed signs",
+          value: details.requestDetails.observedSigns
+            .map((sign) => humanize(sign))
+            .join(", "),
+          icon: <HeartPulse size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.requestDetails?.farmerDescription)
+      ? {
+          label: "Farmer description",
+          value: details.requestDetails?.farmerDescription || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
         }
       : null,
     hasValue(details.farmerNotes)
@@ -681,6 +720,55 @@ export function TechnicianOfficialRecordContent({
           label: "Advice",
           value: details.advice || "",
           icon: <MessageCircle size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.pickupItem)
+      ? {
+          label: "Item available for pickup",
+          value: details.pickupItem || "",
+          icon: <ClipboardList size={18} color={colors.primary} />,
+        }
+      : null,
+    details.pickupAvailable === true
+      ? {
+          label: "Availability",
+          value: "Available for pickup",
+          icon: <CheckCheckIcon size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.pickupInstructions)
+      ? {
+          label: "Pickup instructions",
+          value: details.pickupInstructions || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.dosageOrUseInstructions)
+      ? {
+          label: "Dosage / Use instructions",
+          value: details.dosageOrUseInstructions || "",
+          icon: <ClipboardList size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.withdrawalGuidance)
+      ? {
+          label: "Withdrawal guidance",
+          value: details.withdrawalGuidance || "",
+          icon: <ShieldAlert size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.cancellationReason)
+      ? {
+          label: "Cancellation reason",
+          value: details.cancellationReason || "",
+          icon: <AlertTriangle size={18} color={colors.primary} />,
+        }
+      : null,
+    hasValue(details.cancellationResponseReason)
+      ? {
+          label: "Closure note",
+          value: details.cancellationResponseReason || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
         }
       : null,
     hasValue(details.followUpDate)
@@ -739,9 +827,6 @@ export function TechnicianOfficialRecordContent({
           label: "Related AI ID",
           value: details.relatedInseminationId || "",
         }
-      : null,
-    hasValue(record.sourceId)
-      ? { label: "Official record ID", value: record.sourceId }
       : null,
   ];
 
@@ -880,7 +965,7 @@ export function TechnicianOfficialRecordContent({
           ) : null}
           {hasValue(details.technician || record.technician?.name) ? (
             <RecordDetailRow
-              label="Technician"
+              label="Performed by"
               value={details.technician || record.technician?.name || ""}
               icon={<Stethoscope size={18} color={colors.primary} />}
             />
@@ -943,7 +1028,7 @@ export function TechnicianOfficialRecordContent({
           ) : null}
           {hasValue(details.technician || record.technician?.name) ? (
             <RecordDetailRow
-              label="Technician"
+              label="Performed by"
               value={details.technician || record.technician?.name || ""}
               icon={<Stethoscope size={18} color={colors.primary} />}
               isLast={

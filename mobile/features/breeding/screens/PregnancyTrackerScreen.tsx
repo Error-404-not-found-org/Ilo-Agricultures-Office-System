@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Image,
   Linking,
@@ -17,10 +17,10 @@ import {
   Phone,
   Stethoscope,
 } from "lucide-react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { safeBack } from "@/utils/navigation";
 import { AnimatedBottomSheet } from "@/components/shared/AnimatedBottomSheet";
-import { addDays, differenceInCalendarDays, format } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 import { useTheme } from "@/lib/theme";
 import {
   FarmerScreen,
@@ -30,19 +30,38 @@ import {
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
 import { calculateTargetCalvingDate, normalizeSpecies } from "@/lib/cattleCore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { usePregnancyTrackerQuery } from "../hooks/usePregnancyTracker";
+import { useQueryClient } from "@tanstack/react-query";
+import { breedingKeys } from "@/lib/queryKeys";
+import {
+  usePregnancyLossReportsQuery,
+  usePregnancyTrackerQuery,
+} from "../hooks/usePregnancyTracker";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { Text } from "@/components/ui/Text";
 import {
   getBreedingObservationLabel,
+  hasBreedingObservation,
   isBreedingObservationAwaitingReview,
 } from "../utils/breedingObservationPresentation";
 import {
   getHistoricalInseminationPresentation,
   getPostpartumPresentation,
+  getTimelineMilestoneVisualState,
+  resolveCurrentPostpartumRecovery,
+  getUnconfirmedReproductiveTimelinePresentation,
   splitReproductiveAttempts,
 } from "../utils/reproductiveCyclePresentation";
+import {
+  differenceInManilaCalendarDays,
+  getFarmerCalvingReadinessPresentation,
+} from "../utils/calvingUiSemantics";
+import {
+  findActivePregnancyLossReport,
+  findLatestReviewedPregnancyLossReport,
+  formatPregnancyLossStatus,
+  getFarmerPregnancyLossPresentation,
+} from "../utils/pregnancyLossWorkflow";
 
 interface PregnancyTrackerScreenProps {
   id: string;
@@ -189,6 +208,7 @@ export function PregnancyTrackerScreen({
   viewerRole = "farmer",
 }: PregnancyTrackerScreenProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const isTechnician = viewerRole === "technician";
@@ -197,6 +217,17 @@ export function PregnancyTrackerScreen({
     : "/(farmer)/(tabs)/farmer.records";
 
   const query = usePregnancyTrackerQuery(id);
+  const lossReportsQuery = usePregnancyLossReportsQuery(id, !isTechnician);
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      query.refetch();
+      if (!isTechnician) {
+        lossReportsQuery.refetch();
+      }
+    }, [query, lossReportsQuery, isTechnician]),
+  );
 
   if (query.isLoading) {
     return <PregnancyTrackerSkeleton backFallback={backFallback} />;
@@ -228,13 +259,6 @@ export function PregnancyTrackerScreen({
       animal.inseminations || [],
       animal.reproductiveStatus,
     );
-  const canReportObservation =
-    !isTechnician &&
-    Boolean(latest?._id) &&
-    ["done", "completed", "resolved"].includes(
-      String(latest?.status || "").toLowerCase(),
-    ) &&
-    ["Inseminated", "In Heat"].includes(animal.reproductiveStatus || "");
   const activePregnancy = animal.inseminations
     ?.map((item: any) => item.pregnancy)
     .find(
@@ -243,25 +267,113 @@ export function PregnancyTrackerScreen({
         !["completed", "lost"].includes(item?.cycleStatus),
     );
   const latestPregnancy = latest?.pregnancy;
-  const isCompletedCycle = latestPregnancy?.cycleStatus === "completed";
-  const associatedCalving = animal.calvings?.find(
-    (c: any) =>
-      c.pregnancyId === latestPregnancy?._id ||
-      c.pregnancyId?._id === latestPregnancy?._id,
+  const isPostpartum = animal.reproductiveStatus === "Post-partum";
+
+  const currentRecoveryEvent = resolveCurrentPostpartumRecovery(animal);
+  const pregnancyLinkedCalving = (animal.calvings || []).find((calving: any) => {
+    if (!latestPregnancy?._id) return false;
+    const pregnancyId =
+      typeof calving.pregnancyId === "object"
+        ? calving.pregnancyId?._id
+        : calving.pregnancyId;
+    return pregnancyId && String(pregnancyId) === String(latestPregnancy._id);
+  });
+  const associatedCalving = isPostpartum
+    ? currentRecoveryEvent.calving
+    : pregnancyLinkedCalving || null;
+
+  const associatedCalvingPregnancyId =
+    typeof associatedCalving?.pregnancyId === "object"
+      ? associatedCalving?.pregnancyId?._id
+      : associatedCalving?.pregnancyId;
+
+  const targetPregnancyId =
+    activePregnancy?._id ||
+    latestPregnancy?._id ||
+    associatedCalvingPregnancyId ||
+    null;
+
+  const lossReports = lossReportsQuery.data || [];
+  const activeLossReport = findActivePregnancyLossReport(
+    lossReports,
+    targetPregnancyId,
   );
+  const latestReviewedLossReport = findLatestReviewedPregnancyLossReport(
+    lossReports,
+    {
+      pregnancyId: targetPregnancyId,
+      calving: associatedCalving,
+    },
+  );
+  const displayLossReport = activeLossReport || latestReviewedLossReport;
+  const lossReportPresentation = displayLossReport
+    ? getFarmerPregnancyLossPresentation(displayLossReport)
+    : null;
+
+  const isLossRecovery = currentRecoveryEvent.isLossRecovery;
+
+  const isCompletedCycle =
+    isPostpartum ||
+    latestPregnancy?.cycleStatus === "completed" ||
+    latestPregnancy?.cycleStatus === "lost";
+
+  const lossDate = isLossRecovery ? currentRecoveryEvent.recoveryStartDate : null;
 
   const postpartumPresentation = getPostpartumPresentation({
     isCompletedCycle,
     nextAction: animal.nextAction,
     nextActionAt: animal.nextActionAt,
     effectiveReproductiveStatus: animal.effectiveReproductiveStatus,
-    calvingDate: associatedCalving?.date || animal.lastCalvingDate,
+    calvingDate: currentRecoveryEvent.recoveryStartDate,
+    isLossRecovery,
+    lossDate,
   });
+
+  // Canonical resolution of historical insemination without guessing from array index
+  const closedCycleInsemination = isCompletedCycle
+    ? (animal.inseminations || []).find((i: any) => {
+        const iId = String(i._id || i.id || "");
+        const calvInsemId = String(
+          (typeof associatedCalving?.inseminationId === "object"
+            ? associatedCalving?.inseminationId?._id
+            : associatedCalving?.inseminationId) || "",
+        );
+        if (calvInsemId && iId === calvInsemId) return true;
+
+        const calvPregId = String(associatedCalvingPregnancyId || "");
+        const iPregId = String(
+          (typeof i.pregnancy === "object"
+            ? i.pregnancy?._id
+            : i.pregnancy) || "",
+        );
+        if (calvPregId && iPregId === calvPregId) return true;
+
+        const repInsemId = String(
+          latestReviewedLossReport?.inseminationId || "",
+        );
+        if (repInsemId && iId === repInsemId) return true;
+
+        const repPregId = String(
+          (typeof latestReviewedLossReport?.pregnancyId === "object"
+            ? latestReviewedLossReport?.pregnancyId?._id
+            : latestReviewedLossReport?.pregnancyId) || "",
+        );
+        if (repPregId && iPregId === repPregId) return true;
+
+        return false;
+      })
+    : null;
+
+  const displayedPregnancy =
+    latestPregnancy || closedCycleInsemination?.pregnancy || null;
 
   const aiDateValue =
     latest?.inseminationDate ||
     latest?.dateOfAI ||
     latest?.createdAt ||
+    closedCycleInsemination?.inseminationDate ||
+    closedCycleInsemination?.dateOfAI ||
+    closedCycleInsemination?.createdAt ||
     animal.lastInseminationDate;
   const aiDate = aiDateValue ? new Date(aiDateValue) : null;
   const expected = animal.expectedCalvingDate
@@ -274,9 +386,21 @@ export function PregnancyTrackerScreen({
           animal.breed,
         )
       : null;
-  const diffDays = expected
-    ? differenceInCalendarDays(expected, new Date())
-    : null;
+  const readiness = activePregnancy?.calvingReadiness;
+  const canonicalGestationDays =
+    typeof readiness?.gestationDays === "number"
+      ? readiness.gestationDays
+      : aiDate
+        ? Math.max(0, differenceInManilaCalendarDays(new Date(), aiDate) ?? 0)
+        : 0;
+  const elapsedDays = canonicalGestationDays;
+
+  const diffDays =
+    typeof readiness?.expectedCalvingDaysRemaining === "number"
+      ? readiness.expectedCalvingDaysRemaining
+      : expected
+        ? differenceInManilaCalendarDays(expected, new Date())
+        : null;
   const remainingDisplay =
     diffDays !== null
       ? diffDays === 0
@@ -287,12 +411,11 @@ export function PregnancyTrackerScreen({
       : null;
   const remaining = diffDays;
   const totalDays =
-    aiDate && expected
-      ? Math.max(1, differenceInCalendarDays(expected, aiDate))
-      : 0;
-  const elapsedDays = aiDate
-    ? Math.max(0, differenceInCalendarDays(new Date(), aiDate))
-    : 0;
+    typeof readiness?.averageGestationDays === "number"
+      ? readiness.averageGestationDays
+      : aiDate && expected
+        ? Math.max(1, differenceInManilaCalendarDays(expected, aiDate) ?? 1)
+        : 0;
   const progress = totalDays
     ? Math.min(100, Math.round((elapsedDays / totalDays) * 100))
     : 0;
@@ -314,18 +437,30 @@ export function PregnancyTrackerScreen({
   const isRecheck =
     latest?.pregnancyFollowUpTask?.metadata?.workflowStage ===
     "diagnostic_follow_up";
+  const hasRecordedHeatObservation = hasBreedingObservation(latest);
+  const isFarmerHeatReportPendingReview =
+    latest?.farmerOutcomeReport === "return_to_heat" &&
+    !isReturnToHeat &&
+    latest?.verificationStatus !== "verified";
+
+  const unconfirmedTimeline = getUnconfirmedReproductiveTimelinePresentation({
+    aiDate,
+    nextAction: animal.nextAction,
+    pregnancyReadiness: latest?.pregnancyReadiness,
+    pregnancyFollowUpTask: latest?.pregnancyFollowUpTask,
+    hasRecordedHeatObservation,
+    recordedHeatObservationLabel: hasRecordedHeatObservation
+      ? getBreedingObservationLabel(latest?.farmerOutcomeReport)
+      : null,
+  });
 
   const currentIndex = isConfirmedPregnant
-    ? diffDays !== null && diffDays <= 30
-      ? 3
-      : 2
+    ? 3
     : isTerminallyFailed
       ? isNegativePD
         ? 3
         : 2
-      : animal.reproductiveStatus === "Inseminated" && !isRecheck
-        ? 1
-        : 2;
+      : unconfirmedTimeline.currentIndex;
 
   type Milestone = {
     label: string;
@@ -334,6 +469,8 @@ export function PregnancyTrackerScreen({
     isFailed?: boolean;
     isSkipped?: boolean;
     isPendingEvidence?: boolean;
+    isElapsedWithoutObservation?: boolean;
+    stageLabel?: string;
   };
 
   const milestones: Milestone[] = [
@@ -347,13 +484,19 @@ export function PregnancyTrackerScreen({
     },
     {
       label: "Heat return monitoring",
-      date: aiDate ? addDays(aiDate, 21) : null,
+      date: unconfirmedTimeline.heatReturnDate,
       detail: isReturnToHeat
         ? "Return to heat confirmed"
-        : currentIndex > 1
-          ? "Initial observation period passed"
-          : "Observe for returning heat signs",
+        : isFarmerHeatReportPendingReview
+          ? "Heat signs reported\nAwaiting technician verification"
+          : isConfirmedPregnant && !hasRecordedHeatObservation
+            ? "Monitoring window passed\nNo observation recorded"
+            : unconfirmedTimeline.heatReturnDetail,
       isFailed: isReturnToHeat,
+      isElapsedWithoutObservation: isConfirmedPregnant
+        ? !hasRecordedHeatObservation && !isReturnToHeat
+        : unconfirmedTimeline.heatReturnState ===
+          "elapsed_without_observation",
     },
   ];
 
@@ -363,9 +506,7 @@ export function PregnancyTrackerScreen({
       date:
         isRecheck && latest?.pregnancyFollowUpTask?.dueDate
           ? new Date(latest.pregnancyFollowUpTask.dueDate)
-          : aiDate
-            ? addDays(aiDate, 60)
-            : null,
+          : unconfirmedTimeline.pregnancyCheckDate,
       detail: isReturnToHeat
         ? "No longer required"
         : isNegativePD
@@ -375,6 +516,7 @@ export function PregnancyTrackerScreen({
             : "Professional diagnosis window",
       isSkipped: isReturnToHeat,
       isFailed: isNegativePD,
+      stageLabel: unconfirmedTimeline.currentStageLabel,
     });
   }
 
@@ -530,7 +672,9 @@ export function PregnancyTrackerScreen({
                     letterSpacing: 0.5,
                   }}
                 >
-                  Last calving date
+                  {postpartumPresentation.isLossRecovery
+                    ? "Recovery started"
+                    : "Last calving date"}
                 </Text>
                 <Text
                   style={{
@@ -558,7 +702,9 @@ export function PregnancyTrackerScreen({
                     letterSpacing: 0.5,
                   }}
                 >
-                  Next eligible date
+                  {postpartumPresentation.isLossRecovery
+                    ? "Eligible for AI after"
+                    : "Next eligible date"}
                 </Text>
                 <Text
                   style={{
@@ -787,7 +933,8 @@ export function PregnancyTrackerScreen({
                   )}
                 </View>
               </View>
-              {latestPregnancy?.pregnancyDiagnosis?.date && (
+              {(displayedPregnancy?.pregnancyDiagnosis?.date ||
+                displayedPregnancy?.confirmation?.confirmedAt) && (
                 <View
                   style={{
                     flexDirection: "row",
@@ -817,14 +964,17 @@ export function PregnancyTrackerScreen({
                       }}
                     >
                       {format(
-                        new Date(latestPregnancy.pregnancyDiagnosis.date),
+                        new Date(
+                          displayedPregnancy.pregnancyDiagnosis?.date ||
+                            displayedPregnancy.confirmation?.confirmedAt,
+                        ),
                         "MMM d, yyyy",
                       )}
                     </Text>
                   </View>
                 </View>
               )}
-              {associatedCalving?.date && (
+              {currentRecoveryEvent.recoveryStartDate && (
                 <View
                   style={{
                     flexDirection: "row",
@@ -843,7 +993,9 @@ export function PregnancyTrackerScreen({
                         fontSize: 15,
                       }}
                     >
-                      Calving recorded
+                      {isLossRecovery
+                        ? "Pregnancy loss confirmed"
+                        : "Calving recorded"}
                     </Text>
                     <Text
                       style={{
@@ -853,7 +1005,12 @@ export function PregnancyTrackerScreen({
                         marginTop: 2,
                       }}
                     >
-                      {format(new Date(associatedCalving.date), "MMM d, yyyy")}
+                      {format(
+                        new Date(
+                          currentRecoveryEvent.recoveryStartDate,
+                        ),
+                        "MMM d, yyyy",
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -894,17 +1051,20 @@ export function PregnancyTrackerScreen({
             </View>
             <View style={{ marginTop: 16 }}>
               {milestones.map((milestone, index) => {
-                const complete =
-                  index < currentIndex &&
-                  !milestone.isSkipped &&
-                  !milestone.isFailed &&
-                  !milestone.isPendingEvidence;
-                const active =
-                  index === currentIndex &&
-                  !isTerminallyFailed &&
-                  !milestone.isSkipped;
                 const isFailed = milestone.isFailed;
                 const isSkipped = milestone.isSkipped;
+                const isElapsedWithoutObservation =
+                  milestone.isElapsedWithoutObservation;
+                const { complete, active } =
+                  getTimelineMilestoneVisualState({
+                    index,
+                    currentIndex,
+                    isTerminallyFailed,
+                    isSkipped,
+                    isFailed,
+                    isPendingEvidence: milestone.isPendingEvidence,
+                    isElapsedWithoutObservation,
+                  });
                 return (
                   <View
                     key={milestone.label}
@@ -953,7 +1113,7 @@ export function PregnancyTrackerScreen({
                           >
                             X
                           </Text>
-                        ) : isSkipped ? (
+                        ) : isSkipped || isElapsedWithoutObservation ? (
                           <Circle
                             size={8}
                             color={colors.textMuted}
@@ -1062,7 +1222,7 @@ export function PregnancyTrackerScreen({
                               textTransform: "uppercase",
                             }}
                           >
-                            Current Stage
+                            {milestone.stageLabel || "Current Stage"}
                           </Text>
                         </View>
                       ) : isTerminallyFailed && isFailed ? (
@@ -1124,11 +1284,13 @@ export function PregnancyTrackerScreen({
               const routeDef = {
                 pathname: isTechnician
                   ? "/(technician)/record-details"
-                  : "/(farmer)/record-details",
+                  : "/(farmer)/animal-record-detail",
                 params: {
                   animalId: animal._id,
                   sourceId: attempt._id,
                   sourceKind: "insemination",
+                  recordId: attempt._id,
+                  recordType: "insemination",
                 },
               };
 
@@ -1212,80 +1374,908 @@ export function PregnancyTrackerScreen({
           </View>
         )}
 
+        {/* Pregnancy Loss Report Card (Active or Reviewed) */}
+        {!isTechnician && displayLossReport && lossReportPresentation ? (
+          <View style={{ marginHorizontal: 24, marginTop: 24 }}>
+            {(() => {
+              const isConfirmed = displayLossReport.status === "confirmed";
+              const isNeedsVisit = displayLossReport.status === "needs_visit";
+
+              const borderColor = isConfirmed
+                ? isDark
+                  ? "rgba(239, 68, 68, 0.4)"
+                  : "#fecaca"
+                : isNeedsVisit
+                  ? isDark
+                    ? "rgba(245, 158, 11, 0.4)"
+                    : "#fde68a"
+                  : isDark
+                    ? "rgba(59, 130, 246, 0.4)"
+                    : "#bfdbfe";
+
+              const backgroundColor = isConfirmed
+                ? isDark
+                  ? "rgba(239, 68, 68, 0.1)"
+                  : "#fef2f2"
+                : isNeedsVisit
+                  ? isDark
+                    ? "rgba(245, 158, 11, 0.12)"
+                    : "#fffbeb"
+                  : isDark
+                    ? "rgba(59, 130, 246, 0.08)"
+                    : "#eff6ff";
+
+              const accentColor = isConfirmed
+                ? isDark
+                  ? "#f87171"
+                  : "#dc2626"
+                : isNeedsVisit
+                  ? isDark
+                    ? "#fbbf24"
+                    : "#d97706"
+                  : isDark
+                    ? "#60a5fa"
+                    : "#2563eb";
+
+              const titleColor = isConfirmed
+                ? isDark
+                  ? "#f87171"
+                  : "#dc2626"
+                : isNeedsVisit
+                  ? isDark
+                    ? "#fbbf24"
+                    : "#b45309"
+                  : isDark
+                    ? "#93c5fd"
+                    : "#1d4ed8";
+
+              const badgeBg = isConfirmed
+                ? isDark
+                  ? "rgba(239, 68, 68, 0.25)"
+                  : "#fee2e2"
+                : isNeedsVisit
+                  ? isDark
+                    ? "rgba(245, 158, 11, 0.25)"
+                    : "#fef3c7"
+                  : isDark
+                    ? "rgba(59, 130, 246, 0.25)"
+                    : "#dbeafe";
+
+              const badgeTextColor = isConfirmed
+                ? isDark
+                  ? "#f87171"
+                  : "#b91c1c"
+                : isNeedsVisit
+                  ? isDark
+                    ? "#fbbf24"
+                    : "#92400e"
+                  : isDark
+                    ? "#60a5fa"
+                    : "#1e40af";
+
+              return (
+                <View
+                  style={{
+                    padding: 16,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor,
+                    backgroundColor,
+                    gap: 8,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <AlertTriangle size={16} color={accentColor} />
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_700Bold",
+                          fontSize: 11,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                          color: titleColor,
+                        }}
+                      >
+                        Pregnancy Loss Report
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                        backgroundColor: badgeBg,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_700Bold",
+                          fontSize: 10,
+                          color: badgeTextColor,
+                        }}
+                      >
+                        {lossReportPresentation.badgeLabel}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                      lineHeight: 18,
+                      color: colors.textPrimary,
+                    }}
+                  >
+                    {lossReportPresentation.explanation}
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      setExpandedReportId((prev) =>
+                        prev === displayLossReport._id ? null : displayLossReport._id,
+                      )
+                    }
+                    activeOpacity={0.7}
+                    style={{
+                      alignSelf: "flex-start",
+                      paddingVertical: 4,
+                      paddingHorizontal: 8,
+                      borderRadius: 8,
+                      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+                      marginTop: 2,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 11,
+                        color: colors.primary,
+                      }}
+                    >
+                      {expandedReportId === displayLossReport._id
+                        ? "Hide details"
+                        : "View details"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {expandedReportId === displayLossReport._id ? (
+                    <View
+                      style={{
+                        marginTop: 4,
+                        padding: 12,
+                        borderRadius: 12,
+                        backgroundColor: isDark ? colors.background : "white",
+                        gap: 8,
+                      }}
+                    >
+                      {lossReportPresentation.noticedDate ? (
+                        <View style={{ gap: 2 }}>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            }}
+                          >
+                            {lossReportPresentation.noticedDateLabel}
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_600SemiBold",
+                              fontSize: 12,
+                              color: colors.textPrimary,
+                            }}
+                          >
+                            {lossReportPresentation.noticedDate}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {lossReportPresentation.reportSentDate ? (
+                        <View style={{ gap: 2 }}>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            }}
+                          >
+                            {lossReportPresentation.reportSentLabel}
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_600SemiBold",
+                              fontSize: 12,
+                              color: colors.textPrimary,
+                            }}
+                          >
+                            {lossReportPresentation.reportSentDate}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {lossReportPresentation.technicianNote ? (
+                        <View style={{ gap: 2 }}>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            }}
+                          >
+                            {lossReportPresentation.technicianNoteLabel}
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_600SemiBold",
+                              fontSize: 12,
+                              color: colors.textSecondary,
+                            }}
+                          >
+                            {lossReportPresentation.technicianNote}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })()}
+          </View>
+        ) : null}
+
         {/* Action Buttons */}
         {activePregnancy && animal.reproductiveStatus === "Pregnant" && (
           <View style={{ marginHorizontal: 24, marginTop: 24, gap: 12 }}>
-            {isTechnician && !activePregnancy.calvingReadiness?.isEligible ? (
-              <View
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.warningBorder,
-                  backgroundColor: colors.warningContainer,
-                }}
-              >
-                <Text
-                  style={{
-                    color: colors.warningForeground,
-                    fontFamily: "Outfit_600SemiBold",
-                    fontSize: 12,
-                    lineHeight: 18,
-                  }}
-                >
-                  {activePregnancy.calvingReadiness?.reason ||
-                    "Live-birth readiness is unavailable. Review the timing before recording an outcome."}
-                </Text>
-              </View>
-            ) : null}
-            <TouchableOpacity
-              onPress={() =>
-                router.push(
-                  isTechnician
-                    ? ({
-                        pathname: "/(technician)/record-calf-drop",
-                        params: {
-                          motherId: id,
-                          motherTag: animal.earTag || animal.animalId || "",
-                          pregnancyId: activePregnancy._id,
-                        },
-                      } as never)
-                    : ({
-                        pathname: "/(farmer)/record-calving",
-                        params: {
-                          animalId: id,
-                          pregnancyId: activePregnancy._id,
-                        },
-                      } as never),
-                )
-              }
-              activeOpacity={0.8}
-              style={{
-                height: 48,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 16,
-                backgroundColor: isDark ? colors.primary : "#00643B",
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: isDark ? 0 : 0.05,
-                shadowRadius: 6,
-                elevation: 2,
-              }}
-            >
-              <CalendarHeart size={18} color="white" />
-              <Text
-                style={{
-                  color: "white",
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 13,
-                  marginLeft: 8,
-                }}
-              >
-                {isTechnician ? "Record Calving / Loss" : "Record Calving"}
-              </Text>
-            </TouchableOpacity>
+
+            {(() => {
+              const farmerReadiness = getFarmerCalvingReadinessPresentation(
+                activePregnancy?.calvingReadiness,
+                expected,
+              );
+
+              return (
+                <>
+                  {isTechnician && !activePregnancy.calvingReadiness?.isEligible ? (
+                    <View
+                      style={{
+                        padding: 12,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: colors.warningBorder,
+                        backgroundColor: colors.warningContainer,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.warningForeground,
+                          fontFamily: "Outfit_600SemiBold",
+                          fontSize: 12,
+                          lineHeight: 18,
+                        }}
+                      >
+                        {activePregnancy.calvingReadiness?.reason ||
+                          "Delivery recording readiness is unavailable. Review the timing before recording an outcome."}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {!isTechnician && farmerReadiness.isReadinessUnavailable ? (
+                    <View
+                      style={{
+                        padding: 16,
+                        borderRadius: 20,
+                        backgroundColor: isDark
+                          ? "rgba(30, 41, 59, 0.7)"
+                          : "#f8fafc",
+                        borderWidth: 1,
+                        borderColor: isDark ? "#334155" : "#e2e8f0",
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
+                          }}
+                        >
+                          Calving
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                            backgroundColor: isDark
+                              ? "rgba(148, 163, 184, 0.15)"
+                              : "#f1f5f9",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 10,
+                              color: isDark ? "#94a3b8" : "#64748b",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Readiness unavailable
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_700Bold",
+                          fontSize: 13,
+                          color: colors.textPrimary,
+                          marginBottom: 4,
+                        }}
+                      >
+                        Calving readiness unavailable
+                      </Text>
+
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_400Regular",
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          lineHeight: 18,
+                          marginBottom: 12,
+                        }}
+                      >
+                        We couldn't verify whether delivery recording is available right now.
+                      </Text>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          query.refetch();
+                          queryClient.invalidateQueries({ queryKey: breedingKeys.tracker(id) });
+                        }}
+                        activeOpacity={0.8}
+                        style={{
+                          height: 44,
+                          borderRadius: 14,
+                          backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 12,
+                            color: colors.textPrimary,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          Try Again
+                        </Text>
+                      </TouchableOpacity>
+
+                      <View
+                        style={{
+                          height: 48,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 16,
+                          backgroundColor: isDark
+                            ? "rgba(100, 116, 139, 0.2)"
+                            : "#e2e8f0",
+                          opacity: 0.6,
+                        }}
+                      >
+                        <CalendarHeart
+                          size={18}
+                          color={isDark ? "#94a3b8" : "#64748b"}
+                        />
+                        <Text
+                          style={{
+                            color: isDark ? "#94a3b8" : "#64748b",
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            marginLeft: 8,
+                          }}
+                        >
+                          Record Calving
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {!isTechnician && !farmerReadiness.isReadinessUnavailable && !farmerReadiness.canRecordCalving ? (
+                    <View
+                      style={{
+                        padding: 16,
+                        borderRadius: 20,
+                        backgroundColor: isDark
+                          ? "rgba(30, 41, 59, 0.7)"
+                          : "#f8fafc",
+                        borderWidth: 1,
+                        borderColor: isDark ? "#334155" : "#e2e8f0",
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
+                          }}
+                        >
+                          Calving
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                            backgroundColor: isDark
+                              ? "rgba(245, 158, 11, 0.15)"
+                              : "#fef3c7",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 10,
+                              color: isDark ? "#fbbf24" : "#d97706",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {farmerReadiness.badgeLabel}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {farmerReadiness.expectedCalvingDateFormatted ? (
+                        <View style={{ marginBottom: 10 }}>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            }}
+                          >
+                            Expected calving
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 13,
+                              color: colors.textPrimary,
+                              marginTop: 1,
+                            }}
+                          >
+                            {farmerReadiness.expectedCalvingDateFormatted}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <View style={{ marginBottom: 10 }}>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 11,
+                            color: colors.textMuted,
+                          }}
+                        >
+                          Current gestation
+                        </Text>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            color: colors.textPrimary,
+                            marginTop: 1,
+                          }}
+                        >
+                          {farmerReadiness.gestationProgressLabel || `Day ${elapsedDays}`}
+                        </Text>
+                      </View>
+
+                      {farmerReadiness.minimumThresholdLabel ? (
+                        <View style={{ marginBottom: 10 }}>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            }}
+                          >
+                            Delivery recording available from
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 13,
+                              color: colors.textPrimary,
+                              marginTop: 1,
+                            }}
+                          >
+                            {farmerReadiness.minimumThresholdLabel}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {farmerReadiness.countdownLabel ? (
+                        <View
+                          style={{
+                            paddingVertical: 6,
+                            paddingHorizontal: 10,
+                            borderRadius: 10,
+                            backgroundColor: isDark
+                              ? "rgba(245, 158, 11, 0.1)"
+                              : "#fffbeb",
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_600SemiBold",
+                              fontSize: 12,
+                              color: isDark ? "#fbbf24" : "#b45309",
+                            }}
+                          >
+                            {farmerReadiness.countdownLabel}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_400Regular",
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          lineHeight: 16,
+                          marginBottom: 12,
+                        }}
+                      >
+                        {farmerReadiness.supportingCopy}
+                      </Text>
+
+                      <View
+                        style={{
+                          height: 48,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 16,
+                          backgroundColor: isDark
+                            ? "rgba(100, 116, 139, 0.2)"
+                            : "#e2e8f0",
+                          opacity: 0.6,
+                        }}
+                      >
+                        <CalendarHeart
+                          size={18}
+                          color={isDark ? "#94a3b8" : "#64748b"}
+                        />
+                        <Text
+                          style={{
+                            color: isDark ? "#94a3b8" : "#64748b",
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            marginLeft: 8,
+                          }}
+                        >
+                          Record Calving
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {!isTechnician && !farmerReadiness.isReadinessUnavailable && farmerReadiness.canRecordCalving ? (
+                    <View
+                      style={{
+                        padding: 16,
+                        borderRadius: 20,
+                        backgroundColor: isDark
+                          ? "rgba(30, 41, 59, 0.7)"
+                          : "#f8fafc",
+                        borderWidth: 1,
+                        borderColor: isDark ? "#334155" : "#e2e8f0",
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
+                          }}
+                        >
+                          Calving
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                            backgroundColor: isDark
+                              ? "rgba(16, 185, 129, 0.15)"
+                              : "#dcfce7",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 10,
+                              color: isDark ? "#34d399" : "#15803d",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {farmerReadiness.badgeLabel}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {farmerReadiness.expectedCalvingDateFormatted ? (
+                        <View style={{ marginBottom: 10 }}>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                            }}
+                          >
+                            Expected calving
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 13,
+                              color: colors.textPrimary,
+                              marginTop: 1,
+                            }}
+                          >
+                            {farmerReadiness.expectedCalvingDateFormatted}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <View style={{ marginBottom: 10 }}>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 11,
+                            color: colors.textMuted,
+                          }}
+                        >
+                          Current gestation
+                        </Text>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            color: colors.textPrimary,
+                            marginTop: 1,
+                          }}
+                        >
+                          {farmerReadiness.gestationProgressLabel || `Day ${elapsedDays}`}
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_600SemiBold",
+                          fontSize: 12,
+                          color: isDark ? "#34d399" : "#15803d",
+                          marginBottom: 12,
+                        }}
+                      >
+                        Delivery recording is available
+                      </Text>
+
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(farmer)/record-calving" as never,
+                            params: {
+                              animalId: id,
+                              pregnancyId: activePregnancy._id,
+                            },
+                          })
+                        }
+                        activeOpacity={0.8}
+                        style={{
+                          height: 48,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 16,
+                          backgroundColor: isDark ? colors.primary : "#00643B",
+                          shadowColor: "#000",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: isDark ? 0 : 0.05,
+                          shadowRadius: 6,
+                          elevation: 2,
+                        }}
+                      >
+                        <CalendarHeart size={18} color="white" />
+                        <Text
+                          style={{
+                            color: "white",
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            marginLeft: 8,
+                          }}
+                        >
+                          Record Calving
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+
+                  {isTechnician ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push(
+                          {
+                            pathname: "/(technician)/record-calf-drop",
+                            params: {
+                              motherId: id,
+                              motherTag:
+                                animal.earTag || animal.animalId || "",
+                              pregnancyId: activePregnancy._id,
+                            },
+                          } as never,
+                        )
+                      }
+                      activeOpacity={0.8}
+                      style={{
+                        height: 48,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 16,
+                        backgroundColor: isDark ? colors.primary : "#00643B",
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: isDark ? 0 : 0.05,
+                        shadowRadius: 6,
+                        elevation: 2,
+                      }}
+                    >
+                      <CalendarHeart size={18} color="white" />
+                      <Text
+                        style={{
+                          color: "white",
+                          fontFamily: "Outfit_700Bold",
+                          fontSize: 13,
+                          marginLeft: 8,
+                        }}
+                      >
+                        Record Calving / Loss
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {/* Report Pregnancy Loss button (Farmer only, when an active confirmed pregnancy exists and no active report is pending) */}
+                  {!isTechnician && !activeLossReport && isConfirmedPregnant ? (
+                    <View style={{ marginTop: 16 }}>
+                      <View style={{ marginBottom: 8 }}>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
+                            marginBottom: 2,
+                          }}
+                        >
+                          Pregnancy Concern
+                        </Text>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            color: colors.textPrimary,
+                            marginBottom: 2,
+                          }}
+                        >
+                          Notice something unusual?
+                        </Text>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_400Regular",
+                            fontSize: 12,
+                            color: colors.textMuted,
+                          }}
+                        >
+                          Report signs or observations that may indicate pregnancy loss.
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(farmer)/report-pregnancy-loss" as any,
+                            params: {
+                              animalId: id,
+                              pregnancyId: activePregnancy._id,
+                              earTag:
+                                animal.earTag ||
+                                animal.animalId ||
+                                animal.name ||
+                                "",
+                            },
+                          })
+                        }
+                        activeOpacity={0.8}
+                        style={{
+                          height: 48,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 16,
+                          borderWidth: 1.5,
+                          borderColor: isDark
+                            ? "rgba(245, 158, 11, 0.4)"
+                            : "#fcd34d",
+                          backgroundColor: isDark
+                            ? "rgba(245, 158, 11, 0.08)"
+                            : "#fffbeb",
+                        }}
+                      >
+                        <AlertTriangle
+                          size={18}
+                          color={isDark ? "#fbbf24" : "#d97706"}
+                        />
+                        <Text
+                          style={{
+                            color: isDark ? "#fbbf24" : "#b45309",
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            marginLeft: 8,
+                          }}
+                        >
+                          Report Pregnancy Loss
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </>
+              );
+            })()}
 
             {!isTechnician ? (
               <>

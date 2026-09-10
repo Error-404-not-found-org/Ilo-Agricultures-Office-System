@@ -7,15 +7,17 @@ import {
   notificationKeys,
   technicianKeys,
 } from "@/lib/queryKeys";
+import { buildDirectHealthRecordPayload } from "../utils/directHealthRecord";
 
-export const useWalkInHealthMutation = () => {
+export const useDirectHealthRecordMutation = () => {
   const queryClient = useQueryClient();
   const api = useApi();
 
   return useMutation({
     mutationFn: async (payload: any) => {
-      const { idempotencyKey, ...requestBody } = payload;
-      const res = await api.post("/health-request/walk-in", requestBody, {
+      const { idempotencyKey, ...input } = payload;
+      const requestBody = buildDirectHealthRecordPayload(input);
+      const res = await api.post("/medical", requestBody, {
         headers: idempotencyKey
           ? { "Idempotency-Key": idempotencyKey }
           : undefined,
@@ -23,15 +25,10 @@ export const useWalkInHealthMutation = () => {
       return res.data;
     },
     onSuccess: (_result, variables: any) => {
-      queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
-      queryClient.invalidateQueries({ queryKey: technicianKeys.requests() });
       queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() });
       queryClient.invalidateQueries({ queryKey: technicianKeys.records() });
-      queryClient.invalidateQueries({ queryKey: technicianKeys.tasks() });
-      queryClient.invalidateQueries({ queryKey: aiRequestKeys.all });
       queryClient.invalidateQueries({ queryKey: animalKeys.all });
       queryClient.invalidateQueries({ queryKey: animalRecordKeys.all });
-      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       if (variables?.animalId) {
         queryClient.invalidateQueries({
           queryKey: animalKeys.detail(String(variables.animalId)),

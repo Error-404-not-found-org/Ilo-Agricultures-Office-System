@@ -2,16 +2,22 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const clerkMocks = vi.hoisted(() => ({
+  role: "admin",
+  openUserProfile: vi.fn(),
+  signOut: vi.fn(),
+}));
+
 vi.mock("@clerk/clerk-react", () => ({
   UserButton: () => <div aria-label="Account avatar" />,
   useUser: () => ({
     user: {
       fullName: "Admin User",
       imageUrl: "https://example.test/admin-avatar.png",
-      publicMetadata: { role: "admin" },
+      publicMetadata: { role: clerkMocks.role },
     },
   }),
-  useClerk: () => ({ signOut: vi.fn() }),
+  useClerk: () => clerkMocks,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -47,6 +53,8 @@ function renderSidebar(path = "/admin/dashboard", { collapsed = false } = {}) {
 
 describe("Admin Sidebar navigation", () => {
   beforeEach(() => {
+    clerkMocks.role = "admin";
+    vi.clearAllMocks();
     localStorage.clear();
   });
 
@@ -60,25 +68,50 @@ describe("Admin Sidebar navigation", () => {
     expect(primaryLinks.map((link) => link.getAttribute("href"))).toEqual([
       "/admin/dashboard",
       "/admin/users",
-      "/admin/technicians",
       "/admin/livestock",
-      "/admin/archived",
       "/admin/requests",
+      "/admin/support-tickets",
       "/admin/work-queue",
       "/admin/barangays",
-      "/admin/support-tickets",
       "/admin/reports",
+      "/admin/archived",
       "/admin/audit-logs",
       "/admin/settings",
+    ]);
+
+    expect(
+      Array.from(navigation.children).map((item) =>
+        item.textContent.replace(/\s+/g, " ").trim(),
+      ),
+    ).toEqual([
+      "Dashboard",
+      "People",
+      "Users",
+      "Livestock",
+      "Livestock",
+      "Operations",
+      "Requests",
+      "Support",
+      "Service Records",
+      "Insights",
+      "Workload",
+      "Barangays",
+      "Reports",
+      "System",
+      "Archived Records",
+      "Audit Logs",
+      "Settings",
     ]);
 
     expect(screen.getByText("Admin Portal")).toBeInTheDocument();
     expect(primaryLinks[0]).toHaveTextContent("Dashboard");
     expect(navigation).toHaveTextContent("People");
     expect(navigation).toHaveTextContent("Users");
-    expect(navigation).toHaveTextContent("Technicians");
+    expect(
+      within(navigation).queryByRole("link", { name: "Technicians" }),
+    ).not.toBeInTheDocument();
     expect(navigation).toHaveTextContent("Livestock");
-    expect(navigation).toHaveTextContent("Archived");
+    expect(navigation).toHaveTextContent("Archived Records");
     expect(navigation).toHaveTextContent("Operations");
     expect(navigation).toHaveTextContent("Requests");
     expect(navigation).toHaveTextContent("Workload");
@@ -89,6 +122,19 @@ describe("Admin Sidebar navigation", () => {
     expect(navigation).toHaveTextContent("Audit Logs");
     expect(navigation).toHaveTextContent("System");
     expect(navigation).toHaveTextContent("Settings");
+  });
+
+  it("preserves regrouped Admin destination routes", () => {
+    renderSidebar();
+
+    expect(screen.getByRole("link", { name: "Archived Records" }))
+      .toHaveAttribute("href", "/admin/archived");
+    expect(screen.getByRole("link", { name: "Workload" }))
+      .toHaveAttribute("href", "/admin/work-queue");
+    expect(screen.getByRole("link", { name: "Barangays" }))
+      .toHaveAttribute("href", "/admin/barangays");
+    expect(screen.getByRole("link", { name: "Audit Logs" }))
+      .toHaveAttribute("href", "/admin/audit-logs");
   });
 
   it("groups Inseminations, Pregnancy, and Calving under Service Records", () => {
@@ -141,14 +187,13 @@ describe("Admin Sidebar navigation", () => {
     );
   });
 
-  it("uses the Clerk identity block as the only Admin profile link", () => {
+  it("opens Clerk account controls from the Admin identity block", () => {
     const expanded = renderSidebar();
 
-    const profile = screen.getByRole("link", { name: "Open Admin profile" });
-    expect(profile).toHaveAttribute(
-      "href",
-      "/admin/settings",
-    );
+    const profile = screen.getByRole("button", {
+      name: "Open Admin profile",
+    });
+    expect(profile).not.toHaveAttribute("href");
     expect(profile).toHaveTextContent("Admin User");
     expect(profile).toHaveTextContent("admin");
     const expandedAvatar = profile.querySelector(
@@ -164,16 +209,26 @@ describe("Admin Sidebar navigation", () => {
       screen.queryByRole("button", { name: "Switch to dark mode" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign Out" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Sign Out" })).toHaveClass(
+      "justify-start",
+    );
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/admin/settings",
+    );
+
+    fireEvent.click(profile);
+    expect(clerkMocks.openUserProfile).toHaveBeenCalledTimes(1);
 
     expanded.unmount();
     renderSidebar("/admin/inseminations", { collapsed: true });
 
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeVisible();
-    const collapsedProfile = screen.getByRole("link", {
+    const collapsedProfile = screen.getByRole("button", {
       name: "Open Admin profile",
     });
     expect(collapsedProfile).toBeVisible();
-    expect(collapsedProfile).toHaveAttribute("href", "/admin/settings");
+    expect(collapsedProfile).not.toHaveAttribute("href");
     const collapsedAvatar = collapsedProfile.querySelector(
       'img[src="https://example.test/admin-avatar.png"]',
     );
@@ -202,7 +257,7 @@ describe("Admin Sidebar navigation", () => {
   it("keeps the collapsed Admin profile and Sign Out controls accessible", () => {
     renderSidebar("/admin/dashboard", { collapsed: true });
 
-    const profile = screen.getByRole("link", {
+    const profile = screen.getByRole("button", {
       name: "Open Admin profile",
     });
     expect(profile).toBeVisible();
@@ -221,6 +276,49 @@ describe("Admin Sidebar navigation", () => {
     expect(dashboard).toHaveAttribute("aria-current", "page");
     expect(dashboard).toHaveClass("bg-primary", "text-primary-content");
     expect(dashboard).toHaveClass("focus-visible:outline-primary");
+  });
+
+  it("shows destination tooltips on collapsed hover and keyboard focus only", () => {
+    const collapsed = renderSidebar("/admin/dashboard", { collapsed: true });
+    const users = screen.getByRole("link", { name: "Users" });
+
+    expect(screen.queryByRole("tooltip", { name: "Users" }))
+      .not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(users.parentElement);
+    expect(screen.getByRole("tooltip", { name: "Users" })).toBeVisible();
+
+    fireEvent.mouseLeave(users.parentElement);
+    expect(screen.queryByRole("tooltip", { name: "Users" }))
+      .not.toBeInTheDocument();
+
+    const tooltipLabels = [
+      "Users",
+      "Requests",
+      "Workload",
+      "Reports",
+      "Audit Logs",
+      "Settings",
+    ];
+    for (const label of tooltipLabels) {
+      const link = screen.getByRole("link", { name: label });
+      expect(link).toHaveAttribute("aria-describedby");
+    }
+
+    fireEvent.focus(users);
+    expect(screen.getByRole("tooltip", { name: "Users" })).toBeVisible();
+    fireEvent.blur(users);
+
+    collapsed.unmount();
+    renderSidebar("/admin/dashboard");
+
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Users" })).toHaveTextContent(
+      "Users",
+    );
+    expect(screen.getByRole("link", { name: "Users" })).not.toHaveAttribute(
+      "aria-describedby",
+    );
   });
 
   it("gives navigation icons hover and focus motion with a reduced-motion fallback", () => {
@@ -246,5 +344,16 @@ describe("Admin Sidebar navigation", () => {
     expect(
       serviceRecords.querySelector("[data-sidebar-icon]"),
     ).toHaveClass("group-hover:translate-x-0.5");
+  });
+});
+
+
+describe("Technician Profile navigation", () => {
+  it("keeps Profile and removes the separate Settings destination", () => {
+    clerkMocks.role = "technician";
+    renderSidebar("/technician/profile");
+    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/technician/profile");
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+    clerkMocks.role = "admin";
   });
 });

@@ -17,12 +17,13 @@ import {
 } from "lucide-react";
 import { OTON_BARANGAYS } from "../../constants/barangays";
 import Topbar from "../../components/layout/Topbar";
+import { formatReportCount, getCurrentReportMonth } from "./reportsPresentation";
 
 export default function Reports() {
   const toast = useToast();
   const [reportType, setReportType] = useState("da-unified");
   const [barangay, setBarangay] = useState("all");
-  const [compilationMonth, setCompilationMonth] = useState("2026-05");
+  const [compilationMonth, setCompilationMonth] = useState(() => getCurrentReportMonth());
   const [isCompiling, setIsCompiling] = useState(false);
 
   const { data: stats, isLoading: isLoadingStats } = useQuery({
@@ -57,90 +58,16 @@ export default function Reports() {
     setIsCompiling(true);
     try {
       const [yearString, monthString] = compilationMonth.split("-");
-      const monthVal = parseInt(monthString) || 5;
-      const yearVal = parseInt(yearString) || 2026;
+      const currentMonth = getCurrentReportMonth().split("-");
+      const monthVal = parseInt(monthString) || parseInt(currentMonth[1]);
+      const yearVal = parseInt(yearString) || parseInt(currentMonth[0]);
 
       const dateObj = new Date(yearVal, monthVal - 1);
       const formattedDateRange = dateObj.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
       const isPrint = action === "print";
 
-      // 1. HEALTH REQUESTS
-      if (reportType === "health-diagnostics") {
-        const res = await axiosInstance.get("/health-request");
-        let data = res.data || [];
-        
-        // Filter by barangay
-        if (barangay !== "all") {
-          data = data.filter(item => 
-            item.farmerId?.address?.barangay?.toLowerCase() === barangay.toLowerCase()
-          );
-        }
-
-        // Filter by month/year matching dateRange
-        data = data.filter(item => {
-          if (!item.createdAt) return false;
-          const d = new Date(item.createdAt);
-          return d.getMonth() + 1 === monthVal && d.getFullYear() === yearVal;
-        });
-
-        if (data.length === 0) {
-          toast.error("Zero telemetry records located for selected parameters.");
-          return;
-        }
-
-        const headers = ["Incident Case #", "Logged Date", "Animal Tag", "Farmer Client", "Symptom Presentation", "Assigned Diagnosis", "Treatment Plan", "Urgency", "Status"];
-        const rows = data.map(item => [
-          item._id ? `#${item._id.slice(-6)}` : "—",
-          item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "—",
-          item.animalId?.earTag || "—",
-          item.farmerId?.name || "—",
-          item.symptoms || "—",
-          item.diagnosis || "—",
-          item.treatment || "—",
-          (item.urgency || "low").toUpperCase(),
-          (item.status || "pending").toUpperCase()
-        ]);
-
-        if (isPrint) {
-          const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(10);
-          doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(7);
-          doc.text("Veterinary Health Diagnostics & Triage Logs", doc.internal.pageSize.width / 2, 12, { align: "center" });
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(9);
-          doc.text(`HEALTH TRIAGE & DIAGNOSTIC LOGS - ${formattedDateRange.toUpperCase()}`, doc.internal.pageSize.width / 2, 17, { align: "center" });
-          
-          doc.autoTable({
-            head: [headers],
-            body: rows,
-            theme: "grid",
-            styles: { fontSize: 7, cellPadding: 1.5 },
-            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
-            margin: { top: 23 }
-          });
-          window.open(doc.output("bloburl"), "_blank");
-          toast.success("Health diagnostics PDF registry print ready.");
-        } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `BreedSmart_Health_Diagnostics_${barangay}_${formattedDateRange.replace(" ", "_")}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          toast.success("Health diagnostics CSV registry downloaded.");
-        }
-        return;
-      }
-
-      // 2. INSEMINATION REGISTRY / UNIP ACCOMPLISHMENTS
+      // Insemination registry / UNIP accomplishments
       const res = await axiosInstance.get(
         `/reports/monthly-accomplishment?month=${monthVal}&year=${yearVal}`
       );
@@ -159,7 +86,7 @@ export default function Reports() {
       }
 
       if (data.length === 0) {
-        toast.error("Zero telemetry records located for selected parameters.");
+        toast.error("No breeding records found for the selected month and barangay.");
         return;
       }
 
@@ -269,8 +196,8 @@ export default function Reports() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Analytics & Exporter Hub"
-        subtitle="Compile certified veterinary accomplishments, landscape print DA templates, and analyze metrics"
+        title="Reports & Exports"
+        subtitle="Prepare BreedSmart breeding accomplishments and official Department of Agriculture forms"
         searchPlaceholder=""
         searchValue=""
         onSearchChange={() => {}}
@@ -286,10 +213,10 @@ export default function Reports() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoadingStats ? "..." : stats?.successRate || "—"}
+                {isLoadingStats ? "..." : formatReportCount(stats?.inseminations)}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
-                Breeding Accomplishments Rate
+                Insemination Entries
               </div>
             </div>
           </div>
@@ -299,10 +226,10 @@ export default function Reports() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoadingStats ? "..." : (stats?.inseminations || 0) + (stats?.pregnancies || 0) + (stats?.calvings || 0)}
+                {isLoadingStats ? "..." : formatReportCount(stats?.pregnancies)}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
-                Total Logs Compiled
+                Pregnancy Records
               </div>
             </div>
           </div>
@@ -312,10 +239,10 @@ export default function Reports() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoadingStats ? "..." : stats?.successRate || "—"}
+                {isLoadingStats ? "..." : formatReportCount(stats?.calvings)}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
-                Pregnancy Diagnosis Accuracy
+                Calving Records
               </div>
             </div>
           </div>
@@ -333,26 +260,27 @@ export default function Reports() {
 
               <div className="space-y-4 text-xs">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1">
+                  <label htmlFor="admin-report-type" className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1">
                     Report Type Template
                   </label>
                   <select
+                    id="admin-report-type"
                     value={reportType}
                     onChange={(e) => setReportType(e.target.value)}
                     className="w-full bg-base-200 border border-base-300 rounded-xl px-4 py-2.5 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary font-bold select select-bordered"
                   >
                     <option value="da-unified">Department of Agriculture Unified Accomplishment</option>
                     <option value="insemination-registry">Veterinary AI Insemination Logs</option>
-                    <option value="health-diagnostics">Clinical Health Triage Logs</option>
                   </select>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1 flex items-center gap-1">
+                    <label htmlFor="admin-report-barangay" className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1 flex items-center gap-1">
                       <MapPin size={10} /> Barangay Sector
                     </label>
                     <select
+                      id="admin-report-barangay"
                       value={barangay}
                       onChange={(e) => setBarangay(e.target.value)}
                       className="w-full bg-base-200 border border-base-300 rounded-xl px-4 py-2.5 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary font-bold select select-bordered"
@@ -367,10 +295,11 @@ export default function Reports() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1 flex items-center gap-1">
+                    <label htmlFor="admin-report-month" className="text-[9px] font-black text-base-content/50 uppercase tracking-widest pl-1 flex items-center gap-1">
                       <Calendar size={10} /> Compilation Month
                     </label>
                     <input
+                      id="admin-report-month"
                       type="month"
                       value={compilationMonth}
                       onChange={(e) => setCompilationMonth(e.target.value)}

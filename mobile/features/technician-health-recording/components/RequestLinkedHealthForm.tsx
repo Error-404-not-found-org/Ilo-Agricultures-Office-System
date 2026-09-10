@@ -15,14 +15,33 @@ interface Props {
   onStartService?: () => void;
 }
 
-const formatAddress = (address: any) => {
-  if (!address) return "No location provided";
-  if (typeof address === "string") return address;
-  return (
-    [address.barangay, address.city, address.province]
-      .filter(Boolean)
-      .join(", ") || "No location provided"
-  );
+const formatAddress = (farmer: any) => {
+  if (!farmer) return "Location not provided";
+  const farmLoc = farmer?.farmLocation;
+  const addr = farmer?.address;
+  const barangay =
+    farmLoc?.administrativeArea?.barangayName ||
+    farmLoc?.barangay ||
+    addr?.administrativeArea?.barangayName ||
+    addr?.barangay;
+  const city =
+    farmLoc?.administrativeArea?.municipalityName ||
+    farmLoc?.municipality ||
+    farmLoc?.city ||
+    addr?.administrativeArea?.municipalityName ||
+    addr?.municipality ||
+    addr?.city;
+
+  if (barangay || city) {
+    return [barangay, city].filter(Boolean).join(", ");
+  }
+
+  const raw = farmLoc?.detectedAddress || (typeof addr === "string" ? addr : "");
+  if (raw && typeof raw === "string") {
+    return raw.split(",").slice(0, 2).map((s: string) => s.trim()).join(", ");
+  }
+
+  return "Location not provided";
 };
 
 export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitPeriod, saving, onStartService }: Props) {
@@ -32,7 +51,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
   const [treatment, setTreatment] = useState("");
   const [medicineGiven, setMedicineGiven] = useState("");
   const [dosage, setDosage] = useState("");
-  const [resolutionNotes, setResolutionNotes] = useState("");
   const [withdrawalPeriodDays, setWithdrawalPeriodDays] = useState("");
   const [advice, setAdvice] = useState("");
 
@@ -43,9 +61,9 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
       treatment,
       medicineGiven,
       dosage,
-      resolutionNotes,
       withdrawalPeriodDays: withdrawalPeriodDays ? Number(withdrawalPeriodDays) : undefined,
       advice,
+      resolutionNotes: advice,
       followUpDate: null,
     });
   };
@@ -117,7 +135,7 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
         <SummaryLine label="Animal" value={animalName} />
         <SummaryLine label="Ear tag" value={earTag} />
         <SummaryLine label="Breed" value={animal?.breed || "Not provided"} />
-        <SummaryLine label="Location" value={formatAddress(farmer?.farmLocation?.detectedAddress || farmer?.address)} />
+        <SummaryLine label="Location" value={formatAddress(farmer)} />
         <SummaryLine label="Service" value="Health Assistance" />
       </SectionCard>
 
@@ -161,10 +179,10 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
               marginBottom: 16,
             }}
           >
-            Start this service to record clinical findings, diagnosis, and treatment.
+            Begin recording to enter clinical findings, diagnosis, and treatment.
           </Text>
           <Button
-            label="Start Service"
+            label="Record Service"
             size="lg"
             disabled={saving}
             loading={saving}
@@ -183,7 +201,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
                 withdrawalPeriodDays,
                 advice,
                 followUpDate: null,
-                resolutionNotes,
               }}
               onDiagnosisChange={setDiagnosis}
               onTreatmentChange={setTreatment}
@@ -191,7 +208,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
               onDosageChange={setDosage}
               onWithdrawalPeriodDaysChange={setWithdrawalPeriodDays}
               onAdviceChange={setAdvice}
-              onResolutionNotesChange={setResolutionNotes}
               disabled={saving}
             />
           </SectionCard>

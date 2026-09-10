@@ -32,46 +32,56 @@ function renderPage(page) {
 describe("Admin Web role safety", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("renders work-queue data as oversight without Technician actions", async () => {
+  it("renders canonical workload cards with stable Technician IDs", async () => {
     axiosInstance.get.mockResolvedValue({
       data: {
-        data: [
+        technicians: [
           {
-            id: "request-1",
-            taskId: "task-1",
-            workflowId: "request-1",
-            workflowType: "Health",
-            serviceType: "Health assistance",
-            status: "in-progress",
-            displayStatus: "In progress",
-            allowedAction: "RECORD_SERVICE",
-            farmer: { name: "Maria Farmer" },
-            animal: { earTag: "ILO-101" },
-            raw: { assignedTechnicianId: { name: "Tech One" } },
+            technicianId: "technician-a",
+            name: "Same Name",
+            activeWorkloadTotal: 5,
+            counts: { ai: 1, health: 1, pregnancy: 1, calving: 1, tasks: 1 },
+          },
+          {
+            technicianId: "technician-b",
+            name: "Same Name",
+            activeWorkloadTotal: 2,
+            counts: { ai: 0, health: 1, pregnancy: 0, calving: 1, tasks: 0 },
           },
         ],
-        pagination: { total: 1, totalPages: 1 },
       },
     });
 
     renderPage(<AdminWorkQueue />);
 
-    await screen.findByText("Maria Farmer");
-    const table = await screen.findByRole("table", {
-      name: "Municipal technician workload oversight",
+    expect(await screen.findByRole("heading", { name: "Active Work" }))
+      .toBeInTheDocument();
+    expect(await screen.findAllByText("Same Name")).toHaveLength(2);
+    expect(screen.getAllByText("Active Work")).toHaveLength(3);
+    expect(screen.getAllByText("AI")).toHaveLength(2);
+    expect(screen.getAllByText("Health")).toHaveLength(2);
+    expect(screen.getAllByText("Pregnancy")).toHaveLength(2);
+    expect(screen.getAllByText("Calving")).toHaveLength(2);
+    expect(screen.getAllByText("Other Tasks")).toHaveLength(2);
+
+    const profileLinks = screen.getAllByRole("link", {
+      name: /View Technician profile for Same Name/,
     });
-    expect(table).toHaveTextContent("Maria Farmer");
-    expect(table).toHaveTextContent("Tech One");
-    expect(screen.getByRole("link", { name: "Open monitoring" })).toHaveAttribute(
+    expect(profileLinks[0]).toHaveAttribute(
       "href",
-      "/admin/requests?requestId=request-1&status=all",
+      "/admin/users/technician-a",
     );
+    expect(profileLinks[1]).toHaveAttribute(
+      "href",
+      "/admin/users/technician-b",
+    );
+
     expect(screen.queryByText("Record Service")).not.toBeInTheDocument();
     expect(screen.queryByText("Complete Task")).not.toBeInTheDocument();
     expect(screen.queryByText("Claim")).not.toBeInTheDocument();
+    expect(screen.queryByText(/High|Medium|Low workload/)).not.toBeInTheDocument();
     expect(axiosInstance.get).toHaveBeenCalledWith(
-      "/technician/work-queue",
-      expect.any(Object),
+      "/admin/technician-workload-summary",
     );
   });
 

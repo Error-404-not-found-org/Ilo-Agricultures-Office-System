@@ -59,7 +59,9 @@ const CalvingSchema = new mongoose.Schema(
     calvingEase: {
       type: String,
       enum: Object.values(CALVING_EASE),
-      default: CALVING_EASE.NATURAL
+      required: function requireCalvingEaseForDelivery() {
+        return this.outcome !== "abortion";
+      },
     },
     technicianId: {
       type: mongoose.Schema.Types.ObjectId,

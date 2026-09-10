@@ -44,6 +44,10 @@ import {
   executeCleanup,
 } from "../controllers/maintenance.controllers.js";
 import { updateRequestStatus as updateCanonicalAIRequestStatus } from "../controllers/ai-request.controllers.js";
+import {
+  getPregnancyLossReport,
+  reviewPregnancyLoss,
+} from "../controllers/pregnancy-loss-report.controllers.js";
 
 const router = Router();
 
@@ -74,6 +78,16 @@ router.get("/pregnancy-checks", getMyPregnancyChecks);
 router.get("/calvings", getMyCalvings);
 router.get("/notifications", getMyNotifications);
 router.get("/profile", getMyProfile);
+router.get(
+  "/pregnancy-loss-reports/:reportId",
+  requireRole(["technician"]),
+  getPregnancyLossReport,
+);
+router.post(
+  "/pregnancy-loss-reports/:reportId/review",
+  requireRole(["technician"]),
+  reviewPregnancyLoss,
+);
 
 router.get("/ai-service-context", getAIServiceContext);
 router.post("/walk-in-insemination", requireRole(["technician"]), walkInInsemination);

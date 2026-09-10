@@ -42,11 +42,19 @@ test("Admin Security: protectedRoute blocks suspended users", async () => {
     }
 });
 
-test("Admin Security: self-protection blocks modifying self", async () => {
+test("Admin Security: operational target policy blocks Admin self-targets", async () => {
     const adminId = "507f1f77bcf86cd799439011";
+    const originalFindById = User.findById;
+    User.findById = async () => ({
+        _id: adminId,
+        role: "admin",
+        status: "active",
+        deletedAt: null
+    });
+
     const req = {
         body: { id: adminId },
-        user: { _id: adminId }
+        user: { _id: adminId, role: "admin" }
     };
 
     let statusVal = null;
@@ -55,29 +63,31 @@ test("Admin Security: self-protection blocks modifying self", async () => {
         status(code) {
             statusVal = code;
             return {
-                send(data) { sendVal = data; }
+                send(data) { sendVal = data; },
+                json(data) { sendVal = data; }
             };
         }
     };
 
-    // Test suspend self
-    await suspendUser(req, res);
-    assert.equal(statusVal, 400);
-    assert.match(sendVal.message, /cannot suspend your own account/);
+    try {
+        await suspendUser(req, res);
+        assert.equal(statusVal, 403);
+        assert.match(sendVal.message, /Admin accounts cannot be managed/);
 
-    // Test delete self
-    await deleteUser(req, res);
-    assert.equal(statusVal, 400);
-    assert.match(sendVal.message, /cannot delete your own account/);
+        await deleteUser(req, res);
+        assert.equal(statusVal, 403);
+        assert.match(sendVal.message, /Admin accounts cannot be managed/);
 
-    // Test role change self
-    req.body.role = "farmer";
-    await updateRole(req, res);
-    assert.equal(statusVal, 400);
-    assert.match(sendVal.message, /cannot change your own account role/);
+        req.body.role = "farmer";
+        await updateRole(req, res);
+        assert.equal(statusVal, 403);
+        assert.match(sendVal.message, /Admin accounts cannot be managed/);
+    } finally {
+        User.findById = originalFindById;
+    }
 });
 
-test("Admin Security: last admin protection blocks demoting last admin", async () => {
+test("Admin Security: another Admin is blocked regardless of active Admin count", async () => {
     const adminId = "507f1f77bcf86cd799439011";
     const targetAdminId = "507f1f77bcf86cd799439012";
 
@@ -92,7 +102,11 @@ test("Admin Security: last admin protection blocks demoting last admin", async (
     });
 
     // Count is 1 (the last admin)
-    User.countDocuments = async () => 1;
+    let countCalls = 0;
+    User.countDocuments = async () => {
+        countCalls += 1;
+        return 2;
+    };
 
     const req = {
         body: { id: targetAdminId, role: "farmer" },
@@ -105,15 +119,17 @@ test("Admin Security: last admin protection blocks demoting last admin", async (
         status(code) {
             statusVal = code;
             return {
-                send(data) { sendVal = data; }
+                send(data) { sendVal = data; },
+                json(data) { sendVal = data; }
             };
         }
     };
 
     try {
         await updateRole(req, res);
-        assert.equal(statusVal, 400);
-        assert.match(sendVal.message, /last active admin/);
+        assert.equal(statusVal, 403);
+        assert.match(sendVal.message, /Admin accounts cannot be managed/);
+        assert.equal(countCalls, 0);
     } finally {
         User.findById = originalFindById;
         User.countDocuments = originalCountDocuments;

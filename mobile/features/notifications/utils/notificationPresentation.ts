@@ -224,6 +224,22 @@ export const presentNotification = (item: NotificationData) => {
       title: "Pregnancy loss recorded",
       body: `A pregnancy loss was recorded for ${animal}. Review the record for details.`,
     },
+    pregnancy_loss_confirmed: {
+      title: `Pregnancy loss confirmed for ${animal}`,
+      body: `${technician || "Technician"} confirmed the reported pregnancy loss. Pregnancy monitoring has ended and recovery monitoring has started.`,
+    },
+    pregnancy_loss_not_confirmed: {
+      title: `Pregnancy loss not confirmed for ${animal}`,
+      body: `${technician || "Technician"} reviewed the reported loss. Pregnancy loss was not confirmed; pregnancy monitoring continues.`,
+    },
+    pregnancy_loss_follow_up_needed: {
+      title: `Follow-up needed for ${animal}`,
+      body: `${technician || "Technician"} reviewed the reported loss and determined a follow-up is needed. Pregnancy monitoring continues.`,
+    },
+    pregnancy_loss_reported: {
+      title: `Pregnancy loss reported for ${animal}`,
+      body: `${actor || "The farmer"} submitted a pregnancy loss report. Review is required.`,
+    },
     ai_attempt_unsuccessful: {
       title: "AI attempt unsuccessful",
       body: `Attempt ${attempt || "recorded"} for ${animal} was confirmed unsuccessful.`,
@@ -319,6 +335,7 @@ export const getNotificationTarget = (
     return {
       pathname: "/(farmer)/pregnancy-tracker",
       params: {
+        id: animalId ? String(animalId) : undefined,
         pregnancyId: String(pregnancyId),
         animalId: animalId ? String(animalId) : undefined,
       },

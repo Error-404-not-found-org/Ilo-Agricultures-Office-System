@@ -26,14 +26,12 @@ import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
   standalone?: boolean;
-  initialWorkState?: "active" | "completed";
 }
 
 // ─── Main Panel Component ─────────────────────────────────────────────────────
 
 export default function TechnicianMyWorkPanel({
   standalone = false,
-  initialWorkState = "active",
 }: TechnicianMyWorkPanelProps) {
   const router = useRouter();
   const { colors, isDark } = useTheme();
@@ -44,15 +42,6 @@ export default function TechnicianMyWorkPanel({
   const [page, setPage] = useState(1);
   const [serviceFilter, setServiceFilter] =
     useState<WorkQueueFilters["type"]>("all");
-  const [workStateFilter, setWorkStateFilter] = useState<
-    "active" | "completed"
-  >(initialWorkState);
-
-  useEffect(() => {
-    setWorkStateFilter(initialWorkState);
-    setPage(1);
-  }, [initialWorkState]);
-
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
@@ -63,7 +52,7 @@ export default function TechnicianMyWorkPanel({
 
   const { tasksQuery } = useTechnicianTasks(undefined, {
     scope: "mine",
-    workState: workStateFilter,
+    workState: "active",
     type: serviceFilter,
     search: debouncedSearch,
     page,
@@ -147,31 +136,8 @@ export default function TechnicianMyWorkPanel({
       </View>
 
       {/* Filters Row */}
-      <View
-        style={{
-          flexDirection: "row",
-          gap: 8,
-          marginTop: 12,
-          marginBottom: 12,
-          paddingHorizontal: 16,
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          <SelectDropdown
-            label="Status"
-            options={[
-              { value: "active", label: "Active" },
-              { value: "completed", label: "Completed" },
-            ]}
-            value={workStateFilter}
-            onChange={(val) => {
-              setWorkStateFilter(val as any);
-              setPage(1);
-            }}
-            highlightSelection={false}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
+      <View style={{ marginTop: 12, marginBottom: 12, paddingHorizontal: 16 }}>
+        <View>
           <SelectDropdown
             label="Request Type"
             options={MY_WORK_FILTERS.map((opt) => {

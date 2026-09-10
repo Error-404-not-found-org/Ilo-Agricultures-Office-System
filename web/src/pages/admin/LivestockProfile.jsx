@@ -3,10 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
-  ChevronRight,
   Download,
   MapPin,
-  User,
+  Phone,
+  UserRound,
   Syringe,
   Stethoscope,
   AlertCircle,
@@ -14,27 +14,32 @@ import {
   CheckCircle2,
   Tag,
   Heart,
-  Calendar,
   Search,
-  PlusCircle,
   FileText,
   Beef,
-  Dna,
   Edit3,
   HeartPulse,
-  Baby,
   ClipboardList,
+  Info,
+  History,
+  Activity,
   Eye,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import AddMedicalRecordModal from "../../components/dialogs/AddMedicalRecordModal";
-import ActivityDetailsModal from "../../components/dialogs/ActivityDetailsModal";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import RecordCalfDropModal from "../../components/dialogs/RecordCalvingModal";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
 import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
+import OfficialRecordDetailModal from "../../components/technician/OfficialRecordDetailModal";
 import { WEB_ROLES, normalizeWebRole } from "../../constants/webRoles";
+import { getAIEligibility } from "../../utils/aiEligibility";
+import {
+  getAnimalReproductivePresentation,
+  hasEligibleBreedingAttemptForPD,
+  isPregnancyLossCalving,
+} from "../../utils/animalReproductivePresentation";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -125,6 +130,48 @@ function formatAge(birthDate) {
   }
 }
 
+function getInitials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+}
+
+function TimelineMarker({ state }) {
+  if (state === "completed") {
+    return (
+      <span className="flex size-6 items-center justify-center rounded-full bg-success text-success-content">
+        <CheckCircle2 size={14} aria-hidden="true" />
+      </span>
+    );
+  }
+  if (state === "failed") {
+    return (
+      <span className="flex size-6 items-center justify-center rounded-full bg-error text-error-content">
+        <AlertCircle size={14} aria-hidden="true" />
+      </span>
+    );
+  }
+  if (state === "current") {
+    return (
+      <span className="flex size-6 items-center justify-center rounded-full border-2 border-primary bg-base-100">
+        <span className="size-2 rounded-full bg-primary" />
+      </span>
+    );
+  }
+  return (
+    <span className="flex size-6 items-center justify-center rounded-full border-2 border-base-300 bg-base-100">
+      <span className="size-1.5 rounded-full bg-base-content/25" />
+    </span>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
@@ -134,17 +181,16 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
   const isAdmin = normalizeWebRole(role) === WEB_ROLES.ADMIN;
 
   // Top level state hooks (all declared before any conditional returns)
-  const [selectedActivity, setSelectedActivity] = useState(null);
-  const [isAddMedicalModalOpen, setIsAddMedicalModalOpen] = useState(false);
-  const [medicalInitialType] = useState("Vaccination");
+  const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isPDModalOpen, setIsPDModalOpen] = useState(false);
   const [isCalvingModalOpen, setIsCalvingModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("Overview");
   const [isRegisterLivestockOpen, setIsRegisterLivestockOpen] = useState(false);
-  const [isAddRecordMenuOpen, setIsAddRecordMenuOpen] = useState(false);
   const [showAllRecords, setShowAllRecords] = useState(false);
   const [recordSearch, setRecordSearch] = useState("");
   const [recordTypeFilter, setRecordTypeFilter] = useState("All");
+  const [selectedOfficialRecord, setSelectedOfficialRecord] = useState(null);
   const [currentTimestamp] = useState(() => Date.now());
 
   const { data: medicalHistory = [], isLoading: isLoadingMedical } = useQuery({
@@ -185,6 +231,11 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       dateEntered: record.createdAt,
       originId: record._id,
       originLabel: "AI service request",
+      officialRecordKind: "insemination",
+      officialRecordId: record._id || record.id,
+      officialRecordAvailable: ["done", "completed", "resolved"].includes(
+        String(record.status || "").toLowerCase(),
+      ),
     }));
 
     const health = (medicalHistory || []).map((record) => ({
@@ -203,6 +254,9 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       dateEntered: record.createdAt,
       originId: record.healthRequestId?._id || record.healthRequestId,
       originLabel: record.healthRequestId ? "Health assistance request" : null,
+      officialRecordKind: "medical_record",
+      officialRecordId: record._id || record.id,
+      officialRecordAvailable: Boolean(record._id || record.id),
     }));
 
     const pdEvents = (animal?.inseminations || [])
@@ -223,22 +277,40 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
             preg.result ||
             preg.status ||
             "Completed",
-          recordedBy: preg.diagnosedBy || preg.technicianId?.name || "Not recorded",
+          recordedBy:
+            preg.diagnosedBy || preg.technicianId?.name || "Not recorded",
           dateEntered: preg.createdAt,
+          officialRecordKind: "pregnancy",
+          officialRecordId: preg._id || preg.id,
+          officialRecordAvailable: Boolean(
+            (preg._id || preg.id) &&
+            (preg.pregnancyDiagnosis?.date ||
+              preg.pregnancyDiagnosis?.result ||
+              preg.diagnosisDate ||
+              preg.result),
+          ),
         };
       });
 
-    const calvingEvents = (animal?.calvings || []).map((calving) => ({
-      ...calving,
-      recordKind: "Calving",
-      recordDate: calving.date || calving.createdAt,
-      recordTitle: "Calving Record",
-      recordSummary: `Calving ease: ${calving.calvingEase || "Not recorded"}. Calves: ${calving.calves?.length ?? calving.numberOfCalves ?? "Not recorded"}`,
-      recordStatus: "Completed",
-      recordedBy:
-        calving.recordedBy || calving.technicianId?.name || "Not recorded",
-      dateEntered: calving.createdAt,
-    }));
+    const calvingEvents = (animal?.calvings || []).map((calving) => {
+      const isLoss = isPregnancyLossCalving(calving);
+      return {
+        ...calving,
+        recordKind: "Calving",
+        recordDate: calving.date || calving.createdAt,
+        recordTitle: isLoss ? "Pregnancy Loss Record" : "Calving Record",
+        recordSummary: isLoss
+          ? "Pregnancy loss recorded"
+          : `Calving ease: ${calving.calvingEase || "Not recorded"}. Calves: ${calving.calves?.length ?? calving.numberOfCalves ?? "Not recorded"}`,
+        recordStatus: "Completed",
+        recordedBy:
+          calving.recordedBy || calving.technicianId?.name || "Not recorded",
+        dateEntered: calving.createdAt,
+        officialRecordKind: "calving",
+        officialRecordId: calving._id || calving.id,
+        officialRecordAvailable: Boolean(calving._id || calving.id),
+      };
+    });
 
     return [...breeding, ...health, ...pdEvents, ...calvingEvents].sort(
       (a, b) => new Date(b.recordDate || 0) - new Date(a.recordDate || 0),
@@ -299,7 +371,9 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       ...recordRows,
     ]
       .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","),
+        row
+          .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
+          .join(","),
       )
       .join("\n");
     const url = URL.createObjectURL(
@@ -375,25 +449,22 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
 
   // ── Derived Data ─────────────────────────────────────────────────────────
 
-  const latestInsemination =
-    animal.inseminations
-      ?.slice()
-      .sort(
-        (a, b) => new Date(b.inseminationDate) - new Date(a.inseminationDate),
-      )[0] || null;
+  const reproductive = getAnimalReproductivePresentation(animal);
+  const aiEligibility = getAIEligibility({ animal });
+
+  const isPostpartum =
+    animal?.reproductiveStatus === "Post-partum" ||
+    animal?.effectiveReproductiveStatus === "Post-partum" ||
+    Boolean(reproductive.postpartum);
+
+  const hasPregnancyDiagnosisCandidate =
+    !isPostpartum && hasEligibleBreedingAttemptForPD(animal);
 
   const activeWithdrawalRecord = (medicalHistory || []).find((record) => {
     if (!record.details?.withdrawalEndDate) return false;
     const endDate = new Date(record.details.withdrawalEndDate);
     return endDate.getTime() > currentTimestamp;
   });
-
-  const daysAgoInsemination = latestInsemination
-    ? Math.floor(
-        (currentTimestamp - new Date(latestInsemination.inseminationDate).getTime()) /
-          (1000 * 60 * 60 * 24),
-      )
-    : null;
 
   const displayedRecords =
     showAllRecords || recordSearch.trim().length > 0
@@ -429,516 +500,803 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
       </header>
 
       {/* ── Main Layout Body ── */}
-      <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 w-full">
-        {/* Medication Withdrawal Warning Alert if active */}
+      <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 w-full max-w-7xl mx-auto">
+        {/* Critical Alert */}
         {activeWithdrawalRecord && (
-          <div role="alert" className="alert alert-error rounded-2xl shadow-sm items-start">
+          <div
+            role="alert"
+            className="alert alert-error rounded-2xl shadow-sm items-start"
+          >
             <AlertCircle className="shrink-0 mt-0.5" size={18} />
             <div className="flex-1 min-w-0">
               <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 Active Medication Withdrawal Warning
               </h4>
               <p className="mt-1 text-xs leading-relaxed">
-                Meat and milk from this animal are unsafe for consumption or sale until{" "}
+                Meat and milk from this animal are unsafe for consumption or
+                sale until{" "}
                 <span className="font-bold">
                   {fmtDate(activeWithdrawalRecord.details?.withdrawalEndDate)}
                 </span>{" "}
                 due to recent treatment with{" "}
                 <span className="font-bold">
                   {activeWithdrawalRecord.details?.medicineName || "medicine"}
-                </span>.
+                </span>
+                .
               </p>
             </div>
           </div>
         )}
 
-        {/* ── SECTION 1: ProfileHeader ── */}
-        <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm flex flex-col lg:flex-row items-start lg:items-center gap-6">
-          {/* AnimalImage */}
-          <div className="w-full lg:w-72 h-52 lg:h-48 rounded-2xl overflow-hidden shrink-0 bg-base-200 relative border border-base-300">
-            <AnimalImageFallback
-              imageUrl={animal.imageUrl || animal.photoUrl}
-              tag={animal.earTag || animal.animalId || "Not recorded"}
-              className="w-full h-full object-cover"
-              iconSize={48}
-            />
-          </div>
-
-          {/* AnimalInfo & StatusBadge */}
-          <div className="flex-1 min-w-0 space-y-4 w-full">
-            {/* Title + StatusBadge */}
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-2xl font-black text-base-content tracking-tight">
-                {animal.name || animal.earTag || "Unnamed animal"}
-              </h2>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-success/20 bg-success/15 text-xs font-extrabold text-success">
-                <CheckCircle2 size={14} />
-                {animal.reproductiveStatus || "Not recorded"}
-              </span>
+        {/* Animal Identity Header */}
+        <section
+          aria-labelledby="animal-profile-name"
+          className="overflow-hidden rounded-2xl border border-primary bg-primary text-primary-content shadow-sm"
+        >
+          <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[11rem_minmax(0,1fr)_auto] lg:items-center">
+            <div className="aspect-[4/3] overflow-hidden rounded-2xl border border-primary-content/20 bg-primary-content/10 sm:aspect-[16/9] lg:aspect-square">
+              <AnimalImageFallback
+                imageUrl={animal.imageUrl || animal.photoUrl}
+                tag={animal.earTag || animal.animalId || "Not recorded"}
+                className="h-full w-full object-cover"
+                iconSize={46}
+              />
             </div>
-
-            {/* Metadata Info Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8 pt-1">
-              {/* Ear Tag */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-                  <Tag size={16} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-base-content/60 font-medium">Ear Tag</p>
-                  <p className="text-sm font-bold text-base-content truncate">
-                    {animal.earTag || animal.animalId || "Not recorded"}
-                  </p>
-                </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2
+                  id="animal-profile-name"
+                  className="text-2xl font-black tracking-tight sm:text-3xl"
+                >
+                  {animal.name ||
+                    animal.breed ||
+                    animal.earTag ||
+                    "Unnamed animal"}
+                </h2>
+                {animal.isVerified === true && (
+                  <span className="badge h-auto border-primary-content/20 bg-primary-content/15 py-1.5 text-primary-content">
+                    <CheckCircle2 size={14} />
+                    Verified
+                  </span>
+                )}
               </div>
-
-              {/* Age */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-                  <Calendar size={16} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-base-content/60 font-medium">Age</p>
-                  <p className="text-sm font-bold text-base-content truncate">
-                    {formatAge(animal.dateOfBirth || animal.birthDate)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Species */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-                  <Beef size={16} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-base-content/60 font-medium">Species</p>
-                  <p className="text-sm font-bold text-base-content truncate">
-                    {animal.species || "Not recorded"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Owner */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-                  <User size={16} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-base-content/60 font-medium">Owner</p>
-                  <p className="text-sm font-bold text-base-content truncate">
-                    {animal.farmerId?.name || "Not recorded"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Breed */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-                  <Dna size={16} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-base-content/60 font-medium">Breed</p>
-                  <p className="text-sm font-bold text-base-content truncate">
-                    {animal.breed || "Not recorded"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Location */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-                  <MapPin size={16} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-base-content/60 font-medium">Location</p>
-                  <p className="text-sm font-bold text-base-content truncate">
-                    {getOwnerLocation(animal.farmerId?.address)}
-                  </p>
-                </div>
+              <p className="mt-1 text-sm font-semibold text-primary-content/80 sm:text-base">
+                {[animal.species, animal.breed]
+                  .filter(Boolean)
+                  .filter(
+                    (value, index, values) =>
+                      values.findIndex(
+                        (candidate) =>
+                          String(candidate).toLowerCase() ===
+                          String(value).toLowerCase(),
+                      ) === index,
+                  )
+                  .join(" · ") || "Species and breed not recorded"}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="badge h-auto border-primary-content/25 bg-primary-content/10 px-3 py-2 font-bold text-primary-content">
+                  <Tag size={14} />
+                  Ear tag: {animal.earTag || "Not recorded"}
+                </span>
+                <span className="badge h-auto border-primary-content/25 bg-primary-content/10 px-3 py-2 font-bold text-primary-content">
+                  {reproductive.statusLabel}
+                </span>
               </div>
             </div>
-          </div>
-
-          {/* ActionButtons */}
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 justify-center w-full lg:w-48 lg:ml-auto">
-            {/* Edit Profile */}
             <button
               type="button"
               onClick={() => setIsRegisterLivestockOpen(true)}
-              className="btn btn-primary font-bold rounded-xl gap-2 px-5 py-2.5 w-full shadow-sm"
+              className="btn border-primary-content/25 bg-primary-content/10 text-primary-content hover:border-primary-content/40 hover:bg-primary-content/20"
             >
-              <Edit3 size={15} /> Edit Profile
+              <Edit3 size={15} />
+              Edit Profile
             </button>
+          </div>
+        </section>
 
-            {!isAdmin && (
-              <>
-            {/* Add Record Dropdown */}
-            <div
-              className={`dropdown dropdown-end w-full ${isAddRecordMenuOpen ? "dropdown-open" : ""}`}
-            >
+        {/* Technician Actions - Properly laid out */}
+        {!isAdmin && (
+          <section
+            aria-labelledby="technician-actions-heading"
+            className="rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+          >
+            <div className="border-b border-base-300 px-5 py-4">
+              <h2
+                id="technician-actions-heading"
+                className="font-extrabold text-base"
+              >
+                Technician Actions
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-base-content/60">
+                Record clinical services for this animal
+              </p>
+            </div>
+            <div className="grid gap-3 p-5 sm:grid-cols-3">
               <button
                 type="button"
-                tabIndex={0}
-                aria-expanded={isAddRecordMenuOpen}
-                onClick={() => setIsAddRecordMenuOpen((isOpen) => !isOpen)}
-                className="btn btn-outline btn-primary font-bold rounded-xl gap-2 px-5 py-2.5 w-full"
+                onClick={() => setIsHealthModalOpen(true)}
+                className="btn btn-outline border-base-300 h-auto min-h-14 flex-col gap-1"
               >
-                <PlusCircle size={15} /> Add Record
+                <span className="flex items-center gap-2">
+                  <Stethoscope size={17} className="text-primary" />
+                  <span className="font-bold">Health Record</span>
+                </span>
+                <span className="text-[10px] font-medium text-base-content/60">
+                  Record medical treatment
+                </span>
               </button>
-              {isAddRecordMenuOpen && (
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content z-30 menu p-2 shadow-xl bg-base-100 rounded-2xl w-56 mt-2 border border-base-300 text-base-content"
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasPregnancyDiagnosisCandidate) setIsPDModalOpen(true);
+                }}
+                disabled={!hasPregnancyDiagnosisCandidate}
+                aria-describedby={
+                  hasPregnancyDiagnosisCandidate ? undefined : "pd-disabled-reason"
+                }
+                className="btn btn-outline border-base-300 h-auto min-h-14 flex-col gap-1"
+              >
+                <span className="flex items-center gap-2">
+                  <ShieldCheck size={17} className="text-primary" />
+                  <span className="font-bold">Pregnancy Check</span>
+                </span>
+                {!hasPregnancyDiagnosisCandidate ? (
+                  <span
+                    id="pd-disabled-reason"
+                    className="block max-w-64 truncate text-[10px] font-medium opacity-70"
+                  >
+                    No active AI cycle to diagnose
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-base-content/60">
+                    Diagnose pregnancy status
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (aiEligibility.isEligible) setIsAIModalOpen(true);
+                }}
+                disabled={!aiEligibility.isEligible}
+                aria-describedby={
+                  aiEligibility.isEligible ? undefined : "ai-disabled-reason"
+                }
+                className="btn btn-primary h-auto min-h-14 flex-col gap-1"
+              >
+                <span className="flex items-center gap-2">
+                  <Syringe size={17} />
+                  <span className="font-bold">Record AI Service</span>
+                </span>
+                {!aiEligibility.isEligible ? (
+                  <span
+                    id="ai-disabled-reason"
+                    className="block max-w-64 truncate text-[10px] font-medium opacity-70"
+                  >
+                    {aiEligibility.reason}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium opacity-70">
+                    Artificial insemination
+                  </span>
+                )}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Tab Navigation */}
+        <div className="flex border-b border-base-300 overflow-x-auto hide-scrollbar bg-base-100 rounded-t-2xl">
+          <button
+            type="button"
+            onClick={() => setActiveTab("Overview")}
+            className={`min-h-12 px-6 flex items-center gap-2 border-b-2 transition-colors font-bold whitespace-nowrap ${
+              activeTab === "Overview"
+                ? "border-primary text-primary"
+                : "border-transparent text-base-content/60 hover:text-base-content/80"
+            }`}
+          >
+            <Info size={16} />
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("Timeline")}
+            className={`min-h-12 px-6 flex items-center gap-2 border-b-2 transition-colors font-bold whitespace-nowrap ${
+              activeTab === "Timeline"
+                ? "border-primary text-primary"
+                : "border-transparent text-base-content/60 hover:text-base-content/80"
+            }`}
+          >
+            <History size={16} />
+            Reproductive Timeline
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("Records")}
+            className={`min-h-12 px-6 flex items-center gap-2 border-b-2 transition-colors font-bold whitespace-nowrap ${
+              activeTab === "Records"
+                ? "border-primary text-primary"
+                : "border-transparent text-base-content/60 hover:text-base-content/80"
+            }`}
+          >
+            <ClipboardList size={16} />
+            Records
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === "Overview" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Reproductive Status Summary */}
+            <section
+              aria-labelledby="reproductive-status-heading"
+              className="overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+            >
+              <div className="flex flex-col gap-4 border-b border-base-300 p-5 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <HeartPulse size={21} />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold text-base-content/55">
+                      Reproductive Status
+                    </p>
+                    <h3
+                      id="reproductive-status-heading"
+                      className="mt-0.5 text-lg font-extrabold text-primary"
+                    >
+                      {reproductive.statusLabel}
+                    </h3>
+                    <p className="mt-1 text-sm text-base-content/65">
+                      {reproductive.context}
+                    </p>
+                  </div>
+                </div>
+                {reproductive.currentAttemptNumber && (
+                  <span className="badge badge-outline h-auto py-2">
+                    Current cycle · Attempt {reproductive.currentAttemptNumber}
+                  </span>
+                )}
+              </div>
+              <dl className="grid sm:grid-cols-3">
+                <div className="p-4 sm:border-r sm:border-base-300">
+                  <dt className="text-xs font-semibold text-base-content/55">
+                    Last AI
+                  </dt>
+                  <dd className="mt-1 text-sm font-bold">
+                    {fmtDate(
+                      reproductive.currentAttemptDate ||
+                        animal.lastInseminationDate,
+                    )}
+                  </dd>
+                </div>
+                <div className="border-t border-base-300 p-4 sm:border-r sm:border-t-0">
+                  <dt className="text-xs font-semibold text-base-content/55">
+                    Next follow-up
+                  </dt>
+                  <dd className="mt-1 text-sm font-bold">
+                    {reproductive.nextFollowUp?.label || "Not scheduled"}
+                  </dd>
+                  {reproductive.nextFollowUp?.date && (
+                    <p className="mt-0.5 text-xs text-base-content/60">
+                      {fmtDate(reproductive.nextFollowUp.date)}
+                    </p>
+                  )}
+                </div>
+                <div className="border-t border-base-300 p-4 sm:border-t-0">
+                  <dt className="text-xs font-semibold text-base-content/55">
+                    Expected calving
+                  </dt>
+                  <dd className="mt-1 text-sm font-bold">
+                    {fmtDate(reproductive.expectedCalvingDate)}
+                  </dd>
+                  {!reproductive.pregnancyConfirmed && (
+                    <p className="mt-0.5 text-xs text-base-content/60">
+                      Shown only after confirmed pregnancy
+                    </p>
+                  )}
+                </div>
+              </dl>
+            </section>
+
+            {/* Combined Animal Information and Ownership */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Animal Information */}
+              <div className="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden">
+                <div className="border-b border-base-300 px-6 py-4">
+                  <h2 className="flex items-center gap-2 font-extrabold text-base text-primary">
+                    <Beef size={18} />
+                    Animal Information
+                  </h2>
+                </div>
+                <div className="p-6 space-y-3.5 text-sm">
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-base-content/60 font-medium">
+                      Gender
+                    </span>
+                    <span className="font-bold text-base-content">
+                      {animal.gender || animal.sex || "Not recorded"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-t border-base-200">
+                    <span className="text-base-content/60 font-medium">
+                      Age
+                    </span>
+                    <span className="font-bold text-base-content">
+                      {formatAge(animal.birthDate || animal.dateOfBirth)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-t border-base-200">
+                    <span className="text-base-content/60 font-medium">
+                      Date of Birth
+                    </span>
+                    <span className="font-bold text-base-content">
+                      {fmtDate(animal.dateOfBirth || animal.birthDate)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-t border-base-200">
+                    <span className="text-base-content/60 font-medium">
+                      Color / Markings
+                    </span>
+                    <span className="font-bold text-base-content">
+                      {animal.colorMarkings || animal.color || "Not recorded"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-t border-base-200">
+                    <span className="text-base-content/60 font-medium">
+                      Weight
+                    </span>
+                    <span className="font-bold text-base-content">
+                      {animal.weight ? `${animal.weight} kg` : "Not recorded"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-t border-base-200">
+                    <span className="text-base-content/60 font-medium">
+                      Milk Production
+                    </span>
+                    <span className="font-bold text-base-content">
+                      {animal.milkProduction
+                        ? `${animal.milkProduction} L / day`
+                        : "Not recorded"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ownership Information */}
+              <div className="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden">
+                <div className="border-b border-base-300 px-6 py-4">
+                  <h2 className="flex items-center gap-2 font-extrabold text-base text-primary">
+                    <UserRound size={18} />
+                    Ownership Information
+                  </h2>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="avatar placeholder">
+                      <div className="size-12 rounded-full bg-primary/10 text-primary">
+                        {animal.farmerId?.imageUrl ||
+                        animal.farmerId?.avatarUrl ||
+                        animal.farmerId?.avatar ? (
+                          <img
+                            src={
+                              animal.farmerId.imageUrl ||
+                              animal.farmerId.avatarUrl ||
+                              animal.farmerId.avatar
+                            }
+                            alt=""
+                          />
+                        ) : (
+                          <span className="text-sm font-extrabold">
+                            {getInitials(animal.farmerId?.name)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-base-content/55">
+                        Registered Farmer
+                      </p>
+                      <h3 className="truncate text-base font-extrabold">
+                        {animal.farmerId?.name || "Not recorded"}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <dl className="space-y-3 text-sm">
+                    <div className="flex items-start gap-3">
+                      <Phone
+                        size={16}
+                        className="mt-0.5 shrink-0 text-primary"
+                      />
+                      <div>
+                        <dt className="sr-only">Contact number</dt>
+                        <dd className="font-semibold">
+                          {animal.farmerId?.phoneNumber ||
+                            animal.farmerId?.phone ||
+                            "Not recorded"}
+                        </dd>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <MapPin
+                        size={16}
+                        className="mt-0.5 shrink-0 text-primary"
+                      />
+                      <div>
+                        <dt className="sr-only">Address</dt>
+                        <dd className="font-semibold leading-snug text-base-content/75">
+                          {getOwnerLocation(animal.farmerId?.address)}
+                        </dd>
+                      </div>
+                    </div>
+                  </dl>
+
+                  {(animal.farmerId?._id || animal.farmerId?.id) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          isAdmin
+                            ? `/admin/users/${
+                                animal.farmerId._id || animal.farmerId.id
+                              }`
+                            : `/technician/farmers/${
+                                animal.farmerId._id || animal.farmerId.id
+                              }`,
+                        )
+                      }
+                      className="btn btn-outline btn-sm w-full border-base-300"
+                    >
+                      <UserRound size={15} className="text-primary" />
+                      View farmer
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "Timeline" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <section className="overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-base-300 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Heart size={19} />
+                  </span>
+                  <div>
+                    <h2 className="font-extrabold text-base-content">
+                      Reproductive Timeline
+                    </h2>
+                    <p className="mt-1 text-sm text-base-content/65">
+                      Milestones from the live breeding cycle, readiness,
+                      follow-up task, and pregnancy record.
+                    </p>
+                  </div>
+                </div>
+                {reproductive.nextFollowUp?.status && (
+                  <span className="badge badge-outline">
+                    {reproductive.nextFollowUp.status}
+                  </span>
+                )}
+              </div>
+
+              {reproductive.timeline.length ? (
+                <ol className="p-5 sm:p-6">
+                  {reproductive.timeline.map((milestone, index) => (
+                    <li
+                      key={milestone.key}
+                      className={
+                        "relative flex gap-3 pb-6 last:pb-0 " +
+                        (milestone.state === "skipped" ? "opacity-55" : "")
+                      }
+                    >
+                      {index < reproductive.timeline.length - 1 && (
+                        <span className="absolute bottom-0 left-[11px] top-6 w-px bg-base-300" />
+                      )}
+                      <span className="relative z-10 shrink-0">
+                        <TimelineMarker state={milestone.state} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p
+                              className={
+                                "text-sm font-bold " +
+                                (milestone.state === "current"
+                                  ? "text-primary"
+                                  : milestone.state === "failed"
+                                    ? "text-error"
+                                    : "text-base-content")
+                              }
+                            >
+                              {milestone.label}
+                            </p>
+                            {milestone.startDate && (
+                              <p className="text-xs text-base-content/60">
+                                Recovery started {fmtDate(milestone.startDate)}
+                              </p>
+                            )}
+                          </div>
+                          {milestone.eligibleDate ? (
+                            <div className="text-left sm:text-right">
+                              <span className="block text-[10px] font-semibold uppercase tracking-wider text-base-content/45">
+                                Eligible for AI after
+                              </span>
+                              <time className="text-xs font-semibold text-base-content/70">
+                                {fmtDate(milestone.eligibleDate)}
+                              </time>
+                            </div>
+                          ) : milestone.date ? (
+                            <time className="text-xs font-semibold text-base-content/55">
+                              {fmtDate(milestone.date)}
+                            </time>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-base-content/65">
+                          {milestone.detail}
+                        </p>
+                        {milestone.state === "current" && (
+                          <span className="badge badge-primary badge-sm mt-2">
+                            {milestone.stageLabel || "Current stage"}
+                          </span>
+                        )}
+                        {milestone.state === "skipped" && (
+                          <span className="badge badge-ghost badge-sm mt-2">
+                            Not required
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="p-6">
+                  <div className="rounded-xl bg-base-200 p-4">
+                    <p className="text-sm font-semibold">
+                      No active reproductive timeline
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-base-content/60">
+                      A timeline appears after an AI service or confirmed
+                      reproductive event is recorded.
+                    </p>
+                  </div>
+                  {reproductive.latestHistoricalDate && (
+                    <p className="mt-4 text-xs text-base-content/60">
+                      Most recent historical AI:{" "}
+                      <strong>
+                        {fmtDate(reproductive.latestHistoricalDate)}
+                      </strong>
+                      {reproductive.historyOnlyLatest ? " · History only" : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Health Timeline */}
+            <section className="overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-sm mt-6">
+              <div className="flex items-start gap-3 border-b border-base-300 p-5 sm:p-6">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-error/10 text-error">
+                  <Activity size={19} />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-base-content">
+                    Health Timeline
+                  </h2>
+                  <p className="mt-1 text-sm text-base-content/65">
+                    Medical records and health interventions.
+                  </p>
+                </div>
+              </div>
+
+              {medicalHistory.length === 0 ? (
+                <p className="p-6 text-sm text-base-content/65">
+                  No health history recorded.
+                </p>
+              ) : (
+                <ol className="divide-y divide-base-300">
+                  {medicalHistory
+                    .sort(
+                      (a, b) =>
+                        new Date(b.date || b.createdAt) -
+                        new Date(a.date || a.createdAt),
+                    )
+                    .map((event) => (
+                      <li
+                        key={event._id}
+                        className="grid gap-3 p-5 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-center sm:px-6"
+                      >
+                        <p className="text-sm font-bold text-base-content">
+                          {fmtDate(event.date || event.createdAt)}
+                        </p>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-extrabold text-base-content">
+                              {event.type || "Check-up"}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-sm text-base-content/65">
+                            {event.details?.diagnosis ||
+                              event.note ||
+                              "Routine record"}
+                          </p>
+                        </div>
+                        <p className="text-xs font-semibold text-base-content/60 sm:text-right">
+                          {event.technicianId?.name
+                            ? `By ${event.technicianId.name}`
+                            : "By unknown"}
+                        </p>
+                      </li>
+                    ))}
+                </ol>
+              )}
+            </section>
+          </div>
+        )}
+
+        {activeTab === "Records" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Records Table */}
+            <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
+              <div className="flex flex-col gap-4 border-b border-base-300 pb-4 lg:flex-row lg:items-center lg:justify-between">
+                <div
+                  role="tablist"
+                  aria-label="Livestock profile sections"
+                  className="tabs tabs-border"
                 >
-                <li>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsAIModalOpen(true);
-                      setIsAddRecordMenuOpen(false);
-                    }}
-                    className="text-xs font-bold py-2.5 flex items-center gap-2"
+                    role="tab"
+                    aria-selected="true"
+                    className="tab tab-active gap-2 font-extrabold text-primary"
                   >
-                    <Syringe size={15} className="text-info" /> Artificial Insemination (AI)
+                    <ClipboardList size={18} />
+                    Animal Records
                   </button>
-                </li>
-                <li>
+                </div>
+
+                {/* Filters */}
+                <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-[minmax(16rem,1fr)_minmax(12rem,auto)] lg:max-w-2xl">
+                  <div className="relative min-w-0">
+                    <Search
+                      size={15}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50 z-10"
+                    />
+                    <input
+                      type="search"
+                      aria-label="Search animal records"
+                      placeholder="Search by type, details, Technician, or date..."
+                      value={recordSearch}
+                      onChange={(e) => setRecordSearch(e.target.value)}
+                      className="input input-sm w-full pl-9"
+                    />
+                  </div>
+
+                  <select
+                    aria-label="Filter animal records by type"
+                    value={recordTypeFilter}
+                    onChange={(e) => setRecordTypeFilter(e.target.value)}
+                    className="select select-sm w-full font-semibold sm:min-w-52"
+                  >
+                    <option value="All">All record types</option>
+                    <option value="AI">AI records</option>
+                    <option value="Health">Health records</option>
+                    <option value="Pregnancy Check">Pregnancy checks</option>
+                    <option value="Calving">Calving events</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                {displayedRecords.length === 0 ? (
+                  <div className="py-12 text-center text-base-content/50 space-y-2">
+                    <FileText
+                      size={36}
+                      className="mx-auto text-base-content/30"
+                    />
+                    <p className="text-sm font-semibold">
+                      No records match your search.
+                    </p>
+                  </div>
+                ) : (
+                  <table className="table table-zebra w-full text-left">
+                    <thead>
+                      <tr className="border-b border-base-200 text-xs text-base-content/60 font-bold uppercase tracking-wider">
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-4">Record Type</th>
+                        <th className="py-3 px-4">Details</th>
+                        <th className="py-3 px-4">Technician</th>
+                        <th className="py-3 px-4 text-right">Status</th>
+                        <th className="py-3 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm">
+                      {displayedRecords.map((record, index) => {
+                        const meta = getRecordMeta(record.recordKind);
+                        return (
+                          <tr
+                            key={record._id || record.id || index}
+                            className="hover:bg-base-200/50 transition-colors"
+                          >
+                            <td className="py-3.5 px-4 font-bold text-base-content/90 whitespace-nowrap">
+                              {fmtDate(record.recordDate)}
+                            </td>
+
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${meta.bg}`}
+                              >
+                                {meta.icon}
+                                {record.recordTitle}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4 max-w-xs truncate text-base-content/80 font-medium">
+                              {record.recordSummary || "Routine record entry"}
+                            </td>
+
+                            <td className="py-3.5 px-4 font-semibold text-base-content/80 whitespace-nowrap">
+                              {record.recordedBy || "Not recorded"}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              <span className="badge badge-outline badge-sm">
+                                {record.recordStatus || "Not recorded"}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              {record.officialRecordAvailable ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm"
+                                  onClick={() =>
+                                    setSelectedOfficialRecord({
+                                      animalId: animal._id || animal.id || id,
+                                      recordKind: record.officialRecordKind,
+                                      recordId: record.officialRecordId,
+                                    })
+                                  }
+                                >
+                                  <Eye size={15} aria-hidden="true" />
+                                  View details
+                                </button>
+                              ) : (
+                                <span className="text-xs font-medium text-base-content/55">
+                                  Available after completion
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {visibleRecords.length > 5 && (
+                <div className="pt-2 text-center">
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsAddMedicalModalOpen(true);
-                      setIsAddRecordMenuOpen(false);
-                    }}
-                    className="text-xs font-bold py-2.5 flex items-center gap-2"
+                    onClick={() => setShowAllRecords(!showAllRecords)}
+                    className="btn btn-ghost btn-sm text-primary font-bold hover:bg-primary/10 rounded-xl"
                   >
-                    <Stethoscope size={15} className="text-error" /> Health / Medical Log
+                    {showAllRecords
+                      ? "Show recent records only"
+                      : "View all records"}
                   </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsPDModalOpen(true);
-                      setIsAddRecordMenuOpen(false);
-                    }}
-                    className="text-xs font-bold py-2.5 flex items-center gap-2"
-                  >
-                    <ShieldCheck size={15} className="text-success" /> Pregnancy Diagnosis (PD)
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCalvingModalOpen(true);
-                      setIsAddRecordMenuOpen(false);
-                    }}
-                    className="text-xs font-bold py-2.5 flex items-center gap-2"
-                  >
-                    <Heart size={15} className="text-secondary" /> Calving Record
-                  </button>
-                </li>
-                </ul>
+                </div>
               )}
             </div>
-              </>
-            )}
           </div>
-        </div>
-
-        {/* ── SECTION 2: SummaryCards ── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* LastServiceCard */}
-          <div className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center gap-4">
-            <div className="size-14 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
-              <Calendar size={22} className="stroke-[2.2]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
-                Last AI Service
-              </p>
-              <p className="text-lg font-black text-base-content truncate mt-0.5">
-                {latestInsemination
-                  ? fmtDate(latestInsemination.inseminationDate)
-                  : "Not recorded"}
-              </p>
-              <p className="text-xs font-medium text-base-content/60">
-                {daysAgoInsemination != null
-                  ? `${daysAgoInsemination} days ago`
-                  : "No AI service date recorded"}
-              </p>
-            </div>
-          </div>
-
-          {/* PregnancyCard with next page navigation arrow */}
-          <div
-            onClick={() => {
-              if (!isAdmin) navigate("/technician/ledger");
-            }}
-            className={`bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center justify-between gap-4 group ${
-              isAdmin
-                ? ""
-                : "cursor-pointer hover:border-primary/60 hover:shadow-md transition-all"
-            }`}
-            role={isAdmin ? undefined : "button"}
-            tabIndex={isAdmin ? undefined : 0}
-            onKeyDown={(event) => {
-              if (
-                !isAdmin &&
-                (event.key === "Enter" || event.key === " ")
-              ) {
-                navigate("/technician/ledger");
-              }
-            }}
-          >
-            <div className="flex items-center gap-4 min-w-0">
-              <div className="size-14 rounded-full bg-secondary/15 text-secondary flex items-center justify-center shrink-0">
-                <Baby size={22} className="stroke-[2.2]" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
-                  Pregnancy Stage
-                </p>
-                <p className="text-lg font-black text-base-content truncate mt-0.5">
-                  {animal.reproductiveStatus || "Not recorded"}
-                </p>
-                <p className="text-xs font-medium text-base-content/60">
-                  {latestInsemination?.pregnancy?.targetCalvingDate
-                    ? `Expected ${fmtDate(latestInsemination.pregnancy.targetCalvingDate)}`
-                    : "Pregnancy stage not recorded"}
-                </p>
-              </div>
-            </div>
-            <div className="size-9 rounded-full bg-base-200 text-base-content/60 group-hover:bg-primary group-hover:text-primary-content flex items-center justify-center transition-colors shrink-0">
-              <ChevronRight size={18} />
-            </div>
-          </div>
-
-          {/* HealthCard */}
-          <div className="bg-base-100 rounded-3xl border border-base-300 p-5 shadow-sm flex items-center gap-4">
-            <div className="size-14 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
-              <HeartPulse size={22} className="stroke-[2.2]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-base-content/60 uppercase tracking-wide">
-                Health Status
-              </p>
-              <p className="text-lg font-black text-base-content truncate mt-0.5">
-                {activeWithdrawalRecord
-                  ? "Under Withdrawal"
-                  : animal.healthStatus || "Not recorded"}
-              </p>
-              <p className="text-xs font-medium text-base-content/60">
-                {activeWithdrawalRecord
-                  ? `Active until ${fmtDate(activeWithdrawalRecord.details.withdrawalEndDate)}`
-                  : "No active withdrawal warning"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── SECTION 3: DetailsGrid ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* AnimalDetailsCard */}
-          <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-primary font-extrabold text-base border-b border-base-300 pb-3">
-              <Beef size={18} />
-              <span>Animal Details</span>
-            </div>
-
-            <div className="space-y-3.5 text-sm">
-              <div className="flex justify-between items-center py-1">
-                <span className="text-base-content/60 font-medium">Date of Birth</span>
-                <span className="font-bold text-base-content">
-                  {fmtDate(animal.dateOfBirth || animal.birthDate)}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-base-200">
-                <span className="text-base-content/60 font-medium">Color / Markings</span>
-                <span className="font-bold text-base-content">
-                  {animal.colorMarkings || animal.color || "Not recorded"}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-base-200">
-                <span className="text-base-content/60 font-medium">Weight</span>
-                <span className="font-bold text-base-content">
-                  {animal.weight ? `${animal.weight} kg` : "Not recorded"}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-base-200">
-                <span className="text-base-content/60 font-medium">Milk Production</span>
-                <span className="font-bold text-base-content">
-                  {animal.milkProduction
-                    ? `${animal.milkProduction} L / day`
-                    : "Not recorded"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* OwnerInformationCard */}
-          <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-primary font-extrabold text-base border-b border-base-300 pb-3">
-              <User size={18} />
-              <span>Owner Information</span>
-            </div>
-
-            <div className="space-y-3.5 text-sm">
-              <div className="flex justify-between items-center py-1">
-                <span className="text-base-content/60 font-medium">Name</span>
-                <span className="font-bold text-base-content">
-                  {animal.farmerId?.name || "Not recorded"}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-base-200">
-                <span className="text-base-content/60 font-medium">Contact Number</span>
-                <span className="font-bold text-base-content font-mono">
-                  {animal.farmerId?.phoneNumber ||
-                    animal.farmerId?.phone ||
-                    "Not recorded"}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-start py-1 border-t border-base-200 gap-4">
-                <span className="text-base-content/60 font-medium shrink-0">Address</span>
-                <span className="font-bold text-base-content text-right leading-snug">
-                  {getOwnerLocation(animal.farmerId?.address)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── SECTION 4: RecentRecordsTable ── */}
-        <div className="bg-base-100 rounded-3xl border border-base-300 p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-base-300 pb-4">
-            <div
-              role="tablist"
-              aria-label="Livestock profile sections"
-              className="tabs tabs-border"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected="true"
-                className="tab tab-active gap-2 font-extrabold text-primary"
-              >
-                <ClipboardList size={18} />
-                Animal Records
-              </button>
-            </div>
-
-            {/* Filters */}
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search
-                  size={15}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50 z-10"
-                />
-                <input
-                  type="text"
-                  aria-label="Search animal records"
-                  placeholder="Search records..."
-                  value={recordSearch}
-                  onChange={(e) => setRecordSearch(e.target.value)}
-                  className="input input-sm border border-base-300 bg-base-200/80 text-base-content placeholder:text-base-content/50 pl-9 rounded-xl text-xs w-full focus:outline-none focus:border-primary focus:bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all"
-                />
-              </div>
-
-              <select
-                aria-label="Filter animal records by type"
-                value={recordTypeFilter}
-                onChange={(e) => setRecordTypeFilter(e.target.value)}
-                className="select select-sm border border-base-300 bg-base-200/80 text-base-content rounded-xl text-xs font-semibold focus:outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                <option value="All">All record types</option>
-                <option value="AI">AI records</option>
-                <option value="Health">Health records</option>
-                <option value="Pregnancy Check">Pregnancy checks</option>
-                <option value="Calving">Calving events</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            {displayedRecords.length === 0 ? (
-              <div className="py-12 text-center text-base-content/50 space-y-2">
-                <FileText size={36} className="mx-auto text-base-content/30" />
-                <p className="text-sm font-semibold">No records match your search.</p>
-              </div>
-            ) : (
-              <table className="table table-zebra w-full text-left">
-                <thead>
-                  <tr className="border-b border-base-200 text-xs text-base-content/60 font-bold uppercase tracking-wider">
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Record Type</th>
-                    <th className="py-3 px-4">Details</th>
-                    <th className="py-3 px-4">Technician</th>
-                    <th className="py-3 px-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm">
-                  {displayedRecords.map((record, index) => {
-                    const meta = getRecordMeta(record.recordKind);
-                    return (
-                      <tr
-                        key={record._id || record.id || index}
-                        className="hover:bg-base-200/50 transition-colors"
-                      >
-                        <td className="py-3.5 px-4 font-bold text-base-content/90 whitespace-nowrap">
-                          {fmtDate(record.recordDate)}
-                        </td>
-
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${meta.bg}`}
-                          >
-                            {meta.icon}
-                            {record.recordTitle}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4 max-w-xs truncate text-base-content/80 font-medium">
-                          {record.recordSummary || "Routine record entry"}
-                        </td>
-
-                        <td className="py-3.5 px-4 font-semibold text-base-content/80 whitespace-nowrap">
-                          {record.recordedBy || "Not recorded"}
-                        </td>
-
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedActivity(record)}
-                            className="btn btn-xs btn-ghost text-success font-bold"
-                          >
-                            <Eye size={13} className="mr-1" /> View
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {visibleRecords.length > 5 && (
-            <div className="pt-2 text-center">
-              <button
-                type="button"
-                onClick={() => setShowAllRecords(!showAllRecords)}
-                className="btn btn-ghost btn-sm text-primary font-bold hover:bg-primary/10 rounded-xl"
-              >
-                {showAllRecords ? "Show recent records only" : "View all records"}
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </main>
 
       {/* Modals */}
@@ -951,69 +1309,59 @@ export default function LivestockProfile({ role = WEB_ROLES.TECHNICIAN }) {
         }}
       />
 
-      <ActivityDetailsModal
-        isOpen={!!selectedActivity}
-        onClose={() => setSelectedActivity(null)}
-        activity={selectedActivity}
-        onOpenSource={(activity) => {
-          if (!activity?.originId) return;
-          const requestPath = isAdmin
-            ? "/admin/requests"
-            : "/technician/requests";
-          const status = isAdmin ? "all" : "completed";
-          navigate(
-            `${requestPath}?requestId=${encodeURIComponent(activity.originId)}&status=${status}`,
-          );
-        }}
+      <OfficialRecordDetailModal
+        recordIdentity={selectedOfficialRecord}
+        onClose={() => setSelectedOfficialRecord(null)}
       />
 
       {!isAdmin && (
         <>
-          <AddMedicalRecordModal
-        key={medicalInitialType}
-        isOpen={isAddMedicalModalOpen}
-        onClose={() => setIsAddMedicalModalOpen(false)}
-        animalId={id}
-        animalTag={animal.earTag}
-        initialType={medicalInitialType}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <WalkInHealthModal
+            isOpen={isHealthModalOpen}
+            existingOnly
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onClose={() => setIsHealthModalOpen(false)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
 
-      <AIServiceModal
-        isOpen={isAIModalOpen}
-        onClose={() => setIsAIModalOpen(false)}
-        preSelectedFarmer={animal?.farmerId}
-        preSelectedAnimal={animal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <AIServiceModal
+            isOpen={isAIModalOpen}
+            onClose={() => setIsAIModalOpen(false)}
+            context="walk-in"
+            existingOnly
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
 
-      <PregnancyDiagnosisModal
-        isOpen={isPDModalOpen}
-        onClose={() => setIsPDModalOpen(false)}
-        preSelectedFarmer={animal?.farmerId}
-        preSelectedAnimal={animal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <PregnancyDiagnosisModal
+            isOpen={isPDModalOpen}
+            onClose={() => setIsPDModalOpen(false)}
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
 
-      <RecordCalfDropModal
-        isOpen={isCalvingModalOpen}
-        onClose={() => setIsCalvingModalOpen(false)}
-        preSelectedFarmer={animal?.farmerId}
-        preSelectedAnimal={animal}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["animal", id] });
-          queryClient.invalidateQueries({ queryKey: ["medical", id] });
-        }}
-      />
+          <RecordCalfDropModal
+            isOpen={isCalvingModalOpen}
+            onClose={() => setIsCalvingModalOpen(false)}
+            preSelectedFarmer={animal?.farmerId}
+            preSelectedAnimal={animal}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["animal", id] });
+              queryClient.invalidateQueries({ queryKey: ["medical", id] });
+            }}
+          />
         </>
       )}
     </div>

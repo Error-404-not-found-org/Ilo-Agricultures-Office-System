@@ -53,6 +53,7 @@ import {
   getAIScheduleTiming,
   getRelativeAIScheduleDayLabel,
 } from "../utils/aiScheduleAvailability";
+import { getAIRequestAttachmentUrls } from "../utils/aiRequestAttachments";
 
 type ScheduleMode = "accept" | "schedule" | "reschedule";
 
@@ -125,21 +126,6 @@ const getFarmerLocation = (farmer: any) => {
     .join(", ");
 };
 
-const getAttachmentUrls = (request: any) =>
-  Array.from(
-    new Set(
-      [
-        request?.imageUrl,
-        request?.photos,
-        request?.attachments?.urls,
-        request?.attachments,
-      ]
-        .flatMap((value) => (Array.isArray(value) ? value : [value]))
-        .map(cleanText)
-        .filter(Boolean),
-    ),
-  );
-
 const getErrorMessage = (error: any, fallback: string) =>
   error?.response?.data?.message || error?.message || fallback;
 
@@ -163,8 +149,7 @@ export function AIRequestDetails({
   const [updating, setUpdating] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [earlyStartVisible, setEarlyStartVisible] = useState(false);
-  const [skipConfirmationVisible, setSkipConfirmationVisible] =
-    useState(false);
+  const [skipConfirmationVisible, setSkipConfirmationVisible] = useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
   const submittingRef = useRef(false);
@@ -252,11 +237,17 @@ export function AIRequestDetails({
     cleanText(farmerAddress.city || farmerAddress.municipality) ||
     cleanText(request?.municipality);
   const candidateArea = [barangay, municipality].filter(Boolean).join(", ");
-  const farmerNotes = normalizeText(
+  const rawNotes = normalizeText(
     request?.farmerNotes || request?.comment || request?.note,
     "\n\n",
   );
-  const attachments = useMemo(() => getAttachmentUrls(request), [request]);
+  const farmerNotes = rawNotes.startsWith("Additional Notes:\n")
+    ? rawNotes.substring(18).trim()
+    : rawNotes;
+  const attachments = useMemo(
+    () => getAIRequestAttachmentUrls(request),
+    [request],
+  );
   const submittedAt = formatDate(request?.createdAt, true);
   const scheduledDate = formatDate(request?.scheduledDate);
   const visitPeriod = cleanText(
@@ -557,9 +548,7 @@ export function AIRequestDetails({
       await invalidateWorkflow();
       await onRefresh();
       toast.success(
-        approved
-          ? "Cancellation approved"
-          : "Cancellation request declined",
+        approved ? "Cancellation approved" : "Cancellation request declined",
         approved
           ? undefined
           : { description: "The request remains scheduled." },
@@ -589,6 +578,7 @@ export function AIRequestDetails({
           gap: 12,
         }}
       >
+        {/* Header Card with Submitted Date at Top */}
         <View style={cardStyle}>
           <View
             style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}
@@ -623,6 +613,27 @@ export function AIRequestDetails({
               compact
             />
           </View>
+
+          {/* Submitted Date - Moved here */}
+          {submittedAt ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                marginTop: 12,
+                paddingTop: 12,
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <Send size={15} color={colors.textMuted} />
+              <Text textRole="caption" style={{ color: colors.textMuted }}>
+                Submitted {submittedAt}
+              </Text>
+            </View>
+          ) : null}
+
           {isAvailable ? (
             attemptNumber > 1 ? (
               <View
@@ -786,17 +797,11 @@ export function AIRequestDetails({
             <DetailRow label="Farmer notes" value={farmerNotes} />
           ) : null}
 
-          {submittedAt ? (
-            <View style={{ marginTop: 8 }}>
-              <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
-            </View>
-          ) : null}
-
           <Text
             textRole="title"
             style={{ color: colors.textPrimary, marginTop: 24 }}
           >
-            AI Request Attachments
+            Farmer Request Photos
           </Text>
           {attachments.length > 0 ? (
             <ScrollView
@@ -812,7 +817,7 @@ export function AIRequestDetails({
                   <Image
                     source={{ uri }}
                     resizeMode="cover"
-                    accessibilityLabel={`AI request attachment ${index + 1}`}
+                    accessibilityLabel={`Farmer AI request photo ${index + 1}`}
                     style={{ width: 112, height: 88, borderRadius: 12 }}
                   />
                 </TouchableOpacity>
@@ -823,7 +828,7 @@ export function AIRequestDetails({
               textRole="body"
               style={{ color: colors.textSecondary, marginTop: 8 }}
             >
-              No attachments submitted.
+              No request photos submitted.
             </Text>
           )}
         </View>

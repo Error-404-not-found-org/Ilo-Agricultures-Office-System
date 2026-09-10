@@ -244,6 +244,22 @@ const structuredCopy = (eventType, metadata = {}) => {
       title: "Pregnancy loss recorded",
       message: `A pregnancy loss was recorded for ${animal}. Open the record for details and follow-up guidance.`,
     },
+    pregnancy_loss_confirmed: {
+      title: `Pregnancy loss confirmed for ${animal}`,
+      message: `${technician} confirmed the reported pregnancy loss. Pregnancy monitoring has ended and recovery monitoring has started.`,
+    },
+    pregnancy_loss_not_confirmed: {
+      title: `Pregnancy loss not confirmed for ${animal}`,
+      message: `${technician} reviewed the reported loss. Pregnancy loss was not confirmed; pregnancy monitoring continues.`,
+    },
+    pregnancy_loss_follow_up_needed: {
+      title: `Follow-up needed for ${animal}`,
+      message: `${technician} reviewed the reported loss and determined a follow-up is needed. Pregnancy monitoring continues.`,
+    },
+    pregnancy_loss_reported: {
+      title: `Pregnancy loss reported for ${animal}`,
+      message: `${farmer} submitted a pregnancy loss report. Review is required.`,
+    },
     ai_attempt_unsuccessful: {
       title: "AI attempt unsuccessful",
       message: `AI attempt ${metadata.attemptNumber || ""} for ${animal} was confirmed unsuccessful.`.replace(

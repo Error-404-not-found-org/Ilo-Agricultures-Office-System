@@ -81,7 +81,6 @@ export interface FarmerAttentionItem extends FarmerMilestone {
   actionLabel: string;
   actionKind:
     | "report_signs"
-    | "request_pregnancy_check"
     | "record_calving"
     | "view_animal";
 }

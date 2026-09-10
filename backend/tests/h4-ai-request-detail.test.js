@@ -17,6 +17,10 @@ test("H4 candidate AI detail supports review-first scheduling with safe request 
     heatSigns: ["Standing heat", "Clear mucus"],
     comment: "Observed signs this morning.",
     imageUrl: " https://example.test/heat-sign.jpg ",
+    photos: [
+      "https://example.test/heat-sign.jpg",
+      "https://example.test/standing-heat.jpg",
+    ],
     createdAt: "2026-08-07T06:00:00.000Z",
     attemptNumber: 2,
     previousAttemptId: {
@@ -58,6 +62,10 @@ test("H4 candidate AI detail supports review-first scheduling with safe request 
   assert.equal(candidate.farmerNotes, "Observed signs this morning.");
   assert.equal(candidate.comment, "Observed signs this morning.");
   assert.equal(candidate.imageUrl, "https://example.test/heat-sign.jpg");
+  assert.deepEqual(candidate.photos, [
+    "https://example.test/heat-sign.jpg",
+    "https://example.test/standing-heat.jpg",
+  ]);
   assert.equal(candidate.requestKind, "re_insemination");
   assert.equal(candidate.attemptNumber, 2);
   assert.equal(candidate.previousAttemptId._id, "attempt-1");
@@ -148,6 +156,10 @@ test("H4 unclaimed technician AI detail response includes review contact and loc
     heatSigns: ["Standing heat"],
     comment: "Farmer-submitted note",
     imageUrl: "https://example.test/ai.jpg",
+    photos: [
+      "https://example.test/ai.jpg",
+      "https://example.test/ai-side.jpg",
+    ],
     animalId: { earTag: "01DP", breed: "Bali Cattle" },
     farmerId: {
       name: "Candidate Farmer",
@@ -208,6 +220,10 @@ test("H4 unclaimed technician AI detail response includes review contact and loc
     assert.equal(res.payload.municipality, "Oton");
     assert.equal(res.payload.farmerNotes, "Farmer-submitted note");
     assert.equal(res.payload.imageUrl, "https://example.test/ai.jpg");
+    assert.deepEqual(res.payload.photos, [
+      "https://example.test/ai.jpg",
+      "https://example.test/ai-side.jpg",
+    ]);
     assert.equal(res.payload.farmerId.name, "Candidate Farmer");
     assert.equal(res.payload.farmerId.phoneNumber, "09170000000");
     assert.equal(res.payload.farmerId.address.street, "Hidden Street");

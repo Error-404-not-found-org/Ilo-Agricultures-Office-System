@@ -54,7 +54,11 @@ export function useTechnicianRecords() {
         type:
           record.recordKind === "medical_record"
             ? "health-request"
-            : record.recordKind,
+            : record.recordKind === "health_request"
+              ? "health-request"
+              : record.recordKind === "ai_request"
+                ? "ai-request"
+                : record.recordKind,
         recordCategory: record.category,
       }))
       .sort(
@@ -72,7 +76,8 @@ export function useTechnicianRecords() {
       // 1. Filter by Type
       if (selectedFilter !== "All") {
         const matchesType =
-          (selectedFilter === "AI" && item.type === "insemination") ||
+          (selectedFilter === "AI" &&
+            ["insemination", "ai_request"].includes(item.recordKind)) ||
           (selectedFilter === "Pregnancy" && item.type === "pregnancy") ||
           (selectedFilter === "Calving" && item.type === "calving") ||
           (selectedFilter === "Health" && item.recordCategory === "Health") ||

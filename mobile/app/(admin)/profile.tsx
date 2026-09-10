@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   StatusBar,
+  Switch,
 } from "react-native";
 import React, { useState } from "react";
 import SafeScreen from "@/components/safeScreen";
@@ -17,12 +18,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   ChevronRight,
   LogOut,
-  Settings,
   HelpCircle,
   User,
   Shield,
   UserPlus,
   ShieldCheck,
+  Sun,
+  Moon,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
@@ -30,6 +32,8 @@ import { useApi } from "@/lib/api";
 import { signOutWithPushCleanup } from "@/lib/notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CustomDialog } from "@/components/shared";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useColorScheme } from "nativewind";
 
 const PRIMARY = "#1e3a5f";
 
@@ -38,6 +42,7 @@ const AdminProfile = () => {
   const { user } = useUser();
   const router = useRouter();
   const { colors, isDark } = useTheme();
+  const { colorScheme, toggleColorScheme } = useColorScheme();
   const insets = useSafeAreaInsets();
   const api = useApi();
 
@@ -82,6 +87,16 @@ const AdminProfile = () => {
 
   const showAboutApp = () => {
     setAboutVisible(true);
+  };
+
+  const handleToggleTheme = async () => {
+    const newScheme = colorScheme === "dark" ? "light" : "dark";
+    toggleColorScheme();
+    try {
+      await AsyncStorage.setItem("theme_preference", newScheme);
+    } catch (error) {
+      console.warn("Failed to save theme preference:", error);
+    }
   };
 
   const handleSignOut = async () => {
@@ -256,13 +271,99 @@ const AdminProfile = () => {
               label="Personal Information"
               onPress={showPersonalInfo}
             />
-            <Divider />
-            <MenuItem
-              icon={<Settings size={18} color={colors.textSecondary} />}
-              label="System Settings"
-              value="Manage configurations"
-              onPress={() => router.push("/(admin)/system-settings" as any)}
-            />
+          </View>
+        </View>
+
+        {/* Personal appearance preference */}
+        <View style={{ paddingHorizontal: 24, marginTop: 24 }}>
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 12,
+              color: colors.textMuted,
+              textTransform: "uppercase",
+              letterSpacing: 1.5,
+              marginBottom: 12,
+              marginLeft: 4,
+            }}
+          >
+            Appearance
+          </Text>
+
+          <View
+            style={{
+              borderRadius: 24,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: "hidden",
+            }}
+          >
+            <View
+              style={{
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isDark
+                      ? colors.background
+                      : "#f8fafc",
+                  }}
+                >
+                  {colorScheme === "dark" ? (
+                    <Moon size={18} color="#f59e0b" />
+                  ) : (
+                    <Sun size={18} color={colors.textSecondary} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.textPrimary,
+                    }}
+                  >
+                    Dark Mode
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: "Outfit_500Medium",
+                      color: colors.textSecondary,
+                      marginTop: 2,
+                    }}
+                  >
+                    Use the dark theme on this device
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                accessibilityLabel="Dark Mode"
+                value={colorScheme === "dark"}
+                onValueChange={handleToggleTheme}
+                trackColor={{ true: PRIMARY }}
+                thumbColor={colorScheme === "dark" ? "#f59e0b" : "#f4f3f4"}
+              />
+            </View>
           </View>
         </View>
 

@@ -3,7 +3,6 @@ import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
-import { Task } from "../models/task.model.js";
 import { AppError } from "../utils/app-error.js";
 import {
   normalizeAICompletionFields,
@@ -16,17 +15,11 @@ import {
   validatePreviousAIEventDate,
 } from "../domain/previous-ai-entry.js";
 import { ANIMAL_REPRODUCTIVE_STATUS } from "../domain/status-vocabulary.js";
-import { getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
-import { PREGNANCY_TASK_STAGE } from "../domain/pregnancy-task-workflow.js";
-import {
-  getMethodThresholdForSpecies,
-  LEGACY_PREGNANCY_POLICY_VERSION,
-} from "../domain/pregnancy-confirmation-policy.js";
 import { createAIRequestWithGuard } from "./ai-request-creation.service.js";
 import { getAnimalAIEligibility } from "./ai-eligibility.service.js";
-import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
 import { createAuditLog } from "./audit.service.js";
+import { ensurePostAICompletionFollowUps } from "./post-ai-followup.service.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -160,97 +153,19 @@ const createTrackingTasks = async ({
   now,
   session,
 }) => {
-  const policyResolution = await loadPregnancyConfirmationPolicy({
-    at: eventDate,
-    session,
-  });
-  const policyVersion =
-    policyResolution.mode === "method_based"
-      ? policyResolution.policy.version
-      : LEGACY_PREGNANCY_POLICY_VERSION;
-  const enabledThresholds =
-    policyResolution.mode === "method_based"
-      ? policyResolution.policy.methods
-          .filter((method) => method.enabled)
-          .map((method) =>
-            getMethodThresholdForSpecies(method, animal.species),
-          )
-          .filter((threshold) => threshold !== null)
-      : [];
-  const initialConfirmationDays = enabledThresholds.length
-    ? Math.min(...enabledThresholds)
-    : 60;
-  const pdDueDate = new Date(eventDate);
-  pdDueDate.setUTCDate(pdDueDate.getUTCDate() + initialConfirmationDays);
-
-  const pdTask = await Task.findOneAndUpdate(
-    {
-      sourceType: "automatic_pd_followup",
-      "metadata.inseminationId": insemination._id,
-      status: { $nin: ["Completed", "Cancelled"] },
-    },
-    {
-      $setOnInsert: {
-        technicianId: actorId,
-        farmerId,
-        animalIds: [animal._id],
-        taskType: "PD",
-        category: "Follow-up",
-        priority: 2,
-        notes: `Pregnancy Diagnosis (PD) follow-up for Animal Tag #${animal.earTag || animal.animalId || "Unknown"}.`,
-        status: "Pending",
-        dueDate: pdDueDate,
-        sourceType: "automatic_pd_followup",
-        metadata: {
-          workflowStage: PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION,
-          animalId: animal._id,
-          farmerId,
-          inseminationId: insemination._id,
-          policyVersion,
-          previousRecordEntry: true,
-        },
-      },
-    },
-    { upsert: true, returnDocument: "after", session },
-  );
-
-  await Insemination.updateOne(
-    { _id: insemination._id },
-    { $set: { verificationTaskId: pdTask._id } },
-    { session },
-  );
-
-  const { technicianFollowUpDate } = getHeatReturnMonitoringDates(eventDate);
-  let breedingFollowUpTask = null;
-  if (technicianFollowUpDate.getTime() >= now.getTime()) {
-    breedingFollowUpTask = await Task.findOneAndUpdate(
-      {
-        taskType: "BreedingFollowUp",
-        "metadata.inseminationId": insemination._id,
-      },
-      {
-        $setOnInsert: {
-          technicianId: actorId,
-          farmerId,
-          animalIds: [animal._id],
-          taskType: "BreedingFollowUp",
-          category: "Follow-up",
-          priority: 2,
-          notes: `Breeding follow-up for Animal Tag #${animal.earTag || animal.animalId || "Unknown"}. Contact the farmer to check for return-to-heat signs.`,
-          status: "Pending",
-          dueDate: technicianFollowUpDate,
-          sourceType: "automatic_breeding_followup",
-          metadata: {
-            animalId: animal._id,
-            farmerId,
-            inseminationId: insemination._id,
-            previousRecordEntry: true,
-          },
-        },
-      },
-      { upsert: true, returnDocument: "after", session },
-    );
-  }
+  const { pdTask, breedingFollowUpTask } =
+    await ensurePostAICompletionFollowUps({
+      inseminationId: insemination._id,
+      inseminationDate: eventDate,
+      farmerId,
+      technicianId: actorId,
+      animalId: animal._id,
+      animalTag: animal.earTag || animal.animalId,
+      animalSpecies: animal.species,
+      now,
+      previousRecordEntry: true,
+      session,
+    });
 
   return breedingFollowUpTask || pdTask;
 };
@@ -312,7 +227,7 @@ const createContinueTrackingRecord = async ({
         },
       ],
     },
-    { session },
+    { session, completedAt: eventDate },
   );
 
   const updatedAnimal = await Animal.findByIdAndUpdate(

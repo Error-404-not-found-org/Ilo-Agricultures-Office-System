@@ -1,22 +1,42 @@
-import { Smartphone } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import StaffSignInButton from "../../../components/auth/StaffSignInButton";
 
 export default function FinalCTA() {
   return (
-    <section className="bg-[#074033] text-white py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto text-center space-y-8">
-        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-          Better records. Better service. <br className="hidden sm:inline" />
-          <span className="text-[#EDF3E8]">Stronger cattle care.</span>
+    <section data-motion-section className="bg-[#0D3320] py-28 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto text-center">
+        {/* Section Label */}
+        <div data-motion-intro className="flex items-center justify-center gap-4 mb-12">
+          <div className="flex-1 h-px bg-white/10 max-w-24" />
+          <span className="font-mono-brand text-[#A8E063] text-[11px] uppercase tracking-wider">
+            Get Started
+          </span>
+          <div className="flex-1 h-px bg-white/10 max-w-24" />
+        </div>
+
+        {/* Headline */}
+        <h2 data-motion-intro className="font-display font-bold text-white text-[clamp(2.5rem,5vw,4.5rem)] leading-[0.95] tracking-tight mb-8">
+          Ready to breed
+          <br />
+          <span className="text-[#A8E063]">smarter?</span>
         </h2>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <p data-motion-intro className="text-white/50 text-[1.1rem] leading-relaxed mb-12 max-w-xl mx-auto">
+          Join farmers and technicians across Oton who are already using
+          BreedSmart to improve their livestock operations.
+        </p>
+
+        {/* Action Buttons */}
+        <div data-motion-cta className="flex flex-col sm:flex-row gap-4 justify-center items-center">
           <a
             href="/download-app"
-            className="inline-flex min-h-12 items-center justify-center gap-2.5 px-8 py-3 rounded-xl bg-white text-[#074033] hover:bg-[#FAF9F5] text-base font-extrabold transition-colors w-full sm:w-auto"
+            className="group inline-flex items-center gap-2 bg-[#A8E063] text-[#061A0E] font-display font-semibold text-[15px] px-8 py-4 rounded-sm hover:bg-[#C5EF89] transition-colors duration-200 w-full sm:w-auto justify-center"
           >
-            <Smartphone size={20} />
             Download Farmer App
+            <ArrowRight
+              size={16}
+              className="transition-transform duration-200 group-hover:translate-x-1"
+            />
           </a>
 
           <StaffSignInButton
@@ -25,6 +45,11 @@ export default function FinalCTA() {
             className="w-full sm:w-auto"
           />
         </div>
+
+        {/* Bottom note */}
+        <p data-motion-cta className="mt-8 text-white/30 font-mono-brand text-[11px] uppercase tracking-wider">
+          Free for farmers · No training required
+        </p>
       </div>
     </section>
   );

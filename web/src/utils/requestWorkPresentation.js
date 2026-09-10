@@ -1,3 +1,5 @@
+import { isFarmerBreedingObservationPendingReview } from "./breedingObservation";
+
 export const OPEN_REQUEST_FILTERS = [
   { value: "all", label: "All" },
   { value: "ai", label: "AI" },
@@ -43,16 +45,21 @@ export const formatCanonicalVisitSchedule = (schedule = {}) => {
 };
 
 export const isDateOnlyWorkflowType = (workflowType) =>
-  ["pd", "pregnancy", "cd", "calving"].includes(
-    normalizedValue(workflowType),
-  );
+  ["pd", "pregnancy", "cd", "calving"].includes(normalizedValue(workflowType));
 
 export const normalizeServiceType = (itemOrValue) => {
   if (itemOrValue && typeof itemOrValue === "object") {
     const workflowType = normalizedValue(itemOrValue.workflowType);
     if (workflowType === "ai") return "ai";
     if (workflowType === "health") return "health";
-    if (workflowType === "pd") return "pregnancy";
+    if (
+      workflowType === "pd" ||
+      workflowType === "pregnancylossreview" ||
+      workflowType === "pregnancy_loss_review" ||
+      itemOrValue.sourceType === "farmer_pregnancy_loss_report" ||
+      itemOrValue.raw?.sourceType === "farmer_pregnancy_loss_report"
+    )
+      return "pregnancy";
     if (workflowType === "calving") return "calving";
 
     const candidates = [
@@ -88,6 +95,8 @@ export const normalizeServiceType = (itemOrValue) => {
       "pregnancy_check",
       "pregnancy_diagnosis",
       "breeding_verification",
+      "breedingfollowup",
+      "breeding_follow_up",
     ].includes(value)
   ) {
     return "pregnancy";
@@ -143,23 +152,42 @@ export const getServicePresentation = (service) =>
     badgeClass: "badge-ghost",
   };
 
-const localDateKey = (value) => {
+const philippineDateKey = (value) => {
   if (!value) return null;
+  if (typeof value === "string") {
+    const dateOnly = value.match(/^(\d{4}-\d{2}-\d{2})$/)?.[1];
+    if (dateOnly) return dateOnly;
+  }
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = new Intl.DateTimeFormat("en-PH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Manila",
+  }).formatToParts(date);
+  const part = (type) =>
+    parts.find((datePart) => datePart.type === type)?.value || "";
+  return [part("year"), part("month"), part("day")].join("-");
 };
 
 export const deriveScheduleState = (scheduleDate, now = new Date()) => {
-  const scheduleKey = localDateKey(scheduleDate);
-  const todayKey = localDateKey(now);
+  const scheduleKey = philippineDateKey(scheduleDate);
+  const todayKey = philippineDateKey(now);
   if (!scheduleKey || !todayKey) return null;
   if (scheduleKey < todayKey) return "overdue";
   if (scheduleKey === todayKey) return "due_today";
   return "scheduled";
+};
+
+const getHandlingMethod = (item) => {
+  const value =
+    item?.handlingMethod ||
+    item?.raw?.handlingMethod ||
+    item?.context?.handlingMethod ||
+    item?.triage?.handlingMethod ||
+    item?.resolution?.handlingMethod;
+  return normalizedValue(value);
 };
 
 export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
@@ -169,15 +197,78 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
     return "cancelled";
   }
 
+  if (isFarmerBreedingObservationPendingReview(item)) {
+    return "needs_review";
+  }
+
+  if (
+    item.sourceType === "farmer_pregnancy_loss_report" ||
+    item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+    item.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+    item.workflowType === "PregnancyLossReview" ||
+    item.context?.reportId ||
+    item.farmerObservation?.reportType === "pregnancy_loss"
+  ) {
+    return "needs_review";
+  }
+
+  const serviceType = normalizeServiceType(item);
+  const handlingMethod = getHandlingMethod(item);
+  const scheduledVisitDate = item.schedule?.date || item.scheduledDate;
   const scheduleState = deriveScheduleState(
-    item.schedule?.date || item.scheduledDate || item.dueDate,
+    scheduledVisitDate || item.dueDate,
     now,
   );
-  if (scheduleState) return scheduleState;
+  const isVisitBased =
+    serviceType === "ai" ||
+    (serviceType === "health" &&
+      (handlingMethod === "farm_visit" || Boolean(scheduledVisitDate)));
+  const temporalStatus =
+    scheduleState === "due_today"
+      ? isVisitBased
+        ? "scheduled_today"
+        : "due_today"
+      : scheduleState === "scheduled" && !isVisitBased
+        ? "upcoming"
+        : scheduleState;
+
+  if (serviceType === "health") {
+    if (handlingMethod === "farm_visit") {
+      if (temporalStatus) return temporalStatus;
+      return "needs_scheduling";
+    }
+
+    if (["advice", "office_pickup"].includes(handlingMethod)) {
+      return "needs_response";
+    }
+
+    // No handling method chosen yet
+    if (temporalStatus) return temporalStatus;
+    if (
+      [
+        "scheduled",
+        "approved",
+        "assigned",
+        "triaged",
+        "claimed",
+        "in_progress",
+        "ready_today",
+      ].includes(status)
+    ) {
+      return "needs_response";
+    }
+    return "open";
+  }
+
+  if (temporalStatus) return temporalStatus;
   if (
-    ["scheduled", "approved", "assigned", "in_progress", "ready_today"].includes(
-      status,
-    )
+    [
+      "scheduled",
+      "approved",
+      "assigned",
+      "in_progress",
+      "ready_today",
+    ].includes(status)
   ) {
     return "scheduled";
   }
@@ -187,11 +278,50 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
 export const getWorkflowStatusPresentation = (status) =>
   ({
     open: { label: "Open", tone: "amber", badgeClass: "badge-warning" },
+    needs_review: {
+      label: "Needs review",
+      tone: "blue",
+      badgeClass: "badge-info",
+    },
+    needs_response: {
+      label: "Needs response",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
+    claimed: {
+      label: "Claimed",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
+    needs_scheduling: {
+      label: "Needs scheduling",
+      tone: "amber",
+      badgeClass: "badge-warning",
+    },
     scheduled: { label: "Scheduled", tone: "blue", badgeClass: "badge-info" },
-    due_today: { label: "Due Today", tone: "amber", badgeClass: "badge-warning" },
+    scheduled_today: {
+      label: "Scheduled Today",
+      tone: "amber",
+      badgeClass: "badge-warning",
+    },
+    upcoming: { label: "Upcoming", tone: "blue", badgeClass: "badge-info" },
+    due_today: {
+      label: "Due Today",
+      tone: "amber",
+      badgeClass: "badge-warning",
+    },
     overdue: { label: "Overdue", tone: "red", badgeClass: "badge-error" },
-    completed: { label: "Completed", tone: "green", badgeClass: "badge-success" },
+    completed: {
+      label: "Completed",
+      tone: "green",
+      badgeClass: "badge-success",
+    },
     cancelled: { label: "Cancelled", tone: "slate", badgeClass: "badge-ghost" },
+    triaged: {
+      label: "Needs response",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
   })[status] || { label: "Open", tone: "amber", badgeClass: "badge-warning" };
 
 export const matchesServiceFilter = (item, filter) =>

@@ -6,6 +6,10 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { listUsers, deleteUser, suspendUser, reactivateUser, verifyUser, getArchivedUsers, restoreUser } from "../services/adminUsers.service";
 import { UserItem } from "../types/adminUsers.types";
+import {
+  filterOperationalUsers,
+  isOperationalUser,
+} from "../utils/operationalUsers";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -13,7 +17,6 @@ export interface UserStats {
   total: number;
   farmers: number;
   technicians: number;
-  admins: number;
   suspended: number;
   pendingVerification: number;
   archived: number;
@@ -50,6 +53,14 @@ export const useAdminUsers = (initialSearch: string = "") => {
     await Promise.all([refetchActive(), refetchArchived()]);
   }, [refetchActive, refetchArchived]);
 
+  // Sanitize query data again to protect persisted/stale cache entries created
+  // before operational Admin authority was restricted to Farmer/Technician.
+  const operationalUsers = useMemo(() => filterOperationalUsers(users), [users]);
+  const operationalArchivedUsers = useMemo(
+    () => filterOperationalUsers(archivedUsers),
+    [archivedUsers],
+  );
+
   const { data: allAnimals = [] } = useQuery({
     queryKey: ["admin-all-animals", "counts-preview", 1, 50],
     enabled: isLoaded && isSignedIn,
@@ -63,15 +74,14 @@ export const useAdminUsers = (initialSearch: string = "") => {
   // ── User Statistics ──────────────────────────────────────────
   const userStats: UserStats = useMemo(() => {
     return {
-      total: users.length,
-      farmers: users.filter((u) => u.role === "farmer").length,
-      technicians: users.filter((u) => u.role === "technician").length,
-      admins: users.filter((u) => u.role === "admin").length,
-      suspended: users.filter((u) => u.status === "suspended").length,
-      pendingVerification: users.filter((u) => !u.isVerified).length,
-      archived: archivedUsers.length,
+      total: operationalUsers.length,
+      farmers: operationalUsers.filter((u) => u.role === "farmer").length,
+      technicians: operationalUsers.filter((u) => u.role === "technician").length,
+      suspended: operationalUsers.filter((u) => u.status === "suspended").length,
+      pendingVerification: operationalUsers.filter((u) => !u.isVerified).length,
+      archived: operationalArchivedUsers.length,
     };
-  }, [users, archivedUsers]);
+  }, [operationalUsers, operationalArchivedUsers]);
 
   // ── Animal & Technician Computed Maps ────────────────────────
   const animalCountMap = useMemo(() => {
@@ -87,11 +97,11 @@ export const useAdminUsers = (initialSearch: string = "") => {
 
   const techAssignedFarmersMap = useMemo(() => {
     const counts: Record<string, number> = {};
-    users.forEach((tech) => {
+    operationalUsers.forEach((tech) => {
       if (tech.role === "technician") {
         const barangay = tech.address?.barangay?.toLowerCase()?.trim();
         if (barangay) {
-          counts[tech._id] = users.filter(
+          counts[tech._id] = operationalUsers.filter(
             (f) =>
               f.role === "farmer" &&
               f.address?.barangay?.toLowerCase()?.trim() === barangay
@@ -102,11 +112,14 @@ export const useAdminUsers = (initialSearch: string = "") => {
       }
     });
     return counts;
-  }, [users]);
+  }, [operationalUsers]);
 
   // ── Enhanced Filtering (role + status + search) ──────────────
   const filteredUsers = useMemo(() => {
-    let result = statusFilter === "deleted" ? archivedUsers : users;
+    let result =
+      statusFilter === "deleted"
+        ? operationalArchivedUsers
+        : operationalUsers;
 
     // Role filter
     if (roleFilter !== "all") {
@@ -133,7 +146,13 @@ export const useAdminUsers = (initialSearch: string = "") => {
     }
 
     return result;
-  }, [users, archivedUsers, searchQuery, roleFilter, statusFilter]);
+  }, [
+    operationalUsers,
+    operationalArchivedUsers,
+    searchQuery,
+    roleFilter,
+    statusFilter,
+  ]);
 
   // ── Pagination ───────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / ITEMS_PER_PAGE));
@@ -156,6 +175,11 @@ export const useAdminUsers = (initialSearch: string = "") => {
 
   // ── Quick Actions ────────────────────────────────────────────
   const handleUserPress = useCallback((userItem: UserItem) => {
+    if (!isOperationalUser(userItem)) {
+      toast.error("This account is outside operational user management.");
+      return;
+    }
+
     Alert.alert(
       userItem.name || 'User Actions',
       `Manage credentials and system access for this member.\nEmail: ${userItem.email || 'N/A'}`,
@@ -196,6 +220,11 @@ export const useAdminUsers = (initialSearch: string = "") => {
   }, [api, refetch]);
 
   const handleSuspendUser = useCallback(async (userItem: UserItem) => {
+    if (!isOperationalUser(userItem)) {
+      toast.error("This account is outside operational user management.");
+      return;
+    }
+
     const isSuspended = userItem.status === "suspended";
     const action = isSuspended ? "reactivate" : "suspend";
     try {
@@ -214,6 +243,11 @@ export const useAdminUsers = (initialSearch: string = "") => {
   }, [api, queryClient]);
 
   const handleVerifyUser = useCallback(async (userItem: UserItem) => {
+    if (!isOperationalUser(userItem)) {
+      toast.error("This account is outside operational user management.");
+      return;
+    }
+
     if (userItem.isVerified) {
       toast.info("User is already verified.");
       return;
@@ -229,6 +263,11 @@ export const useAdminUsers = (initialSearch: string = "") => {
   }, [api, queryClient]);
 
   const handleRestoreUser = useCallback(async (userItem: UserItem) => {
+    if (!isOperationalUser(userItem)) {
+      toast.error("This account is outside operational user management.");
+      return;
+    }
+
     try {
       await restoreUser(api, userItem._id);
       toast.success(`${userItem.name || "User"} successfully restored.`);

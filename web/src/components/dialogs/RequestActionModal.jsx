@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
+import ImagePreviewModal from "../ui/ImagePreviewModal";
 import { toast } from "sonner";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
@@ -81,8 +82,11 @@ const getRequestPhotos = (task) => {
   const raw = task?.raw || {};
   const sources = [
     ...(Array.isArray(raw.photos) ? raw.photos : []),
+    ...(Array.isArray(raw.farmerRequest?.photos) ? raw.farmerRequest.photos : []),
     ...(Array.isArray(raw.evidencePhotos) ? raw.evidencePhotos : []),
+    raw.photoUrl,
     raw.imageUrl,
+    raw.farmerRequest?.photoUrl,
     task?.imageUrl,
   ];
 
@@ -114,6 +118,7 @@ const RequestActionModal = ({
   const [sireCode, setSireCode] = useState("");
   const [estrus, setEstrus] = useState("Natural");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
   const technicianSelectRef = useRef(null);
 
   const serviceType = taskData?.type;
@@ -363,7 +368,7 @@ const RequestActionModal = ({
 
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
-      if (event.key === "Escape" && !isSubmitting) onClose();
+      if (event.key === "Escape" && !isSubmitting && !previewImage) onClose();
     };
 
     document.body.style.overflow = "hidden";
@@ -373,7 +378,7 @@ const RequestActionModal = ({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, isSubmitting, onClose]);
+  }, [isOpen, isSubmitting, onClose, previewImage]);
 
   if (!isOpen || !taskData) return null;
 
@@ -661,8 +666,9 @@ const RequestActionModal = ({
     new Date(visitDateVal) < today;
 
   return (
-    <AnimatePresence>
-      {isOpen && (
+    <>
+      <AnimatePresence>
+        {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4">
           {/* MODAL CONTAINER */}
           <motion.div
@@ -933,11 +939,10 @@ const RequestActionModal = ({
                       </div>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                         {requestPhotos.map((photo, index) => (
-                          <a
+                          <button
+                            type="button"
                             key={`${photo}-${index}`}
-                            href={photo}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => setPreviewImage(photo)}
                             className="group aspect-square overflow-hidden rounded-xl border border-base-300 bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
                             aria-label={`Open submitted photo ${index + 1}`}
                           >
@@ -946,7 +951,7 @@ const RequestActionModal = ({
                               alt={`Farmer-submitted request evidence ${index + 1}`}
                               className="h-full w-full object-cover transition-transform group-hover:scale-105"
                             />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1427,8 +1432,16 @@ const RequestActionModal = ({
             </div>
           </motion.div>
         </div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+      <ImagePreviewModal
+        images={requestPhotos}
+        selectedImage={previewImage}
+        onSelectImage={setPreviewImage}
+        onClose={() => setPreviewImage(null)}
+        title="Submitted request photo"
+      />
+    </>
   );
 };
 

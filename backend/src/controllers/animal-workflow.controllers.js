@@ -12,6 +12,10 @@ import {
   TASK_STATUS,
 } from "../domain/status-vocabulary.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
+import {
+  buildAIRequestMutationOwnershipGuard,
+  buildHealthRequestMutationOwnershipGuard,
+} from "../policies/request.policy.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import {
   getAnimalTimeline as buildAnimalTimeline,
@@ -83,6 +87,8 @@ const OFFICIAL_RECORD_KINDS = new Set([
   "pregnancy",
   "calving",
   "medical_record",
+  "health_request",
+  "ai_request",
 ]);
 
 const idOf = (value) => {
@@ -141,13 +147,143 @@ const animalSummary = (recordAnimal, fallbackAnimal) => {
 const officialRecordDetail = ({ recordKind, record, animal }) => {
   const sourceId = idOf(record);
   const subject = animalSummary(record.animalId, animal);
+  const resolvedFarmer =
+    record.farmerId && typeof record.farmerId === "object" && record.farmerId.name
+      ? record.farmerId
+      : animal?.farmerId && typeof animal.farmerId === "object" && animal.farmerId.name
+        ? animal.farmerId
+        : record.farmerId || animal?.farmerId;
   const common = {
     id: sourceId,
     sourceId,
     sourceKind: recordKind,
     animalId: subject,
-    farmerId: personSummary(record.farmerId),
+    farmerId: personSummary(resolvedFarmer),
   };
+
+  if (recordKind === "health_request") {
+    const isAdvice = record.handlingMethod === "advice";
+    const isPickup = record.handlingMethod === "office_pickup";
+    const isCancelled = ["cancelled", "rejected"].includes(record.status);
+    const eventDate = isCancelled
+      ? record.cancellationRespondedAt || record.updatedAt || record.createdAt
+      : record.resolvedAt || record.updatedAt || record.createdAt;
+    const pickup = record.technicianResponse?.pickup;
+    return {
+      ...common,
+      type: "health",
+      title: isAdvice
+        ? "Health Advice"
+        : isPickup
+          ? "Office Pickup"
+          : "Cancelled Request",
+      description: isAdvice
+        ? record.advice || "Technician advice sent"
+        : isPickup
+          ? pickup?.instructions || record.advice || "Pickup information sent"
+          : record.cancellationResponseReason ||
+            record.cancellationReason ||
+            "Health request closed",
+      date: eventDate,
+      dateLabel: isCancelled ? "Request closed on" : "Response sent on",
+      datePrecision: "datetime",
+      attachments: uniqueRecordAttachments([
+        ...(record.photos || []).map((url, index) => ({
+          url,
+          category: "request_evidence",
+          label: `Health request photo ${index + 1}`,
+        })),
+        ...(record.imageUrl
+          ? [{
+              url: record.imageUrl,
+              category: "request_evidence",
+              label: "Health request photo",
+            }]
+          : []),
+      ]),
+      technician: personSummary(record.handledBy || record.assignedTechnicianId),
+      details: {
+        serviceDate: eventDate,
+        serviceDateLabel: isCancelled ? "Request closed on" : "Response sent on",
+        requestedAt: record.createdAt,
+        requestedAtLabel: "Request submitted at",
+        status: record.status,
+        requestType:
+          record.requestDetails?.assistanceRequested || record.requestType,
+        requestDetails: record.requestDetails,
+        symptoms: record.symptoms,
+        farmerNotes: record.farmerNotes,
+        urgency: record.urgency,
+        handlingMethod: record.handlingMethod || null,
+        advice: record.advice,
+        followUpDate: record.followUpDate,
+        pickupItem: pickup?.item,
+        pickupAvailable: pickup?.availabilityConfirmed,
+        pickupInstructions: pickup?.instructions,
+        dosageOrUseInstructions: pickup?.dosageOrUseInstructions,
+        withdrawalGuidance: pickup?.withdrawalGuidance,
+        cancellationReason: record.cancellationReason,
+        cancellationResponseReason: record.cancellationResponseReason,
+        technician:
+          record.handledBy?.name || record.assignedTechnicianId?.name || "",
+      },
+      actions: {
+        reportPreviewAvailable: false,
+        reportId: null,
+        pregnancyTrackerAvailable: false,
+      },
+    };
+  }
+
+  if (recordKind === "ai_request") {
+    const technician = record.technicianId || record.approvedBy || null;
+    const eventDate =
+      record.cancellationRespondedAt || record.updatedAt || record.createdAt;
+    return {
+      ...common,
+      type: "ai",
+      title: "AI Request",
+      description:
+        record.cancellationResponseReason ||
+        record.cancellationReason ||
+        "Artificial insemination request closed",
+      date: eventDate,
+      dateLabel: "Request closed on",
+      datePrecision: "datetime",
+      attachments: uniqueRecordAttachments([
+        ...(record.photos || []).map((url, index) => ({
+          url,
+          category: "request_evidence",
+          label: `AI request photo ${index + 1}`,
+        })),
+        ...(record.imageUrl
+          ? [{
+              url: record.imageUrl,
+              category: "request_evidence",
+              label: "AI request photo",
+            }]
+          : []),
+      ]),
+      technician: personSummary(technician),
+      details: {
+        serviceDate: eventDate,
+        serviceDateLabel: "Request closed on",
+        requestedAt: record.createdAt,
+        requestedAtLabel: "Request submitted at",
+        status: record.status,
+        scheduledDate: record.scheduledDate,
+        visitPeriod: record.visitPeriod || null,
+        cancellationReason: record.cancellationReason,
+        cancellationResponseReason: record.cancellationResponseReason,
+        technician: technician?.name || "",
+      },
+      actions: {
+        reportPreviewAvailable: false,
+        reportId: null,
+        pregnancyTrackerAvailable: false,
+      },
+    };
+  }
 
   if (recordKind === "insemination") {
     const technician =
@@ -162,6 +298,11 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         ? "AI scheduled for"
         : "AI request submitted at";
     const attachments = uniqueRecordAttachments([
+      ...(record.photos || []).map((url, index) => ({
+        url,
+        category: "request_evidence",
+        label: `AI request photo ${index + 1}`,
+      })),
       ...(record.imageUrl
         ? [{
             url: record.imageUrl,
@@ -174,11 +315,16 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         category: "follow_up_evidence",
         label: `Follow-up evidence ${index + 1}`,
       })),
+      ...(record.farmerPregnancyPhotos || []).map((url, index) => ({
+        url,
+        category: "pregnancy_report_evidence",
+        label: `Pregnancy report evidence ${index + 1}`,
+      })),
     ]);
     return {
       ...common,
       type: "ai",
-      title: `AI Attempt #${record.attemptNumber || 1}`,
+      title: "Artificial Insemination",
       description: record.outcome || "Artificial insemination completed",
       date: eventDate,
       dateLabel,
@@ -319,7 +465,8 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
         entryDate: record.createdAt,
         entryDateLabel: "Recorded in BreedSmart at",
         calvingOutcome: record.outcome,
-        calvingEase: record.calvingEase,
+        calvingEase:
+          record.outcome === "abortion" ? "Not applicable" : record.calvingEase,
         numberOfCalves:
           record.numberOfCalves ??
           record.totalDelivered ??
@@ -345,6 +492,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     record.healthRequestId && typeof record.healthRequestId === "object"
       ? record.healthRequestId
       : null;
+  const isDirectHealthService = !linkedRequest;
   const technician = record.technicianId || null;
   const attachments = uniqueRecordAttachments([
     ...(linkedRequest?.photos || []).map((url, index) => ({
@@ -370,7 +518,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
   return {
     ...common,
     type: "health",
-    title: record.type || "Health Assistance",
+    title: record.type === "General Note" ? "General Note" : "Health record",
     description:
       record.details?.diagnosis ||
       record.details?.treatment ||
@@ -378,7 +526,8 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       "Health record completed",
     date: record.date || record.createdAt,
     dateLabel: "Health service record date",
-    datePrecision: record.isHistoricalEntry ? "date" : "datetime",
+    datePrecision:
+      isDirectHealthService || record.isHistoricalEntry ? "date" : "datetime",
     attachments,
     technician: personSummary(technician),
     details: {
@@ -387,7 +536,11 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       entryDate: record.createdAt,
       entryDateLabel: "Recorded in BreedSmart at",
       status: "completed",
-      requestType: linkedRequest?.requestType || record.type,
+      requestType:
+        linkedRequest?.requestType || record.details?.serviceType || record.type,
+      serviceType:
+        record.details?.serviceType || linkedRequest?.requestType || record.type,
+      isDirectHealthService,
       requestDetails: linkedRequest?.requestDetails,
       symptoms: linkedRequest?.symptoms,
       farmerNotes: linkedRequest?.farmerNotes,
@@ -397,7 +550,10 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       medicine: record.details?.medicineName,
       dosage: record.details?.dosage,
       advice:
-        linkedRequest?.advice || linkedRequest?.resolutionNotes || record.note,
+        linkedRequest?.advice ||
+        linkedRequest?.resolutionNotes ||
+        record.details?.advice ||
+        record.note,
       followUpDate: record.followUpDate || linkedRequest?.followUpDate,
       withdrawalPeriodDays: record.details?.withdrawalPeriodDays,
       withdrawalEndDate: record.details?.withdrawalEndDate,
@@ -425,6 +581,16 @@ export const getOfficialRecordDetail = async (req, res) => {
       });
     }
 
+    if (
+      ["health_request", "ai_request"].includes(recordKind) &&
+      req.user.role === "farmer"
+    ) {
+      throw new AppError("This request history is available from Requests.", {
+        status: 403,
+        code: "REQUEST_RECORD_ACCESS_DENIED",
+      });
+    }
+
     const animal = await getAccessibleAnimal(animalId, req.user);
     const scope = { _id: recordId, animalId: animal._id };
     let query;
@@ -432,6 +598,7 @@ export const getOfficialRecordDetail = async (req, res) => {
     if (recordKind === "insemination") {
       query = Insemination.findOne({ ...scope, deletedAt: null })
         .populate("technicianId approvedBy outcomeConfirmedBy", "name role")
+        .populate("farmerId", "name")
         .populate(
           "previousAttemptId",
           "attemptNumber inseminationDate outcome failureReason outcomeVerificationStatus",
@@ -443,12 +610,14 @@ export const getOfficialRecordDetail = async (req, res) => {
     } else if (recordKind === "pregnancy") {
       query = Pregnancy.findOne({ ...scope, deletedAt: null })
         .populate("confirmation.confirmedBy", "name role")
+        .populate("farmerId", "name")
         .populate("inseminationId", "attemptNumber sireBreed sireCode");
     } else if (recordKind === "calving") {
       query = Calving.findOne({ ...scope, deletedAt: null })
         .populate("technicianId", "name role")
+        .populate("farmerId", "name")
         .populate("calves.animalId", "animalId earTag imageUrl");
-    } else {
+    } else if (recordKind === "medical_record") {
       query = MedicalRecord.findOne(scope)
         .populate("technicianId", "name role")
         .populate("farmerId", "name")
@@ -456,6 +625,33 @@ export const getOfficialRecordDetail = async (req, res) => {
           "healthRequestId",
           "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes imageUrl photos",
         );
+    } else if (recordKind === "health_request") {
+      query = HealthRequest.findOne({
+        ...scope,
+        deletedAt: null,
+        ...(req.user.role === "technician"
+          ? buildHealthRequestMutationOwnershipGuard({
+              technicianId: req.user._id,
+            })
+          : {}),
+        $or: [
+          { status: "resolved", handlingMethod: { $in: ["advice", "office_pickup"] } },
+          { status: { $in: ["cancelled", "rejected"] } },
+        ],
+      })
+        .populate("handledBy assignedTechnicianId", "name role")
+        .populate("farmerId", "name");
+    } else {
+      query = Insemination.findOne({
+        ...scope,
+        deletedAt: null,
+        status: { $in: [AI_STATUS.CANCELLED, AI_STATUS.REJECTED] },
+        ...(req.user.role === "technician"
+          ? buildAIRequestMutationOwnershipGuard({ technicianId: req.user._id })
+          : {}),
+      })
+        .populate("technicianId approvedBy", "name role")
+        .populate("farmerId", "name");
     }
 
     const record = await query.lean();
@@ -535,24 +731,35 @@ export const getOfficialRecords = async (req, res) => {
       requestedType,
     );
     const windowLimit = search ? null : pageInfo.skip + pageInfo.limit;
+    const technicianId =
+      req.user.role === "technician" ? req.user._id : null;
+    const includeClosedRequests = Boolean(technicianId);
     const inseminationFilter = {
       ...scope,
       status: "done",
       deletedAt: null,
+      ...(technicianId
+        ? buildAIRequestMutationOwnershipGuard({ technicianId })
+        : {}),
       ...(hasDateRange ? { inseminationDate: dateRange } : {}),
     };
     const pregnancyFilter = {
       ...scope,
       deletedAt: null,
+      ...(technicianId
+        ? { "confirmation.confirmedBy": technicianId }
+        : {}),
       ...(hasDateRange ? { "pregnancyDiagnosis.date": dateRange } : {}),
     };
     const calvingFilter = {
       ...scope,
       deletedAt: null,
+      ...(technicianId ? { technicianId } : {}),
       ...(hasDateRange ? { date: dateRange } : {}),
     };
     const medicalRecordFilter = {
       ...scope,
+      ...(technicianId ? { technicianId } : {}),
       ...(hasDateRange ? { date: dateRange } : {}),
       ...(!includeHealth && includeNotes
         ? { type: "General Note" }
@@ -560,16 +767,62 @@ export const getOfficialRecords = async (req, res) => {
           ? { type: { $ne: "General Note" } }
           : {}),
     };
+    const cancelledInseminationFilter = {
+      ...scope,
+      status: { $in: [AI_STATUS.CANCELLED, AI_STATUS.REJECTED] },
+      deletedAt: null,
+      ...buildAIRequestMutationOwnershipGuard({ technicianId }),
+      ...(hasDateRange
+        ? {
+            $or: [
+              { cancellationRespondedAt: dateRange },
+              { updatedAt: dateRange },
+            ],
+          }
+        : {}),
+    };
+    const healthOwnership = buildHealthRequestMutationOwnershipGuard({
+      technicianId,
+    });
+    const closedHealthRequestFilter = {
+      ...scope,
+      deletedAt: null,
+      $and: [
+        ...(healthOwnership.$and || []),
+        {
+          $or: [
+            {
+              status: "resolved",
+              handlingMethod: { $in: ["advice", "office_pickup"] },
+            },
+            { status: { $in: ["cancelled", "rejected"] } },
+          ],
+        },
+        ...(hasDateRange
+          ? [{
+              $or: [
+                { resolvedAt: dateRange },
+                { cancellationRespondedAt: dateRange },
+                { updatedAt: dateRange },
+              ],
+            }]
+          : []),
+      ],
+    };
 
     const [
       inseminations,
       pregnancies,
       calvings,
       medicalRecords,
+      cancelledInseminations,
+      closedHealthRequests,
       inseminationCount,
       pregnancyCount,
       calvingCount,
       medicalRecordCount,
+      cancelledInseminationCount,
+      closedHealthRequestCount,
     ] =
       await Promise.all([
         includeAI
@@ -579,7 +832,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("technicianId approvedBy", "name role"),
               { inseminationDate: -1, createdAt: -1 },
               windowLimit,
@@ -592,7 +845,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("inseminationId", "attemptNumber sireBreed sireCode")
               .populate("confirmation.confirmedBy", "name role"),
               { "pregnancyDiagnosis.date": -1, createdAt: -1 },
@@ -606,7 +859,7 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("technicianId", "name role"),
               { date: -1, createdAt: -1 },
               windowLimit,
@@ -619,13 +872,39 @@ export const getOfficialRecords = async (req, res) => {
                 "animalId",
                 "animalId earTag brand color breed species imageUrl reproductiveStatus",
               )
-              .populate("farmerId", "name phoneNumber address")
+              .populate("farmerId", "name phoneNumber address imageUrl")
               .populate("technicianId", "name role")
               .populate(
                 "healthRequestId",
                 "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes",
               ),
               { date: -1, createdAt: -1 },
+              windowLimit,
+            )
+          : [],
+        includeClosedRequests && includeAI
+          ? executeOfficialRecordQuery(
+              Insemination.find(cancelledInseminationFilter)
+                .populate(
+                  "animalId",
+                  "animalId earTag brand color breed species imageUrl reproductiveStatus",
+                )
+                .populate("farmerId", "name phoneNumber address imageUrl")
+                .populate("technicianId approvedBy", "name role"),
+              { cancellationRespondedAt: -1, updatedAt: -1 },
+              windowLimit,
+            )
+          : [],
+        includeClosedRequests && includeHealth
+          ? executeOfficialRecordQuery(
+              HealthRequest.find(closedHealthRequestFilter)
+                .populate(
+                  "animalId",
+                  "animalId earTag brand color breed species imageUrl reproductiveStatus",
+                )
+                .populate("farmerId", "name phoneNumber address imageUrl")
+                .populate("handledBy assignedTechnicianId", "name role"),
+              { resolvedAt: -1, cancellationRespondedAt: -1, updatedAt: -1 },
               windowLimit,
             )
           : [],
@@ -639,6 +918,12 @@ export const getOfficialRecords = async (req, res) => {
         !search && (includeHealth || includeNotes)
           ? MedicalRecord.countDocuments(medicalRecordFilter)
           : 0,
+        !search && includeClosedRequests && includeAI
+          ? Insemination.countDocuments(cancelledInseminationFilter)
+          : 0,
+        !search && includeClosedRequests && includeHealth
+          ? HealthRequest.countDocuments(closedHealthRequestFilter)
+          : 0,
       ]);
 
     const records = [
@@ -648,7 +933,7 @@ export const getOfficialRecords = async (req, res) => {
         category: "AI",
         recordDate: item.inseminationDate,
         enteredAt: item.createdAt,
-        title: `AI Attempt #${item.attemptNumber || 1}`,
+        title: "Artificial Insemination",
         summary: item.outcome || "Artificial insemination completed",
         status: "completed",
         farmerId: item.farmerId,
@@ -698,7 +983,7 @@ export const getOfficialRecords = async (req, res) => {
           category: isGeneralNote ? "General Note" : "Health",
           recordDate: item.date || item.createdAt,
           enteredAt: item.createdAt,
-          title: item.type || "Health Record",
+          title: isGeneralNote ? "General Note" : "Health record",
           summary:
             item.details?.diagnosis ||
             item.details?.treatment ||
@@ -708,6 +993,57 @@ export const getOfficialRecords = async (req, res) => {
           farmerId: item.farmerId,
           animalId: item.animalId,
           technicianId: item.technicianId,
+          source: item,
+        };
+      }),
+      ...cancelledInseminations.map((item) => ({
+        id: item._id,
+        recordKind: "ai_request",
+        category: "AI",
+        recordDate:
+          item.cancellationRespondedAt || item.updatedAt || item.createdAt,
+        enteredAt: item.createdAt,
+        title: "AI Request",
+        summary:
+          item.cancellationResponseReason ||
+          item.cancellationReason ||
+          "Artificial insemination request closed",
+        status: item.status,
+        farmerId: item.farmerId,
+        animalId: item.animalId,
+        technicianId: item.technicianId || item.approvedBy,
+        source: item,
+      })),
+      ...closedHealthRequests.map((item) => {
+        const isAdvice = item.handlingMethod === "advice";
+        const isPickup = item.handlingMethod === "office_pickup";
+        const isCancelled = ["cancelled", "rejected"].includes(item.status);
+        return {
+          id: item._id,
+          recordKind: "health_request",
+          category: "Health",
+          recordDate: isCancelled
+            ? item.cancellationRespondedAt || item.updatedAt || item.createdAt
+            : item.resolvedAt || item.updatedAt || item.createdAt,
+          enteredAt: item.createdAt,
+          title: isAdvice
+            ? "Health Advice"
+            : isPickup
+              ? "Office Pickup"
+              : "Cancelled Request",
+          summary: isAdvice
+            ? item.advice || "Technician advice sent"
+            : isPickup
+              ? item.technicianResponse?.pickup?.instructions ||
+                item.advice ||
+                "Pickup information sent"
+              : item.cancellationResponseReason ||
+                item.cancellationReason ||
+                "Health request closed",
+          status: item.status,
+          farmerId: item.farmerId,
+          animalId: item.animalId,
+          technicianId: item.handledBy || item.assignedTechnicianId,
           source: item,
         };
       }),
@@ -728,7 +1064,12 @@ export const getOfficialRecords = async (req, res) => {
       page: pageInfo.page,
       limit: pageInfo.limit,
       total:
-        inseminationCount + pregnancyCount + calvingCount + medicalRecordCount,
+        inseminationCount +
+        pregnancyCount +
+        calvingCount +
+        medicalRecordCount +
+        cancelledInseminationCount +
+        closedHealthRequestCount,
     });
   } catch (error) {
     return res.status(error.status || 500).json({

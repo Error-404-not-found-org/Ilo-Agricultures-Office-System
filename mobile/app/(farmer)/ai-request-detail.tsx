@@ -342,7 +342,7 @@ export default function AiRequestDetailScreen() {
   const heatSigns = getRequestList(request.heatSigns).filter(
     (sign) => heatSignMap[sign],
   );
-  const handlerName = getRequestText(handler?.name);
+  const handlerName = getRequestText(request.technicianDisplayName) || getRequestText(handler?.name);
   const hasHandlerReference = Boolean(
     handlerName ||
     (typeof handler === "string" ? getRequestText(handler) : handler?._id),

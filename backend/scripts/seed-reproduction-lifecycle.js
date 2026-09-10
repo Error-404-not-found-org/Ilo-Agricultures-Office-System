@@ -19,6 +19,7 @@ import { User } from "../src/models/user.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
+import { PregnancyLossReport } from "../src/models/pregnancy-loss-report.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { HealthRequest } from "../src/models/health-request.model.js";
 import { MedicalRecord } from "../src/models/medical-record.model.js";
@@ -56,7 +57,7 @@ export const SCENARIO_NAMES = Object.freeze([
   "RC26-05-AI-DAY21",
   "RC26-06-LIKELY-PREGNANT",
   "RC26-07-PD-DUE",
-  "RC26-08-PREGNANT",
+  "RC26-08-PREGNANCY-LOSS-REVIEW",
   "RC26-09-CALVING-DUE",
   "RC26-10-CALVING-OVERDUE",
   "RC26-11-POSTPARTUM",
@@ -73,7 +74,45 @@ export const SCENARIO_NAMES = Object.freeze([
   "RC26-20-HEALTH-IN-PROGRESS",
   "RC26-21-HEALTH-RESOLVED",
   "RC26-22-HEALTH-WALK-IN",
+  "RC26-23-HEAT-CHECK",
 ]);
+
+export const HEALTH_SCENARIO_NAMES = Object.freeze([
+  "RC26-18-HEALTH-PENDING",
+  "RC26-19-HEALTH-SCHEDULED",
+  "RC26-20-HEALTH-IN-PROGRESS",
+  "RC26-21-HEALTH-RESOLVED",
+  "RC26-22-HEALTH-WALK-IN",
+]);
+
+export const REPRODUCTIVE_SCENARIO_NAMES = Object.freeze(
+  SCENARIO_NAMES.filter((name) => !HEALTH_SCENARIO_NAMES.includes(name)),
+);
+
+export const SCENARIO_ALIASES = Object.freeze({
+  reheat: "RC26-05-AI-DAY21",
+  "pregnancy-report": "RC26-06-LIKELY-PREGNANT",
+  pregnant: "RC26-08-PREGNANCY-LOSS-REVIEW",
+  "pregnancy-loss-review": "RC26-08-PREGNANCY-LOSS-REVIEW",
+  "rc26-08-pregnant": "RC26-08-PREGNANCY-LOSS-REVIEW",
+  "heat-check": "RC26-23-HEAT-CHECK",
+});
+
+export const resolveScenarioName = (input) => {
+  if (!input) return null;
+  const raw = String(input).trim();
+  const normalized = raw.toLowerCase();
+  if (SCENARIO_ALIASES[normalized]) {
+    return SCENARIO_ALIASES[normalized];
+  }
+  const match = SCENARIO_NAMES.find(
+    (name) => name.toLowerCase() === normalized,
+  );
+  if (match) return match;
+  throw new Error(
+    `Unknown scenario: "${input}". Available aliases: ${Object.keys(SCENARIO_ALIASES).join(", ")} or scenario names like ${SCENARIO_NAMES.slice(0, 3).join(", ")}.`,
+  );
+};
 
 const DAY_MS = 86_400_000;
 
@@ -88,6 +127,7 @@ const MODELS = {
   Animal,
   Insemination,
   Pregnancy,
+  PregnancyLossReport,
   Calving,
   HealthRequest,
   MedicalRecord,
@@ -194,13 +234,38 @@ const knownTransactionError = (error) =>
   );
 
 export const parseSeedArgs = (argv = process.argv.slice(2)) => {
-  const value = (name) =>
-    argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+  const value = (name) => {
+    const prefix = `--${name}=`;
+    const exact = argv.find((arg) => arg.startsWith(prefix));
+    if (exact) return exact.slice(prefix.length);
+    const index = argv.indexOf(`--${name}`);
+    if (
+      index !== -1 &&
+      index + 1 < argv.length &&
+      !argv[index + 1].startsWith("--")
+    ) {
+      return argv[index + 1];
+    }
+    return undefined;
+  };
+
+  const rawScenario = value("scenario");
+  const resolvedScenario = rawScenario ? resolveScenarioName(rawScenario) : null;
+  const excludeHealth =
+    argv.includes("--excludeHealth") ||
+    argv.includes("--exclude-health") ||
+    argv.includes("--noHealth") ||
+    argv.includes("--no-health") ||
+    argv.includes("--reproductionOnly") ||
+    argv.includes("--reproduction-only");
 
   return {
     farmerEmail: normalizedEmail(value("farmerEmail")),
     technicianEmail: normalizedEmail(value("technicianEmail")),
     seedBatch: value("seedBatch") || "",
+    scenario: resolvedScenario,
+    scenarioName: resolvedScenario,
+    excludeHealth,
     execute: argv.includes("--execute"),
   };
 };
@@ -284,6 +349,7 @@ export const resolveSeedUsers = async ({
       email: technicianEmail,
       role: "technician",
       deletedAt: null,
+      status: { $nin: ["suspended", "deleted"] },
     }),
   ]);
 
@@ -586,6 +652,8 @@ const baseTask = ({
 
   completedAt = null,
 
+  priority = 2,
+
   inseminationId,
 
   seedBatch,
@@ -608,7 +676,7 @@ const baseTask = ({
 
   category: "Follow-up",
 
-  priority: 2,
+  priority,
 
   notes: notes || `${type} lifecycle seed task (${seedBatch}).`,
 
@@ -700,6 +768,8 @@ export const buildReproductionLifecyclePlan = ({
   technician,
   now = new Date(),
   seedBatch = createSeedBatch(now),
+  scenarioName = null,
+  excludeHealth = false,
 }) => {
   if (!farmer?._id || !technician?._id) {
     throw new Error("Existing farmer and technician records are required.");
@@ -708,6 +778,19 @@ export const buildReproductionLifecyclePlan = ({
   if (!/^[a-zA-Z0-9_-]{8,80}$/.test(seedBatch)) {
     throw new Error("seedBatch must be 8-80 safe characters.");
   }
+
+  const selectedScenario = scenarioName
+    ? resolveScenarioName(scenarioName)
+    : null;
+
+  const shouldBuild = (index) => {
+    const name = SCENARIO_NAMES[index - 1];
+    if (excludeHealth && HEALTH_SCENARIO_NAMES.includes(name)) {
+      return false;
+    }
+    if (!selectedScenario) return true;
+    return name === selectedScenario;
+  };
 
   const farmerId = farmer._id;
 
@@ -772,6 +855,8 @@ export const buildReproductionLifecyclePlan = ({
 
       pregnancies: [],
 
+      pregnancyLossReports: [],
+
       calvings: [],
 
       healthRequests: [],
@@ -779,6 +864,12 @@ export const buildReproductionLifecyclePlan = ({
       medicalRecords: [],
 
       tasks: [],
+
+      notifications: [],
+
+      timelines: [],
+
+      audits: [],
 
       offspring: [],
 
@@ -878,6 +969,29 @@ export const buildReproductionLifecyclePlan = ({
     return record;
   };
 
+  const addTimelineEvent = (scenario, data) => {
+    const record = {
+      _id: id(),
+
+      animalId: scenario.motherId,
+
+      occurredAt: now,
+
+      ...data,
+
+      metadata: {
+        seedBatch,
+        ...(data.metadata || {}),
+      },
+    };
+
+    collections.timelines.push(record);
+
+    scenario.timelines.push(record);
+
+    return record;
+  };
+
   const addObservationNotification = (
     scenario,
     { insemination, task = null, reportType, message },
@@ -929,6 +1043,8 @@ export const buildReproductionLifecyclePlan = ({
     };
 
     collections.notifications.push(notification);
+
+    scenario.notifications.push(notification);
 
     return notification;
   };
@@ -1039,9 +1155,15 @@ export const buildReproductionLifecyclePlan = ({
 
     collections.timelines.push(timeline);
 
+    scenario.timelines.push(timeline);
+
     collections.audits.push(audit);
 
+    scenario.audits.push(audit);
+
     collections.notifications.push(notification);
+
+    scenario.notifications.push(notification);
   };
 
   const addCompletedOutcome = (
@@ -1265,78 +1387,84 @@ export const buildReproductionLifecyclePlan = ({
   // RC26-01 — AVAILABLE
   // ============================================================
 
-  start(1, "AVAILABLE").expectedResult = "AI request available";
+  if (shouldBuild(1)) {
+    start(1, "AVAILABLE").expectedResult = "AI request available";
+  }
 
   // ============================================================
   // RC26-02 — AI PENDING
   // ============================================================
 
-  const s2 = start(2, "AI-PENDING");
+  if (shouldBuild(2)) {
+    const s2 = start(2, "AI-PENDING");
 
-  addInsemination(s2, {
-    aiDate: undefined,
+    addInsemination(s2, {
+      aiDate: undefined,
 
-    status: "pending",
+      status: "pending",
 
-    assignedToTechnician: false,
+      assignedToTechnician: false,
 
-    extra: {
-      inseminationDate: undefined,
+      extra: {
+        inseminationDate: undefined,
 
-      scheduledDate: undefined,
+        scheduledDate: undefined,
 
-      preferredDate: addDays(now, 3),
+        preferredDate: addDays(now, 3),
 
-      heatSigns: ["standing_heat", "clear_mucus"],
+        heatSigns: ["standing_heat", "clear_mucus"],
 
-      comment: "Farmer reports clear heat signs and requests AI service.",
-    },
-  });
+        comment: "Farmer reports clear heat signs and requests AI service.",
+      },
+    });
 
-  s2.expectedResult =
-    "Unassigned request shows Accept & Set Visit; duplicate active AI request is rejected";
+    s2.expectedResult =
+      "Unassigned request shows Accept & Set Visit; duplicate active AI request is rejected";
+  }
 
   // ============================================================
   // RC26-03 — AI SCHEDULED
   // ============================================================
 
-  const s3 = start(3, "AI-SCHEDULED");
+  if (shouldBuild(3)) {
+    const s3 = start(3, "AI-SCHEDULED");
 
-  const s3ai = addInsemination(s3, {
-    aiDate: undefined,
+    const s3ai = addInsemination(s3, {
+      aiDate: undefined,
 
-    status: "scheduled",
+      status: "scheduled",
 
-    extra: {
-      inseminationDate: undefined,
+      extra: {
+        inseminationDate: undefined,
 
-      scheduledDate: visitDate(now, 3),
+        scheduledDate: visitDate(now, 3),
 
-      visitPeriod: "morning",
+        visitPeriod: "morning",
 
-      preferredDate: addDays(now, 3),
+        preferredDate: addDays(now, 3),
 
-      claimedAt: now,
+        claimedAt: now,
 
-      scheduledAt: now,
-    },
-  });
+        scheduledAt: now,
+      },
+    });
 
-  addTask(s3, {
-    type: "AI",
+    addTask(s3, {
+      type: "AI",
 
-    dueDate: s3ai.scheduledDate,
+      dueDate: s3ai.scheduledDate,
 
-    sourceType: "task_scheduler",
+      sourceType: "task_scheduler",
 
-    relatedRecordType: "insemination",
+      relatedRecordType: "insemination",
 
-    relatedRecordId: s3ai._id,
+      relatedRecordId: s3ai._id,
 
-    inseminationId: s3ai._id,
-  });
+      inseminationId: s3ai._id,
+    });
 
-  s3.expectedResult = "Attend scheduled AI visit";
+    s3.expectedResult = "Attend scheduled AI visit";
+  }
 
   // ============================================================
   // Helpers for reproductive monitoring scenarios
@@ -1378,168 +1506,195 @@ export const buildReproductionLifecyclePlan = ({
   // RC26-04 — AI DAY 10 / UNSURE OBSERVATION
   // ============================================================
 
-  const s4data = monitoring(4, "AI-DAY10", 10);
+  if (shouldBuild(4)) {
+    const s4data = monitoring(4, "AI-DAY10", 10);
 
-  Object.assign(s4data.insemination, {
-    farmerOutcomeReport: "unsure",
+    Object.assign(s4data.insemination, {
+      farmerOutcomeReport: "unsure",
 
-    farmerOutcomeReportedAt: now,
+      farmerOutcomeReportedAt: now,
 
-    farmerObservationSigns: [],
+      farmerObservationSigns: [],
 
-    farmerObservationNotes: "",
+      farmerObservationNotes: "",
 
-    evidencePhotos: [],
+      evidencePhotos: [],
 
-    verificationRequested: false,
+      verificationRequested: false,
 
-    verificationStatus: "not_requested",
+      verificationStatus: "not_requested",
 
-    outcomeVerificationStatus: "reported",
-  });
+      outcomeVerificationStatus: "reported",
+    });
 
-  addObservationNotification(s4data.scenario, {
-    insemination: s4data.insemination,
+    addObservationNotification(s4data.scenario, {
+      insemination: s4data.insemination,
 
-    reportType: "unsure",
+      reportType: "unsure",
 
-    message: `The farmer is unsure of the breeding outcome for ${s4data.scenario.earTag}. Review the observation and advise continued monitoring.`,
-  });
+      message: `The farmer is unsure of the breeding outcome for ${s4data.scenario.earTag}. Review the observation and advise continued monitoring.`,
+    });
 
-  s4data.scenario.expectedResult =
-    "Unsure farmer observation; monitoring continues without a requested review task";
+    s4data.scenario.expectedResult =
+      "Unsure farmer observation; monitoring continues without a requested review task";
+  }
 
   // ============================================================
   // RC26-05 — RETURN TO HEAT
   // ============================================================
 
-  const s5data = monitoring(5, "AI-DAY21", 21);
+  if (shouldBuild(5)) {
+    const s5data = monitoring(5, "AI-DAY21", 21);
 
-  s5data.scenario.animal.reproductiveStatus = "In Heat";
+    const s5EvidenceUrl =
+      "https://res.cloudinary.com/demo/image/upload/sample.jpg";
 
-  Object.assign(s5data.insemination, {
-    farmerOutcomeReport: "return_to_heat",
+    Object.assign(s5data.insemination, {
+      farmerOutcomeReport: "return_to_heat",
 
-    farmerOutcomeReportedAt: now,
+      farmerOutcomeReportedAt: now,
 
-    farmerObservationSigns: ["standing_heat", "restlessness"],
+      farmerObservationSigns: ["standing_heat", "restlessness"],
 
-    farmerObservationNotes:
-      "The animal is standing to be mounted and appears restless.",
+      farmerObservationNotes:
+        "The animal is standing to be mounted and appears restless.",
 
-    evidencePhotos: [],
+      evidencePhotos: [s5EvidenceUrl],
 
-    verificationRequested: true,
+      verificationRequested: true,
 
-    verificationStatus: "pending",
+      verificationStatus: "pending",
 
-    outcomeVerificationStatus: "reported",
+      outcomeVerificationStatus: "reported",
 
-    outcomeConfirmationSource: "farmer_return_to_heat",
-  });
+      outcomeConfirmationSource: "farmer_return_to_heat",
+    });
 
-  const s5task = s5data.scenario.tasks[0];
+    const s5task = addTask(s5data.scenario, {
+      type: "BreedingFollowUp",
 
-  Object.assign(s5task, {
-    technicianId: undefined,
+      dueDate: now,
 
-    sourceType: "farmer_requested_verification",
+      sourceType: "farmer_requested_verification",
 
-    priority: 1,
+      priority: 1,
 
-    notes: `Farmer reported a return to heat for ${s5data.scenario.earTag}. Technician review is required before the AI attempt can be marked unsuccessful.`,
+      relatedRecordType: "insemination",
 
-    metadata: {
-      ...s5task.metadata,
+      relatedRecordId: s5data.insemination._id,
+
+      inseminationId: s5data.insemination._id,
+
+      notes: `Farmer reported a return to heat for ${s5data.scenario.earTag}. Technician review is required before the AI attempt can be marked unsuccessful.`,
+
+      metadata: {
+        reportType: "return_to_heat",
+      },
+    });
+
+    s5data.insemination.verificationTaskId = s5task._id;
+
+    addObservationNotification(s5data.scenario, {
+      insemination: s5data.insemination,
+
+      task: s5task,
 
       reportType: "return_to_heat",
-    },
-  });
 
-  s5data.insemination.verificationTaskId = s5task._id;
+      message: `The farmer reported a return to heat for ${s5data.scenario.earTag}. Review the signs before recording the reproductive outcome.`,
+    });
 
-  addObservationNotification(s5data.scenario, {
-    insemination: s5data.insemination,
+    addTimelineEvent(s5data.scenario, {
+      animalId: s5data.scenario.motherId,
 
-    task: s5task,
+      eventType: "farmer_breeding_observation_reported",
 
-    reportType: "return_to_heat",
+      actorId: farmerId,
 
-    message: `The farmer reported a return to heat for ${s5data.scenario.earTag}. Review the signs before recording the reproductive outcome.`,
-  });
+      sourceType: "Insemination",
 
-  s5data.scenario.expectedResult =
-    "Provisional return-to-heat report; unassigned technician review task available";
+      sourceId: s5data.insemination._id,
+
+      title: "Breeding observation reported",
+
+      summary:
+        "return to heat: The animal is standing to be mounted and appears restless.",
+
+      attachments: [s5EvidenceUrl],
+
+      metadata: {
+        reportType: "return_to_heat",
+
+        signs: ["standing_heat", "restlessness"],
+
+        technicianFollowUpRequired: true,
+
+        verificationTaskId: s5task._id,
+      },
+    });
+
+    s5data.scenario.expectedResult =
+      "Assigned return-to-heat review; Day-60 pregnancy diagnosis remains distinct";
+  }
 
   // ============================================================
-  // RC26-06 — LIKELY PREGNANT
+  // RC26-06 — LIKELY PREGNANT / FARMER PREGNANCY REPORT
   // ============================================================
 
-  const s6data = monitoring(6, "LIKELY-PREGNANT", 40);
+  if (shouldBuild(6)) {
+    const s6data = monitoring(6, "LIKELY-PREGNANT", 60);
 
-  s6data.scenario.animal.reproductiveStatus = "Likely Pregnant";
+    const s6PregnancyPhotoUrl =
+      "https://res.cloudinary.com/demo/image/upload/sample.jpg";
 
-  Object.assign(s6data.insemination, {
-    farmerOutcomeReport: "possible_pregnancy",
+    Object.assign(s6data.insemination, {
+      farmerPregnancyReport: true,
 
-    farmerOutcomeReportedAt: now,
+      farmerPregnancyReportedAt: now,
 
-    farmerObservationSigns: ["no_return_to_heat", "body_condition_change"],
+      farmerPregnancyNotes:
+        "Farmer observed signs of pregnancy; requested pregnancy diagnosis review.",
 
-    farmerObservationNotes:
-      "No return to heat observed; appetite and body condition remain stable.",
+      farmerPregnancyPhotos: [s6PregnancyPhotoUrl],
 
-    evidencePhotos: ["https://res.cloudinary.com/demo/image/upload/sample.jpg"],
+      pregnancyReportVerificationStatus: "pending",
+    });
 
-    verificationRequested: true,
+    addTimelineEvent(s6data.scenario, {
+      animalId: s6data.scenario.motherId,
 
-    verificationStatus: "pending",
+      eventType: "farmer_breeding_observation_reported",
 
-    outcomeVerificationStatus: "reported",
+      actorId: farmerId,
 
-    outcomeConfirmationSource: "farmer_possible_pregnancy",
+      sourceType: "Insemination",
 
-    outcomeConfirmedBy: farmerId,
+      sourceId: s6data.insemination._id,
 
-    outcomeConfirmedAt: now,
-  });
+      title: "Farmer reported pregnancy",
 
-  const s6task = s6data.scenario.tasks[0];
+      summary: "Pregnancy report submitted with evidence.",
 
-  Object.assign(s6task, {
-    sourceType: "farmer_requested_verification",
+      attachments: [s6PregnancyPhotoUrl],
 
-    notes: `Farmer-requested pregnancy verification (${seedBatch}).`,
+      metadata: {
+        isPregnancyReport: true,
+      },
+    });
 
-    metadata: {
-      ...s6task.metadata,
-
-      reportType: "possible_pregnancy",
-    },
-  });
-
-  s6data.insemination.verificationTaskId = s6task._id;
-
-  addObservationNotification(s6data.scenario, {
-    insemination: s6data.insemination,
-
-    task: s6task,
-
-    reportType: "possible_pregnancy",
-
-    message: `The farmer reported possible pregnancy signs for ${s6data.scenario.earTag}. Review the observation and complete the assigned pregnancy check when eligible.`,
-  });
-
-  s6data.scenario.expectedResult =
-    "Technician verification required; PD locked before Day 60";
+    s6data.scenario.expectedResult =
+      "Farmer pregnancy report submitted; Day-60 pregnancy diagnosis is actionable";
+  }
 
   // ============================================================
   // RC26-07 — PD DUE
   // ============================================================
 
-  const s7data = monitoring(7, "PD-DUE", 60);
+  if (shouldBuild(7)) {
+    const s7data = monitoring(7, "PD-DUE", 60);
 
-  s7data.scenario.expectedResult = "Perform pregnancy diagnosis";
+    s7data.scenario.expectedResult = "Perform pregnancy diagnosis";
+  }
 
   // ============================================================
   // Pregnant helper
@@ -1620,92 +1775,111 @@ export const buildReproductionLifecyclePlan = ({
     };
   };
 
-  pregnantScenario(8, "PREGNANT", 150).scenario.expectedResult =
-    "Prepare for expected calving";
+  if (shouldBuild(8)) {
+    pregnantScenario(
+      8,
+      "PREGNANCY-LOSS-REVIEW",
+      150,
+    ).scenario.expectedResult =
+      "Farmer may report possible pregnancy loss for confirming Technician review";
+  }
 
-  pregnantScenario(
-    9,
-    "CALVING-DUE",
-    getBreedProfile(SPECIES, BREED).avgGestationDays,
-    0,
-  ).scenario.expectedResult = "Calving follow-up due today";
+  if (shouldBuild(9)) {
+    pregnantScenario(
+      9,
+      "CALVING-DUE",
+      getBreedProfile(SPECIES, BREED).avgGestationDays,
+      0,
+    ).scenario.expectedResult = "Calving follow-up due today";
+  }
 
-  pregnantScenario(
-    10,
-    "CALVING-OVERDUE",
-    getBreedProfile(SPECIES, BREED).avgGestationDays + 5,
-    -5,
-  ).scenario.expectedResult = "Five days overdue; ready for twin or mixed test";
+  if (shouldBuild(10)) {
+    pregnantScenario(
+      10,
+      "CALVING-OVERDUE",
+      getBreedProfile(SPECIES, BREED).avgGestationDays + 5,
+      -5,
+    ).scenario.expectedResult =
+      "Five days overdue; ready for twin or mixed test";
+  }
 
   // ============================================================
   // RC26-11 — POSTPARTUM
   // ============================================================
 
-  const s11 = start(11, "POSTPARTUM", "Post-partum");
+  if (shouldBuild(11)) {
+    const s11 = start(11, "POSTPARTUM", "Post-partum");
 
-  addCompletedOutcome(s11, {
-    outcome: "live_birth",
+    addCompletedOutcome(s11, {
+      outcome: "live_birth",
 
-    daysAgo: 10,
+      daysAgo: 10,
 
-    living: 1,
-  });
+      living: 1,
+    });
 
-  s11.expectedResult = "Postpartum recovery; offspring lineage visible";
+    s11.expectedResult = "Postpartum recovery; offspring lineage visible";
+  }
 
   // ============================================================
   // RC26-12 — STILLBIRTH
   // ============================================================
 
-  const s12 = start(12, "STILLBIRTH", "Post-partum");
+  if (shouldBuild(12)) {
+    const s12 = start(12, "STILLBIRTH", "Post-partum");
 
-  addCompletedOutcome(s12, {
-    outcome: "stillbirth",
+    addCompletedOutcome(s12, {
+      outcome: "stillbirth",
 
-    daysAgo: 12,
+      daysAgo: 12,
 
-    stillborn: 1,
+      stillborn: 1,
 
-    calvingEase: "Stillbirth",
-  });
+      calvingEase: "Stillbirth",
+    });
 
-  s12.expectedResult = "Stillbirth history; zero living offspring";
+    s12.expectedResult = "Stillbirth history; zero living offspring";
+  }
 
   // ============================================================
   // RC26-13 — ABORTION
   // ============================================================
 
-  const s13 = start(13, "ABORTION", "Post-partum");
+  if (shouldBuild(13)) {
+    const s13 = start(13, "ABORTION", "Post-partum");
 
-  addCompletedOutcome(s13, {
-    outcome: "abortion",
+    addCompletedOutcome(s13, {
+      outcome: "abortion",
 
-    daysAgo: 15,
+      daysAgo: 15,
 
-    calvingEase: "Abortion",
-  });
+      calvingEase: "Abortion",
+    });
 
-  s13.expectedResult = "Pregnancy-loss recovery; parity unchanged";
+    s13.expectedResult = "Pregnancy-loss recovery; parity unchanged";
+  }
 
   // ============================================================
   // RC26-14 — MIXED
   // ============================================================
 
-  const s14 = start(14, "MIXED", "Post-partum");
+  if (shouldBuild(14)) {
+    const s14 = start(14, "MIXED", "Post-partum");
 
-  addCompletedOutcome(s14, {
-    outcome: "mixed",
+    addCompletedOutcome(s14, {
+      outcome: "mixed",
 
-    daysAgo: 8,
+      daysAgo: 8,
 
-    living: 1,
+      living: 1,
 
-    stillborn: 1,
+      stillborn: 1,
 
-    calvingEase: "Difficult",
-  });
+      calvingEase: "Difficult",
+    });
 
-  s14.expectedResult = "One living offspring plus one embedded stillborn";
+    s14.expectedResult = "One living offspring plus one embedded stillborn";
+  }
 
   // ============================================================
   // Failed attempt helper
@@ -1742,50 +1916,55 @@ export const buildReproductionLifecyclePlan = ({
   // RC26-15 — VERIFIED REHEAT
   // ============================================================
 
-  const s15 = start(15, "REHEAT", "In Heat");
+  if (shouldBuild(15)) {
+    const s15 = start(15, "REHEAT", "In Heat");
 
-  failedAttempt(s15, addDays(now, -30));
+    failedAttempt(s15, addDays(now, -30));
 
-  s15.expectedResult = "Verified failed attempt; re-insemination available";
+    s15.expectedResult = "Verified failed attempt; re-insemination available";
+  }
 
   // ============================================================
   // RC26-16 — ATTEMPT 2
   // ============================================================
 
-  const s16 = start(16, "ATTEMPT-2", "In Heat");
+  if (shouldBuild(16)) {
+    const s16 = start(16, "ATTEMPT-2", "In Heat");
 
-  const seriesId = id();
+    const seriesId = id();
 
-  const attempt1 = failedAttempt(s16, addDays(now, -35), seriesId);
+    const attempt1 = failedAttempt(s16, addDays(now, -35), seriesId);
 
-  addInsemination(s16, {
-    aiDate: undefined,
+    addInsemination(s16, {
+      aiDate: undefined,
 
-    status: "pending",
+      status: "pending",
 
-    assignedToTechnician: false,
+      assignedToTechnician: false,
 
-    extra: {
-      inseminationDate: undefined,
+      extra: {
+        inseminationDate: undefined,
 
-      scheduledDate: undefined,
+        scheduledDate: undefined,
 
-      preferredDate: addDays(now, 2),
+        preferredDate: addDays(now, 2),
 
-      attemptSeriesId: seriesId,
+        attemptSeriesId: seriesId,
 
-      attemptNumber: 2,
+        attemptNumber: 2,
 
-      previousAttemptId: attempt1._id,
+        previousAttemptId: attempt1._id,
 
-      heatSigns: ["standing_heat"],
+        heatSigns: ["standing_heat"],
 
-      comment: "Farmer requests re-insemination after verified return to heat.",
-    },
-  });
+        comment:
+          "Farmer requests re-insemination after verified return to heat.",
+      },
+    });
 
-  s16.expectedResult =
-    "Unassigned Attempt 2 shows Accept & Set Visit and remains linked to verified failed Attempt 1";
+    s16.expectedResult =
+      "Unassigned Attempt 2 shows Accept & Set Visit and remains linked to verified failed Attempt 1";
+  }
 
   // ============================================================
   // RC26-17 — AI IN PROGRESS
@@ -1797,48 +1976,50 @@ export const buildReproductionLifecyclePlan = ({
   // No fake 12:00 PM
   // ============================================================
 
-  const s17 = start(17, "AI-IN-PROGRESS", "Inseminated");
+  if (shouldBuild(17)) {
+    const s17 = start(17, "AI-IN-PROGRESS", "Inseminated");
 
-  const s17Schedule = visitDate(now, 0);
+    const s17Schedule = visitDate(now, 0);
 
-  const s17ai = addInsemination(s17, {
-    aiDate: undefined,
+    const s17ai = addInsemination(s17, {
+      aiDate: undefined,
 
-    status: "in-progress",
+      status: "in-progress",
 
-    extra: {
-      inseminationDate: undefined,
+      extra: {
+        inseminationDate: undefined,
 
-      scheduledDate: s17Schedule,
+        scheduledDate: s17Schedule,
 
-      visitPeriod: "afternoon",
+        visitPeriod: "afternoon",
 
-      claimedAt: addDays(now, -1),
+        claimedAt: addDays(now, -1),
 
-      scheduledAt: addDays(now, -1),
+        scheduledAt: addDays(now, -1),
 
-      serviceStartedAt: now,
-    },
-  });
+        serviceStartedAt: now,
+      },
+    });
 
-  addTask(s17, {
-    type: "AI",
+    addTask(s17, {
+      type: "AI",
 
-    dueDate: s17Schedule,
+      dueDate: s17Schedule,
 
-    sourceType: "task_scheduler",
+      sourceType: "task_scheduler",
 
-    relatedRecordType: "insemination",
+      relatedRecordType: "insemination",
 
-    relatedRecordId: s17ai._id,
+      relatedRecordId: s17ai._id,
 
-    inseminationId: s17ai._id,
+      inseminationId: s17ai._id,
 
-    status: "In Progress",
-  });
+      status: "In Progress",
+    });
 
-  s17.expectedResult =
-    "Farmer AI details show In Progress; visit displays Afternoon, never 12:00 PM";
+    s17.expectedResult =
+      "Farmer AI details show In Progress; visit displays Afternoon, never 12:00 PM";
+  }
 
   // ============================================================
   // RC26-18 — HEALTH PENDING
@@ -1849,25 +2030,27 @@ export const buildReproductionLifecyclePlan = ({
   // Technician request review
   // ============================================================
 
-  const s18 = start(18, "HEALTH-PENDING");
+  if (shouldBuild(18)) {
+    const s18 = start(18, "HEALTH-PENDING");
 
-  addHealthRequest(s18, {
-    status: HEALTH_STATUS.PENDING,
+    addHealthRequest(s18, {
+      status: HEALTH_STATUS.PENDING,
 
-    requestType: "loss_of_appetite",
+      requestType: "loss_of_appetite",
 
-    symptoms:
-      "Reduced appetite since yesterday and lower activity than normal.",
+      symptoms:
+        "Reduced appetite since yesterday and lower activity than normal.",
 
-    urgency: "medium",
+      urgency: "medium",
 
-    extra: {
-      farmerNotes: "Please check her appetite and hydration.",
-    },
-  });
+      extra: {
+        farmerNotes: "Please check her appetite and hydration.",
+      },
+    });
 
-  s18.expectedResult =
-    "Available Health request shows request context without a schedule";
+    s18.expectedResult =
+      "Available Health request shows request context without a schedule";
+  }
 
   // ============================================================
   // RC26-19 — HEALTH SCHEDULED
@@ -1879,52 +2062,54 @@ export const buildReproductionLifecyclePlan = ({
   // Technician My Work
   // ============================================================
 
-  const s19 = start(19, "HEALTH-SCHEDULED");
+  if (shouldBuild(19)) {
+    const s19 = start(19, "HEALTH-SCHEDULED");
 
-  const s19Schedule = visitDate(now, 2);
+    const s19Schedule = visitDate(now, 2);
 
-  const s19Request = addHealthRequest(s19, {
-    technicianId,
+    const s19Request = addHealthRequest(s19, {
+      technicianId,
 
-    status: HEALTH_STATUS.SCHEDULED,
+      status: HEALTH_STATUS.SCHEDULED,
 
-    requestType: "injury",
+      requestType: "injury",
 
-    symptoms: "Small wound on the rear leg with mild swelling.",
+      symptoms: "Small wound on the rear leg with mild swelling.",
 
-    urgency: "medium",
+      urgency: "medium",
 
-    scheduledDate: s19Schedule,
-
-    visitPeriod: "morning",
-
-    extra: {
-      claimedAt: now,
-
-      farmerNotes: "Animal is walking but favors the affected leg.",
-    },
-  });
-
-  addTask(s19, {
-    type: "Health",
-
-    dueDate: s19Schedule,
-
-    sourceType: "task_scheduler",
-
-    relatedRecordType: "health",
-
-    relatedRecordId: s19Request._id,
-
-    metadata: {
-      healthRequestId: s19Request._id,
+      scheduledDate: s19Schedule,
 
       visitPeriod: "morning",
-    },
-  });
 
-  s19.expectedResult =
-    "Farmer and Technician show scheduled Health visit as Morning";
+      extra: {
+        claimedAt: now,
+
+        farmerNotes: "Animal is walking but favors the affected leg.",
+      },
+    });
+
+    addTask(s19, {
+      type: "Health",
+
+      dueDate: s19Schedule,
+
+      sourceType: "task_scheduler",
+
+      relatedRecordType: "health",
+
+      relatedRecordId: s19Request._id,
+
+      metadata: {
+        healthRequestId: s19Request._id,
+
+        visitPeriod: "morning",
+      },
+    });
+
+    s19.expectedResult =
+      "Farmer and Technician show scheduled Health visit as Morning";
+  }
 
   // ============================================================
   // RC26-20 — HEALTH IN PROGRESS
@@ -1935,58 +2120,60 @@ export const buildReproductionLifecyclePlan = ({
   // Afternoon schedule
   // ============================================================
 
-  const s20 = start(20, "HEALTH-IN-PROGRESS");
+  if (shouldBuild(20)) {
+    const s20 = start(20, "HEALTH-IN-PROGRESS");
 
-  const s20Schedule = visitDate(now, 0);
+    const s20Schedule = visitDate(now, 0);
 
-  const s20Request = addHealthRequest(s20, {
-    technicianId,
+    const s20Request = addHealthRequest(s20, {
+      technicianId,
 
-    status: HEALTH_STATUS.IN_PROGRESS,
+      status: HEALTH_STATUS.IN_PROGRESS,
 
-    requestType: "fever",
+      requestType: "fever",
 
-    symptoms: "Warm to the touch, reduced appetite, and lethargy.",
+      symptoms: "Warm to the touch, reduced appetite, and lethargy.",
 
-    urgency: "high",
+      urgency: "high",
 
-    scheduledDate: s20Schedule,
-
-    visitPeriod: "afternoon",
-
-    serviceStartedAt: now,
-
-    extra: {
-      claimedAt: addDays(now, -1),
-
-      findings: "Elevated temperature and mild dehydration.",
-
-      farmerNotes: "Symptoms started this morning.",
-    },
-  });
-
-  addTask(s20, {
-    type: "Health",
-
-    dueDate: s20Schedule,
-
-    sourceType: "task_scheduler",
-
-    relatedRecordType: "health",
-
-    relatedRecordId: s20Request._id,
-
-    status: "In Progress",
-
-    metadata: {
-      healthRequestId: s20Request._id,
+      scheduledDate: s20Schedule,
 
       visitPeriod: "afternoon",
-    },
-  });
 
-  s20.expectedResult =
-    "Health request shows In Progress and Afternoon visit period";
+      serviceStartedAt: now,
+
+      extra: {
+        claimedAt: addDays(now, -1),
+
+        findings: "Elevated temperature and mild dehydration.",
+
+        farmerNotes: "Symptoms started this morning.",
+      },
+    });
+
+    addTask(s20, {
+      type: "Health",
+
+      dueDate: s20Schedule,
+
+      sourceType: "task_scheduler",
+
+      relatedRecordType: "health",
+
+      relatedRecordId: s20Request._id,
+
+      status: "In Progress",
+
+      metadata: {
+        healthRequestId: s20Request._id,
+
+        visitPeriod: "afternoon",
+      },
+    });
+
+    s20.expectedResult =
+      "Health request shows In Progress and Afternoon visit period";
+  }
 
   // ============================================================
   // RC26-21 — HEALTH RESOLVED + OFFICIAL MEDICAL RECORD
@@ -2012,86 +2199,88 @@ export const buildReproductionLifecyclePlan = ({
   // Exactly ONE official completed record.
   // ============================================================
 
-  const s21 = start(21, "HEALTH-RESOLVED");
+  if (shouldBuild(21)) {
+    const s21 = start(21, "HEALTH-RESOLVED");
 
-  const s21ServiceDate = addDays(now, -2);
+    const s21ServiceDate = addDays(now, -2);
 
-  const s21Request = addHealthRequest(s21, {
-    technicianId,
+    const s21Request = addHealthRequest(s21, {
+      technicianId,
 
-    status: HEALTH_STATUS.RESOLVED,
+      status: HEALTH_STATUS.RESOLVED,
 
-    requestType: "disease",
+      requestType: "disease",
 
-    symptoms: "Coughing, nasal discharge, and reduced appetite.",
+      symptoms: "Coughing, nasal discharge, and reduced appetite.",
 
-    urgency: "high",
+      urgency: "high",
 
-    scheduledDate: visitDate(now, -2),
-
-    visitPeriod: "morning",
-
-    serviceStartedAt: addDays(s21ServiceDate, -0.05),
-
-    extra: {
-      claimedAt: addDays(now, -3),
-
-      farmerNotes: "Cough became more frequent overnight.",
-
-      findings: "Mild dehydration with respiratory signs.",
-
-      diagnosis: "Bacterial respiratory infection",
-
-      treatment: "Antibiotic treatment and supportive care",
-
-      medicineGiven: "Oxytetracycline",
-
-      dosage: "10 mL",
-
-      advice: "Keep the animal hydrated and monitor appetite.",
-
-      followUpDate: addDays(s21ServiceDate, 4),
-
-      withdrawalPeriodDays: 7,
-
-      withdrawalEndDate: addDays(s21ServiceDate, 7),
-
-      resolutionNotes: "Responded well to initial treatment.",
-
-      resolvedAt: s21ServiceDate,
-    },
-  });
-
-  addMedicalRecord(s21, {
-    healthRequestId: s21Request._id,
-
-    date: s21ServiceDate,
-  });
-
-  addTask(s21, {
-    type: "Health",
-
-    dueDate: s21Request.scheduledDate,
-
-    sourceType: "task_scheduler",
-
-    relatedRecordType: "health",
-
-    relatedRecordId: s21Request._id,
-
-    status: "Completed",
-
-    completedAt: s21ServiceDate,
-
-    metadata: {
-      healthRequestId: s21Request._id,
+      scheduledDate: visitDate(now, -2),
 
       visitPeriod: "morning",
-    },
-  });
 
-  s21.expectedResult =
-    "Farmer Records shows one complete Health Assistance record with no meaningless N/A fields";
+      serviceStartedAt: addDays(s21ServiceDate, -0.05),
+
+      extra: {
+        claimedAt: addDays(now, -3),
+
+        farmerNotes: "Cough became more frequent overnight.",
+
+        findings: "Mild dehydration with respiratory signs.",
+
+        diagnosis: "Bacterial respiratory infection",
+
+        treatment: "Antibiotic treatment and supportive care",
+
+        medicineGiven: "Oxytetracycline",
+
+        dosage: "10 mL",
+
+        advice: "Keep the animal hydrated and monitor appetite.",
+
+        followUpDate: addDays(s21ServiceDate, 4),
+
+        withdrawalPeriodDays: 7,
+
+        withdrawalEndDate: addDays(s21ServiceDate, 7),
+
+        resolutionNotes: "Responded well to initial treatment.",
+
+        resolvedAt: s21ServiceDate,
+      },
+    });
+
+    addMedicalRecord(s21, {
+      healthRequestId: s21Request._id,
+
+      date: s21ServiceDate,
+    });
+
+    addTask(s21, {
+      type: "Health",
+
+      dueDate: s21Request.scheduledDate,
+
+      sourceType: "task_scheduler",
+
+      relatedRecordType: "health",
+
+      relatedRecordId: s21Request._id,
+
+      status: "Completed",
+
+      completedAt: s21ServiceDate,
+
+      metadata: {
+        healthRequestId: s21Request._id,
+
+        visitPeriod: "morning",
+      },
+    });
+
+    s21.expectedResult =
+      "Farmer Records shows one complete Health Assistance record with no meaningless N/A fields";
+  }
 
   // ============================================================
   // RC26-22 — WALK-IN HEALTH RECORD
@@ -2104,28 +2293,46 @@ export const buildReproductionLifecyclePlan = ({
   // request-only fields such as request urgency.
   // ============================================================
 
-  const s22 = start(22, "HEALTH-WALK-IN");
+  if (shouldBuild(22)) {
+    const s22 = start(22, "HEALTH-WALK-IN");
 
-  addMedicalRecord(s22, {
-    date: addDays(now, -5),
+    addMedicalRecord(s22, {
+      date: addDays(now, -5),
 
-    type: "Check-up",
+      type: "Check-up",
 
-    extra: {
-      details: {
-        diagnosis: "Routine examination; no acute illness detected",
+      extra: {
+        details: {
+          diagnosis: "Routine examination; no acute illness detected",
 
-        treatment: "No medication required",
+          treatment: "No medication required",
+        },
+
+        note: `Routine walk-in check completed during H4 seed ${seedBatch}.`,
+
+        followUpDate: undefined,
       },
+    });
 
-      note: `Routine walk-in check completed during H4 seed ${seedBatch}.`,
+    s22.expectedResult =
+      "Walk-in Health record renders clinical fields and omits request-only fields";
+  }
 
-      followUpDate: undefined,
-    },
-  });
+  // ============================================================
+  // RC26-23 — HEAT CHECK (DAY 21 UNOBSERVED)
+  //
+  // Test:
+  // Completed AI at Day 21 post-insemination.
+  // Animal reproductiveStatus = "Inseminated".
+  // Farmer has NOT submitted any breeding observation yet.
+  // Farmer Home Needs Attention should show "Breeding Update" / "Give Update".
+  // ============================================================
 
-  s22.expectedResult =
-    "Walk-in Health record renders clinical fields and omits request-only fields";
+  if (shouldBuild(23)) {
+    const s23data = monitoring(23, "HEAT-CHECK", 21);
+    s23data.scenario.expectedResult =
+      "Unobserved completed AI at Day 21; Farmer Home shows Breeding Update prompt";
+  }
 
   // ============================================================
   // QA TABLE
@@ -2212,6 +2419,8 @@ export const buildReproductionLifecyclePlan = ({
     collections,
     scenarios,
     table,
+    selectedScenario,
+    excludeHealth: Boolean(excludeHealth),
   };
 };
 
@@ -2222,9 +2431,19 @@ export const validateSeedPlan = (plan, models = MODELS) => {
     item.earTag.toLowerCase(),
   );
 
-  if (
+  const expectedLength = plan.excludeHealth
+    ? REPRODUCTIVE_SCENARIO_NAMES.length
+    : SCENARIO_NAMES.length;
+
+  if (plan.selectedScenario) {
+    if (names.length !== 1 || names[0] !== plan.selectedScenario) {
+      throw new Error(
+        "Selected scenario plan must contain exactly one matching scenario.",
+      );
+    }
+  } else if (
     new Set(names).size !== names.length ||
-    names.length !== SCENARIO_NAMES.length
+    names.length !== expectedLength
   ) {
     throw new Error("Scenario identifiers are not unique and complete.");
   }
@@ -2323,6 +2542,51 @@ export const validateSeedPlan = (plan, models = MODELS) => {
       if (pregnancy.cycleStatus === "active") {
         throw new Error(
           `Terminal outcome left an active pregnancy in ${scenario.scenario}.`,
+        );
+      }
+    }
+
+    if (scenario.scenario === "RC26-08-PREGNANCY-LOSS-REVIEW") {
+      const pregnancy = scenario.pregnancies[0];
+      const insemination = scenario.inseminations[0];
+      const hasLossReviewTask = scenario.tasks.some(
+        (task) => task.sourceType === "farmer_pregnancy_loss_report",
+      );
+      if (
+        scenario.animal.gender !== "Female" ||
+        scenario.animal.reproductiveStatus !== "Pregnant" ||
+        String(scenario.animal.farmerId) !== String(plan.farmer._id) ||
+        scenario.animal.parity !== 0 ||
+        !pregnancy ||
+        pregnancy.cycleStatus !== "active" ||
+        String(pregnancy.confirmation?.confirmedBy) !==
+          String(plan.technician._id) ||
+        plan.technician.role !== "technician" ||
+        plan.technician.deletedAt ||
+        ["suspended", "deleted"].includes(plan.technician.status) ||
+        !insemination ||
+        insemination.status !== "done" ||
+        insemination.outcome !== "Pregnant" ||
+        insemination.breedingCycleStatus !== "active" ||
+        String(insemination.animalId) !== String(scenario.motherId) ||
+        String(insemination.farmerId) !== String(plan.farmer._id) ||
+        String(insemination.technicianId) !== String(plan.technician._id) ||
+        String(pregnancy.inseminationId) !== String(insemination._id) ||
+        Math.round(
+          (new Date(plan.now).getTime() -
+            new Date(insemination.inseminationDate).getTime()) /
+            DAY_MS,
+        ) !== 150 ||
+        !scenario.animal.expectedCalvingDate ||
+        new Date(scenario.animal.expectedCalvingDate) <= new Date(plan.now) ||
+        scenario.pregnancyLossReports.length ||
+        scenario.calvings.length ||
+        hasLossReviewTask ||
+        scenario.animal.lastPregnancyLossDate ||
+        scenario.animal.reproductiveStatus === "Post-partum"
+      ) {
+        throw new Error(
+          "Scenario 08 must remain a clean active confirmed Pregnancy Loss Review fixture.",
         );
       }
     }
@@ -2555,6 +2819,200 @@ export const applySeedPlan = async ({ execute, plan, writer }) => {
   };
 };
 
+export const cleanupSingleScenario = async ({
+  farmerId,
+  scenarioName,
+  models = MODELS,
+  session = null,
+  seedBatch = "repro-single",
+}) => {
+  const resolved = resolveScenarioName(scenarioName);
+  const index = SCENARIO_NAMES.indexOf(resolved) + 1;
+  if (index === 0) {
+    throw new Error(`Cannot cleanup unknown scenario: ${scenarioName}`);
+  }
+
+  const tagIndex = String(index).padStart(2, "0");
+  const batchSuffix = seedBatch
+    ? seedBatch.replace(/[^a-zA-Z0-9]/g, "").slice(-6)
+    : "single";
+  const singleSuffixPattern =
+    batchSuffix.toLowerCase() === "single"
+      ? "single"
+      : `${batchSuffix}|single`;
+  const earTagPattern = new RegExp(
+    `^${SEED_PREFIX}(?:${singleSuffixPattern})-${tagIndex}-`,
+    "i",
+  );
+  const options = session ? { session } : {};
+
+  const executeFindLean = async (model, filter, projection) => {
+    if (!model?.find) return [];
+    const q = model.find(filter, projection, options);
+    return (typeof q?.lean === "function" ? await q.lean() : await q) || [];
+  };
+
+  const existingAnimals = await executeFindLean(
+    models.Animal,
+    {
+      farmerId,
+      earTag: { $regex: earTagPattern },
+    },
+    "_id earTag",
+  );
+
+  if (!existingAnimals.length) {
+    return {
+      deletedCount: 0,
+      scenarioName: resolved,
+      cleanedAnimals: [],
+      scenarioAnimalIds: [],
+    };
+  }
+
+  const animalIds = existingAnimals.map((a) => a._id);
+
+  const [existingInseminations, existingPregnancies, existingHealthRequests] =
+    await Promise.all([
+      executeFindLean(
+        models.Insemination,
+        { animalId: { $in: animalIds } },
+        "_id",
+      ),
+      executeFindLean(
+        models.Pregnancy,
+        { animalId: { $in: animalIds } },
+        "_id",
+      ),
+      executeFindLean(
+        models.HealthRequest,
+        { animalId: { $in: animalIds } },
+        "_id",
+      ),
+    ]);
+
+  const inseminationIds = existingInseminations.map((i) => i._id);
+  const pregnancyIds = existingPregnancies.map((p) => p._id);
+  const healthRequestIds = existingHealthRequests.map((h) => h._id);
+
+  await Promise.all([
+    models.Notification.deleteMany(
+      {
+        $or: [
+          {
+            relatedId: {
+              $in: [
+                ...inseminationIds,
+                ...pregnancyIds,
+                ...healthRequestIds,
+              ],
+            },
+          },
+          { "metadata.animalId": { $in: animalIds } },
+          { "metadata.inseminationId": { $in: inseminationIds } },
+        ],
+      },
+      options,
+    ),
+    models.AuditLog.deleteMany(
+      {
+        $or: [
+          {
+            entityId: {
+              $in: [
+                ...animalIds,
+                ...inseminationIds,
+                ...pregnancyIds,
+                ...healthRequestIds,
+              ],
+            },
+          },
+          { "metadata.motherId": { $in: animalIds } },
+        ],
+      },
+      options,
+    ),
+    models.AnimalTimelineEvent.deleteMany(
+      {
+        $or: [
+          { animalId: { $in: animalIds } },
+          { sourceId: { $in: [...inseminationIds, ...pregnancyIds] } },
+        ],
+      },
+      options,
+    ),
+    models.Task.deleteMany(
+      {
+        $or: [
+          { animalIds: { $in: animalIds } },
+          { "metadata.inseminationId": { $in: inseminationIds } },
+          { "metadata.healthRequestId": { $in: healthRequestIds } },
+          {
+            relatedRecordId: {
+              $in: [
+                ...inseminationIds,
+                ...pregnancyIds,
+                ...healthRequestIds,
+              ],
+            },
+          },
+        ],
+      },
+      options,
+    ),
+    models.MedicalRecord.deleteMany(
+      {
+        $or: [
+          { animalId: { $in: animalIds } },
+          { healthRequestId: { $in: healthRequestIds } },
+        ],
+      },
+      options,
+    ),
+    models.Calving.deleteMany(
+      {
+        $or: [
+          { animalId: { $in: animalIds } },
+          { pregnancyId: { $in: pregnancyIds } },
+          { inseminationId: { $in: inseminationIds } },
+        ],
+      },
+      options,
+    ),
+    models.PregnancyLossReport.deleteMany(
+      {
+        $or: [
+          { animalId: { $in: animalIds } },
+          { pregnancyId: { $in: pregnancyIds } },
+          { inseminationId: { $in: inseminationIds } },
+        ],
+      },
+      options,
+    ),
+  ]);
+
+  await Promise.all([
+    models.Pregnancy.deleteMany({ _id: { $in: pregnancyIds } }, options),
+    models.HealthRequest.deleteMany(
+      { _id: { $in: healthRequestIds } },
+      options,
+    ),
+  ]);
+
+  await models.Insemination.deleteMany(
+    { _id: { $in: inseminationIds } },
+    options,
+  );
+  await models.Animal.deleteMany({ _id: { $in: animalIds } }, options);
+
+  return {
+    deletedCount: animalIds.length,
+    scenarioName: resolved,
+    cleanedAnimals: existingAnimals.map((a) => a.earTag),
+    scenarioAnimalIds: animalIds,
+  };
+};
+
 export const assertSeedBatchAvailable = async ({
   plan,
   AuditLogModel = AuditLog,
@@ -2563,9 +3021,11 @@ export const assertSeedBatchAvailable = async ({
   const tags = plan.collections.animals.map((item) => item.earTag);
 
   const [batchArtifact, existingTag] = await Promise.all([
-    AuditLogModel.exists({
-      "metadata.seedBatch": plan.seedBatch,
-    }),
+    plan.selectedScenario
+      ? null
+      : AuditLogModel.exists({
+          "metadata.seedBatch": plan.seedBatch,
+        }),
 
     AnimalModel.exists({
       farmerId: plan.farmer._id,
@@ -2931,11 +3391,30 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
       technicianEmail: args.technicianEmail,
     });
 
+    const seedBatch =
+      args.seedBatch ||
+      (args.scenario ? "repro-single" : undefined);
+
+    if (args.scenario && args.execute) {
+      const cleanupResult = await cleanupSingleScenario({
+        farmerId: farmer._id,
+        scenarioName: args.scenario,
+        seedBatch,
+      });
+      if (cleanupResult.deletedCount > 0) {
+        console.log(
+          `Cleaned up previous ${args.scenario} fixture (${cleanupResult.cleanedAnimals.join(", ")}).`,
+        );
+      }
+    }
+
     const plan = buildReproductionLifecyclePlan({
       farmer,
       technician,
 
-      seedBatch: args.seedBatch || undefined,
+      seedBatch,
+      scenarioName: args.scenario,
+      excludeHealth: args.excludeHealth,
     });
 
     validateSeedPlan(plan);
@@ -2946,13 +3425,21 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
     const backupDir = path.resolve(process.cwd(), "backups");
 
-    await assertNoExistingManifestForBatch(plan.seedBatch, backupDir);
+    if (!plan.selectedScenario) {
+      await assertNoExistingManifestForBatch(plan.seedBatch, backupDir);
+    }
 
     console.log(`\nMode: ${args.execute ? "EXECUTE" : "DRY RUN"}`);
 
     console.log(`Database: ${connection.connection.name}`);
 
     console.log(`Seed batch: ${plan.seedBatch}`);
+
+    if (plan.selectedScenario) {
+      console.log(`Single scenario: ${plan.selectedScenario}`);
+    } else if (args.excludeHealth) {
+      console.log("Scope: Reproduction lifecycle only (health-related scenarios excluded)");
+    }
 
     console.table(plan.table);
 
@@ -2986,8 +3473,9 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
     const manifestPath = path.join(
       backupDir,
-
-      `reproduction-lifecycle-seed-${timestamp}.json`,
+      plan.selectedScenario
+        ? `reproduction-lifecycle-seed-${plan.selectedScenario.toLowerCase()}-${timestamp}.json`
+        : `reproduction-lifecycle-seed-${timestamp}.json`,
     );
 
     const manifest = createManifest({

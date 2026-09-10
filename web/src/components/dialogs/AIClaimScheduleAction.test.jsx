@@ -34,8 +34,11 @@ const request = {
   farmerPhone: "09171234567",
   animalName: "Bessie",
   animalTag: "EAR-17",
+  species: "Cattle",
+  breed: "Holstein",
   location: "San Roque, Iloilo City",
-  heatSigns: ["Standing heat", "Clear mucus"],
+  heatSigns: ["standingHeat", "clear_mucus"],
+  taskDetails: "Observed standing heat this morning.",
   requestSubmissionDate: "2026-08-04T01:00:00.000Z",
   attachments: { count: 1, urls: ["https://example.test/heat.jpg"] },
   schedule: { date: null, visitPeriod: null },
@@ -102,8 +105,8 @@ const renderModal = (props = {}) => {
   return { invalidate };
 };
 
-const chooseTodayAndMorning = () => {
-  fireEvent.click(screen.getByLabelText("Today"));
+const chooseTomorrowAndMorning = () => {
+  fireEvent.click(screen.getByLabelText("Tomorrow"));
   fireEvent.click(screen.getByLabelText("Morning"));
 };
 
@@ -123,20 +126,34 @@ describe("Unified AI Request modal", () => {
     expect(detailsDialog).toHaveTextContent("Maria Santos");
     expect(detailsDialog).toHaveTextContent("09171234567");
     expect(detailsDialog).toHaveTextContent("Bessie · Tag EAR-17");
+    expect(detailsDialog).toHaveTextContent("Cattle · Holstein");
     expect(detailsDialog).toHaveTextContent("San Roque, Iloilo City");
-    expect(detailsDialog).toHaveTextContent("Standing heat, Clear mucus");
+    expect(detailsDialog).toHaveTextContent("Standing Heat, Clear Mucus");
+    expect(detailsDialog).toHaveTextContent(
+      "Observed standing heat this morning.",
+    );
     expect(detailsDialog).toHaveTextContent("August 4, 2026");
-    expect(detailsDialog).toHaveTextContent("1 attachment");
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (1)");
     expect(detailsDialog).toHaveTextContent("Pending");
     const attachment = within(detailsDialog).getByRole("img", {
-      name: "AI request attachment 1",
+      name: "Farmer-submitted AI request photo 1",
     });
     expect(attachment).toHaveAttribute("src", "https://example.test/heat.jpg");
-    expect(
-      within(detailsDialog).getByRole("link", {
-        name: "Open request image 1",
+    fireEvent.click(
+      within(detailsDialog).getByRole("button", {
+        name: "Enlarge request image 1",
       }),
-    ).toHaveAttribute("href", "https://example.test/heat.jpg");
+    );
+    expect(
+      screen.getByRole("img", {
+        name: "Enlarged Farmer-submitted AI request",
+      }),
+    ).toHaveAttribute("src", "https://example.test/heat.jpg");
+    fireEvent.click(
+      within(
+        screen.getByRole("dialog", { name: "Farmer request photo" }),
+      ).getByRole("button", { name: "Close" }),
+    );
     expect(mocks.patch).not.toHaveBeenCalled();
 
     fireEvent.click(
@@ -151,6 +168,101 @@ describe("Unified AI Request modal", () => {
     expect(scheduleDialog).toBe(detailsDialog);
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(mocks.patch).not.toHaveBeenCalled();
+  });
+
+  it("renders all unique request photos with historical imageUrl fallback", () => {
+    const multiImageRequest = {
+      ...request,
+      photos: [
+        "https://example.test/one.jpg",
+        "https://example.test/two.jpg",
+      ],
+      imageUrl: "https://example.test/one.jpg",
+      attachments: {
+        count: 3,
+        urls: [
+          "https://example.test/one.jpg",
+          "https://example.test/three.jpg",
+        ],
+      },
+    };
+    renderModal({ initialRequest: multiImageRequest });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: "AI Request Details",
+    });
+    expect(
+      within(detailsDialog).getAllByRole("img", {
+        name: /Farmer-submitted AI request photo/,
+      }),
+    ).toHaveLength(3);
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (3)");
+  });
+
+  it("opens request photos in the shared multi-image preview", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        photos: [
+          "https://example.test/one.jpg",
+          "https://example.test/two.jpg",
+        ],
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enlarge request image 1" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Farmer request photo" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Image 1 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View next image" }));
+    expect(
+      screen.getByRole("img", { name: "Preview of Photo 2" }),
+    ).toHaveAttribute("src", "https://example.test/two.jpg");
+  });
+
+  it("renders a historical imageUrl-only request once", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        imageUrl: "https://example.test/historical.jpg",
+        attachments: undefined,
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: "AI Request Details",
+    });
+    expect(
+      within(detailsDialog).getAllByRole("img", {
+        name: /Farmer-submitted AI request photo/,
+      }),
+    ).toHaveLength(1);
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (1)");
+  });
+
+  it("shows a safe empty state when no request photo exists", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        imageUrl: undefined,
+        photos: [],
+        attachments: undefined,
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: "AI Request Details",
+    });
+    expect(detailsDialog).toHaveTextContent("Farmer request photos (0)");
+    expect(detailsDialog).toHaveTextContent("No request photos submitted.");
+    expect(
+      within(detailsDialog).queryByRole("img", {
+        name: /Farmer-submitted AI request photo/,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("returns to details in the same modal and cancels without mutation", () => {
@@ -178,7 +290,7 @@ describe("Unified AI Request modal", () => {
   it("confirms once through workflowId with only canonical payload fields", async () => {
     mocks.patch.mockResolvedValue({ data: { request: { status: "scheduled" } } });
     const { invalidate } = renderModal({ initialView: "schedule" });
-    chooseTodayAndMorning();
+    chooseTomorrowAndMorning();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
 
@@ -204,10 +316,44 @@ describe("Unified AI Request modal", () => {
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["technician", "work-queue", "mine"],
-        exact: true,
       });
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("requires current-period confirmation and sends the canonical acknowledgement", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-08-31T07:00:00.000Z"));
+    mocks.patch.mockResolvedValue({ data: { request: { status: "scheduled" } } });
+
+    try {
+      renderModal({ initialView: "schedule" });
+      fireEvent.click(screen.getByLabelText("Today"));
+      expect(screen.getByLabelText("Morning")).toBeDisabled();
+      fireEvent.click(screen.getByLabelText("Afternoon"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
+      expect(mocks.patch).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Confirm that you can still attend during this current service period.",
+      );
+
+      fireEvent.click(
+        screen.getByLabelText(
+          "I confirm I can still attend during this current service period.",
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
+
+      await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce());
+      expect(mocks.patch.mock.calls[0][1]).toEqual({
+        scheduledDate: "2026-08-31",
+        visitPeriod: "afternoon",
+        samePeriodConfirmed: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("blocks duplicate confirmation while the first request is pending", async () => {
@@ -219,7 +365,7 @@ describe("Unified AI Request modal", () => {
         }),
     );
     renderModal({ initialView: "schedule" });
-    chooseTodayAndMorning();
+    chooseTomorrowAndMorning();
 
     const confirm = screen.getByRole("button", { name: "Confirm Schedule" });
     fireEvent.click(confirm);

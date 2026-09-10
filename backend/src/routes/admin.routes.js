@@ -5,7 +5,6 @@ import { protectedRoute, AdminOnly } from "../middleware/auth.middleware.js";
 import {
   getDashboardStats,
   getAdminAnalytics,
-  getSystemMonitoringData,
   getRecentActivities,
 } from "../controllers/admin.controllers.js";
 import {
@@ -34,6 +33,8 @@ import {
   reassignTechnicianRequest,
 } from "../controllers/admin.controllers.js";
 import { getMunicipalCensusData } from "../controllers/report.controllers.js";
+import { getTechnicianWorkloadSummary } from "../controllers/admin-workload.controllers.js";
+import { systemDataExportLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
@@ -57,7 +58,7 @@ router.post("/reset-password", resetPassword);
 router.post("/update-role", updateRole);
 router.get("/stats", getDashboardStats);
 router.get("/analytics", getAdminAnalytics);
-router.get("/monitoring", getSystemMonitoringData);
+router.get("/technician-workload-summary", getTechnicianWorkloadSummary);
 router.get("/chart-data", getChartData);
 router.get("/inseminations", getAllInseminations);
 router.get("/re-inseminations", getAllReInseminations);
@@ -65,7 +66,7 @@ router.get("/pregnancy-checks", getAllPregnancyChecks);
 router.get("/calvings", getAllCalvings);
 router.delete("/delete-insemination/:id", deleteInsemination);
 router.get("/reports-data", getMunicipalCensusData);
-router.get("/backup", exportDatabaseBackup);
+router.get("/backup", systemDataExportLimiter, exportDatabaseBackup);
 
 router.get("/barangays/insights", getBarangaysInsightsList);
 router.get("/barangays/insights/:barangayName", getBarangayInsightsDetails);

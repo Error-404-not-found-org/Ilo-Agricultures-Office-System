@@ -36,8 +36,8 @@ export default function TechnicianDashboardScreen() {
     refreshing,
     onRefresh,
     unreadCount,
-    workItems,
     todayWorkItems,
+    dashboardStats,
     workLoading,
     pendingRequests,
     profileWarningVisible,
@@ -100,7 +100,7 @@ export default function TechnicianDashboardScreen() {
             alignSelf: "center",
           }}
         >
-          <TechnicianStatsCard loading={workLoading} workItems={workItems} />
+          <TechnicianStatsCard loading={loading} stats={dashboardStats} />
 
           <TechnicianQuickActions />
 

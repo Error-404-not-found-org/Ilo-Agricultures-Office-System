@@ -12,7 +12,7 @@ import RequestLinkedHealthForm from "../components/RequestLinkedHealthForm";
 import DirectHealthForm from "../components/DirectHealthForm";
 import HealthReviewModal from "../components/HealthReviewModal";
 import FarmerAnimalPickers from "../components/FarmerAnimalPickers";
-import { useCompleteHealthRequestMutation, useWalkInHealthMutation } from "../hooks/useHealthRecord";
+import { useCompleteHealthRequestMutation, useDirectHealthRecordMutation } from "../hooks/useHealthRecord";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
 import { getTechnicianRequestDetail } from "@/features/technician/services/technician.service";
 import { useQuery } from "@tanstack/react-query";
@@ -31,7 +31,7 @@ export default function RecordHealthScreen() {
   const walkInIdempotencyKey = useRef<string | null>(null);
 
   const { clientsQuery } = useTechnicianClients();
-  const walkInMutation = useWalkInHealthMutation();
+  const directHealthMutation = useDirectHealthRecordMutation();
   const api = useApi();
 
   const {
@@ -81,6 +81,10 @@ export default function RecordHealthScreen() {
         toast.error("Select an animal before recording the service.");
         return;
       }
+      if (!String(data?.diagnosis || "").trim()) {
+        toast.error("Enter the findings or diagnosis.");
+        return;
+      }
     }
 
     walkInIdempotencyKey.current = null;
@@ -113,7 +117,7 @@ export default function RecordHealthScreen() {
           idempotencyKey: walkInIdempotencyKey.current,
           ...reviewSnapshot.details,
         };
-        await walkInMutation.mutateAsync(payload);
+        await directHealthMutation.mutateAsync(payload);
         walkInIdempotencyKey.current = null;
       }
       
@@ -169,7 +173,7 @@ export default function RecordHealthScreen() {
     router.back();
   };
 
-  const title = mode.kind === "direct" ? "Record Direct Health Service" : "Record Health Assistance";
+  const title = "Record Health Assistance";
 
   const isRequestLinked = mode.kind === "request-linked";
   const status = request?.status;

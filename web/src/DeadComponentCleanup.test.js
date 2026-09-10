@@ -2,8 +2,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const removedFiles = [
+  "src/pages/admin/Technicians.jsx",
+  "src/pages/admin/TechniciansPhase3B.test.jsx",
   "src/pages/admin/PregnancyTracker.jsx",
   "src/pages/technician/RequestDetails.jsx",
+  "src/pages/technician/BreedingLedger.jsx",
+  "src/pages/technician/tabs/InseminationTab.jsx",
+  "src/pages/technician/tabs/PregnancyTab.jsx",
+  "src/pages/technician/tabs/CalvingTab.jsx",
+  "src/pages/technician/tabs/BreedingTabs.test.jsx",
   "src/components/layout/ProtectedFarmerRoute.jsx",
   "src/components/ui/Sidebar.jsx",
   "src/components/ui/LoadingView.jsx",
@@ -45,7 +52,11 @@ describe("dead component cleanup", () => {
   });
 
   it("keeps canonical Admin authority helpers in active use", () => {
-    const technicians = readFileSync("src/pages/admin/Technicians.jsx", "utf8");
+    const users = readFileSync("src/pages/admin/Users.jsx", "utf8");
+    const invitationDialog = readFileSync(
+      "src/components/dialogs/TechnicianInviteDialog.jsx",
+      "utf8",
+    );
     const technicianService = readFileSync(
       "src/services/adminTechniciansService.js",
       "utf8",
@@ -55,7 +66,8 @@ describe("dead component cleanup", () => {
       "utf8",
     );
 
-    expect(technicians).toContain("createTechnician");
+    expect(users).toContain("TechnicianInviteDialog");
+    expect(invitationDialog).toContain("createTechnician");
     expect(technicianService).toContain('"/admin/technicians"');
     expect(requestService).toContain(
       "`/admin/requests/${requestType}/${encodeURIComponent(requestId)}/reassign`",
@@ -67,12 +79,10 @@ describe("dead component cleanup", () => {
       "src/pages/admin/LivestockProfile.jsx",
       "utf8",
     );
-    const breedingLedger = readFileSync(
-      "src/pages/technician/BreedingLedger.jsx",
-      "utf8",
-    );
+    const app = readFileSync("src/App.jsx", "utf8");
 
     expect(livestockProfile).not.toContain("EditInseminationModal");
-    expect(breedingLedger).not.toContain("/insemination/${record.id}");
+    expect(app).not.toContain('import("./pages/technician/BreedingLedger")');
+    expect(app).toContain('<Navigate to="/technician/records" replace />');
   });
 });

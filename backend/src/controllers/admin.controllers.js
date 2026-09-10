@@ -5,6 +5,7 @@ import { Calving } from "../models/calving.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Inventory } from "../models/inventory.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { MedicalRecord } from "../models/medical-record.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { createAuditLog } from "../services/audit.service.js";
 import {
@@ -17,6 +18,73 @@ import {
 } from "../domain/status-vocabulary.js";
 import { canonicalizeMunicipality } from "../domain/geographic/psgcRegistry.js";
 import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
+import {
+  assertOperationallyManageableUser,
+  assertOperationalUserRole,
+} from "../policies/user.policy.js";
+
+export const SYSTEM_DATA_EXPORT_PROJECTIONS = Object.freeze({
+  users: Object.freeze({
+    _id: 1, name: 1, role: 1, isVerified: 1, status: 1, createdAt: 1, updatedAt: 1,
+  }),
+  animals: Object.freeze({
+    _id: 1, farmerId: 1, animalId: 1, earTag: 1, brand: 1, species: 1,
+    birthDate: 1, breed: 1, color: 1, gender: 1, reproductiveStatus: 1,
+    lastInseminationDate: 1, expectedCalvingDate: 1, lastCalvingDate: 1,
+    lastPregnancyLossDate: 1, parity: 1, sireDetails: 1, bcsHistory: 1,
+    geneticLineage: 1, isVerified: 1, motherId: 1, barangay: 1,
+    createdAt: 1, updatedAt: 1,
+  }),
+  inseminations: Object.freeze({
+    _id: 1, farmerId: 1, animalId: 1, inseminationDate: 1, estrus: 1,
+    sireBreed: 1, sireCode: 1, semenDosesUsed: 1, status: 1, technicianId: 1,
+    approvedBy: 1, entryMode: 1, attemptNumber: 1, previousAttemptId: 1,
+    attemptSeriesId: 1, preferredDate: 1, scheduledDate: 1, scheduledAt: 1,
+    visitPeriod: 1, serviceStartedAt: 1, earlyStartMinutes: 1, isSuccess: 1,
+    outcome: 1, pregnancyId: 1, breedingCycleStatus: 1,
+    breedingCycleCompletedAt: 1, outcomeVerificationStatus: 1,
+    outcomeConfirmationSource: 1, outcomeConfirmedBy: 1, outcomeConfirmedAt: 1,
+    failureReason: 1, heatSigns: 1, farmerOutcomeReport: 1, observationSource: 1,
+    observationRecordedBy: 1, farmerOutcomeReportedAt: 1,
+    farmerObservationSigns: 1, farmerPregnancyReport: 1,
+    farmerPregnancyReportedAt: 1, pregnancyReportVerificationStatus: 1,
+    verificationRequested: 1, verificationStatus: 1, cancellationStatus: 1,
+    cancellationReason: 1, cancellationResponseReason: 1, cancelledBy: 1,
+    cancellationRequestedAt: 1, cancellationRespondedAt: 1,
+    createdAt: 1, updatedAt: 1,
+  }),
+  pregnancies: Object.freeze({
+    _id: 1, animalId: 1, farmerId: 1, inseminationId: 1,
+    pregnancyDiagnosis: 1, targetCalvingDate: 1, cycleStatus: 1,
+    "confirmation.methodCode": 1, "confirmation.stage": 1,
+    "confirmation.confirmedAt": 1, "confirmation.confirmedBy": 1,
+    "confirmation.recheckRequired": 1, "confirmation.recheckDueAt": 1,
+    recheckStatus: 1, completedAt: 1, createdAt: 1, updatedAt: 1,
+  }),
+  calvings: Object.freeze({
+    _id: 1, animalId: 1, farmerId: 1, pregnancyId: 1, inseminationId: 1,
+    date: 1, numberOfCalves: 1, totalDelivered: 1, calves: 1,
+    nonLivingCalves: 1, livingCalfCount: 1, stillbornCount: 1, outcome: 1,
+    calvingEase: 1, technicianId: 1, isSeen: 1, createdAt: 1, updatedAt: 1,
+  }),
+  medicalRecords: Object.freeze({
+    _id: 1, animalId: 1, farmerId: 1, technicianId: 1, healthRequestId: 1,
+    type: 1, date: 1, isHistoricalEntry: 1, lateEntryReason: 1,
+    performedByName: 1, entrySource: 1, details: 1, note: 1, followUpDate: 1,
+    createdAt: 1, updatedAt: 1,
+  }),
+  healthRequests: Object.freeze({
+    _id: 1, farmerId: 1, animalId: 1, requestType: 1, symptoms: 1, urgency: 1,
+    farmerNotes: 1, requestDetails: 1, handlingMethod: 1, technicianResponse: 1,
+    preferredDate: 1, scheduledDate: 1, visitPeriod: 1, serviceStartedAt: 1,
+    status: 1, handledBy: 1, assignedTechnicianId: 1, diagnosis: 1, findings: 1,
+    treatment: 1, medicineGiven: 1, dosage: 1, withdrawalPeriodDays: 1,
+    withdrawalEndDate: 1, followUpDate: 1, resolutionNotes: 1, resolvedAt: 1,
+    advice: 1, cancellationStatus: 1, cancellationReason: 1,
+    cancellationResponseReason: 1, cancelledBy: 1, cancellationRequestedAt: 1,
+    cancellationRespondedAt: 1, createdAt: 1, updatedAt: 1,
+  }),
+});
 
 // Clerk Retry Helper - Retries once if Clerk temporarily fails
 const runWithClerkRetry = async (fn, context = "") => {
@@ -67,6 +135,13 @@ const logAdminAction = (action, admin, target, details = {}) => {
 // Standardized Error Handler for API Errors
 const handleControllerError = (res, error, contextMessage) => {
   console.error(`[API ERROR] ${contextMessage}:`, error);
+
+  if (error.status) {
+    return res.status(error.status).json({
+      message: error.message,
+      code: error.code,
+    });
+  }
 
   if (error.name === "ValidationError") {
     return res.status(400).json({
@@ -144,7 +219,7 @@ export const getDashboardStats = async (req, res) => {
       inseminations: totalInseminations,
       pregnancies: totalPregnancies,
       calvings: totalCalvings,
-      successRate: successRateConfig?.value || "84%",
+      successRate: successRateConfig?.value ?? null,
     });
   } catch (error) {
     res
@@ -266,18 +341,38 @@ export const getChartData = async (req, res) => {
   }
 };
 
+const applyAdminRecordDateRange = (query, field, startDate, endDate) => {
+  const range = {};
+  const parsedStart = startDate ? new Date(startDate) : null;
+  const parsedEnd = endDate ? new Date(endDate) : null;
+
+  if (parsedStart && !Number.isNaN(parsedStart.getTime())) {
+    range.$gte = parsedStart;
+  }
+  if (parsedEnd && !Number.isNaN(parsedEnd.getTime())) {
+    range.$lte = parsedEnd;
+  }
+  if (Object.keys(range).length > 0) query[field] = range;
+};
+
 // ... existing get functions implementation ...
 export const getAllInseminations = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const { search, estrus, outcome, status } = req.query;
+    const { search, estrus, outcome, status, startDate, endDate } = req.query;
     const query = { deletedAt: null };
 
     if (estrus) query.estrus = estrus;
     if (outcome) query.outcome = outcome;
     if (status) query.status = status;
+    applyAdminRecordDateRange(
+      query,
+      "inseminationDate",
+      startDate,
+      endDate,
+    );
     if (search) {
       const searchRegex = { $regex: search, $options: "i" };
       const [matchedFarmers, matchedAnimals] = await Promise.all([
@@ -302,7 +397,7 @@ export const getAllInseminations = async (req, res) => {
       ];
     }
 
-    const [inseminations, total] = await Promise.all([
+    const [inseminations, total, pregnantCount, pendingCount, failedCount] = await Promise.all([
       Insemination.find(query)
         .populate("farmerId", "name email")
         .populate("animalId", "earTag species breed")
@@ -310,6 +405,9 @@ export const getAllInseminations = async (req, res) => {
         .skip(skip)
         .limit(limit),
       Insemination.countDocuments(query),
+      Insemination.countDocuments({ ...query, outcome: "Pregnant" }),
+      Insemination.countDocuments({ ...query, outcome: "Pending" }),
+      Insemination.countDocuments({ ...query, outcome: { $regex: "^Failed", $options: "i" } }),
     ]);
 
     res.status(200).send({
@@ -320,6 +418,11 @@ export const getAllInseminations = async (req, res) => {
       total,
       totalPages: Math.ceil(total / limit),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      summary: {
+        pregnant: pregnantCount,
+        pending: pendingCount,
+        failed: failedCount,
+      },
     });
   } catch (error) {
     res
@@ -363,9 +466,41 @@ export const getAllPregnancyChecks = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const { search, startDate, endDate } = req.query;
+    const query = { deletedAt: null };
 
-    const [pregnancyChecks, total] = await Promise.all([
-      Pregnancy.find({ deletedAt: null })
+    applyAdminRecordDateRange(
+      query,
+      "pregnancyDiagnosis.date",
+      startDate,
+      endDate,
+    );
+
+    if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      const [matchedFarmers, matchedAnimals] = await Promise.all([
+        User.find({ name: searchRegex }).select("_id").lean(),
+        Animal.find({
+          $or: [
+            { animalId: searchRegex },
+            { earTag: searchRegex },
+            { breed: searchRegex },
+            { species: searchRegex },
+          ],
+        })
+          .select("_id")
+          .lean(),
+      ]);
+      query.$or = [
+        { "pregnancyDiagnosis.result": searchRegex },
+        { "confirmation.methodCode": searchRegex },
+        { farmerId: { $in: matchedFarmers.map((farmer) => farmer._id) } },
+        { animalId: { $in: matchedAnimals.map((animal) => animal._id) } },
+      ];
+    }
+
+    const [pregnancyChecks, total, pregnant] = await Promise.all([
+      Pregnancy.find(query)
         .populate("farmerId", "name email")
         .populate("animalId", "earTag species breed")
         .populate({
@@ -375,13 +510,29 @@ export const getAllPregnancyChecks = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      Pregnancy.countDocuments({ deletedAt: null }),
+      Pregnancy.countDocuments(query),
+      Pregnancy.countDocuments({
+        ...query,
+        "pregnancyDiagnosis.result": {
+          $regex: "^pregnant$",
+          $options: "i",
+        },
+      }),
     ]);
+    const totalPages = Math.ceil(total / limit);
 
     res.status(200).send({
       data: pregnancyChecks,
       pregnancyChecks: pregnancyChecks, // backwards compatibility
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      page,
+      limit,
+      total,
+      totalPages,
+      pagination: { total, page, limit, totalPages },
+      summary: {
+        pregnant,
+        successRate: total === 0 ? 0 : Math.round((pregnant / total) * 100),
+      },
     });
   } catch (error) {
     res.status(500).send({
@@ -396,12 +547,20 @@ export const getAllCalvings = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const { search, species, calvingEase, seen } = req.query;
+    const {
+      search,
+      species,
+      calvingEase,
+      seen,
+      startDate,
+      endDate,
+    } = req.query;
     const query = { deletedAt: null };
 
     if (calvingEase) query.calvingEase = calvingEase;
     if (seen === "seen") query.isSeen = true;
     if (seen === "unseen") query.isSeen = { $ne: true };
+    applyAdminRecordDateRange(query, "date", startDate, endDate);
     if (search || species) {
       const searchRegex = search ? { $regex: search, $options: "i" } : null;
       const animalFilters = [];
@@ -470,32 +629,12 @@ export const deleteUser = async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).send({ message: "User ID required" });
 
-    // Self-protection check: admin cannot delete themselves
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .send({ message: "You cannot delete your own account." });
-    }
-
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Last Admin check: cannot delete the last active administrator
-    if (user.role === "admin") {
-      const activeAdminCount = await User.countDocuments({
-        role: "admin",
-        status: { $ne: "suspended" },
-        deletedAt: null,
-      });
-      if (activeAdminCount <= 1) {
-        return res.status(400).send({
-          message:
-            "Operation blocked: This is the last active admin account in the system.",
-        });
-      }
-    }
+    assertOperationallyManageableUser(user);
 
     const beforeState = { deletedAt: user.deletedAt };
 
@@ -617,17 +756,23 @@ export const syncUserMetadata = async (req, res) => {
   }
 };
 
+// Single-process pilot guard: avoids concurrent full-export materialization.
+// Multi-instance coordination is intentionally outside the current scope.
+let isSystemDataExportInProgress = false;
+
 // GET /api/admin/backup — Export database snapshot
 export const exportDatabaseBackup = async (req, res) => {
-  const { Config } = await import("../models/config.model.js");
-  try {
-    // Set backup status to started
-    await Config.findOneAndUpdate(
-      { key: "backup_status" },
-      { value: "started" },
-      { upsert: true },
-    );
+  if (isSystemDataExportInProgress) {
+    return res.status(409).json({
+      message:
+        "A system data export is already in progress. Please try again shortly.",
+      code: "SYSTEM_DATA_EXPORT_IN_PROGRESS",
+      retryable: true,
+    });
+  }
 
+  isSystemDataExportInProgress = true;
+  try {
     logAdminAction("backup_started", req.user, null, {
       message: "Database backup started",
     });
@@ -648,31 +793,34 @@ export const exportDatabaseBackup = async (req, res) => {
       inseminations,
       pregnancies,
       calvings,
+      medicalRecords,
       healthRequests,
-      configs,
     ] = await Promise.all([
-      User.find({}).lean(),
-      Animal.find({}).lean(),
-      Insemination.find({}).lean(),
-      Pregnancy.find({}).lean(),
-      Calving.find({}).lean(),
-      HealthRequest.find({}).lean(),
-      Config.find({}).lean(),
+      User.find({
+        role: { $in: ["farmer", "technician"] },
+        deletedAt: null,
+      })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.users)
+        .lean(),
+      Animal.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.animals)
+        .lean(),
+      Insemination.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.inseminations)
+        .lean(),
+      Pregnancy.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.pregnancies)
+        .lean(),
+      Calving.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.calvings)
+        .lean(),
+      MedicalRecord.find({})
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.medicalRecords)
+        .lean(),
+      HealthRequest.find({ deletedAt: null })
+        .select(SYSTEM_DATA_EXPORT_PROJECTIONS.healthRequests)
+        .lean(),
     ]);
-
-    // Update the last backup timestamp in the config DB
-    await Config.findOneAndUpdate(
-      { key: "last_backup_time" },
-      { value: new Date() },
-      { upsert: true },
-    );
-
-    // Update backup status to completed
-    await Config.findOneAndUpdate(
-      { key: "backup_status" },
-      { value: "completed" },
-      { upsert: true },
-    );
 
     logAdminAction("backup_completed", req.user, null, {
       message: "Database backup completed successfully",
@@ -688,51 +836,76 @@ export const exportDatabaseBackup = async (req, res) => {
       },
     });
 
+    const collections = {
+      users: users.length,
+      animals: animals.length,
+      inseminations: inseminations.length,
+      pregnancies: pregnancies.length,
+      calvings: calvings.length,
+      medicalRecords: medicalRecords.length,
+      healthRequests: healthRequests.length,
+    };
     const backupData = {
-      version: "1.0.0",
-      exportedAt: new Date().toISOString(),
-      users,
-      animals,
-      inseminations,
-      pregnancies,
-      calvings,
-      healthRequests,
-      configs,
+      metadata: {
+        format: "breedsmart-admin-data-export",
+        formatVersion: 1,
+        generatedAt: new Date().toISOString(),
+        generatedBy: {
+          userId: String(req.user._id),
+        },
+        scope: "livestock-and-official-records",
+        privacyProfile: "admin-export-v1",
+        consistency: "non-transactional",
+        includesArchived: false,
+        includesAttachments: false,
+        collections,
+      },
+      data: {
+        users,
+        animals,
+        inseminations,
+        pregnancies,
+        calvings,
+        medicalRecords,
+        healthRequests,
+      },
     };
 
     const fileName = `BreedSmart_Backup_${new Date().toISOString().split("T")[0]}.json`;
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+    res.setHeader("Cache-Control", "private, no-store");
 
     res.status(200).send(JSON.stringify(backupData, null, 2));
   } catch (error) {
     console.error("[exportDatabaseBackup ERROR]", error.message);
 
-    // Update backup status to failed
-    await Config.findOneAndUpdate(
-      { key: "backup_status" },
-      { value: "failed" },
-      { upsert: true },
-    );
-
-    logAdminAction("backup_failed", req.user, null, { error: error.message });
-    await createAuditLog({
-      entityType: "System",
-      entityId: req.user._id,
-      action: "backup_failed",
-      actorId: req.user._id,
-      metadata: {
-        error: error.message,
-        actingAdmin: req.user.email || req.user.name,
-        timestamp: new Date().toISOString(),
-      },
+    logAdminAction("backup_failed", req.user, null, {
+      failureCategory: "export_failed",
     });
+    try {
+      await createAuditLog({
+        entityType: "System",
+        entityId: req.user._id,
+        action: "backup_failed",
+        actorId: req.user._id,
+        metadata: {
+          failureCategory: "export_failed",
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch {
+      console.error(
+        "[System Data Export] Failed to record sanitized failure audit.",
+      );
+    }
 
-    return handleControllerError(
-      res,
-      error,
-      "Failed compiling system database backup",
-    );
+    return res.status(500).json({
+      message: "Failed to generate system data export.",
+      code: "SYSTEM_DATA_EXPORT_FAILED",
+    });
+  } finally {
+    isSystemDataExportInProgress = false;
   }
 };
 
@@ -742,32 +915,12 @@ export const suspendUser = async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).send({ message: "User ID required" });
 
-    // Self-protection check: admin cannot suspend themselves
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .send({ message: "You cannot suspend your own account." });
-    }
-
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Last Admin check: cannot suspend the last active administrator
-    if (user.role === "admin") {
-      const activeAdminCount = await User.countDocuments({
-        role: "admin",
-        status: { $ne: "suspended" },
-        deletedAt: null,
-      });
-      if (activeAdminCount <= 1) {
-        return res.status(400).send({
-          message:
-            "Operation blocked: This is the last active admin account in the system.",
-        });
-      }
-    }
+    assertOperationallyManageableUser(user);
 
     const beforeState = { status: user.status };
 
@@ -823,6 +976,8 @@ export const reactivateUser = async (req, res) => {
       return res.status(404).send({ message: "User not found" });
     }
 
+    assertOperationallyManageableUser(user);
+
     const beforeState = { status: user.status };
 
     // Clerk Synchronization Safety
@@ -876,6 +1031,8 @@ export const verifyUser = async (req, res) => {
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
+
+    assertOperationallyManageableUser(user);
 
     const beforeState = { isVerified: user.isVerified };
 
@@ -939,6 +1096,8 @@ export const resetPassword = async (req, res) => {
       return res.status(404).send({ message: "User not found" });
     }
 
+    assertOperationallyManageableUser(user);
+
     const tempPassword = `Temp${Math.floor(100000 + Math.random() * 900000)}!`;
 
     if (user.clerkId) {
@@ -999,37 +1158,14 @@ export const updateRole = async (req, res) => {
     if (!id || !role)
       return res.status(400).send({ message: "User ID and role are required" });
 
-    const validRoles = ["admin", "technician", "farmer"];
-    if (!validRoles.includes(role)) {
-      return res.status(400).send({ message: "Invalid role specified" });
-    }
-
-    // Self-protection check: admin cannot change their own role
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .send({ message: "You cannot change your own account role." });
-    }
+    assertOperationalUserRole(role);
 
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Last Admin check: cannot demote the last active administrator
-    if (user.role === "admin" && role !== "admin") {
-      const activeAdminCount = await User.countDocuments({
-        role: "admin",
-        status: { $ne: "suspended" },
-        deletedAt: null,
-      });
-      if (activeAdminCount <= 1) {
-        return res.status(400).send({
-          message:
-            "Operation blocked: This is the last active admin account in the system.",
-        });
-      }
-    }
+    assertOperationallyManageableUser(user);
 
     const beforeState = { role: user.role };
 
@@ -1080,321 +1216,6 @@ export const updateRole = async (req, res) => {
     res.status(200).send({ message: "User role updated successfully", user });
   } catch (error) {
     return handleControllerError(res, error, "Error updating user role");
-  }
-};
-
-// GET /api/admin/monitoring
-export const getSystemMonitoringData = async (req, res) => {
-  try {
-    const { Config } = await import("../models/config.model.js");
-
-    // 1. System Health
-    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
-    const onlineDevicesCount = await User.countDocuments({
-      lastLogin: { $gte: fifteenMinsAgo },
-      deletedAt: null,
-    });
-    const totalActiveUsers = await User.countDocuments({ deletedAt: null });
-    const offlineDevicesCount = Math.max(
-      0,
-      totalActiveUsers - onlineDevicesCount,
-    );
-
-    // Pending sync - count pending HealthRequests and Inseminations
-    const pendingSyncCount = await Promise.all([
-      HealthRequest.countDocuments({ status: "pending", deletedAt: null }),
-      Insemination.countDocuments({ status: "pending", deletedAt: null }),
-    ]).then(([hr, ins]) => hr + ins);
-
-    // Last Backup
-    const lastBackupConfig = await Config.findOne({ key: "last_backup_time" });
-    const lastBackupTime = lastBackupConfig
-      ? lastBackupConfig.value
-      : new Date(Date.now() - 1000 * 60 * 60 * 3); // Default to 3 hrs ago
-
-    // 2. Registry Monitor
-    const duplicateEarTagsList = await Animal.aggregate([
-      { $match: { deletedAt: null, earTag: { $ne: null, $ne: "" } } },
-      {
-        $group: {
-          _id: "$earTag",
-          count: { $sum: 1 },
-          animals: { $push: { animalId: "$animalId", id: "$_id" } },
-        },
-      },
-      { $match: { count: { $gt: 1 } } },
-    ]);
-
-    const duplicateTagsCount = duplicateEarTagsList.length;
-
-    const missingAnimalDataCount = await Animal.countDocuments({
-      deletedAt: null,
-      $or: [{ breed: { $in: [null, "", "Unknown"] } }, { birthDate: null }],
-    });
-
-    const archivedRecordsCount = await Promise.all([
-      User.countDocuments({ deletedAt: { $ne: null } }),
-      Animal.countDocuments({ deletedAt: { $ne: null } }),
-      Insemination.countDocuments({ deletedAt: { $ne: null } }),
-      Pregnancy.countDocuments({ deletedAt: { $ne: null } }),
-      HealthRequest.countDocuments({ deletedAt: { $ne: null } }),
-    ]).then(([u, a, i, p, h]) => u + a + i + p + h);
-
-    // 3. Backup Monitor
-    const counts = await Promise.all([
-      User.countDocuments(),
-      Animal.countDocuments(),
-      Insemination.countDocuments(),
-      Pregnancy.countDocuments(),
-      Calving.countDocuments(),
-      HealthRequest.countDocuments(),
-    ]);
-    const totalDocsCount = counts.reduce((a, b) => a + b, 0);
-    // Average doc size 1.5 KB
-    const storageUsageKB = totalDocsCount * 1.5;
-    const storageUsageMB = (storageUsageKB / 1024).toFixed(2);
-    const storageUsageStr = `${storageUsageMB} MB`;
-
-    const backupStatusConfig = await Config.findOne({ key: "backup_status" });
-    const backupStatus =
-      backupStatusConfig && typeof backupStatusConfig.value === "string"
-        ? backupStatusConfig.value
-        : "completed";
-
-    // 4. Moowie Insights
-    const diagnosedCount = await Pregnancy.countDocuments({
-      "pregnancyDiagnosis.result": { $in: ["Pregnant", "Empty"] },
-      deletedAt: null,
-    });
-    const pregnantCount = await Pregnancy.countDocuments({
-      "pregnancyDiagnosis.result": "Pregnant",
-      deletedAt: null,
-    });
-    const pregnancySuccessRate =
-      diagnosedCount > 0
-        ? Math.round((pregnantCount / diagnosedCount) * 100)
-        : 82;
-
-    const completedAICount = await Insemination.countDocuments({
-      outcome: {
-        $in: [
-          "Pregnant",
-          "Failed (Re-heat)",
-          "Failed (Aborted)",
-          "Failed (Negative PD)",
-        ],
-      },
-      deletedAt: null,
-    });
-    const successfulAICount = await Insemination.countDocuments({
-      outcome: "Pregnant",
-      deletedAt: null,
-    });
-    const aiSuccessRate =
-      completedAICount > 0
-        ? Math.round((successfulAICount / completedAICount) * 100)
-        : 78;
-
-    const farmersList = await User.find({
-      role: "farmer",
-      deletedAt: null,
-    }).lean();
-    const activeInseminationFarmers = await Insemination.distinct("farmerId", {
-      deletedAt: null,
-    });
-    const activeHealthFarmers = await HealthRequest.distinct("farmerId", {
-      deletedAt: null,
-    });
-    const activeFarmerIdsSet = new Set(
-      [...activeInseminationFarmers, ...activeHealthFarmers].map((id) =>
-        id.toString(),
-      ),
-    );
-    const inactiveFarmersCount = farmersList.filter(
-      (f) => !activeFarmerIdsSet.has(f._id.toString()),
-    ).length;
-
-    const barangayHealthAgg = await HealthRequest.aggregate([
-      { $match: { deletedAt: null } },
-      {
-        $lookup: {
-          from: "users",
-          localField: "farmerId",
-          foreignField: "_id",
-          as: "farmer",
-        },
-      },
-      { $unwind: "$farmer" },
-      {
-        $group: {
-          _id: "$farmer.address.barangay",
-          count: { $sum: 1 },
-          criticalCount: {
-            $sum: {
-              $cond: [{ $in: ["$urgency", ["high", "emergency"]] }, 1, 0],
-            },
-          },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $limit: 3 },
-    ]);
-
-    const barangaysNeedingAttention = barangayHealthAgg.map((item) => ({
-      barangay: item._id,
-      totalRequests: item.count,
-      criticalRequests: item.criticalCount,
-    }));
-
-    const techniciansList = await User.find({
-      role: "technician",
-      deletedAt: null,
-    }).lean();
-    const hrWorkloads = await HealthRequest.aggregate([
-      {
-        $match: {
-          status: {
-            $in: ["assigned", "scheduled", "in-progress", "in_progress"],
-          },
-          deletedAt: null,
-        },
-      },
-      { $group: { _id: "$assignedTechnicianId", count: { $sum: 1 } } },
-    ]);
-    const aiWorkloads = await Insemination.aggregate([
-      {
-        $match: {
-          status: { $in: ["approved", "in-progress"] },
-          deletedAt: null,
-        },
-      },
-      { $group: { _id: "$technicianId", count: { $sum: 1 } } },
-    ]);
-
-    const hrWorkloadMap = new Map(
-      hrWorkloads.map((w) => [w._id?.toString(), w.count]),
-    );
-    const aiWorkloadMap = new Map(
-      aiWorkloads.map((w) => [w._id?.toString(), w.count]),
-    );
-
-    const technicianWorkloads = techniciansList
-      .map((t) => {
-        const tIdStr = t._id.toString();
-        const activeHRs = hrWorkloadMap.get(tIdStr) || 0;
-        const activeAIs = aiWorkloadMap.get(tIdStr) || 0;
-        return {
-          name: t.name,
-          activeRequests: activeHRs + activeAIs,
-        };
-      })
-      .sort((a, b) => b.activeRequests - a.activeRequests);
-
-    // 5. Alerts Generation
-    const alertsList = [];
-
-    // Duplicate ear tags
-    if (duplicateTagsCount > 0) {
-      alertsList.push({
-        type: "danger",
-        category: "Registry",
-        message: `Duplicate ear tags detected: ${duplicateTagsCount} overlapping tags found.`,
-        details: duplicateEarTagsList
-          .map((t) => `'${t._id}' (${t.count} duplicates)`)
-          .join(", "),
-      });
-    }
-
-    // High sickness
-    for (const b of barangaysNeedingAttention) {
-      if (b.criticalRequests > 0 || b.totalRequests > 3) {
-        alertsList.push({
-          type: "warning",
-          category: "Health Hotspot",
-          message: `High disease reports in Barangay ${b.barangay}: ${b.totalRequests} cases.`,
-          details: `${b.criticalRequests} critical urgency health requests.`,
-        });
-      }
-    }
-
-    // Missing Animal Data
-    if (missingAnimalDataCount > 0) {
-      alertsList.push({
-        type: "info",
-        category: "Registry Monitor",
-        message: `${missingAnimalDataCount} livestock profiles missing critical details (Breed / DOB).`,
-        details:
-          "Registry updates recommended to ensure complete lineage tracking.",
-      });
-    }
-
-    // Backup Alert
-    const daysSinceBackup =
-      (Date.now() - new Date(lastBackupTime).getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSinceBackup > 7) {
-      alertsList.push({
-        type: "warning",
-        category: "System Warning",
-        message: "No system backup created in the last 7 days.",
-        details: "Run a database export to secure user and registry data.",
-      });
-    }
-
-    // Inactive Farmers
-    if (inactiveFarmersCount > 0) {
-      alertsList.push({
-        type: "info",
-        category: "Farmer Engagement",
-        message: `${inactiveFarmersCount} farmers have been inactive in the registry.`,
-        details: "Consider reaching out or scheduling health inspections.",
-      });
-    }
-
-    // Simulated Failed Sync Alert
-    alertsList.push({
-      type: "warning",
-      category: "Client Sync",
-      message:
-        "Technician sync alert: 1 sync warning recorded from offline node.",
-      details:
-        "Client version mismatch resolved automatically; verify server logs if recurring.",
-    });
-
-    res.status(200).json({
-      systemHealth: {
-        onlineDevices: onlineDevicesCount,
-        offlineDevices: offlineDevicesCount,
-        pendingSync: pendingSyncCount,
-        lastBackup: lastBackupTime,
-        serverStatus: "online",
-      },
-      registryMonitor: {
-        duplicateEarTags: duplicateTagsCount,
-        missingAnimalData: missingAnimalDataCount,
-        archivedRecords: archivedRecordsCount,
-      },
-      backupMonitor: {
-        lastBackup: lastBackupTime,
-        backupStatus: backupStatus,
-        storageUsage: storageUsageStr,
-      },
-      moowieInsights: {
-        pregnancySuccessRate,
-        aiSuccessRate,
-        barangaysNeedingAttention,
-        technicianWorkloads,
-        duplicateEarTags: duplicateTagsCount,
-        inactiveFarmers: inactiveFarmersCount,
-        animalsNeedingUpdates: missingAnimalDataCount,
-      },
-      alerts: alertsList,
-    });
-  } catch (error) {
-    return handleControllerError(
-      res,
-      error,
-      "Failed compiling system monitoring and telemetry stats",
-    );
   }
 };
 

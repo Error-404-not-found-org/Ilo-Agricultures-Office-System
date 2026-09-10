@@ -29,7 +29,10 @@ import {
   completeInsemination,
   persistBreedingObservationVerification,
 } from "../services/livestock-transaction.service.js";
-import { confirmPregnancyDiagnosis, executePregnancyFinalization } from "../services/pregnancy-confirmation.service.js";
+import {
+  confirmPregnancyDiagnosis,
+  executePregnancyFinalization,
+} from "../services/pregnancy-confirmation.service.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import {
   activeRequestKeyForAnimal,
@@ -38,11 +41,15 @@ import {
   isVerifiedFailedAIAttempt,
   isVerifiedReturnToHeatAIAttempt,
 } from "../services/ai-request-creation.service.js";
+import {
+  uploadImages,
+  cleanupUploadedAssets,
+} from "../services/image-upload.service.js";
 import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
 import {
   ensureBreedingObservationFollowUpTask,
   cancelPendingReproductiveTasksForInsemination,
-  buildInseminationIdMatch
+  buildInseminationIdMatch,
 } from "../services/breeding-observation-followup.service.js";
 import { getEarlyStartTiming } from "../domain/service-timing.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
@@ -74,6 +81,10 @@ import {
   buildFarmerAIRequest,
   buildFarmerAIRequests,
 } from "../domain/ai-request-presentation.js";
+import {
+  getAIRequestPhotos,
+  normalizeSubmittedAIRequestPhotos,
+} from "../domain/ai-request-attachments.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -243,20 +254,85 @@ export const createAIRequest = async (req, res) => {
       resolvedAt: new Date(),
     };
 
-    const request = await createAIRequestWithGuard(
-      {
-        farmerId,
-        animalId,
-        imageUrl: imageUrl || (photos && photos.length > 0 ? photos[0] : ""),
-        photos: photos || [],
-        comment: comment || "",
-        heatSigns: heatSigns || [],
-        status: "pending",
-        dispatch: dispatchSnapshot,
-        ...attemptLink,
-      },
-      { requireVerifiedReturnToHeat: Boolean(previousAttemptId) },
-    );
+    if (photos !== undefined) {
+      if (!Array.isArray(photos) || !photos.every((p) => typeof p === "string")) {
+        return res.status(400).json({
+          code: "INVALID_PHOTOS",
+          message: "Photos must be an array of strings.",
+        });
+      }
+      if (photos.length > 5) {
+        return res.status(400).json({
+          code: "TOO_MANY_PHOTOS",
+          message: "Maximum of 5 photos allowed.",
+        });
+      }
+    }
+
+    // Candidate image selection:
+    // - if photos is an array AND contains at least one nonblank image: use photos
+    // - otherwise, if compatibility imageUrl is a nonblank string: fallback to [imageUrl]
+    // - otherwise: []
+    const nonBlankPhotos = Array.isArray(photos)
+      ? photos.filter((p) => typeof p === "string" && p.trim().length > 0)
+      : [];
+
+    let candidatePhotos = [];
+    if (Array.isArray(photos) && nonBlankPhotos.length > 0) {
+      candidatePhotos = photos;
+    } else if (typeof imageUrl === "string" && imageUrl.trim().length > 0) {
+      candidatePhotos = [imageUrl.trim()];
+    } else {
+      candidatePhotos = [];
+    }
+
+    if (candidatePhotos.length > 5) {
+      return res.status(400).json({
+        code: "TOO_MANY_PHOTOS",
+        message: "Maximum of 5 photos allowed.",
+      });
+    }
+
+    let uploadResults = [];
+    try {
+      if (candidatePhotos.length > 0) {
+        uploadResults = await uploadImages(candidatePhotos, {
+          folder: "ai_requests",
+        });
+      }
+    } catch (uploadErr) {
+      console.error("[AI Request Image Upload Error]", uploadErr.message);
+      return res.status(uploadErr.status || 400).json({
+        message: uploadErr.message || "Image upload failed.",
+        code: uploadErr.code || "IMAGE_UPLOAD_FAILED",
+      });
+    }
+
+    const persistedPhotos = uploadResults.map((r) => r.url);
+    const persistedImageUrl =
+      persistedPhotos.length > 0 ? persistedPhotos[0] : "";
+
+    let request;
+    try {
+      request = await createAIRequestWithGuard(
+        {
+          farmerId,
+          animalId,
+          imageUrl: persistedImageUrl,
+          photos: persistedPhotos,
+          comment: comment || "",
+          heatSigns: heatSigns || [],
+          status: "pending",
+          dispatch: dispatchSnapshot,
+          ...attemptLink,
+        },
+        { requireVerifiedReturnToHeat: Boolean(previousAttemptId) },
+      );
+    } catch (persistErr) {
+      // Clean newly uploaded Cloudinary assets only if request creation fails.
+      await cleanupUploadedAssets(uploadResults);
+      throw persistErr;
+    }
     const attemptNumber = request.attemptNumber;
     const isReInsemination = Boolean(request.previousAttemptId);
     await Promise.all([
@@ -276,7 +352,10 @@ export const createAIRequest = async (req, res) => {
           (isReInsemination
             ? "Farmer requested another AI service after the previous attempt was confirmed unsuccessful."
             : "Farmer requested artificial insemination service."),
-        attachments: photos?.length > 0 ? photos : imageUrl ? [imageUrl] : [],
+        attachments: getAIRequestPhotos({
+          photos: persistedPhotos,
+          imageUrl: persistedImageUrl,
+        }),
         metadata: {
           attemptNumber,
           previousAttemptId: request.previousAttemptId || null,
@@ -574,7 +653,10 @@ export const updateRequestStatus = async (req, res) => {
     const finalVisitPeriod =
       visitPeriod !== undefined ? normalizeVisitPeriod(visitPeriod) : undefined;
 
-    const existing = await Insemination.findById(id).populate("animalId", "earTag animalId");
+    const existing = await Insemination.findById(id).populate(
+      "animalId",
+      "earTag animalId",
+    );
     if (!existing) {
       return res.status(404).json({ message: "AI request record not found." });
     }
@@ -971,7 +1053,7 @@ export const claimAndScheduleAIRequest = async (req, res) => {
 
       if (!current) {
         return res.status(404).json({
-        message: "AI request record not found.",
+          message: "AI request record not found.",
           code: "AI_REQUEST_NOT_FOUND",
         });
       }
@@ -1186,88 +1268,152 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       species: animal.species,
     });
 
-    const photos = Array.isArray(evidencePhotos)
-      ? evidencePhotos.filter(Boolean)
-      : evidenceImageUrl
-        ? [evidenceImageUrl]
-        : [];
+    if (evidencePhotos !== undefined) {
+      if (
+        !Array.isArray(evidencePhotos) ||
+        !evidencePhotos.every((p) => typeof p === "string")
+      ) {
+        return res.status(400).json({
+          code: "INVALID_PHOTOS",
+          message: "Evidence photos must be an array of strings.",
+        });
+      }
+    }
+
+    const nonBlankPhotos = Array.isArray(evidencePhotos)
+      ? evidencePhotos.filter((p) => typeof p === "string" && p.trim().length > 0)
+      : [];
+
+    let candidatePhotos = [];
+    if (Array.isArray(evidencePhotos) && nonBlankPhotos.length > 0) {
+      candidatePhotos = evidencePhotos;
+    } else if (
+      typeof evidenceImageUrl === "string" &&
+      evidenceImageUrl.trim().length > 0
+    ) {
+      candidatePhotos = [evidenceImageUrl.trim()];
+    } else {
+      candidatePhotos = [];
+    }
+
+    if (candidatePhotos.length > 3) {
+      return res.status(400).json({
+        code: "TOO_MANY_PHOTOS",
+        message: "Maximum of 3 evidence photos allowed.",
+      });
+    }
+
+    let uploadResults = [];
+    if (candidatePhotos.length > 0) {
+      try {
+        uploadResults = await uploadImages(candidatePhotos, {
+          folder: "breeding_evidence",
+        });
+      } catch (uploadErr) {
+        console.error(
+          "[Breeding Observation Image Upload Error]",
+          uploadErr.message,
+        );
+        return res.status(uploadErr.status || 400).json({
+          message: uploadErr.message || "Evidence image upload failed.",
+          code: uploadErr.code || "IMAGE_UPLOAD_FAILED",
+        });
+      }
+    }
+
+    const normalizedEvidenceUrls = uploadResults.map((r) => r.url);
 
     const observationReportedAt = new Date();
-    const previousFarmerReport = request.farmerOutcomeReport;
     request.farmerOutcomeReport = reportType;
     request.farmerOutcomeReportedAt = observationReportedAt;
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
     request.farmerObservationNotes = notes || "";
-    request.evidencePhotos = photos;
+    request.evidencePhotos = normalizedEvidenceUrls;
     request.observationSource = "farmer";
     request.observationRecordedBy = req.user._id;
-    const followUp = await ensureBreedingObservationFollowUpTask({
-      request,
-      farmerId: req.user._id,
-      animalId: animal._id,
-      technicianId:
-        request.technicianId?._id ||
-        request.technicianId ||
-        request.approvedBy?._id ||
-        request.approvedBy,
-      reportType,
-      signs,
-      notes,
-      pregnancyReadiness,
-      at: observationReportedAt,
-    });
-    const verificationTask = followUp.task;
-    const technicianVerificationRequired = followUp.technicianActionRequired;
-    request.verificationRequested = technicianVerificationRequired;
-    request.verificationStatus = followUp.verificationStatus;
-    // We intentionally DO NOT update request.verificationTaskId here, because that field is reserved for the PD task.
 
+    let verificationTask = null;
+    let technicianVerificationRequired = false;
     let nextAction = "Observation saved.";
 
-    if (reportType === "possible_pregnancy") {
-      request.outcomeVerificationStatus = "reported";
-      request.outcomeConfirmationSource = "farmer_possible_pregnancy";
-      request.outcomeConfirmedBy = req.user._id;
-      request.outcomeConfirmedAt = new Date();
-      nextAction = technicianVerificationRequired
-        ? "Possible pregnancy signs recorded. Technician follow-up is available now."
-        : "Possible pregnancy signs recorded. Pregnancy confirmation will follow the existing readiness schedule.";
+    try {
+      const followUp = await ensureBreedingObservationFollowUpTask({
+        request,
+        farmerId: req.user._id,
+        animalId: animal._id,
+        technicianId:
+          request.technicianId?._id ||
+          request.technicianId ||
+          request.approvedBy?._id ||
+          request.approvedBy,
+        reportType,
+        signs,
+        notes,
+        pregnancyReadiness,
+        at: observationReportedAt,
+      });
+      verificationTask = followUp.task;
+      technicianVerificationRequired = followUp.technicianActionRequired;
+      request.verificationRequested = technicianVerificationRequired;
+      request.verificationStatus = followUp.verificationStatus;
+      // We intentionally DO NOT update request.verificationTaskId here, because that field is reserved for the PD task.
+
+      if (reportType === "possible_pregnancy") {
+        request.outcomeVerificationStatus = "reported";
+        request.outcomeConfirmationSource = "farmer_possible_pregnancy";
+        request.outcomeConfirmedBy = req.user._id;
+        request.outcomeConfirmedAt = new Date();
+        nextAction = technicianVerificationRequired
+          ? "Possible pregnancy signs recorded. Technician follow-up is available now."
+          : "Possible pregnancy signs recorded. Pregnancy confirmation will follow the existing readiness schedule.";
+      }
+
+      if (reportType === "return_to_heat") {
+        request.outcomeVerificationStatus = "reported";
+        request.outcomeConfirmationSource = "farmer_return_to_heat";
+        nextAction =
+          "Return-to-heat observation saved. A technician must verify the failed attempt before re-insemination.";
+      }
+
+      if (reportType === "unsure") {
+        request.outcomeVerificationStatus = "pending";
+        request.outcomeConfirmationSource = null;
+        request.outcomeConfirmedBy = null;
+        request.outcomeConfirmedAt = null;
+        nextAction = "Observation saved. Continue monitoring the animal.";
+      }
+
+      request.statusHistory = request.statusHistory || [];
+      request.statusHistory.push({
+        status: "farmer_observation",
+        note: `Farmer reported ${reportType}${technicianVerificationRequired ? " and requires verification" : ""}.`,
+        actorId: req.user._id,
+        createdAt: new Date(),
+      });
+
+      animal.activityLogs = animal.activityLogs || [];
+      animal.activityLogs.push({
+        event: "Breeding Observation Reported",
+        date: new Date(),
+        description: `Farmer reported ${reportType}. ${notes || ""}`.trim(),
+      });
+
+      // Authoritative persistence boundary:
+      await request.save();
+    } catch (persistErr) {
+      await cleanupUploadedAssets(uploadResults);
+      throw persistErr;
     }
 
-    if (reportType === "return_to_heat") {
-      request.outcomeVerificationStatus = "reported";
-      request.outcomeConfirmationSource = "farmer_return_to_heat";
-      nextAction =
-        "Return-to-heat observation saved. A technician must verify the failed attempt before re-insemination.";
+    // Secondary side-effects: do not cleanup assets if these fail
+    try {
+      await animal.save();
+    } catch (animalErr) {
+      console.error("[submitFarmerBreedingObservation animal.save ERROR]", animalErr.message);
     }
 
-    if (reportType === "unsure") {
-      request.outcomeVerificationStatus = "pending";
-      request.outcomeConfirmationSource = null;
-      request.outcomeConfirmedBy = null;
-      request.outcomeConfirmedAt = null;
-      nextAction = "Observation saved. Continue monitoring the animal.";
-    }
-
-    request.statusHistory = request.statusHistory || [];
-    request.statusHistory.push({
-      status: "farmer_observation",
-      note: `Farmer reported ${reportType}${technicianVerificationRequired ? " and requires verification" : ""}.`,
-      actorId: req.user._id,
-      createdAt: new Date(),
-    });
-
-    animal.activityLogs = animal.activityLogs || [];
-    animal.activityLogs.push({
-      event: "Breeding Observation Reported",
-      date: new Date(),
-      description: `Farmer reported ${reportType}. ${notes || ""}`.trim(),
-    });
-
-    await Promise.all([
-      request.save(),
-      animal.save(),
-      createTimelineEvent({
+    try {
+      await createTimelineEvent({
         animalId: animal._id,
         eventType: "farmer_breeding_observation_reported",
         actorId: req.user._id,
@@ -1275,15 +1421,20 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         sourceId: request._id,
         title: "Breeding observation reported",
         summary: `${reportType.replaceAll("_", " ")}${notes ? `: ${notes}` : ""}`,
-        attachments: photos,
+        attachments: normalizedEvidenceUrls,
         metadata: {
           reportType,
           signs: Array.isArray(signs) ? signs : [],
           technicianFollowUpRequired: technicianVerificationRequired,
           verificationTaskId: verificationTask?._id,
         },
-      }),
-      createAuditLog({
+      });
+    } catch (timelineErr) {
+      console.error("[submitFarmerBreedingObservation timeline ERROR]", timelineErr.message);
+    }
+
+    try {
+      await createAuditLog({
         entityType: "Insemination",
         entityId: request._id,
         action: "farmer_breeding_observation_reported",
@@ -1295,20 +1446,29 @@ export const submitFarmerBreedingObservation = async (req, res) => {
           verificationTaskId: verificationTask?._id,
           animalStatus: animal.reproductiveStatus,
         },
-      }),
-    ]);
+      });
+    } catch (auditErr) {
+      console.error("[submitFarmerBreedingObservation audit ERROR]", auditErr.message);
+    }
 
-    await notifyTechniciansOfBreedingObservation({
-      farmer: req.user,
-      animal,
-      insemination: request,
-      task: verificationTask,
-      reportType,
-      signs: Array.isArray(signs) ? signs : [],
-      notes,
-      reportedAt: observationReportedAt,
-      technicianActionRequired: technicianVerificationRequired,
-    });
+    try {
+      await notifyTechniciansOfBreedingObservation({
+        farmer: req.user,
+        animal,
+        insemination: request,
+        task: verificationTask,
+        reportType,
+        signs: Array.isArray(signs) ? signs : [],
+        notes,
+        reportedAt: observationReportedAt,
+        technicianActionRequired: technicianVerificationRequired,
+      });
+    } catch (notifErr) {
+      console.error(
+        "[submitFarmerBreedingObservation Notification Error]",
+        notifErr.message,
+      );
+    }
 
     res.status(200).json({
       message: "Breeding observation saved.",
@@ -1336,27 +1496,48 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
         code: "UNAUTHORIZED_VERIFICATION",
       });
     }
-    const { reportType, signs, notes, evidenceImageUrl, evidencePhotos, source } = req.body;
+    const {
+      reportType,
+      signs,
+      notes,
+      evidenceImageUrl,
+      evidencePhotos,
+      source,
+    } = req.body;
 
-    if (!['possible_pregnancy', 'return_to_heat', 'unsure', 'unable_to_contact'].includes(reportType)) {
-      return res.status(400).json({ message: 'Invalid reportType.' });
+    if (
+      ![
+        "possible_pregnancy",
+        "return_to_heat",
+        "unsure",
+        "unable_to_contact",
+      ].includes(reportType)
+    ) {
+      return res.status(400).json({ message: "Invalid reportType." });
     }
     const request = await Insemination.findById(req.params.id)
-      .populate('animalId', 'species earTag farmerId reproductiveStatus activityLogs')
-      .populate('technicianId')
-      .populate('approvedBy');
+      .populate(
+        "animalId",
+        "species earTag farmerId reproductiveStatus activityLogs",
+      )
+      .populate("technicianId")
+      .populate("approvedBy");
 
     if (!request) {
-      return res.status(404).json({ message: 'AI Request not found.' });
+      return res.status(404).json({ message: "AI Request not found." });
     }
 
     assertAIRecordSupportsCurrentTracking(request);
 
     // 1. Domain-level terminal guard based on AI attempt
-    if (request.outcomeVerificationStatus === 'verified' && request.outcome !== 'Pending') {
+    if (
+      request.outcomeVerificationStatus === "verified" &&
+      request.outcome !== "Pending"
+    ) {
       return res.status(409).json({
         code: "AI_ATTEMPT_ALREADY_TERMINAL",
-        message: "This AI attempt has already reached a terminal reproductive outcome.",
+        message:
+          "This AI attempt has already reached a terminal reproductive outcome.",
       });
     }
 
@@ -1372,22 +1553,30 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
       allowUnassignedTaskClaim: false,
     });
 
-    if (existingTask && ["Completed", "Cancelled", "Rejected"].includes(existingTask.status)) {
+    if (
+      existingTask &&
+      ["Completed", "Cancelled", "Rejected"].includes(existingTask.status)
+    ) {
       return res.status(409).json({
         code: "BREEDING_FOLLOWUP_ALREADY_RESOLVED",
-        message: "This breeding follow-up has already been resolved."
+        message: "This breeding follow-up has already been resolved.",
       });
     }
 
     // 3. Prevent performing scheduled BreedingFollowUp tasks before their due date
-    if (existingTask && existingTask.status === "Pending" && existingTask.dueDate && new Date(existingTask.dueDate) > new Date()) {
+    if (
+      existingTask &&
+      existingTask.status === "Pending" &&
+      existingTask.dueDate &&
+      new Date(existingTask.dueDate) > new Date()
+    ) {
       return res.status(409).json({
         code: "BREEDING_FOLLOWUP_NOT_DUE",
-        message: "This scheduled breeding follow-up is not due yet."
+        message: "This scheduled breeding follow-up is not due yet.",
       });
     }
 
-    if (reportType === 'unable_to_contact') {
+    if (reportType === "unable_to_contact") {
       const task = await Task.findOneAndUpdate(
         {
           taskType: "BreedingFollowUp",
@@ -1401,54 +1590,109 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
             notes: `Unable to contact farmer. Notes: ${notes || "None"}`,
             "metadata.followUpResolution": "unable_to_contact",
             "metadata.reportType": "unable_to_contact",
-          }
+          },
         },
-        { returnDocument: "after" }
+        { returnDocument: "after" },
       );
 
       return res.status(200).json({
-        message: 'Unable to contact recorded. Follow-up closed.',
-        task
+        message: "Unable to contact recorded. Follow-up closed.",
+        task,
       });
     }
 
     const isVerified =
-      request.verificationStatus === 'verified' ||
-      request.verificationStatus === 'rejected' ||
-      request.outcomeVerificationStatus === 'verified';
+      request.verificationStatus === "verified" ||
+      request.verificationStatus === "rejected" ||
+      request.outcomeVerificationStatus === "verified";
 
-    if (request.farmerOutcomeReport && request.observationSource === 'farmer' && isVerified) {
+    if (
+      request.farmerOutcomeReport &&
+      request.observationSource === "farmer" &&
+      isVerified
+    ) {
       return res.status(409).json({
-        message: 'This observation has already been reviewed by a technician and cannot be modified.',
-        code: 'OBSERVATION_ALREADY_VERIFIED',
+        message:
+          "This observation has already been reviewed by a technician and cannot be modified.",
+        code: "OBSERVATION_ALREADY_VERIFIED",
       });
     }
 
-    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    const animal = await Animal.findById(
+      request.animalId?._id || request.animalId,
+    );
     if (!animal) {
-      return res.status(404).json({ message: 'Animal not found.' });
+      return res.status(404).json({ message: "Animal not found." });
     }
 
-    const photos = Array.isArray(evidencePhotos)
-      ? evidencePhotos.filter(Boolean)
-      : evidenceImageUrl
-        ? [evidenceImageUrl]
-        : [];
+    if (evidencePhotos !== undefined) {
+      if (
+        !Array.isArray(evidencePhotos) ||
+        !evidencePhotos.every((p) => typeof p === "string")
+      ) {
+        return res.status(400).json({
+          code: "INVALID_PHOTOS",
+          message: "Evidence photos must be an array of strings.",
+        });
+      }
+    }
+
+    const nonBlankPhotos = Array.isArray(evidencePhotos)
+      ? evidencePhotos.filter((p) => typeof p === "string" && p.trim().length > 0)
+      : [];
+
+    let candidatePhotos = [];
+    if (Array.isArray(evidencePhotos) && nonBlankPhotos.length > 0) {
+      candidatePhotos = evidencePhotos;
+    } else if (
+      typeof evidenceImageUrl === "string" &&
+      evidenceImageUrl.trim().length > 0
+    ) {
+      candidatePhotos = [evidenceImageUrl.trim()];
+    } else {
+      candidatePhotos = [];
+    }
+
+    let uploadResults = [];
+    if (candidatePhotos.length > 0) {
+      try {
+        uploadResults = await uploadImages(candidatePhotos, {
+          folder: "breeding_evidence",
+        });
+      } catch (uploadErr) {
+        console.error(
+          "[Technician Observation Image Upload Error]",
+          uploadErr.message,
+        );
+        return res.status(uploadErr.status || 400).json({
+          message: uploadErr.message || "Evidence image upload failed.",
+          code: uploadErr.code || "IMAGE_UPLOAD_FAILED",
+        });
+      }
+    }
+
+    const normalizedEvidenceUrls = uploadResults.map((r) => r.url);
 
     // 4. Technician "Returned to heat" must be terminal
-    if (reportType === 'return_to_heat') {
-      const verification = await persistBreedingObservationVerification({
-        animal,
-        insemination: request,
-        verificationResult: "return_to_heat",
-        checkMethod: "visual_observation",
-        checkedAt: new Date(),
-        technicianNotes: notes,
-        nextCheckDate: null,
-        evidencePhotos: photos,
-        actor: req.user,
-        taskId: existingTask?._id,
-      });
+    if (reportType === "return_to_heat") {
+      let verification;
+      try {
+        verification = await persistBreedingObservationVerification({
+          animal,
+          insemination: request,
+          verificationResult: "return_to_heat",
+          checkMethod: "visual_observation",
+          checkedAt: new Date(),
+          technicianNotes: notes,
+          nextCheckDate: null,
+          evidencePhotos: normalizedEvidenceUrls,
+          actor: req.user,
+          taskId: existingTask?._id,
+        });
+      } catch (persistErr) {
+        await cleanupUploadedAssets(uploadResults);
+        throw persistErr;
+      }
 
       // Clean up any Pending reproductive tasks (like PD) according to the policy
       await cancelPendingReproductiveTasksForInsemination({
@@ -1477,9 +1721,9 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
     request.farmerOutcomeReport = reportType;
     request.farmerOutcomeReportedAt = observationReportedAt;
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
-    request.farmerObservationNotes = notes || '';
-    request.evidencePhotos = photos;
-    request.observationSource = 'technician';
+    request.farmerObservationNotes = notes || "";
+    request.evidencePhotos = normalizedEvidenceUrls;
+    request.observationSource = "technician";
     request.observationRecordedBy = req.user._id;
 
     // Follow-up adjustment (temporarily reusing the existing logic until BreedingFollowUp task is fully separated)
@@ -1503,8 +1747,8 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
           $set: {
             status: "Completed",
             completedAt: new Date(),
-          }
-        }
+          },
+        },
       );
     }
 
@@ -1513,52 +1757,65 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
     request.verificationRequested = technicianVerificationRequired;
     request.verificationStatus = followUp.verificationStatus;
 
-    let nextAction = 'Observation saved.';
+    let nextAction = "Observation saved.";
 
-    if (reportType === 'possible_pregnancy') {
-      request.outcomeVerificationStatus = 'reported';
+    if (reportType === "possible_pregnancy") {
+      request.outcomeVerificationStatus = "reported";
       // 3. Stop Technician observations from becoming fake farmer observations
       // request.outcomeConfirmationSource = 'farmer_possible_pregnancy';
       nextAction = technicianVerificationRequired
-        ? 'Possible pregnancy signs recorded. Technician follow-up is available now.'
-        : 'Possible pregnancy signs recorded. Pregnancy confirmation will follow the existing readiness schedule.';
+        ? "Possible pregnancy signs recorded. Technician follow-up is available now."
+        : "Possible pregnancy signs recorded. Pregnancy confirmation will follow the existing readiness schedule.";
     }
 
-    if (reportType === 'unsure') {
-      request.outcomeVerificationStatus = 'pending';
+    if (reportType === "unsure") {
+      request.outcomeVerificationStatus = "pending";
       request.outcomeConfirmationSource = null;
       request.outcomeConfirmedBy = null;
       request.outcomeConfirmedAt = null;
-      nextAction = 'Observation saved. Continue monitoring the animal.';
+      nextAction = "Observation saved. Continue monitoring the animal.";
     }
 
     request.statusHistory = request.statusHistory || [];
     request.statusHistory.push({
-      status: 'technician_observation_recorded',
-      note: `Technician recorded observation: ${reportType} via ${source || 'technician'}.`,
+      status: "technician_observation_recorded",
+      note: `Technician recorded observation: ${reportType} via ${source || "technician"}.`,
       actorId: req.user._id,
       createdAt: new Date(),
     });
 
     animal.activityLogs = animal.activityLogs || [];
     animal.activityLogs.push({
-      event: 'Breeding Observation Recorded',
+      event: "Breeding Observation Recorded",
       date: new Date(),
-      description: `Technician recorded observation: ${reportType}. ${notes || ''}`.trim(),
+      description:
+        `Technician recorded observation: ${reportType}. ${notes || ""}`.trim(),
     });
 
-    await Promise.all([
-      request.save(),
-      animal.save(),
-      createTimelineEvent({
+    // Authoritative persistence boundary:
+    try {
+      await request.save();
+    } catch (persistErr) {
+      await cleanupUploadedAssets(uploadResults);
+      throw persistErr;
+    }
+
+    try {
+      await animal.save();
+    } catch (animalErr) {
+      console.error("[recordTechnicianBreedingObservation animal.save ERROR]", animalErr.message);
+    }
+
+    try {
+      await createTimelineEvent({
         animalId: animal._id,
-        eventType: 'technician_breeding_observation_recorded',
+        eventType: "technician_breeding_observation_recorded",
         actorId: req.user._id,
-        sourceType: 'Insemination',
+        sourceType: "Insemination",
         sourceId: request._id,
-        title: 'Breeding observation recorded',
-        summary: `${reportType.replaceAll('_', ' ')}${notes ? `: ${notes}` : ''}`,
-        attachments: photos,
+        title: "Breeding observation recorded",
+        summary: `${reportType.replaceAll("_", " ")}${notes ? `: ${notes}` : ""}`,
+        attachments: normalizedEvidenceUrls,
         metadata: {
           reportType,
           source,
@@ -1566,22 +1823,29 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
           technicianFollowUpRequired: technicianVerificationRequired,
           verificationTaskId: verificationTask?._id,
         },
-      }),
-      createAuditLog({
-        entityType: 'Insemination',
+      });
+    } catch (timelineErr) {
+      console.error("[recordTechnicianBreedingObservation timeline ERROR]", timelineErr.message);
+    }
+
+    try {
+      await createAuditLog({
+        entityType: "Insemination",
         entityId: request._id,
-        action: 'technician_breeding_observation_recorded',
+        action: "technician_breeding_observation_recorded",
         actorId: req.user._id,
         after: {
           farmerOutcomeReport: reportType,
           observationSource: source,
           observationRecordedBy: req.user._id,
         },
-      }),
-    ]);
+      });
+    } catch (auditErr) {
+      console.error("[recordTechnicianBreedingObservation audit ERROR]", auditErr.message);
+    }
 
     return res.status(200).json({
-      message: 'Technician observation successfully recorded.',
+      message: "Technician observation successfully recorded.",
       data: {
         request,
         animal,
@@ -1590,9 +1854,9 @@ export const recordTechnicianBreedingObservation = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Record technician breeding observation error:', error);
+    console.error("Record technician breeding observation error:", error);
     res.status(error.status || 500).json({
-      message: error.message || 'Internal server error.',
+      message: error.message || "Internal server error.",
       code: error.code,
     });
   }
@@ -1611,8 +1875,12 @@ export const submitFarmerPregnancyReport = async (req, res) => {
       });
     }
 
-    const request = await Insemination.findOne({ _id: id, deletedAt: null }).populate("animalId");
-    if (!request) return res.status(404).json({ message: "AI request record not found." });
+    const request = await Insemination.findOne({
+      _id: id,
+      deletedAt: null,
+    }).populate("animalId");
+    if (!request)
+      return res.status(404).json({ message: "AI request record not found." });
 
     assertAIRequestAccess(req.user, request);
 
@@ -1625,7 +1893,8 @@ export const submitFarmerPregnancyReport = async (req, res) => {
 
     if (request.status !== "done") {
       return res.status(400).json({
-        message: "Pregnancy reports can only be submitted after an AI service has been authoritatively performed.",
+        message:
+          "Pregnancy reports can only be submitted after an AI service has been authoritatively performed.",
         code: "AI_NOT_COMPLETED",
       });
     }
@@ -1637,21 +1906,31 @@ export const submitFarmerPregnancyReport = async (req, res) => {
       });
     }
 
-    if (request.outcome === "Pregnant" || request.outcome === "Failed" || request.isSuccess !== null || request.outcomeVerificationStatus === "verified") {
+    if (
+      request.outcome === "Pregnant" ||
+      request.outcome === "Failed" ||
+      request.isSuccess !== null ||
+      request.outcomeVerificationStatus === "verified"
+    ) {
       return res.status(409).json({
         message: "This AI attempt has already been authoritatively resolved.",
         code: "AI_ALREADY_RESOLVED",
       });
     }
 
-    if (request.farmerPregnancyReport && request.pregnancyReportVerificationStatus === "pending") {
+    if (
+      request.farmerPregnancyReport &&
+      request.pregnancyReportVerificationStatus === "pending"
+    ) {
       return res.status(409).json({
         message: "A pregnancy report is already pending technician review.",
         code: "PREGNANCY_REPORT_ALREADY_PENDING",
       });
     }
 
-    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    const animal = await Animal.findById(
+      request.animalId?._id || request.animalId,
+    );
     if (!animal) return res.status(404).json({ message: "Animal not found." });
 
     if (animal.reproductiveStatus === "Pregnant") {
@@ -1661,27 +1940,93 @@ export const submitFarmerPregnancyReport = async (req, res) => {
       });
     }
 
-    const photos = Array.isArray(evidencePhotos) ? evidencePhotos.filter(Boolean) : (evidenceImageUrl ? [evidenceImageUrl] : []);
+    if (evidencePhotos !== undefined) {
+      if (
+        !Array.isArray(evidencePhotos) ||
+        !evidencePhotos.every((p) => typeof p === "string")
+      ) {
+        return res.status(400).json({
+          code: "INVALID_PHOTOS",
+          message: "Evidence photos must be an array of strings.",
+        });
+      }
+    }
+
+    const nonBlankPhotos = Array.isArray(evidencePhotos)
+      ? evidencePhotos.filter((p) => typeof p === "string" && p.trim().length > 0)
+      : [];
+
+    let candidatePhotos = [];
+    if (Array.isArray(evidencePhotos) && nonBlankPhotos.length > 0) {
+      candidatePhotos = evidencePhotos;
+    } else if (
+      typeof evidenceImageUrl === "string" &&
+      evidenceImageUrl.trim().length > 0
+    ) {
+      candidatePhotos = [evidenceImageUrl.trim()];
+    } else {
+      candidatePhotos = [];
+    }
+
+    if (candidatePhotos.length > 3) {
+      return res.status(400).json({
+        code: "TOO_MANY_PHOTOS",
+        message: "Maximum of 3 evidence photos allowed.",
+      });
+    }
+
+    let uploadResults = [];
+    if (candidatePhotos.length > 0) {
+      try {
+        uploadResults = await uploadImages(candidatePhotos, {
+          folder: "breeding_evidence",
+        });
+      } catch (uploadErr) {
+        console.error(
+          "[Pregnancy Report Image Upload Error]",
+          uploadErr.message,
+        );
+        return res.status(uploadErr.status || 400).json({
+          message: uploadErr.message || "Evidence image upload failed.",
+          code: uploadErr.code || "IMAGE_UPLOAD_FAILED",
+        });
+      }
+    }
+
+    const normalizedPhotos = uploadResults.map((r) => r.url);
 
     request.farmerPregnancyReport = true;
     request.farmerPregnancyReportedAt = new Date();
     request.farmerPregnancyNotes = notes || "";
-    request.farmerPregnancyPhotos = photos;
+    request.farmerPregnancyPhotos = normalizedPhotos;
     request.pregnancyReportVerificationStatus = "pending";
 
     console.log("----- PREGNANCY REPORT TRACE -----");
     console.log("request.params.id:", id);
-    console.log("request._id:", request._id.toString());
-    console.log("request.collection.name:", request.collection.name);
+    console.log("request._id:", request._id?.toString?.() || request._id);
+    console.log("request.collection.name:", request.collection?.name);
     console.log("BEFORE save:");
     console.log("farmerPregnancyReport:", request.farmerPregnancyReport);
-    console.log("pregnancyReportVerificationStatus:", request.pregnancyReportVerificationStatus);
+    console.log(
+      "pregnancyReportVerificationStatus:",
+      request.pregnancyReportVerificationStatus,
+    );
     console.log("farmerPregnancyNotes:", request.farmerPregnancyNotes);
-    console.log("farmerPregnancyPhotos.length:", request.farmerPregnancyPhotos?.length);
+    console.log(
+      "farmerPregnancyPhotos.length:",
+      request.farmerPregnancyPhotos?.length,
+    );
 
-    await Promise.all([
-      request.save(),
-      createTimelineEvent({
+    // Authoritative persistence boundary:
+    try {
+      await request.save();
+    } catch (persistErr) {
+      await cleanupUploadedAssets(uploadResults);
+      throw persistErr;
+    }
+
+    try {
+      await createTimelineEvent({
         animalId: animal._id,
         eventType: "farmer_breeding_observation_reported",
         actorId: req.user._id,
@@ -1689,17 +2034,25 @@ export const submitFarmerPregnancyReport = async (req, res) => {
         sourceId: request._id,
         title: "Farmer reported pregnancy",
         summary: `Pregnancy report submitted with evidence.`,
-        attachments: photos,
+        attachments: normalizedPhotos,
         metadata: { isPregnancyReport: true },
-      }),
-    ]);
+      });
+    } catch (timelineErr) {
+      console.error("[submitFarmerPregnancyReport timeline ERROR]", timelineErr.message);
+    }
 
     const refetched = await Insemination.findById(request._id);
     console.log("AFTER save/refetch:");
     console.log("farmerPregnancyReport:", refetched?.farmerPregnancyReport);
-    console.log("pregnancyReportVerificationStatus:", refetched?.pregnancyReportVerificationStatus);
+    console.log(
+      "pregnancyReportVerificationStatus:",
+      refetched?.pregnancyReportVerificationStatus,
+    );
     console.log("farmerPregnancyNotes:", refetched?.farmerPregnancyNotes);
-    console.log("farmerPregnancyPhotos.length:", refetched?.farmerPregnancyPhotos?.length);
+    console.log(
+      "farmerPregnancyPhotos.length:",
+      refetched?.farmerPregnancyPhotos?.length,
+    );
     console.log("----------------------------------");
 
     res.status(200).json({
@@ -1732,8 +2085,12 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
       return res.status(400).json({ message: "Invalid verification action." });
     }
 
-    const request = await Insemination.findOne({ _id: id, deletedAt: null }).populate("animalId");
-    if (!request) return res.status(404).json({ message: "AI request record not found." });
+    const request = await Insemination.findOne({
+      _id: id,
+      deletedAt: null,
+    }).populate("animalId");
+    if (!request)
+      return res.status(404).json({ message: "AI request record not found." });
 
     const reviewTask = await Task.findOne({
       taskType: { $in: ["PD", "BreedingFollowUp"] },
@@ -1752,14 +2109,19 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
       allowUnassignedTaskClaim: false,
     });
 
-    if (!request.farmerPregnancyReport || request.pregnancyReportVerificationStatus !== "pending") {
+    if (
+      !request.farmerPregnancyReport ||
+      request.pregnancyReportVerificationStatus !== "pending"
+    ) {
       return res.status(400).json({
         message: "There is no pending farmer pregnancy report to verify.",
         code: "NO_PENDING_REPORT",
       });
     }
 
-    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    const animal = await Animal.findById(
+      request.animalId?._id || request.animalId,
+    );
     if (!animal) return res.status(404).json({ message: "Animal not found." });
 
     if (action === "request_more_info") {
@@ -1776,7 +2138,8 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
           sourceType: "Insemination",
           sourceId: request._id,
           title: "Technician requested more info",
-          summary: "More information was requested for the farmer pregnancy report.",
+          summary:
+            "More information was requested for the farmer pregnancy report.",
         }),
       ]);
 
@@ -1788,7 +2151,8 @@ export const verifyFarmerPregnancyReport = async (req, res) => {
 
     if (action === "accept") {
       return res.status(400).json({
-        message: "Direct acceptance of farmer pregnancy reports is deprecated. Please use the professional pregnancy diagnosis workflow (PD Task).",
+        message:
+          "Direct acceptance of farmer pregnancy reports is deprecated. Please use the professional pregnancy diagnosis workflow (PD Task).",
         code: "DEPRECATED_WORKFLOW",
       });
     }
@@ -1925,6 +2289,8 @@ export const buildCandidateAIDetail = (request) => {
       ? request.previousAttemptId
       : null;
 
+  const requestPhotos = getAIRequestPhotos(request);
+
   return {
     id: request._id,
     _id: request._id,
@@ -1955,7 +2321,8 @@ export const buildCandidateAIDetail = (request) => {
     heatSigns: request.heatSigns,
     farmerNotes: safeCandidateText(request.comment),
     comment: safeCandidateText(request.comment),
-    imageUrl: safeCandidateText(request.imageUrl),
+    imageUrl: requestPhotos[0] || "",
+    photos: requestPhotos,
     animalId: request.animalId,
     farmerName: safeCandidateText(farmer.name),
     municipality:
@@ -2048,7 +2415,6 @@ export const getAIRequestDetail = async (req, res) => {
       });
     }
 
-
     const animal = request.animalId;
 
     let pregnancyRecord = null;
@@ -2110,6 +2476,9 @@ export const getAIRequestDetail = async (req, res) => {
       request.farmerId?._id?.toString() === req.user._id.toString();
 
     const requestObj = request.toObject();
+
+    requestObj.photos = getAIRequestPhotos(requestObj);
+    requestObj.imageUrl = requestObj.photos[0] || "";
 
     requestObj.status = normalizeAIStatus(requestObj.status);
     requestObj.requestKind =
@@ -2715,6 +3084,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       technicianNotes = "",
       nextCheckDate,
       evidencePhotos = [],
+      evidenceImageUrl,
       policyVersion,
       taskId,
     } = req.body;
@@ -2750,9 +3120,14 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
 
     assertAIRecordSupportsCurrentTracking(request);
 
-    if (request.isSuccess === false || request.verificationStatus === "verified" || request.verificationStatus === "rejected") {
+    if (
+      request.isSuccess === false ||
+      request.verificationStatus === "verified" ||
+      request.verificationStatus === "rejected"
+    ) {
       return res.status(409).json({
-        message: "This insemination attempt has already been resolved or verified.",
+        message:
+          "This insemination attempt has already been resolved or verified.",
         code: "VERIFICATION_ALREADY_RESOLVED",
       });
     }
@@ -2787,6 +3162,15 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     const reviewDecisionDoesNotRequireMethod =
       isReturnToHeatObservationReview &&
       ["return_to_heat", "cannot_confirm"].includes(verificationResult);
+    if (
+      !reviewDecisionDoesNotRequireMethod &&
+      (typeof checkMethod !== "string" || !checkMethod.trim())
+    ) {
+      return res.status(422).json({
+        message: "Select a diagnostic method before saving the pregnancy diagnosis.",
+        code: "PREGNANCY_DIAGNOSIS_METHOD_REQUIRED",
+      });
+    }
     if (
       !reviewDecisionDoesNotRequireMethod &&
       !validMethods.includes(checkMethod)
@@ -2862,23 +3246,134 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
           : "Animal confirmed not pregnant. Status reset to Normal.";
       pregnancyRecordCreated = !alreadyRecorded;
     } else {
-      const verification = await persistBreedingObservationVerification({
-        animal,
-        insemination: request,
-        verificationResult,
-        checkMethod,
-        checkedAt,
-        technicianNotes,
-        nextCheckDate,
-        evidencePhotos,
-        actor: req.user,
-        taskId: taskId || request.verificationTaskId,
-      });
+      if (evidencePhotos !== undefined) {
+        if (
+          !Array.isArray(evidencePhotos) ||
+          !evidencePhotos.every((p) => typeof p === "string")
+        ) {
+          return res.status(400).json({
+            code: "INVALID_PHOTOS",
+            message: "Evidence photos must be an array of strings.",
+          });
+        }
+      }
+
+      const nonBlankPhotos = Array.isArray(evidencePhotos)
+        ? evidencePhotos.filter((p) => typeof p === "string" && p.trim().length > 0)
+        : [];
+
+      let candidatePhotos = [];
+      if (Array.isArray(evidencePhotos) && nonBlankPhotos.length > 0) {
+        candidatePhotos = evidencePhotos;
+      } else if (
+        typeof evidenceImageUrl === "string" &&
+        evidenceImageUrl.trim().length > 0
+      ) {
+        candidatePhotos = [evidenceImageUrl.trim()];
+      } else {
+        candidatePhotos = [];
+      }
+
+      let uploadResults = [];
+      if (candidatePhotos.length > 0) {
+        try {
+          uploadResults = await uploadImages(candidatePhotos, {
+            folder: "breeding_evidence",
+          });
+        } catch (uploadErr) {
+          console.error(
+            "[Technician Verification Image Upload Error]",
+            uploadErr.message,
+          );
+          return res.status(uploadErr.status || 400).json({
+            message: uploadErr.message || "Evidence image upload failed.",
+            code: uploadErr.code || "IMAGE_UPLOAD_FAILED",
+          });
+        }
+      }
+
+      const normalizedEvidenceUrls = uploadResults.map((r) => r.url);
+
+      let verification;
+      try {
+        verification = await persistBreedingObservationVerification({
+          animal,
+          insemination: request,
+          verificationResult,
+          checkMethod,
+          checkedAt,
+          technicianNotes,
+          nextCheckDate,
+          evidencePhotos: normalizedEvidenceUrls,
+          actor: req.user,
+          taskId: taskId || request.verificationTaskId,
+        });
+      } catch (persistErr) {
+        await cleanupUploadedAssets(uploadResults);
+        throw persistErr;
+      }
+
       verifiedRequest = verification.request;
       verifiedAnimal = verification.animal;
       task = verification.task;
       nextAction = verification.nextAction;
       pregnancyRecordCreated = verification.pregnancyRecordCreated;
+
+      // Secondary timeline event reusing same normalized URLs:
+      try {
+        await createTimelineEvent({
+          animalId: verifiedAnimal._id,
+          eventType: "technician_breeding_verification_recorded",
+          occurredAt: checkedAt ? new Date(checkedAt) : new Date(),
+          actorId: req.user._id,
+          sourceType: "Insemination",
+          sourceId: verifiedRequest._id,
+          title: isReturnToHeatObservationReview
+            ? "Farmer Breeding Update Reviewed"
+            : "Pregnancy Verification Completed",
+          summary:
+            `Recorded as ${verificationResult.replaceAll("_", " ")}${checkMethod ? ` via ${checkMethod}` : ""}. ${technicianNotes}`.trim(),
+          attachments: normalizedEvidenceUrls,
+          metadata: {
+            verificationResult,
+            checkMethod,
+            pregnancyRecordCreated,
+            verificationTaskId: task?._id,
+            nextCheckDate,
+          },
+        });
+      } catch (timelineErr) {
+        console.error(
+          "[verifyFarmerBreedingObservation timeline ERROR]",
+          timelineErr.message,
+        );
+      }
+
+      try {
+        await createAuditLog({
+          entityType: "Insemination",
+          entityId: verifiedRequest._id,
+          action: "verify_breeding_observation",
+          actorId: req.user._id,
+          before: beforeState,
+          after: {
+            verificationStatus: verifiedRequest.verificationStatus,
+            isSuccess: verifiedRequest.isSuccess,
+            outcome: verifiedRequest.outcome,
+            animalStatus: verifiedAnimal.reproductiveStatus,
+            verificationResult,
+          },
+          metadata: {
+            checkMethod,
+            technicianNotes,
+          },
+        });
+      } catch (auditErr) {
+        console.error(
+          "[verifyFarmerBreedingObservation audit ERROR]",
+          auditErr.message,
+        );
+      }
     }
 
     if (verificationResult === "pregnant" && !alreadyRecorded) {
@@ -2898,51 +3393,6 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         );
       }
     }
-
-    // Official diagnoses write their timeline and audit entries in the shared transaction.
-    if (!officialDiagnosis)
-      await createTimelineEvent({
-        animalId: verifiedAnimal._id,
-        eventType: "technician_breeding_verification_recorded",
-        occurredAt: checkedAt ? new Date(checkedAt) : new Date(),
-        actorId: req.user._id,
-        sourceType: "Insemination",
-        sourceId: verifiedRequest._id,
-        title: isReturnToHeatObservationReview
-          ? "Farmer Breeding Update Reviewed"
-          : "Pregnancy Verification Completed",
-        summary:
-          `Recorded as ${verificationResult.replaceAll("_", " ")}${checkMethod ? ` via ${checkMethod}` : ""}. ${technicianNotes}`.trim(),
-        attachments: evidencePhotos || [],
-        metadata: {
-          verificationResult,
-          checkMethod,
-          pregnancyRecordCreated,
-          verificationTaskId: task?._id,
-          nextCheckDate,
-        },
-      });
-
-    // Create Audit Log
-    if (!officialDiagnosis)
-      await createAuditLog({
-        entityType: "Insemination",
-        entityId: verifiedRequest._id,
-        action: "verify_breeding_observation",
-        actorId: req.user._id,
-        before: beforeState,
-        after: {
-          verificationStatus: verifiedRequest.verificationStatus,
-          isSuccess: verifiedRequest.isSuccess,
-          outcome: verifiedRequest.outcome,
-          animalStatus: verifiedAnimal.reproductiveStatus,
-          verificationResult,
-        },
-        metadata: {
-          checkMethod,
-          technicianNotes,
-        },
-      });
 
     // Notify Farmer
     if (!alreadyRecorded) {

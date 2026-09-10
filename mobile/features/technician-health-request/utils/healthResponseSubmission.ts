@@ -1,9 +1,5 @@
-export const TECHNICIAN_MY_WORK_COMPLETED_TARGET = {
-  pathname: "/(technician)/(tabs)/technician.requests",
-  params: {
-    section: "myWork",
-    workState: "completed",
-  },
+export const TECHNICIAN_RECORDS_TARGET = {
+  pathname: "/(technician)/(tabs)/technician.records",
 } as const;
 
 type ConfirmedHealthResponseSubmission<T> = {

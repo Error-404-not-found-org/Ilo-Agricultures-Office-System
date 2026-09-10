@@ -27,6 +27,7 @@ import { useTheme } from "@/lib/theme";
 import { calculateTargetCalvingDate } from "@/lib/cattleCore";
 import {
   getPregnancyCheckReadiness,
+  isEligibleInseminationForPD,
   PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
 } from "@/lib/reproductionEligibility";
 import { useQueryClient } from "@tanstack/react-query";
@@ -99,26 +100,7 @@ export default function PregnancyCheckScreen() {
       : `MONITORING — DAY ${timing.daysPostAI ?? 0} OF ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`;
   };
   // VALID INSEMINATIONS FILTER
-  const validInseminations = inseminations.filter(
-    (item: any) => {
-      const status = String(item?.status || "")
-        .trim()
-        .toLowerCase();
-      const hasPendingOutcome =
-        !item?.outcome || item.outcome === "Pending";
-      const hasValidAIServiceDate = Boolean(
-        item?.inseminationDate &&
-          !Number.isNaN(
-            new Date(item.inseminationDate).getTime(),
-          ),
-      );
-      return (
-        ["done", "completed"].includes(status) &&
-        hasPendingOutcome &&
-        hasValidAIServiceDate
-      );
-    },
-  );
+  const validInseminations = inseminations.filter(isEligibleInseminationForPD);
 
 
   useEffect(() => {
@@ -169,22 +151,7 @@ export default function PregnancyCheckScreen() {
         return (b.attemptNumber || 0) - (a.attemptNumber || 0);
       });
 
-      const latestPending = sortedInsemList.find(
-        (item: any) => {
-          const status = String(item?.status || "")
-            .trim()
-            .toLowerCase();
-          return (
-            ["done", "completed"].includes(status) &&
-            (!item?.outcome ||
-              item.outcome === "Pending") &&
-            Boolean(item?.inseminationDate) &&
-            !Number.isNaN(
-              new Date(item.inseminationDate).getTime(),
-            )
-          );
-        },
-      );
+      const latestPending = sortedInsemList.find(isEligibleInseminationForPD);
 
 
       if (latestPending) {

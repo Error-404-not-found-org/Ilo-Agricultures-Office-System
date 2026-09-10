@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { DIRECT_HEALTH_SERVICE_TYPES } from "../domain/direct-health-record.js";
 
 const MedicalRecordSchema = new mongoose.Schema(
   {
@@ -49,10 +50,15 @@ const MedicalRecordSchema = new mongoose.Schema(
       default: "technician_entry",
     },
     details: {
+      serviceType: {
+        type: String,
+        enum: DIRECT_HEALTH_SERVICE_TYPES,
+      },
       medicineName: String,
       dosage: String,
       diagnosis: String,
       treatment: String,
+      advice: String,
       weight: Number, // in kg, if type is 'Weight Log'
       withdrawalPeriodDays: Number,
       withdrawalEndDate: Date,

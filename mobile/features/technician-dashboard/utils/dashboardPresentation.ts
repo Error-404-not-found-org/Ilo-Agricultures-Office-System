@@ -109,6 +109,7 @@ export function formatSentAt(value?: string | Date | null): string {
   const time = date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "Asia/Manila",
   });
 
   if (isToday) return `Sent Today at ${time}`;
@@ -118,6 +119,7 @@ export function formatSentAt(value?: string | Date | null): string {
     month: "short",
     day: "numeric",
     year: hasDifferentYear ? "numeric" : undefined,
+    timeZone: "Asia/Manila",
   });
   return `Sent ${day} at ${time}`;
 }

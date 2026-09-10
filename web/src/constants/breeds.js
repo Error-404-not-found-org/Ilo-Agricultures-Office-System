@@ -16,6 +16,7 @@ export const BREED_OPTIONS_BY_SPECIES = {
     "Crossbred/Other",
   ],
   "Dairy Cattle": [
+    "Holstein",
     "Holstein Friesian",
     "Jersey",
     "Australian Friesian Sahiwal (AFS)",
