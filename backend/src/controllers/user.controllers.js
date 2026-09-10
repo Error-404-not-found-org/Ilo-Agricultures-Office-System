@@ -25,7 +25,7 @@ import {
   maskPhoneNumber,
   normalizePhilippineMobileNumber,
 } from "../utils/phone.js";
-import { resolveOrSyncUser } from "../services/auth-user.service.js";
+import { resolveOrSyncUser, resolveStaffUser } from "../services/auth-user.service.js";
 import {
   getPregnancyCheckReadiness,
   isFarmerBreedingObservationReminderDay,
@@ -205,6 +205,34 @@ export const bootstrapUser = async (req, res) => {
       success: false,
       message: error.message || "Failed to bootstrap user.",
       code,
+      retryable: error.retryable !== false,
+    });
+  }
+};
+
+/**
+ * Staff-only bootstrap. This resolver can link existing staff profiles but
+ * never invokes the public Farmer provisioning path.
+ */
+export const staffBootstrapUser = async (req, res) => {
+  try {
+    const clerkId = req.clerkId;
+    if (!clerkId) {
+      return res.status(401).json({ success: false, message: "No clerkId provided by middleware." });
+    }
+
+    const user = await resolveStaffUser(clerkId);
+    const safeUser = user.toObject();
+    delete safeUser.password;
+    delete safeUser.pushToken;
+
+    return res.status(200).json({ success: true, user: safeUser });
+  } catch (error) {
+    console.error("[staffBootstrapUser ERROR]", error.message);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Failed to resolve staff profile.",
+      code: error.code || "AUTH_RESOLUTION_ERROR",
       retryable: error.retryable !== false,
     });
   }

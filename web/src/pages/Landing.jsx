@@ -132,7 +132,7 @@ export default function Landing() {
         const token = await getToken();
         const [response] = await Promise.all([
           axiosInstance.post(
-            "/user/bootstrap",
+            "/user/staff-bootstrap",
             {},
             { headers: { Authorization: `Bearer ${token}` } },
           ),

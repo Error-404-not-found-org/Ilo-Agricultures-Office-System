@@ -26,6 +26,38 @@ const normalizeEmail = (value) =>
 const hasRealClerkLink = (user) =>
   Boolean(user?.clerkId) && !String(user.clerkId).startsWith("manual_");
 
+const assertAccountIsActive = (user) => {
+  if (user.status === "suspended") {
+    throw new AuthResolutionError("Account has been suspended.", 403, "ACCOUNT_SUSPENDED", false);
+  }
+  if (user.deletedAt || user.status === "deleted") {
+    throw new AuthResolutionError("Account has been deactivated.", 403, "ACCOUNT_DELETED", false);
+  }
+};
+
+const loadVerifiedClerkIdentity = async (clerkId) => {
+  let clerkUser;
+  try {
+    clerkUser = await clerkClient.users.getUser(clerkId);
+  } catch {
+    throw new AuthResolutionError("Failed to fetch identity from authentication provider.", 503, "USER_SYNC_UNAVAILABLE", true);
+  }
+
+  const emailEntry = clerkUser.primaryEmailAddress || clerkUser.emailAddresses?.find(
+    (entry) => entry.id === clerkUser.primaryEmailAddressId
+  );
+  const email = normalizeEmail(emailEntry?.emailAddress);
+
+  if (!email) {
+    throw new AuthResolutionError("A primary email address is required.", 400, "PRIMARY_EMAIL_REQUIRED", false);
+  }
+  if (emailEntry?.verification?.status !== "verified") {
+    throw new AuthResolutionError("Your primary email address must be verified.", 403, "EMAIL_NOT_VERIFIED", false);
+  }
+
+  return { clerkUser, email, imageUrl: clerkUser.imageUrl || "" };
+};
+
 const claimFarmerProfile = async ({ user, clerkId, imageUrl }) => {
   if (user.role !== "farmer") return false;
   user.clerkId = clerkId;
@@ -36,6 +68,79 @@ const claimFarmerProfile = async ({ user, clerkId, imageUrl }) => {
   user.imageUrl = imageUrl || user.imageUrl;
   await user.save();
   return true;
+};
+
+/**
+ * Resolve a Staff Portal identity without invoking public Farmer provisioning.
+ * Existing Farmers are returned unchanged so the client can show its specific
+ * Staff-access rejection; unknown identities never create a MongoDB profile.
+ */
+export const resolveStaffUser = async (clerkId) => {
+  if (!clerkId) {
+    throw new AuthResolutionError("Authentication is required.", 401, "AUTH_REQUIRED", false);
+  }
+
+  let user = await findByClerkId(clerkId);
+  if (user) {
+    assertAccountIsActive(user);
+    return user;
+  }
+
+  const { email, imageUrl } = await loadVerifiedClerkIdentity(clerkId);
+  user = await User.findOne({
+    $or: [{ normalizedEmail: email }, { email }],
+  });
+
+  if (!user) {
+    throw new AuthResolutionError(
+      "This account does not have a BreedSmart staff profile.",
+      404,
+      "STAFF_PROFILE_NOT_FOUND",
+      false,
+    );
+  }
+
+  assertAccountIsActive(user);
+  if (hasRealClerkLink(user) && user.clerkId !== clerkId) {
+    throw new AuthResolutionError("This email is linked to another account.", 409, "IDENTITY_LINK_CONFLICT", false);
+  }
+
+  if (user.role === "farmer") {
+    return user;
+  }
+
+  if (!["admin", "technician"].includes(user.role)) {
+    throw new AuthResolutionError(
+      "This account does not have access to the BreedSmart staff workspace.",
+      403,
+      "STAFF_ACCESS_DENIED",
+      false,
+    );
+  }
+
+  if (
+    user.role === "technician" &&
+    !hasRealClerkLink(user) &&
+    !["pending", "unclaimed"].includes(user.profileClaimStatus)
+  ) {
+    throw new AuthResolutionError(
+      "This technician profile cannot be claimed by this identity.",
+      409,
+      "IDENTITY_LINK_CONFLICT",
+      false,
+    );
+  }
+
+  user.clerkId = clerkId;
+  user.isVerified = true;
+  user.imageUrl = imageUrl || user.imageUrl;
+  if (user.role === "technician") {
+    user.profileClaimStatus = "claimed";
+    user.profileClaimedAt ||= new Date();
+    user.profileClaimedByClerkId = clerkId;
+  }
+  await user.save();
+  return user;
 };
 
 /**

@@ -131,7 +131,7 @@ describe("TechnicianWelcome", () => {
       screen.getByRole("link", { name: /Continue on Web/i }),
     ).toHaveAttribute("href", "/technician/dashboard");
     expect(axiosInstance.post).toHaveBeenCalledWith(
-      "/user/bootstrap",
+      "/user/staff-bootstrap",
       {},
       { headers: { Authorization: "Bearer token-1" } },
     );

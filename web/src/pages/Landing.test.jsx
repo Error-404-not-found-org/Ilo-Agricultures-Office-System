@@ -228,6 +228,11 @@ describe("Landing staff role resolution", () => {
       });
       expect(mocks.signOut).not.toHaveBeenCalled();
       expect(window.sessionStorage.getItem(STAFF_SIGN_IN_INTENT_KEY)).toBeNull();
+      expect(axiosInstance.post).toHaveBeenCalledWith(
+        "/user/staff-bootstrap",
+        {},
+        { headers: { Authorization: "Bearer token-1" } },
+      );
     },
   );
 
@@ -288,6 +293,38 @@ describe("Landing staff role resolution", () => {
         },
       );
     });
+  });
+
+  it("signs an unknown Staff identity out with the Staff-account-not-recognized message", async () => {
+    markStaffSignIn();
+    axiosInstance.post.mockRejectedValue({
+      response: {
+        status: 404,
+        data: { code: "STAFF_PROFILE_NOT_FOUND", retryable: false },
+      },
+    });
+
+    renderLanding();
+
+    await waitFor(() => {
+      expect(mocks.signOut).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "Staff account not recognized",
+        {
+          description:
+            "This account does not have access to the BreedSmart staff workspace. Contact your BreedSmart administrator.",
+          closeButton: false,
+          className: "landing-progress-toast",
+        },
+      );
+    });
+    expect(axiosInstance.post).toHaveBeenCalledWith(
+      "/user/staff-bootstrap",
+      {},
+      { headers: { Authorization: "Bearer token-1" } },
+    );
   });
 
   it("reports a genuine missing BreedSmart profile separately and signs out safely", async () => {

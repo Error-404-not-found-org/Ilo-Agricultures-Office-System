@@ -18,6 +18,7 @@ import {
   sendPhoneOtp,
   verifyPhoneOtp,
   bootstrapUser,
+  staffBootstrapUser,
 } from "../controllers/user.controllers.js";
 import { protectedRoute, requireRole, requireClerkAuthentication } from "../middleware/auth.middleware.js";
 import { otpLimiter } from "../middleware/rateLimit.middleware.js";
@@ -25,6 +26,7 @@ import { otpLimiter } from "../middleware/rateLimit.middleware.js";
 const router = Router();
 
 router.post("/bootstrap", requireClerkAuthentication, bootstrapUser);
+router.post("/staff-bootstrap", requireClerkAuthentication, staffBootstrapUser);
 
 router.post(
   "/create-invited-user",
