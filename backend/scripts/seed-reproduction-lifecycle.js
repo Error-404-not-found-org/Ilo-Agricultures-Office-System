@@ -77,6 +77,18 @@ export const SCENARIO_NAMES = Object.freeze([
   "RC26-23-HEAT-CHECK",
 ]);
 
+export const HEALTH_SCENARIO_NAMES = Object.freeze([
+  "RC26-18-HEALTH-PENDING",
+  "RC26-19-HEALTH-SCHEDULED",
+  "RC26-20-HEALTH-IN-PROGRESS",
+  "RC26-21-HEALTH-RESOLVED",
+  "RC26-22-HEALTH-WALK-IN",
+]);
+
+export const REPRODUCTIVE_SCENARIO_NAMES = Object.freeze(
+  SCENARIO_NAMES.filter((name) => !HEALTH_SCENARIO_NAMES.includes(name)),
+);
+
 export const SCENARIO_ALIASES = Object.freeze({
   reheat: "RC26-05-AI-DAY21",
   "pregnancy-report": "RC26-06-LIKELY-PREGNANT",
@@ -239,6 +251,13 @@ export const parseSeedArgs = (argv = process.argv.slice(2)) => {
 
   const rawScenario = value("scenario");
   const resolvedScenario = rawScenario ? resolveScenarioName(rawScenario) : null;
+  const excludeHealth =
+    argv.includes("--excludeHealth") ||
+    argv.includes("--exclude-health") ||
+    argv.includes("--noHealth") ||
+    argv.includes("--no-health") ||
+    argv.includes("--reproductionOnly") ||
+    argv.includes("--reproduction-only");
 
   return {
     farmerEmail: normalizedEmail(value("farmerEmail")),
@@ -246,6 +265,7 @@ export const parseSeedArgs = (argv = process.argv.slice(2)) => {
     seedBatch: value("seedBatch") || "",
     scenario: resolvedScenario,
     scenarioName: resolvedScenario,
+    excludeHealth,
     execute: argv.includes("--execute"),
   };
 };
@@ -749,6 +769,7 @@ export const buildReproductionLifecyclePlan = ({
   now = new Date(),
   seedBatch = createSeedBatch(now),
   scenarioName = null,
+  excludeHealth = false,
 }) => {
   if (!farmer?._id || !technician?._id) {
     throw new Error("Existing farmer and technician records are required.");
@@ -763,8 +784,12 @@ export const buildReproductionLifecyclePlan = ({
     : null;
 
   const shouldBuild = (index) => {
+    const name = SCENARIO_NAMES[index - 1];
+    if (excludeHealth && HEALTH_SCENARIO_NAMES.includes(name)) {
+      return false;
+    }
     if (!selectedScenario) return true;
-    return SCENARIO_NAMES[index - 1] === selectedScenario;
+    return name === selectedScenario;
   };
 
   const farmerId = farmer._id;
@@ -2395,6 +2420,7 @@ export const buildReproductionLifecyclePlan = ({
     scenarios,
     table,
     selectedScenario,
+    excludeHealth: Boolean(excludeHealth),
   };
 };
 
@@ -2405,6 +2431,10 @@ export const validateSeedPlan = (plan, models = MODELS) => {
     item.earTag.toLowerCase(),
   );
 
+  const expectedLength = plan.excludeHealth
+    ? REPRODUCTIVE_SCENARIO_NAMES.length
+    : SCENARIO_NAMES.length;
+
   if (plan.selectedScenario) {
     if (names.length !== 1 || names[0] !== plan.selectedScenario) {
       throw new Error(
@@ -2413,7 +2443,7 @@ export const validateSeedPlan = (plan, models = MODELS) => {
     }
   } else if (
     new Set(names).size !== names.length ||
-    names.length !== SCENARIO_NAMES.length
+    names.length !== expectedLength
   ) {
     throw new Error("Scenario identifiers are not unique and complete.");
   }
@@ -3384,6 +3414,7 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
       seedBatch,
       scenarioName: args.scenario,
+      excludeHealth: args.excludeHealth,
     });
 
     validateSeedPlan(plan);
@@ -3406,6 +3437,8 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
     if (plan.selectedScenario) {
       console.log(`Single scenario: ${plan.selectedScenario}`);
+    } else if (args.excludeHealth) {
+      console.log("Scope: Reproduction lifecycle only (health-related scenarios excluded)");
     }
 
     console.table(plan.table);

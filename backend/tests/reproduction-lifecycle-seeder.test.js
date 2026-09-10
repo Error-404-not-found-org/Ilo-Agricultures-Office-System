@@ -15,6 +15,8 @@ import {
   LEGACY_PREGNANCY_POLICY_VERSION,
 } from "../src/domain/pregnancy-confirmation-policy.js";
 import {
+  HEALTH_SCENARIO_NAMES,
+  REPRODUCTIVE_SCENARIO_NAMES,
   SCENARIO_NAMES,
   SCENARIO_ALIASES,
   applySeedPlan,
@@ -912,3 +914,37 @@ test("Reproduction seeder: RC26-23-HEAT-CHECK provides pre-observation Day 21 fi
   assert.equal(item.guidance, "Has your animal shown signs of heat since insemination?");
   assert.match(item.displaySubtitle, /21 days after insemination/);
 });
+
+test("Reproduction seeder: excludeHealth seeds all reproduction scenarios without health records", () => {
+  const parsed = parseSeedArgs([
+    "--farmerEmail=farmer@example.test",
+    "--technicianEmail=technician@example.test",
+    "--excludeHealth",
+  ]);
+  assert.equal(parsed.excludeHealth, true);
+
+  const plan = buildReproductionLifecyclePlan({
+    farmer: { _id: new mongoose.Types.ObjectId(), email: "farmer@example.test" },
+    technician: {
+      _id: new mongoose.Types.ObjectId(),
+      email: "technician@example.test",
+      role: "technician",
+      status: "active",
+      deletedAt: null,
+    },
+    now: new Date("2026-07-17T00:00:00.000Z"),
+    seedBatch: "repro-test-exhealth",
+    excludeHealth: true,
+  });
+
+  assert.doesNotThrow(() => validateSeedPlan(plan));
+  assert.equal(plan.scenarios.length, REPRODUCTIVE_SCENARIO_NAMES.length);
+  assert.equal(plan.collections.healthRequests.length, 0);
+  assert.equal(plan.collections.medicalRecords.length, 0);
+
+  const scenarioNames = plan.scenarios.map((s) => s.scenario);
+  for (const healthName of HEALTH_SCENARIO_NAMES) {
+    assert.equal(scenarioNames.includes(healthName), false);
+  }
+});
+

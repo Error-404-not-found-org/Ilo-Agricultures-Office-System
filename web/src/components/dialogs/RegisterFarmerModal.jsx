@@ -256,7 +256,7 @@ const RegisterFarmerModal = ({
             <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
             <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
             <Input id="farmer-phone" label="Contact number" required type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Use an 11-digit Philippine mobile number beginning with 09." placeholder="e.g. 09123456789" />
-            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" />
+            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
           </div>
         </fieldset>
 

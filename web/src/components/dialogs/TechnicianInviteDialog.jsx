@@ -166,6 +166,7 @@ export default function TechnicianInviteDialog({ open, onClose }) {
                 value={form.firstName}
                 onChange={(event) => updateField("firstName", event.target.value)}
                 autoComplete="given-name"
+                maxLength={50}
                 required
               />
             </label>
@@ -176,6 +177,7 @@ export default function TechnicianInviteDialog({ open, onClose }) {
                 value={form.lastName}
                 onChange={(event) => updateField("lastName", event.target.value)}
                 autoComplete="family-name"
+                maxLength={50}
                 required
               />
             </label>
@@ -188,6 +190,7 @@ export default function TechnicianInviteDialog({ open, onClose }) {
                 value={form.email}
                 onChange={(event) => updateField("email", event.target.value)}
                 autoComplete="email"
+                maxLength={100}
                 required
               />
             </label>
