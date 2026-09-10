@@ -35,6 +35,7 @@ import {
   claimRequest,
   getAIServiceContext,
   updateDispatchStatus,
+  completeTechnicianOnboarding,
   previousInsemination,
 } from "../controllers/technician.controllers.js";
 import { deleteAnimal as archiveAnimal } from "../controllers/animals.controllers.js";
@@ -67,6 +68,11 @@ router.get("/work-queue", getWorkQueue);
 router.patch("/requests/:type/:id/decline", declineTechnicianRequest);
 router.patch("/requests/:type/:id/claim", claimRequest);
 router.patch("/dispatch-status", updateDispatchStatus);
+router.patch(
+  "/onboarding",
+  requireRole(["technician"]),
+  completeTechnicianOnboarding,
+);
 router.get("/field-notes", getFieldNotes);
 router.get("/dashboard-stats", getDashboardStats);
 router.get("/dashboard-feed", getDashboardFeed);

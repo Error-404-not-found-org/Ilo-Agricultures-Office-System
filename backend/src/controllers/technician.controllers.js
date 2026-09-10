@@ -5955,3 +5955,68 @@ export const updateDispatchStatus = async (req, res) => {
     res.status(500).json({ message: "Failed to update dispatch status." });
   }
 };
+
+/**
+ * Mark the authenticated Technician's first-use onboarding complete.
+ * The original server timestamp is preserved on repeated calls.
+ */
+export const completeTechnicianOnboarding = async (req, res) => {
+  try {
+    if (req.user.role !== "technician") {
+      return res.status(403).json({
+        message: "Only Technicians can complete Technician onboarding.",
+        code: "TECHNICIAN_ROLE_REQUIRED",
+      });
+    }
+
+    const completedAt = new Date();
+    let user = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        role: "technician",
+        profileClaimStatus: "claimed",
+        technicianOnboardingCompletedAt: null,
+      },
+      { $set: { technicianOnboardingCompletedAt: completedAt } },
+      { returnDocument: "after", runValidators: true },
+    ).select(
+      "profileClaimStatus technicianOnboardingCompletedAt dispatchProfile",
+    );
+
+    if (!user) {
+      user = await User.findOne({
+        _id: req.user._id,
+        role: "technician",
+      }).select(
+        "profileClaimStatus technicianOnboardingCompletedAt dispatchProfile",
+      );
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        message: "Technician profile not found.",
+        code: "TECHNICIAN_NOT_FOUND",
+      });
+    }
+
+    if (user.profileClaimStatus !== "claimed") {
+      return res.status(409).json({
+        message: "Claim your Technician profile before completing onboarding.",
+        code: "TECHNICIAN_PROFILE_NOT_CLAIMED",
+      });
+    }
+
+    return res.status(200).json({
+      technicianOnboardingCompletedAt:
+        user.technicianOnboardingCompletedAt,
+      dispatchProfile: user.dispatchProfile,
+    });
+  } catch (error) {
+    console.error("[Complete Technician Onboarding] Error:", error);
+    return res.status(500).json({
+      message: "Failed to complete Technician onboarding.",
+      code: "TECHNICIAN_ONBOARDING_FAILED",
+      retryable: true,
+    });
+  }
+};

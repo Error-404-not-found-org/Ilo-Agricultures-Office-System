@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +8,10 @@ import { useApi } from "@/lib/api";
 import { useTechnicianDashboardQuery } from "@/features/technician/hooks/useTechnicianDashboard";
 import { normalizeTechnicianWorkItems } from "@/features/technician-requests/utils/requestWorkPresentation";
 import { normalizeTechnicianDashboardStats } from "../utils/dashboardStats";
+import {
+  consumeProfileWarningSuppression,
+  shouldShowProfileWarning,
+} from "@/features/technician-onboarding/utils/technicianOnboarding";
 
 export function useTechnicianDashboardScreen() {
   const api = useApi();
@@ -61,12 +65,19 @@ export function useTechnicianDashboardScreen() {
   });
 
   const [profileWarningVisible, setProfileWarningVisible] = useState(false);
+  const suppressProfileWarningForThisMount = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!dbUser || Object.keys(dbUser).length === 0) return;
-    setProfileWarningVisible(
-      !dbUser.phoneNumber || !dbUser.address?.barangay,
-    );
+    if (suppressProfileWarningForThisMount.current === null) {
+      suppressProfileWarningForThisMount.current =
+        consumeProfileWarningSuppression(dbUser._id);
+    }
+    setProfileWarningVisible(shouldShowProfileWarning(dbUser, {
+      onboardingVisible: false,
+      suppressAfterCompletion:
+        suppressProfileWarningForThisMount.current === true,
+    }));
   }, [dbUser]);
 
   const onRefresh = async () => {

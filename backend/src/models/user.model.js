@@ -162,6 +162,10 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    technicianOnboardingCompletedAt: {
+      type: Date,
+      default: null,
+    },
     profileClaimedByClerkId: {
       type: String,
       default: "",
