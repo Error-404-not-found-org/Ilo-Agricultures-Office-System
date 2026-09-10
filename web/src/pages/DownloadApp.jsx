@@ -10,13 +10,18 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import AuthShell from "../components/auth/AuthShell";
-import { APP_DEEP_LINK_URL, APP_DOWNLOAD_URL } from "../config/appDistribution";
+import {
+  APP_DEEP_LINK_URL,
+  APP_DOWNLOAD_URL,
+  getDownloadQrUrl,
+} from "../config/appDistribution";
 import { clerkEmbeddedAppearance } from "../config/clerkAppearance";
 import { resolveFarmerDownloadAccess } from "../config/onboardingBridge";
 import axiosInstance from "../lib/axios";
 
 const TEMPORARY_MESSAGE =
   "We couldn't reach BreedSmart. You can retry without signing in again.";
+const APP_DOWNLOAD_QR_URL = getDownloadQrUrl();
 
 export default function DownloadApp() {
   const { getToken, isLoaded, isSignedIn, userId, sessionId } = useAuth();
@@ -122,7 +127,7 @@ export default function DownloadApp() {
         )
       }
     >
-      <AppActions />
+      <AppActions showDownloadQr />
       <a href="/" className="btn btn-ghost mt-3 w-full">Return Home</a>
 
       {showStatus ? (
@@ -178,7 +183,7 @@ export default function DownloadApp() {
   );
 }
 
-function AppActions() {
+function AppActions({ showDownloadQr = false }) {
   return (
     <div className="grid gap-3">
       <a
@@ -202,6 +207,24 @@ function AppActions() {
           <Download className="h-5 w-5" aria-hidden="true" />
           Download BreedSmart
         </a>
+      ) : null}
+      {showDownloadQr && APP_DOWNLOAD_QR_URL ? (
+        <figure className="hidden border-t border-slate-200 pt-5 md:flex md:flex-col md:items-center">
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <img
+              src={APP_DOWNLOAD_QR_URL}
+              alt="QR code for the BreedSmart public download page"
+              className="h-40 w-40 object-contain"
+              width="160"
+              height="160"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <figcaption className="mt-3 text-center text-sm font-semibold text-slate-700">
+            Scan with your Android phone
+          </figcaption>
+        </figure>
       ) : null}
     </div>
   );

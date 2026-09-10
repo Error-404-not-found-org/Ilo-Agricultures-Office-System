@@ -10,6 +10,7 @@ const distribution = vi.hoisted(() => ({ url: "" }));
 vi.mock("../config/appDistribution", () => ({
   get APP_DOWNLOAD_URL() { return distribution.url; },
   APP_DEEP_LINK_URL: "ilo-agriculture://",
+  getDownloadQrUrl: vi.fn(() => "https://example.test/breedsmart-download-qr.png"),
 }));
 
 vi.mock("@clerk/clerk-react", () => ({
