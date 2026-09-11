@@ -39,6 +39,26 @@ test("Medicine preserves Diarrhea and multiple observed signs", () => {
   assert.match(legacy.symptoms, /Not eating normally/);
 });
 
+test("Sick or Injured Animal and Unusual behavior presentation are canonical Farmer options", () => {
+  const requestDetails = input.buildStructuredHealthRequestDetails({
+    assistanceRequested: "health_concern",
+    observedSigns: ["abnormal_behavior"],
+    farmerDescription: "Not feeling well.",
+  });
+
+  assert.equal(requestDetails.assistanceRequested, "health_concern");
+  assert.deepEqual(requestDetails.observedSigns, ["abnormal_behavior"]);
+  const legacy = input.buildLegacyHealthRequestDetails(requestDetails);
+  assert.match(legacy.symptoms, /Sick or Injured Animal/);
+  assert.match(legacy.symptoms, /Unusual behavior/);
+
+  const structured = input.getStructuredHealthRequestPresentation({
+    requestDetails,
+  });
+  assert.equal(structured.assistanceLabel, "Sick or Injured Animal");
+  assert.deepEqual(structured.observedSigns, ["Unusual behavior"]);
+});
+
 test("Health Concern observations and Preventive Care without signs remain valid", () => {
   assert.equal(
     input.getHealthRequestInputValidationMessage({

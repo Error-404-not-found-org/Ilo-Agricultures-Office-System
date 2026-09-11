@@ -148,17 +148,31 @@ const formatHealthCategory = (value: unknown) => {
   if (
     [
       "disease",
+      "disease_infection",
+      "disease / infection",
       "injury",
       "wound",
+      "sick",
+      "sick_or_injured",
+      "sick or injured animal",
       "health_concern",
-      "pregnancy_complication",
+      "health concern",
     ].includes(normalized)
   ) {
-    return normalized === "pregnancy_complication"
-      ? "Pregnancy-related health concern"
-      : "Sick or Injured Animal";
+    return "Sick or Injured Animal";
   }
-  if (["medicine", "deworming", "medicine_request"].includes(normalized)) {
+  if (normalized === "pregnancy_complication") {
+    return "Pregnancy-related health concern";
+  }
+  if (
+    [
+      "medicine",
+      "deworming",
+      "medicine_request",
+      "medicine request",
+      "medicine or dewormer",
+    ].includes(normalized)
+  ) {
     return "Medicine or Dewormer";
   }
   if (["checkup", "vaccination", "preventive_care"].includes(normalized)) {
@@ -325,9 +339,12 @@ export function HealthRequestDetails({
   const requestCategoryLabel =
     structuredInput?.assistanceLabel ||
     formatHealthCategory(request?.requestType);
-  const symptoms = structuredInput
+  const rawSymptoms = structuredInput
     ? structuredInput.observedSigns.join("\n")
     : normalizeText(request?.symptoms);
+  const symptoms = rawSymptoms
+    .replace(/Disease \/ Infection/g, "Sick or Injured Animal")
+    .replace(/Abnormal Behavior/g, "Unusual behavior");
   const farmerNotes = structuredInput
     ? structuredInput.farmerDescription
     : normalizeText(request?.farmerNotes, "\n\n");
@@ -1173,6 +1190,16 @@ export function HealthRequestDetails({
         {/* Farmer Request Section */}
         <Section title="Farmer request">
           <DetailRow label="Request type" value={requestCategoryLabel} />
+          {Boolean(request?.subtype) && (
+            <DetailRow
+              label="Subtype"
+              value={
+                cleanText(request.subtype).toLowerCase() === "dewormer"
+                  ? "Dewormer"
+                  : formatLabel(request.subtype, "Other")
+              }
+            />
+          )}
           <DetailRow
             label="Farmer observations and description"
             value={symptoms || "No observations or description were provided."}

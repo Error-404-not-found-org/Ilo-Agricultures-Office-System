@@ -430,4 +430,62 @@ describe("HealthRequestActionModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Give Advice/ }));
     expect(screen.getByLabelText("Advice for Farmer")).toHaveValue("");
   });
+
+  it("renders canonical Sick or Injured Animal and Unusual behavior instead of clinical Disease / Infection or Abnormal Behavior", async () => {
+    const diseaseRequest = ownedRequest({
+      requestType: "disease",
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "health_concern",
+        observedSigns: ["abnormal_behavior"],
+        farmerDescription: "Noticeable change in behavior.",
+      },
+    });
+    renderModal(diseaseRequest);
+
+    // Header badge & Assistance requested in details
+    const badges = await screen.findAllByText("Sick or Injured Animal");
+    expect(badges.length).toBeGreaterThanOrEqual(1);
+
+    // Clinical Request Details section has Assistance Requested label and canonical value
+    expect(screen.getByText("Assistance Requested")).toBeInTheDocument();
+    expect(screen.getByText("Unusual behavior")).toBeInTheDocument();
+    expect(screen.getByText("Noticeable change in behavior.")).toBeInTheDocument();
+
+    // Clinical/stale copy should NOT be shown
+    expect(screen.queryByText("Disease / Infection")).not.toBeInTheDocument();
+    expect(screen.queryByText("Abnormal Behavior")).not.toBeInTheDocument();
+  });
+
+  it("renders canonical Medicine or Dewormer with subtype when present", async () => {
+    const medicineRequest = ownedRequest({
+      requestType: "medicine",
+      subtype: "dewormer",
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "medicine_request",
+        observedSigns: [],
+        farmerDescription: "Need dewormer.",
+      },
+    });
+    renderModal(medicineRequest);
+
+    const medicineLabels = await screen.findAllByText("Medicine or Dewormer");
+    expect(medicineLabels.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Subtype")).toBeInTheDocument();
+    expect(screen.getByText("Dewormer")).toBeInTheDocument();
+  });
+
+  it("safely renders legacy health request without structured details", async () => {
+    const legacyRequest = ownedRequest({
+      requestType: "disease",
+      requestDetails: null,
+      symptoms: "Sick or Injured Animal\nUnusual behavior",
+    });
+    renderModal(legacyRequest);
+
+    const diseaseLabels = await screen.findAllByText("Sick or Injured Animal");
+    expect(diseaseLabels.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Assistance Requested")).toBeInTheDocument();
+  });
 });

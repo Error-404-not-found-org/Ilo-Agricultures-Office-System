@@ -79,7 +79,18 @@ const stageIndex = (status?: string) =>
 const getHealthCategoryLabel = (value: unknown) => {
   const normalized = getRequestText(value)?.toLowerCase();
   if (
-    ["disease", "injury", "wound", "health_concern"].includes(normalized || "")
+    [
+      "disease",
+      "disease_infection",
+      "disease / infection",
+      "injury",
+      "wound",
+      "sick",
+      "sick_or_injured",
+      "sick or injured animal",
+      "health_concern",
+      "health concern",
+    ].includes(normalized || "")
   ) {
     return "Sick or Injured Animal";
   }
@@ -87,7 +98,13 @@ const getHealthCategoryLabel = (value: unknown) => {
     return "Pregnancy-related health concern";
   }
   if (
-    ["medicine", "deworming", "medicine_request"].includes(normalized || "")
+    [
+      "medicine",
+      "deworming",
+      "medicine_request",
+      "medicine request",
+      "medicine or dewormer",
+    ].includes(normalized || "")
   ) {
     return "Medicine or Dewormer";
   }
@@ -97,7 +114,7 @@ const getHealthCategoryLabel = (value: unknown) => {
     return "Checkup or Vaccination";
   }
   if (normalized === "other") return "Other Health Assistance";
-  return getRequestText(value)?.replaceAll("_", " ") || "Health concern";
+  return getRequestText(value)?.replaceAll("_", " ") || "Health assistance";
 };
 
 const formatSubmittedDate = (value: unknown) => {

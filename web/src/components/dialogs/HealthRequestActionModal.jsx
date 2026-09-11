@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   AlertCircle,
   Building2,
   CalendarDays,
@@ -11,11 +10,9 @@ import {
   HeartPulse,
   Image as ImageIcon,
   Loader2,
-  MapPin,
   MessageSquareText,
   Phone,
   Stethoscope,
-  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
@@ -98,8 +95,68 @@ const formatRequestDate = (dateString) => {
 
 const formatRequestType = (type) => {
   if (!type) return "Not specified";
+  const normalized = String(type).trim().toLowerCase();
+
+  if (
+    [
+      "disease",
+      "disease_infection",
+      "disease / infection",
+      "injury",
+      "wound",
+      "sick",
+      "sick_or_injured",
+      "sick or injured animal",
+      "health_concern",
+      "health concern",
+    ].includes(normalized)
+  ) {
+    return "Sick or Injured Animal";
+  }
+  if (normalized === "pregnancy_complication") {
+    return "Pregnancy-related health concern";
+  }
+  if (
+    [
+      "medicine",
+      "deworming",
+      "medicine_request",
+      "medicine request",
+      "medicine or dewormer",
+    ].includes(normalized)
+  ) {
+    return "Medicine or Dewormer";
+  }
+  if (["checkup", "vaccination", "preventive_care"].includes(normalized)) {
+    return "Checkup or Vaccination";
+  }
+  if (normalized === "other") return "Other Health Assistance";
+
   return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 };
+
+const formatObservedSign = (sign) => {
+  if (!sign) return "";
+  const signMap = {
+    abnormal_behavior: "Unusual behavior",
+    not_eating_normally: "Not eating normally",
+    weakness: "Weak / low energy",
+    fever: "Fever / feels unusually hot",
+    coughing_or_breathing_problem: "Coughing / breathing problem",
+    nasal_discharge: "Nasal discharge",
+    swelling: "Swelling",
+    wound_or_injury: "Wound / injury",
+    difficulty_standing_or_walking: "Difficulty standing or walking",
+    pregnancy_related_concern: "Pregnancy-related concern",
+    diarrhea: "Diarrhea",
+    other: "Other",
+  };
+  return (
+    signMap[sign] ||
+    sign.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+};
+
 
 const getInitialRequest = (task, requestId) => ({
   ...(task?.raw || {}),
@@ -692,7 +749,10 @@ export default function HealthRequestActionModal({
                   </span>
                   <span className="badge badge-primary/15 text-primary border-primary/20 badge-sm font-semibold">
                     {formatRequestType(
-                      request?.requestType || task?.requestType,
+                      request?.requestDetails?.assistanceRequested ||
+                        request?.requestType ||
+                        task?.requestType,
+                      request?.subtype || task?.subtype,
                     )}
                   </span>
                 </div>
@@ -778,18 +838,38 @@ export default function HealthRequestActionModal({
                   <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
                     Assistance Requested
                   </span>
-                  <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium wrap-break-word whitespace-pre-wrap capitalize">
-                    {request?.requestDetails?.assistanceRequested
-                      ? request.requestDetails.assistanceRequested.replace(
-                          /_/g,
-                          " ",
-                        )
-                      : request?.symptoms ||
-                        request?.description ||
-                        task?.symptoms ||
-                        "Not recorded."}
+                  <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium wrap-break-word whitespace-pre-wrap">
+                    {formatRequestType(
+                      request?.requestDetails?.assistanceRequested ||
+                        request?.requestType ||
+                        task?.requestType,
+                      request?.subtype || task?.subtype,
+                    )}
                   </p>
                 </div>
+
+                {(() => {
+                  const subtypeValue = request?.subtype || task?.subtype;
+                  if (!subtypeValue || String(subtypeValue).toLowerCase() === "none") {
+                    return null;
+                  }
+                  const formattedSubtype =
+                    String(subtypeValue).toLowerCase() === "dewormer"
+                      ? "Dewormer"
+                      : String(subtypeValue)
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (c) => c.toUpperCase());
+                  return (
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                        Subtype
+                      </span>
+                      <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium wrap-break-word whitespace-pre-wrap">
+                        {formattedSubtype}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {request?.requestDetails?.observedSigns?.length > 0 && (
                   <div>
@@ -801,15 +881,52 @@ export default function HealthRequestActionModal({
                         (sign, index) => (
                           <span
                             key={index}
-                            className="badge badge-primary/15 text-primary border-primary/25 badge-sm font-semibold capitalize py-2 px-2.5"
+                            className="badge badge-primary/15 text-primary border-primary/25 badge-sm font-semibold py-2 px-2.5"
                           >
-                            {sign.replace(/_/g, " ")}
+                            {formatObservedSign(sign)}
                           </span>
                         ),
                       )}
                     </div>
                   </div>
                 )}
+
+                {Boolean(
+                  request?.requestDetails?.farmerDescription ||
+                    request?.farmerNotes,
+                ) && (
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                      Farmer Description
+                    </span>
+                    <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium wrap-break-word whitespace-pre-wrap">
+                      {request?.requestDetails?.farmerDescription ||
+                        request?.farmerNotes}
+                    </p>
+                  </div>
+                )}
+
+                {(() => {
+                  if (request?.requestDetails) return null;
+                  const rawSymptoms =
+                    request?.symptoms ||
+                    request?.description ||
+                    task?.symptoms;
+                  if (!rawSymptoms) return null;
+                  const cleanSymptoms = String(rawSymptoms)
+                    .replace(/Disease \/ Infection/g, "Sick or Injured Animal")
+                    .replace(/Abnormal Behavior/g, "Unusual behavior");
+                  return (
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                        Symptoms / Description
+                      </span>
+                      <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium wrap-break-word whitespace-pre-wrap">
+                        {cleanSymptoms}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
