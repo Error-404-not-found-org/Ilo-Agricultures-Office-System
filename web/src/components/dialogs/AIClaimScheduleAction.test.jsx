@@ -121,14 +121,15 @@ describe("Unified AI Request modal", () => {
     renderModal();
 
     const detailsDialog = screen.getByRole("dialog", {
-      name: "AI Request Details",
+      name: /Insemination Request Details|AI Request Details/i,
     });
     expect(detailsDialog).toHaveTextContent("Maria Santos");
     expect(detailsDialog).toHaveTextContent("09171234567");
     expect(detailsDialog).toHaveTextContent("Bessie · Tag EAR-17");
     expect(detailsDialog).toHaveTextContent("Cattle · Holstein");
     expect(detailsDialog).toHaveTextContent("San Roque, Iloilo City");
-    expect(detailsDialog).toHaveTextContent("Standing Heat, Clear Mucus");
+    expect(detailsDialog).toHaveTextContent("Standing Heat");
+    expect(detailsDialog).toHaveTextContent("Clear Mucus");
     expect(detailsDialog).toHaveTextContent(
       "Observed standing heat this morning.",
     );
@@ -146,13 +147,13 @@ describe("Unified AI Request modal", () => {
     );
     expect(
       screen.getByRole("img", {
-        name: "Enlarged Farmer-submitted AI request",
+        name: /Enlarged Farmer-submitted AI request|Preview of Photo 1/i,
       }),
     ).toHaveAttribute("src", "https://example.test/heat.jpg");
     fireEvent.click(
       within(
         screen.getByRole("dialog", { name: "Farmer request photo" }),
-      ).getByRole("button", { name: "Close" }),
+      ).getByRole("button", { name: /Close preview|^Close$/i }),
     );
     expect(mocks.patch).not.toHaveBeenCalled();
 
@@ -189,7 +190,7 @@ describe("Unified AI Request modal", () => {
     renderModal({ initialRequest: multiImageRequest });
 
     const detailsDialog = screen.getByRole("dialog", {
-      name: "AI Request Details",
+      name: /Insemination Request Details|AI Request Details/i,
     });
     expect(
       within(detailsDialog).getAllByRole("img", {
@@ -233,7 +234,7 @@ describe("Unified AI Request modal", () => {
     });
 
     const detailsDialog = screen.getByRole("dialog", {
-      name: "AI Request Details",
+      name: /Insemination Request Details|AI Request Details/i,
     });
     expect(
       within(detailsDialog).getAllByRole("img", {
@@ -254,7 +255,7 @@ describe("Unified AI Request modal", () => {
     });
 
     const detailsDialog = screen.getByRole("dialog", {
-      name: "AI Request Details",
+      name: /Insemination Request Details|AI Request Details/i,
     });
     expect(detailsDialog).toHaveTextContent("Farmer request photos (0)");
     expect(detailsDialog).toHaveTextContent("No request photos submitted.");
@@ -273,7 +274,7 @@ describe("Unified AI Request modal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to Details" }));
     expect(
-      screen.getByRole("dialog", { name: "AI Request Details" }),
+      screen.getByRole("dialog", { name: /Insemination Request Details|AI Request Details/i }),
     ).toBe(scheduleDialog);
 
     fireEvent.click(
@@ -401,5 +402,65 @@ describe("Unified AI Request modal", () => {
     expect(screen.getByLabelText("Tomorrow")).not.toBeChecked();
     expect(screen.getByLabelText("Morning")).not.toBeChecked();
     expect(mocks.patch).not.toHaveBeenCalled();
+  });
+
+  it("extracts actual note from legacy composite comment and renders under Farmer Note", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        taskDetails: null,
+        raw: {
+          comment: `Observed Heat Signs:
+• Standing to be Mounted (Standing Heat)
+
+Additional Notes:
+Sir pa ai ko bwas`,
+        },
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: /Insemination Request Details|AI Request Details/i,
+    });
+    expect(within(detailsDialog).getByText("Farmer Note")).toBeInTheDocument();
+    expect(detailsDialog).toHaveTextContent("Sir pa ai ko bwas");
+    expect(detailsDialog).toHaveTextContent("Standing Heat");
+  });
+
+  it("hides Farmer Note section when legacy composite comment has no actual note", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        taskDetails: null,
+        raw: {
+          comment: `Observed Heat Signs:
+• Standing to be Mounted (Standing Heat)`,
+        },
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: /Insemination Request Details|AI Request Details/i,
+    });
+    expect(screen.queryByText("Farmer Note")).not.toBeInTheDocument();
+    expect(detailsDialog).toHaveTextContent("Standing Heat");
+  });
+
+  it("renders modern plain comment under Farmer Note", () => {
+    renderModal({
+      initialRequest: {
+        ...request,
+        taskDetails: null,
+        raw: {
+          comment: "Sir pa ai ko bwas",
+        },
+      },
+    });
+
+    const detailsDialog = screen.getByRole("dialog", {
+      name: /Insemination Request Details|AI Request Details/i,
+    });
+    expect(within(detailsDialog).getByText("Farmer Note")).toBeInTheDocument();
+    expect(detailsDialog).toHaveTextContent("Sir pa ai ko bwas");
   });
 });
