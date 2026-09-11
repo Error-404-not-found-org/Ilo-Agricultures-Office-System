@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { BadgeCheck, Loader2, PawPrint, Upload, Search, X, AlertCircle, UserPlus } from "lucide-react";
+import { BadgeCheck, Loader2, PawPrint, Upload, Search, X, AlertCircle, Sparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -63,6 +63,74 @@ const RegisterLivestockModal = ({
   const selectedFarmer = useMemo(() => {
     return farmers.find((f) => String(f._id) === String(formData.farmerName));
   }, [farmers, formData.farmerName]);
+
+  const effectiveFarmerId =
+    preSelectedFarmer?._id ||
+    preSelectedFarmer?.id ||
+    formData.farmerName ||
+    livestock?.farmerId?._id ||
+    livestock?.farmerId ||
+    "";
+
+  const effectiveFarmerName =
+    preSelectedFarmer?.name ||
+    selectedFarmer?.name ||
+    livestock?.farmerId?.name ||
+    searchFarmer ||
+    "";
+
+  const { data: farmerAnimals = [] } = useQuery({
+    queryKey: ["farmer-animals", effectiveFarmerId],
+    queryFn: async () => {
+      if (!effectiveFarmerId) return [];
+      const response = await axiosInstance.get(
+        `/animals/farmer/${effectiveFarmerId}`,
+      );
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+    },
+    enabled: Boolean(isOpen && effectiveFarmerId),
+  });
+
+  const handleGenerateTag = () => {
+    const name = effectiveFarmerName.trim();
+    if (!name) {
+      toast.error("Please select a farmer first.");
+      return;
+    }
+
+    const nameParts = name.toUpperCase().split(/\s+/);
+    let initials = "";
+    if (nameParts.length > 1) {
+      initials = nameParts[0][0] + nameParts[nameParts.length - 1][0];
+    } else if (nameParts.length > 0 && nameParts[0].length > 0) {
+      initials = nameParts[0][0];
+    }
+
+    const existingTags = new Set(
+      farmerAnimals
+        .map((a) => String(a.earTag || "").trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    let nextNum = (farmerAnimals?.length || 0) + 1;
+    let candidate = initials
+      ? `${String(nextNum).padStart(2, "0")}${initials}`
+      : `TAG-${String(nextNum).padStart(3, "0")}`;
+
+    let attempts = 0;
+    while (existingTags.has(candidate) && attempts < 100) {
+      nextNum += 1;
+      candidate = initials
+        ? `${String(nextNum).padStart(2, "0")}${initials}`
+        : `TAG-${String(nextNum).padStart(3, "0")}`;
+      attempts += 1;
+    }
+
+    setFormData((prev) => ({ ...prev, earTag: candidate }));
+    toast.success(`Generated ear tag: ${candidate}`);
+  };
 
   const mutation = useMutation({
     mutationFn: async (data) => {
@@ -159,6 +227,11 @@ const RegisterLivestockModal = ({
 
   const updateField = (field) => (event) => {
     setFormData((current) => ({ ...current, [field]: event.target.value }));
+  };
+
+  const updateEarTag = (event) => {
+    const val = event.target.value.toUpperCase();
+    setFormData((current) => ({ ...current, earTag: val }));
   };
 
   const handleImageChange = (event) => {
@@ -428,7 +501,34 @@ const RegisterLivestockModal = ({
           <fieldset className="fieldset">
             <legend className="fieldset-legend text-sm font-bold">Animal details</legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input id="livestock-ear-tag" label="Ear tag number" required value={formData.earTag} maxLength={3} onChange={updateField("earTag")} placeholder="e.g. 123" />
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    htmlFor="livestock-ear-tag"
+                    className="text-xs font-semibold text-base-content/70 flex items-center gap-1"
+                  >
+                    Ear tag number
+                    <span className="text-error font-bold" aria-hidden="true">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateTag}
+                    className="btn btn-ghost btn-xs text-primary hover:bg-primary/10 gap-1 font-semibold"
+                    title="Generate tag based on farmer name and sequence"
+                  >
+                    <Sparkles size={12} />
+                    Generate Tag
+                  </button>
+                </div>
+                <Input
+                  id="livestock-ear-tag"
+                  required
+                  value={formData.earTag}
+                  maxLength={20}
+                  onChange={updateEarTag}
+                  placeholder="e.g. 01MC or EAR-17"
+                />
+              </div>
               <Select id="livestock-species" label="Species" required value={formData.species} onChange={updateField("species")} options={CATTLE_SPECIES} placeholder="" />
               <Select id="livestock-breed" label="Genetic breed" required value={formData.breed} onChange={updateField("breed")} options={BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS} placeholder="Select breed" />
               <Select id="livestock-color" label="Primary color" required value={formData.color} onChange={updateField("color")} options={CATTLE_COLORS} placeholder="Select color" />
