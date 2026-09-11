@@ -18,6 +18,10 @@ import {
 import { Button } from "@/components/ui/Button";
 import { useTheme } from "@/lib/theme";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
+import {
+  extractFarmerNote,
+  formatHeatSignLabel,
+} from "@/features/technician-requests/utils/aiRequestNote";
 import { AIRecordingFields } from "./AIRecordingFields";
 import type {
   AIRecordingValues,
@@ -143,6 +147,13 @@ export function RequestLinkedAIRecordForm({
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(
     null,
   );
+  const farmerNote = useMemo(() => {
+    const cleaned = (context.farmerNotes || [])
+      .map((note) => extractFarmerNote(note))
+      .filter(Boolean);
+    return cleaned.join("\n\n");
+  }, [context.farmerNotes]);
+
   const eligibilityWarning = useMemo(() => {
     const hasRequiredIdentity = Boolean(
       context.animal.gender || context.animal.sex,
@@ -292,19 +303,55 @@ export function RequestLinkedAIRecordForm({
             >
               Heat signs
             </Text>
-            <Text
-              style={{
-                color: colors.textSecondary,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 12,
-                lineHeight: 18,
-                marginTop: 3,
-              }}
-            >
-              {context.heatSigns.length > 0
-                ? context.heatSigns.join(", ")
-                : "No heat signs provided"}
-            </Text>
+            {context.heatSigns.length > 0 ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginTop: 6,
+                }}
+              >
+                {context.heatSigns.map((sign, idx) => {
+                  const label = formatHeatSignLabel(sign);
+                  return (
+                    <View
+                      key={`${sign}-${idx}`}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: colors.successBorder,
+                        backgroundColor: colors.successContainer,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: "Outfit_600SemiBold",
+                          color: colors.successForeground,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  lineHeight: 18,
+                  marginTop: 3,
+                }}
+              >
+                No heat signs provided
+              </Text>
+            )}
             <Text
               style={{
                 color: colors.textPrimary,
@@ -313,7 +360,7 @@ export function RequestLinkedAIRecordForm({
                 marginTop: 12,
               }}
             >
-              Farmer notes
+              Farmer note
             </Text>
             <Text
               style={{
@@ -324,9 +371,7 @@ export function RequestLinkedAIRecordForm({
                 marginTop: 3,
               }}
             >
-              {context.farmerNotes.length > 0
-                ? context.farmerNotes.join("\n\n")
-                : "No farmer note provided"}
+              {farmerNote || "No farmer note provided"}
             </Text>
           </View>
         </View>

@@ -22,6 +22,7 @@ import {
   MY_WORK_FILTERS,
   normalizeTechnicianWorkItems,
 } from "../utils/requestWorkPresentation";
+import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
 import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
@@ -79,10 +80,51 @@ export default function TechnicianMyWorkPanel({
         return;
       }
 
+      const targetWorkflowId = item.workflowId || item.id;
+      const isTerminal =
+        item.state === "completed" ||
+        item.allowedAction === "VIEW_RECORD" ||
+        ["completed", "done", "cancelled", "canceled"].includes(
+          String(item.status || "").toLowerCase(),
+        );
+
+      const isInProgress =
+        !isTerminal &&
+        (item.state === "in_progress" ||
+          ["in_progress", "inprogress", "in-progress"].includes(
+            String(item.status || "").toLowerCase(),
+          ) ||
+          item.actionLabel === "Continue Service");
+
+      if (isInProgress) {
+        if (!isCanonicalWorkflowId(targetWorkflowId)) {
+          toast.error("This AI work item is missing its canonical identifier.");
+          return;
+        }
+
+        router.push({
+          pathname: "/(technician)/record-ai",
+          params: {
+            mode: "request-linked",
+            requestId: targetWorkflowId,
+            workflowId: targetWorkflowId,
+            ...(item.taskId && isCanonicalWorkflowId(item.taskId)
+              ? { taskId: item.taskId }
+              : {}),
+            ...(item.scheduledDate ? { scheduleDate: item.scheduledDate } : {}),
+            ...(item.visitPeriod ? { visitPeriod: item.visitPeriod } : {}),
+            ...(item.farmerName ? { farmerName: item.farmerName } : {}),
+            ...(item.animalName ? { animalName: item.animalName } : {}),
+            ...(item.animalTag ? { earTag: item.animalTag } : {}),
+          },
+        });
+        return;
+      }
+
       router.push({
         pathname: "/(technician)/request-details",
         params: {
-          id: item.workflowId || item.id,
+          id: targetWorkflowId,
           type: "ai",
           viewOnly: item.allowedAction === "VIEW_RECORD" ? "true" : undefined,
           taskId: item.taskId || undefined,

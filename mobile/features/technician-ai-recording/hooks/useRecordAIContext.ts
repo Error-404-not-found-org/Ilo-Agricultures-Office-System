@@ -5,6 +5,10 @@ import { useApi } from "@/lib/api";
 import { aiRequestKeys } from "@/lib/queryKeys";
 import { getTechnicianRequestDetail } from "@/features/technician/services/technician.service";
 import { isCanonicalWorkflowId } from "@/features/technician-requests/utils/aiWorkflow";
+import {
+  extractFarmerNote,
+  formatHeatSignLabel,
+} from "@/features/technician-requests/utils/aiRequestNote";
 import type {
   RecordAIRouteMode,
   RequestLinkedContext,
@@ -119,11 +123,27 @@ const normalizeRequestContext = (
       },
       scheduledDate: request?.scheduledDate || null,
       visitPeriod,
-      heatSigns: uniqueStrings([request?.heatSigns]),
-      farmerNotes: uniqueStrings([
-        request?.comment,
-        request?.farmerObservationNotes,
-      ]),
+      heatSigns: Array.from(
+        new Set(
+          uniqueStrings([request?.heatSigns, request?.raw?.heatSigns])
+            .map(formatHeatSignLabel)
+            .filter(Boolean),
+        ),
+      ),
+      farmerNotes: Array.from(
+        new Set(
+          [
+            request?.farmerNotes,
+            request?.farmerObservationNotes,
+            request?.comment,
+            request?.note,
+            request?.raw?.comment,
+          ]
+            .flatMap((item) => (Array.isArray(item) ? item : [item]))
+            .map((note) => extractFarmerNote(note))
+            .filter(Boolean),
+        ),
+      ),
       attachmentUrls: uniqueStrings([
         request?.imageUrl,
         request?.evidencePhotos,
