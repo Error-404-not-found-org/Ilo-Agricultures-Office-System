@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildScheduleItems,
+  formatDashboardFarmerLocation,
+  formatPlannedSchedule,
   getScheduleNavigationTarget,
   getScheduleTimingState,
+  getScheduleWorkLabel,
   isFutureSchedule,
 } from "./technicianSchedulePresentation";
 
@@ -250,5 +253,133 @@ describe("isFutureSchedule", () => {
   it("identifies past dates as not future", () => {
     expect(isFutureSchedule("2026-09-01", "morning", morningNow)).toBe(false);
     expect(isFutureSchedule("2026-09-01", "afternoon", afternoonNow)).toBe(false);
+  });
+});
+
+describe("canonical in-progress AI presentation parity", () => {
+  it("formats planned schedule with date and period", () => {
+    expect(
+      formatPlannedSchedule({
+        scheduledDate: "2026-09-12T00:00:00.000Z",
+        visitPeriod: "afternoon",
+      }),
+    ).toBe("Sep 12, 2026 · Afternoon");
+
+    expect(
+      formatPlannedSchedule({
+        scheduledDate: "2026-09-12T00:00:00.000Z",
+        visitPeriod: "morning",
+      }),
+    ).toBe("Sep 12, 2026 · Morning");
+
+    expect(
+      formatPlannedSchedule({
+        scheduledDate: "2026-09-12T00:00:00.000Z",
+      }),
+    ).toBe("Sep 12, 2026");
+
+    expect(formatPlannedSchedule({})).toBeNull();
+  });
+
+  it("uses Artificial Insemination as scheduleLabel for canonical in-progress AI", () => {
+    expect(
+      getScheduleWorkLabel({
+        type: "insemination",
+        status: "in-progress",
+      }),
+    ).toBe("Artificial Insemination");
+
+    expect(
+      getScheduleWorkLabel({
+        type: "insemination",
+        status: "scheduled",
+      }),
+    ).toBe("Scheduled AI Visit");
+  });
+
+  it("treats canonical in-progress AI as due regardless of future scheduledDate", () => {
+    const futureDate = "2026-09-05T00:00:00.000Z";
+    const item = {
+      type: "insemination",
+      status: "in-progress",
+      scheduledDate: futureDate,
+    };
+    expect(getScheduleTimingState(item, NOW)).toBe("due");
+  });
+});
+
+describe("formatDashboardFarmerLocation for Today's Work", () => {
+  it("extracts barangay and municipality from farmer.address over farmLocationLabel", () => {
+    const item = {
+      farmLocationLabel: "PHF6+GGQ, Doña Luz, Jaro, Iloilo City, Philippines",
+      location: "Bita Sur, Oton",
+      raw: {
+        farmerId: {
+          name: "Mario Cabanig",
+          address: {
+            barangay: "Bita Sur",
+            municipality: "Oton",
+            province: "Iloilo",
+          },
+          farmLocation: {
+            detectedAddress: "PHF6+GGQ, Doña Luz, Jaro, Iloilo City, Philippines",
+          },
+        },
+      },
+    };
+
+    expect(formatDashboardFarmerLocation(item)).toBe("Bita Sur, Oton");
+  });
+
+  it("extracts barangay and city when city is used instead of municipality", () => {
+    const item = {
+      raw: {
+        farmerId: {
+          address: {
+            barangay: "Balabago",
+            city: "Jaro",
+          },
+        },
+      },
+    };
+
+    expect(formatDashboardFarmerLocation(item)).toBe("Balabago, Jaro");
+  });
+
+  it("uses human-readable address fallback when farmer.address is string", () => {
+    const item = {
+      location: "Bita Sur, Oton",
+    };
+
+    expect(formatDashboardFarmerLocation(item)).toBe("Bita Sur, Oton");
+  });
+
+  it("rejects plus codes and coordinates, falling back to Location not provided", () => {
+    const itemWithPlusCode = {
+      farmLocationLabel: "PHF6+GGQ, Doña Luz, Jaro, Iloilo City, Philippines",
+      location: "PHF6+GGQ, Doña Luz, Jaro",
+    };
+
+    expect(formatDashboardFarmerLocation(itemWithPlusCode)).toBe(
+      "Location not provided",
+    );
+
+    const itemWithCoords = {
+      location: "10.7202, 122.5621",
+    };
+
+    expect(formatDashboardFarmerLocation(itemWithCoords)).toBe(
+      "Location not provided",
+    );
+  });
+
+  it("returns Location not provided when address is completely empty or missing", () => {
+    expect(formatDashboardFarmerLocation({})).toBe("Location not provided");
+    expect(formatDashboardFarmerLocation(null)).toBe("Location not provided");
+    expect(
+      formatDashboardFarmerLocation({
+        location: "Unknown Location",
+      }),
+    ).toBe("Location not provided");
   });
 });

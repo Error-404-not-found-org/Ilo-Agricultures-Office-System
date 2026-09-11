@@ -183,6 +183,17 @@ const removeDuplicateExecutionTasks = (items) => {
 };
 
 export const getScheduleTimingState = (item, now = new Date()) => {
+  const status = normalizeValue(item?.status || item?.raw?.status);
+  const isInProgress =
+    (status === "in progress" ||
+      status === "in-progress" ||
+      Boolean(item?.serviceStartedAt || item?.raw?.serviceStartedAt)) &&
+    !TERMINAL_STATUSES.has(status);
+
+  if (isInProgress) {
+    return "due";
+  }
+
   const dateKey = getPhilippineDateKey(getScheduleDateValue(item));
   const todayKey = getPhilippineTodayKey(now);
   if (!dateKey || !todayKey) return "unknown";
@@ -192,9 +203,16 @@ export const getScheduleTimingState = (item, now = new Date()) => {
 };
 
 export const getScheduleWorkLabel = (item = {}) => {
+  const status = normalizeValue(item?.status || item?.raw?.status);
+  const isInProgress =
+    (status === "in progress" ||
+      status === "in-progress" ||
+      Boolean(item?.serviceStartedAt || item?.raw?.serviceStartedAt)) &&
+    !TERMINAL_STATUSES.has(status);
+
   switch (getScheduleEntityKind(item)) {
     case "ai":
-      return "Scheduled AI Visit";
+      return isInProgress ? "Artificial Insemination" : "Scheduled AI Visit";
     case "health":
       return "Scheduled Health Farm Visit";
     case "pregnancy":
@@ -286,6 +304,126 @@ export const formatScheduleDate = (value, options = {}) => {
     ...options,
   }).format(date);
 };
+
+export const formatPlannedSchedule = (item = {}) => {
+  const raw = item.raw || {};
+  const dateValue =
+    item.scheduledDate ||
+    raw.scheduledDate ||
+    item.schedule?.date ||
+    getScheduleDateValue(item);
+  if (!dateValue) return null;
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const dateStr = formatScheduleDate(date, { month: "short" });
+  const rawPeriod = normalizeValue(
+    item.visitPeriod || item.raw?.visitPeriod || item.schedule?.visitPeriod,
+  );
+  const periodLabel =
+    rawPeriod === "morning"
+      ? "Morning"
+      : rawPeriod === "afternoon"
+        ? "Afternoon"
+        : null;
+
+  return periodLabel ? `${dateStr} · ${periodLabel}` : dateStr;
+};
+
+const cleanAddressPart = (value) => {
+  const str = String(value || "").trim();
+  if (
+    !str ||
+    ["n/a", "na", "none", "null", "undefined", "unknown location"].includes(
+      str.toLowerCase(),
+    )
+  ) {
+    return "";
+  }
+  return str;
+};
+
+const isPlusCodeOrCoordinates = (value) => {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (/^[A-Z0-9]{2,8}\+[A-Z0-9]{2,}/i.test(trimmed)) return true;
+  if (/^-?\d+\.\d+,\s*-?\d+\.\d+/.test(trimmed)) return true;
+  if (/^farm pin saved$/i.test(trimmed)) return true;
+  return false;
+};
+
+export const formatDashboardFarmerLocation = (item = {}) => {
+  const safeItem = item || {};
+  const raw = safeItem.raw || {};
+  const farmer = raw.farmerId || safeItem.farmerId || {};
+  const address =
+    (typeof farmer.address === "object" && farmer.address) ||
+    (typeof raw.address === "object" && raw.address) ||
+    (typeof safeItem.address === "object" && safeItem.address) ||
+    (Array.isArray(farmer.address) && farmer.address[0]) ||
+    (Array.isArray(raw.address) && raw.address[0]) ||
+    null;
+
+  if (address) {
+    const barangay = cleanAddressPart(address.barangay);
+    const municipality = cleanAddressPart(
+      address.municipality || address.city,
+    );
+    if (barangay && municipality) {
+      return `${barangay}, ${municipality}`;
+    }
+    if (barangay) return barangay;
+    if (municipality) return municipality;
+  }
+
+  const topBarangay = cleanAddressPart(
+    safeItem.barangay || raw.barangay || farmer.barangay,
+  );
+  const topMunicipality = cleanAddressPart(
+    safeItem.municipality ||
+      safeItem.city ||
+      raw.municipality ||
+      raw.city ||
+      farmer.municipality ||
+      farmer.city,
+  );
+  if (topBarangay && topMunicipality) {
+    return `${topBarangay}, ${topMunicipality}`;
+  }
+  if (topBarangay) return topBarangay;
+  if (topMunicipality) return topMunicipality;
+
+  const locationText = cleanAddressPart(
+    safeItem.location ||
+      safeItem.locationLabel ||
+      (typeof farmer.address === "string" ? farmer.address : "") ||
+      (typeof raw.address === "string" ? raw.address : "") ||
+      (typeof safeItem.address === "string" ? safeItem.address : ""),
+  );
+
+  if (locationText && !isPlusCodeOrCoordinates(locationText)) {
+    const compactParts = locationText
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .filter(
+        (part) =>
+          !/^(philippines|western visayas|region vi|iloilo province|province of iloilo|iloilo)$/i.test(
+            part,
+          ),
+      );
+
+    if (compactParts.length >= 2) {
+      return compactParts.slice(0, 2).join(", ");
+    }
+    if (compactParts.length === 1) {
+      return compactParts[0];
+    }
+  }
+
+  return "Location not provided";
+};
+
 
 export const buildScheduleItems = (items = [], now = new Date()) =>
   removeDuplicateExecutionTasks(items)

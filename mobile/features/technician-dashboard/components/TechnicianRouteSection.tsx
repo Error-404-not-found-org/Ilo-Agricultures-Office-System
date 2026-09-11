@@ -12,7 +12,10 @@ import { useRouter } from "expo-router";
 import { AsyncState, SectionHeader, StatusBadge } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
-import { formatDashboardLocation } from "../utils/dashboardPresentation";
+import {
+  formatDashboardLocation,
+  formatPlannedSchedule,
+} from "../utils/dashboardPresentation";
 import { TechnicianRouteSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
 import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
 import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
@@ -166,6 +169,7 @@ function VisitRow({
     : item.animalTag
       ? `Animal ${item.animalTag}`
       : null;
+  const plannedSchedule = formatPlannedSchedule(item);
   const ServiceIcon =
     item.workType === "health"
       ? Stethoscope
@@ -289,6 +293,30 @@ function VisitRow({
                   }}
                 >
                   {formatDashboardLocation(item, item.location)}
+                </Text>
+              </View>
+            ) : null}
+
+            {plannedSchedule ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 3,
+                }}
+              >
+                <CalendarDays size={13} color={colors.textMuted} />
+
+                <Text
+                  textRole="caption"
+                  color="secondary"
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                  }}
+                >
+                  Planned: {plannedSchedule}
                 </Text>
               </View>
             ) : null}

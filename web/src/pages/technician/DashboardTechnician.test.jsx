@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import axiosInstance from "../../lib/axios";
+import { getPhilippineTodayKey } from "../../utils/technicianSchedulePresentation";
 import Dashboard from "./DashboardTechnician";
 
 vi.mock("../../lib/axios", () => ({
@@ -116,8 +117,16 @@ describe("Technician Dashboard current-work hierarchy", () => {
     renderDashboard();
     await screen.findByText("Quick Actions");
 
-    fireEvent.click(screen.getByRole("button", { name: /Record AI Service/i }));
-    expect(screen.getByText(/Existing records only · Record AI Now · Add Past Record/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Record (?:AI|Insemination\s*)Service/i,
+      }),
+    );
+    expect(
+      screen.getByText(
+        /Existing records only · Record AI Now · Add Past Record/,
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText("Direct or walk-in service")).toBeNull();
 
     fireEvent.click(
@@ -139,5 +148,51 @@ describe("Technician Dashboard current-work hierarchy", () => {
     expect(
       screen.getByText("Future and overdue work remain available in Schedule."),
     ).toBeTruthy();
+  });
+
+  it("renders in-progress AI Today's Work card with canonical status, service title, planned schedule, and farmer home address instead of farm GPS location", async () => {
+    renderDashboard({
+      stats: { urgentHealth: 0, completedToday: 0 },
+      pendingRequests: [],
+      agendaItems: [
+        {
+          id: "in-progress-ai-03mc",
+          type: "insemination",
+          status: "in-progress",
+          scheduledDate: "2026-09-12T00:00:00.000Z",
+          visitPeriod: "afternoon",
+          farmer: "Mario Cabanig",
+          animalTag: "03MC",
+          location: "Bita Sur, Oton",
+          farmLocationLabel:
+            "PHF6+GGQ, Doña Luz, Jaro, Iloilo City, Philippines",
+          raw: {
+            farmerId: {
+              name: "Mario Cabanig",
+              address: {
+                barangay: "Bita Sur",
+                municipality: "Oton",
+              },
+              farmLocation: {
+                detectedAddress:
+                  "PHF6+GGQ, Doña Luz, Jaro, Iloilo City, Philippines",
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(await screen.findByText("In Progress")).toBeTruthy();
+    expect(screen.getByText("Artificial Insemination")).toBeTruthy();
+    expect(screen.getByText("#03MC")).toBeTruthy();
+    expect(screen.getByText("Mario Cabanig")).toBeTruthy();
+    expect(screen.getByText("Bita Sur, Oton")).toBeTruthy();
+    expect(
+      screen.queryByText(/PHF6\+GGQ, Doña Luz, Jaro, Iloilo City/),
+    ).toBeNull();
+    expect(screen.getByText("Planned: Sep 12, 2026 · Afternoon")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /View Work/i })).toBeTruthy();
+    expect(screen.queryByText("Scheduled AI Visit")).toBeNull();
   });
 });

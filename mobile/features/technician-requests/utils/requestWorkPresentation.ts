@@ -352,10 +352,15 @@ export function normalizeTechnicianWorkItem(
   const todayKey = philippineDateKey(now);
   const unfinished = !["completed", "cancelled"].includes(state);
   const isReadyToday = Boolean(
-    unfinished && timingKey && timingKey === todayKey,
+    unfinished &&
+      (state === "in_progress" || (timingKey && timingKey === todayKey)),
   );
   const needsAttention = Boolean(
-    unfinished && timingKey && todayKey && timingKey < todayKey,
+    unfinished &&
+      state !== "in_progress" &&
+      timingKey &&
+      todayKey &&
+      timingKey < todayKey,
   );
   const overdue = needsAttention && timingKind !== "expected_event";
   const dateLabel = formatWorkDate(timingDate);
