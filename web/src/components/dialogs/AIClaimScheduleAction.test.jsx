@@ -135,7 +135,7 @@ describe("Unified AI Request modal", () => {
     );
     expect(detailsDialog).toHaveTextContent("August 4, 2026");
     expect(detailsDialog).toHaveTextContent("Farmer request photos (1)");
-    expect(detailsDialog).toHaveTextContent("Pending");
+    expect(detailsDialog).toHaveTextContent("Available");
     const attachment = within(detailsDialog).getByRole("img", {
       name: "Farmer-submitted AI request photo 1",
     });

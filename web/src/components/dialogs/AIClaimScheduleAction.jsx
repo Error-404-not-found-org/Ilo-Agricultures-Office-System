@@ -35,11 +35,14 @@ const backendErrorDetails = (error) => ({
   status: error?.response?.status || null,
 });
 
-const humanizeStatus = (status) =>
-  String(status || "Pending")
+const humanizeStatus = (status) => {
+  const normalized = String(status || "pending").toLowerCase().trim();
+  if (normalized === "pending") return "Available";
+  return String(status || "Available")
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+};
 
 const humanizeObservation = (val) =>
   String(val || "")

@@ -139,7 +139,7 @@ function getActionLabel(item: WorkCardItem): string {
     (item as any).triage?.handlingMethod;
   const handlingMethod = String(rawHandlingMethod || "").toLowerCase().trim();
 
-  if (["pending"].includes(status)) return "Claim";
+  if (["pending"].includes(status)) return "Review Request";
   if (["approved", "assigned", "triaged"].includes(status)) {
     if (serviceType === "health") {
       if (handlingMethod === "farm_visit") return "Set Visit";
@@ -318,6 +318,10 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
   const animalTag = getAnimalTag(item);
   const location = getLocation(item);
   const timingLabel = getTimingLabel(item);
+  const isScheduledVisit = isTechnicianWorkItem(item)
+    ? item.timingKind === "scheduled_visit" || Boolean(item.scheduledDate)
+    : Boolean((item as RequestItem).scheduledDate);
+  const TimingIcon = isScheduledVisit ? Calendar : Clock;
   const visitPeriod = getVisitPeriod(item);
   const attemptNumber = getAttemptNumber(item);
   const previousAttemptVerified = getPreviousAttemptVerified(item);
@@ -627,7 +631,7 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
             >
-              <Calendar size={14} color={colors.textMuted} />
+              <TimingIcon size={14} color={colors.textMuted} />
               <Text
                 style={{
                   fontFamily: "Outfit_500Medium",

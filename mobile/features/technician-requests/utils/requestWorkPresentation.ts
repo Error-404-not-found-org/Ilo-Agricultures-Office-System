@@ -653,7 +653,7 @@ export function getWorkflowStatusPresentation(
     string,
     { label: string; tone: RequestWorkTone }
   > = {
-    open: { label: "Open", tone: "amber" },
+    open: { label: "Available", tone: "amber" },
     needs_review: { label: "Needs review", tone: "blue" },
     needs_response: { label: "Needs response", tone: "blue" },
     needs_scheduling: { label: "Needs scheduling", tone: "amber" },
@@ -666,7 +666,7 @@ export function getWorkflowStatusPresentation(
     cancelled: { label: "Cancelled", tone: "slate" },
     triaged: { label: "Needs response", tone: "blue" },
   };
-  return presentations[status] || { label: "Open", tone: "amber" };
+  return presentations[status] || { label: "Available", tone: "amber" };
 }
 
 export function matchesServiceFilter(
