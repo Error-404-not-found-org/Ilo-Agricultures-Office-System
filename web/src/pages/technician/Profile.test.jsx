@@ -96,12 +96,12 @@ describe("Technician Profile consolidation", () => {
     await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith("/technician/dispatch-status", { acceptsNewRequests: false }));
     await waitFor(() => expect(screen.getByRole("checkbox", { name: "Accept new farmer requests" })).not.toBeChecked());
   });
-  it("uses Clerk for account management and sign out", async () => {
+  it("uses Clerk for account management without duplicating the sidebar sign-out action", async () => {
     mount(); await screen.findByRole("button", { name: "Edit profile" });
     fireEvent.click(screen.getByRole("button", { name: "Manage account" }));
     expect(mocks.openUserProfile).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    expect(mocks.signOut).not.toHaveBeenCalled();
   });
   it("shows a recoverable loading failure", async () => {
     mocks.get.mockRejectedValueOnce(new Error("Connection unavailable")); mount();

@@ -59,7 +59,7 @@ const Value = ({ label, children, className = "" }) => (
     <dt className="text-[10px] font-semibold uppercase text-base-content/60 block">
       {label}
     </dt>
-    <dd className="text-xs font-bold text-base-content mt-0.5 break-words">
+    <dd className="text-xs font-bold text-base-content mt-0.5 wrap-break-word">
       {children}
     </dd>
   </div>
