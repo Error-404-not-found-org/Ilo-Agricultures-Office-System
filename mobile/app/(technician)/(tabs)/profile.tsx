@@ -49,6 +49,7 @@ import {
   ILOILO_CITY_NAME,
   ILOILO_MUNICIPALITY_OPTIONS,
 } from "@/constants/address";
+import { resetAvailabilityHelperIntroForDev } from "@/features/technician-dashboard/utils/technicianAvailabilityHelper";
 
 const TechnicianProfile = () => {
   const { signOut } = useClerk();
@@ -669,11 +670,61 @@ const TechnicianProfile = () => {
 
         {/* Version Information */}
         <Text
-          className="text-center font-outfit-semibold text-[11px] mb-12"
+          className="text-center font-outfit-semibold text-[11px] mb-6"
           style={{ color: colors.textMuted }}
         >
           Version 2.4.0 — Premium Build
         </Text>
+
+        {__DEV__ && (
+          <View style={{ alignItems: "center", marginBottom: 24 }}>
+            <TouchableOpacity
+              onPress={async () => {
+                const technicianId = dbUser?._id
+                  ? String(dbUser._id)
+                  : user?.id
+                    ? String(user.id)
+                    : null;
+                if (!technicianId) {
+                  toast.error("No technician ID found");
+                  return;
+                }
+                await resetAvailabilityHelperIntroForDev(technicianId);
+                toast.success("Availability intro reset");
+              }}
+              activeOpacity={0.7}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontFamily: "Outfit_600SemiBold",
+                  color: colors.textSecondary,
+                }}
+              >
+                Reset Availability Intro
+              </Text>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontFamily: "Outfit_400Regular",
+                  color: colors.textMuted,
+                  marginTop: 2,
+                }}
+              >
+                Development only
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Profile Editing Modal */}

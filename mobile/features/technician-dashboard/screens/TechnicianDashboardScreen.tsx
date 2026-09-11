@@ -21,6 +21,7 @@ import {
 } from "../components/TechnicianQuickActions";
 import { TechnicianRouteSection } from "../components/TechnicianRouteSection";
 import { TechnicianRequestsSection } from "../components/TechnicianRequestsSection";
+import { TechnicianAvailabilityModal } from "../components/TechnicianAvailabilityModal";
 
 export default function TechnicianDashboardScreen() {
   const router = useRouter();
@@ -45,6 +46,12 @@ export default function TechnicianDashboardScreen() {
     handleAction,
     handleRequestReview,
     isUpdating,
+    availabilityHelperVisible,
+    availabilityHelperCopy,
+    isEnablingRequests,
+    handleStartAcceptingRequests,
+    handleMaybeLater,
+    hasLandingPrecedence,
   } = useTechnicianDashboardScreen();
 
   return (
@@ -119,8 +126,18 @@ export default function TechnicianDashboardScreen() {
         </View>
       </ScrollView>
 
+      {/* Availability Helper for Technicians currently not accepting requests */}
+      <TechnicianAvailabilityModal
+        visible={availabilityHelperVisible}
+        copy={availabilityHelperCopy}
+        onStartAccepting={handleStartAcceptingRequests}
+        onMaybeLater={handleMaybeLater}
+        isPending={isEnablingRequests}
+      />
+
+      {/* Complete Profile Warning - strictly suppressed when availability helper qualifies/has precedence on this landing */}
       <ConfirmationModal
-        visible={profileWarningVisible}
+        visible={profileWarningVisible && !hasLandingPrecedence}
         onClose={() => setProfileWarningVisible(false)}
         onConfirm={() => {
           setProfileWarningVisible(false);
