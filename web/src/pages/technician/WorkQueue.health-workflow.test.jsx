@@ -34,13 +34,14 @@ vi.mock("../../components/layout/Topbar", () => ({
 }));
 
 vi.mock("../../components/dialogs/HealthRequestActionModal", () => ({
-  default: ({ isOpen, task, onClose }) =>
+  default: ({ isOpen, task, onClose, startServiceOnOpen }) =>
     isOpen ? (
       <div
         role="dialog"
         aria-label="Owned Health request"
         data-request-id={task?.id}
         data-workflow-id={task?.workflowId}
+        data-start-service={startServiceOnOpen ? "true" : "false"}
       >
         <button type="button" onClick={onClose}>Close Health</button>
       </div>
@@ -176,6 +177,7 @@ describe("Work Queue owned Health workflow", () => {
     });
     expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
     expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
+    expect(dialog.getAttribute("data-start-service")).toBe("true");
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
@@ -206,6 +208,7 @@ describe("Work Queue owned Health workflow", () => {
     });
     expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
     expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
+    expect(dialog.getAttribute("data-start-service")).toBe("true");
     expect(mocks.patch).not.toHaveBeenCalled();
     expect(mocks.post).not.toHaveBeenCalled();
   });

@@ -144,6 +144,7 @@ export default function WorkQueue({ embedded = false }) {
     () => searchParams.get("typeFilter") || "all",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
+  const [startHealthServiceOnOpen, setStartHealthServiceOnOpen] = useState(false);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
   const [breedingFollowUp, setBreedingFollowUp] = useState(null);
   const [pregnancyLossReviewTask, setPregnancyLossReviewTask] = useState(null);
@@ -160,6 +161,7 @@ export default function WorkQueue({ embedded = false }) {
 
   const handleCloseModal = () => {
     setSelectedTaskWrapper(null);
+    setStartHealthServiceOnOpen(false);
     setSelectedWorkDetails(null);
     setBreedingFollowUp(null);
     setPregnancyLossReviewTask(null);
@@ -428,7 +430,7 @@ export default function WorkQueue({ embedded = false }) {
     }
   };
 
-  const openTask = (task) => {
+  const openTask = (task, { startHealthService = false } = {}) => {
     if (
       task.sourceType === "farmer_pregnancy_loss_report" ||
       task.raw?.sourceType === "farmer_pregnancy_loss_report" ||
@@ -500,6 +502,9 @@ export default function WorkQueue({ embedded = false }) {
           );
           return;
         }
+        if (task.workflowType === "Health") {
+          setStartHealthServiceOnOpen(startHealthService);
+        }
         setSelectedTaskWrapper(task);
         return;
       case "HANDLE_REQUEST":
@@ -509,6 +514,7 @@ export default function WorkQueue({ embedded = false }) {
           );
           return;
         }
+        setStartHealthServiceOnOpen(startHealthService);
         setSelectedTaskWrapper(task);
         return;
       case "VIEW_RECORD":
@@ -576,6 +582,7 @@ export default function WorkQueue({ embedded = false }) {
             );
             return;
           }
+          setStartHealthServiceOnOpen(startHealthService);
           setSelectedTaskWrapper(task);
           return;
         }
@@ -986,7 +993,9 @@ export default function WorkQueue({ embedded = false }) {
                                   type="button"
                                   className="btn btn-primary btn-sm"
                                   disabled={actionDisabled}
-                                  onClick={() => openTask(task)}
+                                  onClick={() =>
+                                    openTask(task, { startHealthService: true })
+                                  }
                                 >
                                   {primaryActionLabel}
                                 </button>
@@ -1099,6 +1108,7 @@ export default function WorkQueue({ embedded = false }) {
           selectedTaskWrapper?.workflowType === "Health"
         }
         onClose={handleCloseModal}
+        startServiceOnOpen={startHealthServiceOnOpen}
         task={
           selectedTaskWrapper?.workflowType === "Health"
             ? {

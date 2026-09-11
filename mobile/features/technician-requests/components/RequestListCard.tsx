@@ -42,6 +42,7 @@ type WorkCardItem = RequestItem | TechnicianWorkItem;
 interface RequestListCardProps {
   item: WorkCardItem;
   onPress: () => void;
+  onActionPress?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -302,7 +303,7 @@ function isClosed(item: WorkCardItem): boolean {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function RequestListCard({ item, onPress }: RequestListCardProps) {
+export function RequestListCard({ item, onPress, onActionPress }: RequestListCardProps) {
   const { colors, isDark } = useTheme();
 
   const service = normalizeServiceType(item);
@@ -814,7 +815,10 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
             </Text>
           </View>
 
-          <View
+          <TouchableOpacity
+            onPress={onActionPress || onPress}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -842,7 +846,7 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
               size={16}
               color={state === "completed" ? colors.success : colors.onPrimary}
             />
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
     </TouchableOpacity>

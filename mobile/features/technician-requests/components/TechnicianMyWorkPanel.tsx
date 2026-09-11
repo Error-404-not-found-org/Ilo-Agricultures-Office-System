@@ -165,6 +165,42 @@ export default function TechnicianMyWorkPanel({
     toast.error("This work item is missing its task identifier.");
   };
 
+  const performWorkItem = (item: TechnicianWorkItem) => {
+    if (item.workType !== "health") {
+      openWorkItem(item);
+      return;
+    }
+    const isServiceAction =
+      ["RECORD_SERVICE", "START_SERVICE"].includes(
+        String(item.allowedAction || ""),
+      ) ||
+      item.state === "in_progress" ||
+      ["Continue Service", "Record Health Assistance", "Complete Visit"].includes(
+        item.actionLabel,
+      );
+    if (!isServiceAction) {
+      openWorkItem(item);
+      return;
+    }
+    const requestId = item.workflowId || item.id;
+    if (!requestId) {
+      toast.error("This Health work item is missing its request identifier.");
+      return;
+    }
+    router.push({
+      pathname: "/(technician)/health-log",
+      params: {
+        mode: "request-linked",
+        requestId,
+        healthRequestId: requestId,
+        workflowId: requestId,
+        startService: "true",
+        taskId: item.taskId || undefined,
+        visitPeriod: item.visitPeriod || undefined,
+      },
+    });
+  };
+
   const content = (
     <>
       {/* Search Input */}
@@ -247,6 +283,7 @@ export default function TechnicianMyWorkPanel({
                   key={t.id}
                   item={t}
                   onPress={() => openWorkItem(t)}
+                  onActionPress={() => performWorkItem(t)}
                 />
               ))}
               {pagination.totalPages > 1 ? (

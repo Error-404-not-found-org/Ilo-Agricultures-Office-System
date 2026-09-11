@@ -1,3 +1,4 @@
+/* global __dirname */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const Module = require("node:module");
@@ -121,6 +122,82 @@ test("structured presentation is authoritative with legacy fallback available", 
     }),
     null,
   );
+});
+
+test("Farmer note presentation never reuses structured legacy headings", () => {
+  assert.equal(
+    input.getHealthRequestFarmerNote({
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "health_concern",
+        observedSigns: ["abnormal_behavior"],
+        farmerDescription: "Restless since this morning.",
+      },
+      symptoms:
+        "Assistance requested:\nSick or Injured Animal\n\nObserved signs:\n• Unusual behavior",
+    }),
+    "Restless since this morning.",
+  );
+  assert.equal(
+    input.getHealthRequestFarmerNote({
+      symptoms:
+        "Assistance requested:\nSick or Injured Animal\n\nObserved signs:\n• Unusual behavior\n\nDescription:\nRestless since this morning.",
+    }),
+    "Restless since this morning.",
+  );
+  assert.equal(
+    input.getHealthRequestFarmerNote({
+      symptoms:
+        "Assistance requested:\nSick or Injured Animal\n\nObserved signs:\n• Unusual behavior",
+    }),
+    "",
+  );
+});
+
+test("Technician My Work separates Health details from the explicit service action", () => {
+  const requestCard = fs.readFileSync(
+    path.join(
+      __dirname,
+      "../../technician-requests/components/RequestListCard.tsx",
+    ),
+    "utf8",
+  );
+  const myWorkPanel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "../../technician-requests/components/TechnicianMyWorkPanel.tsx",
+    ),
+    "utf8",
+  );
+
+  assert.match(requestCard, /onActionPress\?: \(\) => void/);
+  assert.match(requestCard, /onPress=\{onActionPress \|\| onPress\}/);
+  assert.match(myWorkPanel, /pathname: "\/\(technician\)\/health-log"/);
+  assert.match(myWorkPanel, /startService: "true"/);
+  assert.match(myWorkPanel, /onActionPress=\{\(\) => performWorkItem\(t\)\}/);
+  assert.match(myWorkPanel, /pathname: "\/\(technician\)\/request-details"/);
+});
+
+test("request-linked Health mode loads canonical context without card Farmer or Animal params", () => {
+  const recordHealthScreen = fs.readFileSync(
+    path.join(
+      __dirname,
+      "../../technician-health-recording/screens/RecordHealthScreen.tsx",
+    ),
+    "utf8",
+  );
+
+  assert.match(recordHealthScreen, /routeMode === "request-linked"/);
+  assert.match(recordHealthScreen, /routeSource === "task"/);
+  assert.match(
+    recordHealthScreen,
+    /enabled: mode\.kind === "request-linked" && !!actualRequestId/,
+  );
+  assert.match(recordHealthScreen, /request\?\.farmerId : selectedFarmer/);
+  assert.match(recordHealthScreen, /request\?\.animalId : selectedAnimal/);
+  assert.match(recordHealthScreen, /mode\.kind === "direct" \? \(/);
+  assert.match(recordHealthScreen, /<FarmerAnimalPickers/);
+  assert.match(recordHealthScreen, /<DirectHealthForm/);
 });
 
 test("Farmer urgency compatibility payload remains medium or critical", () => {

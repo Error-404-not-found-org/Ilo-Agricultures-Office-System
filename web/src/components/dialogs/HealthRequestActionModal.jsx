@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -216,6 +216,7 @@ export default function HealthRequestActionModal({
   onClose,
   task,
   onSuccess,
+  startServiceOnOpen = false,
 }) {
   const queryClient = useQueryClient();
   const requestId = getHealthRequestId(task);
@@ -237,6 +238,7 @@ export default function HealthRequestActionModal({
     advice: "",
     technicianNote: "",
   });
+  const autoStartedRequestId = useRef(null);
 
   const detailQuery = useQuery({
     queryKey: ["technician", "health-request", requestId],
@@ -285,6 +287,7 @@ export default function HealthRequestActionModal({
       technicianNote: "",
     });
     setJustClaimed(false);
+    autoStartedRequestId.current = null;
   }, [isOpen, requestId]);
 
   useEffect(() => {
@@ -472,6 +475,22 @@ export default function HealthRequestActionModal({
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      !startServiceOnOpen ||
+      detailQuery.isLoading ||
+      !isScheduled ||
+      !requestId ||
+      autoStartedRequestId.current === requestId
+    ) {
+      return;
+    }
+    autoStartedRequestId.current = requestId;
+    void startVisit();
+    // This runs once for the explicit My Work service action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailQuery.isLoading, isScheduled, requestId, startServiceOnOpen]);
 
   const completeVisit = async () => {
     if (busy) return;

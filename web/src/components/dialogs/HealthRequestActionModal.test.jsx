@@ -366,6 +366,36 @@ describe("HealthRequestActionModal", () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
+  it("starts a scheduled visit immediately when opened from the My Work service CTA", async () => {
+    const scheduled = ownedRequest({
+      status: "scheduled",
+      scheduledDate: "2026-08-31T04:00:00.000Z",
+      visitPeriod: "afternoon",
+    });
+    mocks.get.mockResolvedValue({ data: { data: scheduled } });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <HealthRequestActionModal
+          isOpen
+          startServiceOnOpen
+          onClose={vi.fn()}
+          task={{ ...task, status: "scheduled", raw: scheduled }}
+          onSuccess={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(mocks.patch).toHaveBeenCalledWith(
+        `/health-request/${requestId}/status`,
+        { status: "in-progress" },
+      ),
+    );
+  });
+
   it("preserves same-request input and resets it when the request identity changes", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
