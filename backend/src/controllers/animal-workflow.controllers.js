@@ -115,6 +115,18 @@ const personSummary = (value) => {
   };
 };
 
+const farmerSummary = (value) => {
+  if (!value) return null;
+  if (typeof value !== "object") return { id: idOf(value), name: "" };
+  return {
+    id: idOf(value),
+    name: value.name || "",
+    phoneNumber: value.phoneNumber || value.phone || "",
+    address: value.address || null,
+    farmLocation: value.farmLocation || null,
+  };
+};
+
 const uniqueRecordAttachments = (items = []) => {
   const seen = new Set();
   return items.reduce((attachments, item) => {
@@ -158,7 +170,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     sourceId,
     sourceKind: recordKind,
     animalId: subject,
-    farmerId: personSummary(resolvedFarmer),
+    farmerId: farmerSummary(resolvedFarmer),
   };
 
   if (recordKind === "health_request") {
@@ -598,7 +610,7 @@ export const getOfficialRecordDetail = async (req, res) => {
     if (recordKind === "insemination") {
       query = Insemination.findOne({ ...scope, deletedAt: null })
         .populate("technicianId approvedBy outcomeConfirmedBy", "name role")
-        .populate("farmerId", "name")
+        .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate(
           "previousAttemptId",
           "attemptNumber inseminationDate outcome failureReason outcomeVerificationStatus",
@@ -610,17 +622,17 @@ export const getOfficialRecordDetail = async (req, res) => {
     } else if (recordKind === "pregnancy") {
       query = Pregnancy.findOne({ ...scope, deletedAt: null })
         .populate("confirmation.confirmedBy", "name role")
-        .populate("farmerId", "name")
+        .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate("inseminationId", "attemptNumber sireBreed sireCode");
     } else if (recordKind === "calving") {
       query = Calving.findOne({ ...scope, deletedAt: null })
         .populate("technicianId", "name role")
-        .populate("farmerId", "name")
+        .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate("calves.animalId", "animalId earTag imageUrl");
     } else if (recordKind === "medical_record") {
       query = MedicalRecord.findOne(scope)
         .populate("technicianId", "name role")
-        .populate("farmerId", "name")
+        .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate(
           "healthRequestId",
           "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes imageUrl photos",
@@ -640,7 +652,7 @@ export const getOfficialRecordDetail = async (req, res) => {
         ],
       })
         .populate("handledBy assignedTechnicianId", "name role")
-        .populate("farmerId", "name");
+        .populate("farmerId", "name phoneNumber phone address farmLocation");
     } else {
       query = Insemination.findOne({
         ...scope,
@@ -651,7 +663,7 @@ export const getOfficialRecordDetail = async (req, res) => {
           : {}),
       })
         .populate("technicianId approvedBy", "name role")
-        .populate("farmerId", "name");
+        .populate("farmerId", "name phoneNumber phone address farmLocation");
     }
 
     const record = await query.lean();

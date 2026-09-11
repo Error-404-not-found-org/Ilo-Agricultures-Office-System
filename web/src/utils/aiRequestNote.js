@@ -28,3 +28,35 @@ export function extractFarmerNote(fullComment) {
   // Case D: Modern plain comment
   return trimmed;
 }
+
+const HEAT_SIGN_LABELS = {
+  standing_heat: "Standing Heat",
+  attempt_mount: "Attempting to Mount",
+  attempting_to_mount: "Attempting to Mount",
+  restlessness: "Restlessness / Activity",
+  vocalization: "Vocalization (Bellowing)",
+  flehmen: "Flehmen Response",
+  grouping: "Friendly Grouping",
+  mucus_discharge: "Clear Mucus Discharge",
+  clear_mucus: "Clear Mucus Discharge",
+  swollen_vulva: "Swollen, Red Vulva",
+  muddy_flanks: "Muddy Flanks / Tailhead",
+  metestrus_bleeding: "Metestrus Bleeding",
+};
+
+/**
+ * Formats a heat sign identifier into an established human-readable label.
+ *
+ * @param {string} sign Raw heat sign string/identifier
+ * @returns {string} Human-readable label
+ */
+export function formatHeatSignLabel(sign) {
+  if (!sign) return "";
+  const normalized = String(sign).toLowerCase().trim();
+  if (HEAT_SIGN_LABELS[normalized]) {
+    return HEAT_SIGN_LABELS[normalized];
+  }
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}

@@ -294,7 +294,7 @@ describe("Technician records", () => {
   });
 
   it.each([
-    [ids.ai, "insemination", "Sire", "44-12"],
+    [ids.ai, "insemination", "Sire code", "44-12"],
     [ids.health, "medical_record", "Treatment or service", "Deworming"],
     [ids.pregnancy, "pregnancy", "Diagnosis result", "Pregnant"],
     [ids.calving, "calving", "Calving ease", "CALF-01"],
@@ -326,7 +326,7 @@ describe("Technician records", () => {
         ids.ai,
     );
 
-    expect(await screen.findByText("Sire")).toBeInTheDocument();
+    expect(await screen.findByText("Sire code")).toBeInTheDocument();
     expect(screen.getAllByText((_, element) =>
       element?.textContent?.includes("44-12"),
     )).not.toHaveLength(0);
@@ -341,7 +341,7 @@ describe("Technician records", () => {
     const viewButtons = await screen.findAllByRole("button", { name: "View record" });
     fireEvent.click(viewButtons[0]);
 
-    expect(await screen.findByText("Sire")).toBeInTheDocument();
+    expect(await screen.findByText("Sire code")).toBeInTheDocument();
     expect(screen.getByTestId("location-search")).toHaveTextContent(
       "animalId=" + ids.animal,
     );
@@ -472,7 +472,7 @@ describe("Technician records", () => {
     const kebabItems = screen.getAllByRole("menuitem", { name: "View record", hidden: true });
     fireEvent.click(kebabItems[0]);
 
-    expect(await screen.findByText("Sire")).toBeInTheDocument();
+    expect(await screen.findByText("Sire code")).toBeInTheDocument();
     expect(screen.getByTestId("location-search")).toHaveTextContent("recordId=" + ids.ai);
   });
 });

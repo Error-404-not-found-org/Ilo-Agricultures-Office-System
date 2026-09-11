@@ -162,7 +162,7 @@ describe("request-linked AI recording modal", () => {
     expect(screen.getByText("Maria Santos")).toBeInTheDocument();
     expect(screen.getByText("Bessie · Tag EAR-17")).toBeInTheDocument();
     expect(screen.getByText("09171234567")).toBeInTheDocument();
-    expect(screen.getByText("Standing heat, Clear mucus")).toBeInTheDocument();
+    expect(screen.getByText("Standing Heat, Clear Mucus")).toBeInTheDocument();
     expect(screen.getByText("August 8, 2026 · Afternoon")).toBeInTheDocument();
     expect(screen.getByText("1 attachment submitted")).toBeInTheDocument();
     expect(screen.getByLabelText("Number of semen doses used")).toHaveValue(1);
@@ -170,6 +170,20 @@ describe("request-linked AI recording modal", () => {
     await waitFor(() => expect(mocks.get).not.toHaveBeenCalled());
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.patch).not.toHaveBeenCalled();
+  });
+
+  it("renders attachment thumbnails and opens image preview modal on click", async () => {
+    renderModal();
+
+    const attachmentBtn = screen.getByRole("button", {
+      name: "Enlarge attachment 1",
+    });
+    expect(attachmentBtn).toBeInTheDocument();
+    const img = screen.getByRole("img", { name: "Submitted attachment 1" });
+    expect(img).toHaveAttribute("src", "https://example.test/heat.jpg");
+
+    fireEvent.click(attachmentBtn);
+    expect(screen.getByText("Submitted Attachment Preview")).toBeInTheDocument();
   });
 
   it("records the selected workflow without creating a second walk-in record", async () => {
@@ -496,5 +510,59 @@ describe("request-linked AI recording modal", () => {
     expect(screen.getByRole("button", { name: "Schedule request" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Save AI service" })).toBeDisabled();
     expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it("displays farmer note when provided in taskData or requestContext", () => {
+    renderModal({
+      taskData: {
+        ...defaultProps.taskData,
+        comment:
+          "Observed Heat Signs: Standing heat\nAdditional Notes: Please visit before 10 AM.",
+      },
+    });
+
+    expect(screen.getByText("Farmer Note")).toBeInTheDocument();
+    expect(
+      screen.getByText("Please visit before 10 AM."),
+    ).toBeInTheDocument();
+  });
+
+  it("allows selecting sire breed from dropdown or typing custom breed", () => {
+    renderModal();
+
+    const sireBreedInput = screen.getByLabelText("Sire breed");
+    expect(sireBreedInput).toHaveValue("");
+
+    // Open dropdown using toggle button
+    const toggleBtn = screen.getByRole("button", {
+      name: "Toggle sire breed options",
+    });
+    fireEvent.mouseDown(toggleBtn);
+
+    // Dropdown list appears with standard breeds
+    const brahmanOption = screen.getByRole("option", { name: /brahman/i });
+    expect(brahmanOption).toBeInTheDocument();
+
+    // Select Brahman from dropdown
+    fireEvent.mouseDown(brahmanOption);
+    expect(sireBreedInput).toHaveValue("Brahman");
+
+    // Technician can also type a custom breed directly
+    fireEvent.change(sireBreedInput, {
+      target: { value: "Custom Sire Breed 101" },
+    });
+    expect(sireBreedInput).toHaveValue("Custom Sire Breed 101");
+  });
+
+  it("formats submitted heat signs using canonical wording", () => {
+    renderModal({
+      taskData: {
+        heatSigns: ["standing_heat", "attempt_mount"],
+      },
+    });
+
+    expect(
+      screen.getByText("Standing Heat, Attempting to Mount"),
+    ).toBeInTheDocument();
   });
 });

@@ -126,6 +126,33 @@ describe("OfficialRecordDetailModal attachments", () => {
     expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
   });
 
+  it("renders separated sire breed and sire code and omits performed by for AI records", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord(),
+        type: "ai",
+        title: "Artificial Insemination",
+        details: {
+          serviceDate: "2026-09-11T02:35:00.000Z",
+          attemptNumber: 1,
+          sireBreed: "Philippine Native",
+          sireCode: "11",
+          estrus: "natural",
+          semenDosesUsed: 1,
+          outcome: "in_progress",
+          status: "done",
+        },
+      },
+    });
+
+    await screen.findByText("Artificial Insemination");
+    expect(screen.getByText("Sire breed")).toBeInTheDocument();
+    expect(screen.getByText("Philippine Native")).toBeInTheDocument();
+    expect(screen.getByText("Sire code")).toBeInTheDocument();
+    expect(screen.getByText("11")).toBeInTheDocument();
+    expect(screen.queryByText("Performed by")).toBeNull();
+  });
+
   it("renders one compact attachment row with View and Download actions", async () => {
     renderDetail({
       record: healthRecord([
@@ -382,5 +409,31 @@ describe("OfficialRecordDetailModal attachments", () => {
       "Health_Photo_1.jpg",
       "Health_Photo_2.webp",
     ]);
+  });
+
+  it("renders Farmer card with name, formatted location, and phone number", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord(),
+        type: "ai",
+        title: "Artificial Insemination",
+        farmerId: {
+          name: "Mario Cabanig",
+          phoneNumber: "09123456789",
+          address: {
+            barangay: "Bita Sur",
+            city: "Oton",
+          },
+        },
+      },
+    });
+
+    expect(await screen.findByText("Farmer")).toBeInTheDocument();
+    expect(screen.getByText("Mario Cabanig")).toBeInTheDocument();
+    expect(screen.getByText("Bita Sur, Oton")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "09123456789" })).toHaveAttribute(
+      "href",
+      "tel:09123456789",
+    );
   });
 });

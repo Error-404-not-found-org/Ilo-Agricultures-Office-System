@@ -8,10 +8,12 @@ import {
   FileImage,
   HeartPulse,
   PawPrint,
+  Phone,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Modal from "../ui/Modal";
 import ImagePreviewModal from "../ui/ImagePreviewModal";
+import { formatFarmerLocation } from "../dialogs/PregnancyLossReviewModal";
 import {
   downloadRecordAttachment,
   normalizeRecordAttachments,
@@ -52,19 +54,23 @@ const formatDiagnosticMethod = (value) => {
   return humanize(value);
 };
 
-const Value = ({ label, children }) => (
-  <div>
-    <dt className="text-xs font-medium text-base-content/55">{label}</dt>
-    <dd className="mt-1 font-semibold text-base-content">{children}</dd>
+const Value = ({ label, children, className = "" }) => (
+  <div className={`bg-base-100 border border-base-200 rounded-xl p-3 ${className}`}>
+    <dt className="text-[10px] font-semibold uppercase text-base-content/60 block">
+      {label}
+    </dt>
+    <dd className="text-xs font-bold text-base-content mt-0.5 break-words">
+      {children}
+    </dd>
   </div>
 );
 
-const DetailSection = ({ title, children }) => (
-  <section>
-    <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-base-content/55">
+const DetailSection = ({ title, children, className = "" }) => (
+  <section className={`border border-base-300 rounded-2xl p-4 space-y-3 bg-base-200/50 ${className}`}>
+    <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
       {title}
     </h4>
-    <dl className="grid gap-x-5 gap-y-4 rounded-box border border-base-300 bg-base-100 p-4 sm:grid-cols-2">
+    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {children}
     </dl>
   </section>
@@ -77,21 +83,26 @@ const AttachmentsSection = ({
   downloadingUrl,
   downloadError,
 }) => (
-  <section aria-labelledby="record-attachments-title">
-    <h4
-      id="record-attachments-title"
-      className="mb-2 text-xs font-bold uppercase tracking-wider text-base-content/55"
-    >
-      Attachments
-    </h4>
-    <p className="mb-2 text-sm text-base-content/60">
-      {attachments.length} saved {attachments.length === 1 ? "photo" : "photos"}
-    </p>
-    <ul className="list overflow-hidden rounded-box border border-base-300 bg-base-100">
+  <section
+    aria-labelledby="record-attachments-title"
+    className="border border-base-300 rounded-2xl p-4 space-y-3 bg-base-200/50"
+  >
+    <div className="flex items-center justify-between">
+      <h4
+        id="record-attachments-title"
+        className="text-[10px] font-extrabold uppercase tracking-widest text-primary block"
+      >
+        Attachments
+      </h4>
+      <span className="text-[11px] text-base-content/60">
+        {attachments.length} saved {attachments.length === 1 ? "photo" : "photos"}
+      </span>
+    </div>
+    <ul className="overflow-hidden rounded-xl border border-base-200 bg-base-100 divide-y divide-base-200">
       {attachments.map((attachment) => (
         <li
           key={attachment.url}
-          className="list-row items-center gap-2 border-b border-base-300 px-3 py-2.5 last:border-b-0 sm:gap-3"
+          className="flex items-center gap-2 px-3 py-2.5 sm:gap-3"
         >
           <FileImage
             size={18}
@@ -100,23 +111,23 @@ const AttachmentsSection = ({
           />
           <button
             type="button"
-            className="list-col-grow min-w-0 truncate text-left text-sm font-semibold text-base-content hover:underline focus-visible:underline"
+            className="flex-1 min-w-0 truncate text-left text-xs font-semibold text-base-content hover:underline focus-visible:underline"
             onClick={() => onPreview(attachment)}
           >
             {attachment.displayName}
           </button>
           <button
             type="button"
-            className="btn btn-ghost btn-sm gap-1"
+            className="btn btn-ghost btn-xs gap-1"
             onClick={() => onPreview(attachment)}
             aria-label={`View ${attachment.displayName}`}
           >
-            <Eye size={16} aria-hidden="true" />
-            <span className="hidden sm:inline">View</span>
+            <Eye size={14} aria-hidden="true" />
+            <span className="hidden sm:inline text-xs">View</span>
           </button>
           <button
             type="button"
-            className="btn btn-ghost btn-square btn-sm"
+            className="btn btn-ghost btn-square btn-xs"
             onClick={() => onDownload(attachment)}
             disabled={downloadingUrl === attachment.url}
             aria-label={`Download ${attachment.displayName}`}
@@ -124,14 +135,14 @@ const AttachmentsSection = ({
             {downloadingUrl === attachment.url ? (
               <span className="loading loading-spinner loading-xs" />
             ) : (
-              <Download size={16} aria-hidden="true" />
+              <Download size={14} aria-hidden="true" />
             )}
           </button>
         </li>
       ))}
     </ul>
     {downloadError && (
-      <div role="alert" className="alert alert-error alert-soft mt-2 text-sm">
+      <div role="alert" className="alert alert-error alert-soft mt-2 text-xs">
         {downloadError}
       </div>
     )}
@@ -148,35 +159,92 @@ const RecordDetails = ({
 }) => {
   const details = record.details || {};
   const animal = record.animalId || {};
+  const farmer = record.farmerId || record.farmer || {};
+  const farmerPhone =
+    farmer.contactNumber ||
+    farmer.phone ||
+    farmer.phoneNumber ||
+    "";
   const isRequestBacked = ["health_request", "ai_request"].includes(
     record.sourceKind,
   );
   const isHealthRequest = record.sourceKind === "health_request";
 
   return (
-    <div className="space-y-6">
-      <section className="card card-border bg-base-100 shadow-sm">
-        <div className="card-body gap-3 p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-box bg-primary/10 p-3 text-primary">
-              <PawPrint size={20} aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <h4 className="card-title text-base">
+    <div className="space-y-5 py-1">
+      {/* Animal & Farmer Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Animal Details */}
+        <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+            Animal Details
+          </span>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h4 className="font-bold text-sm text-base-content">
                 {animal.animalId || animal.earTag || "Animal not recorded"}
               </h4>
-              <p className="text-sm text-base-content/65">
-                {record.farmerId?.name || record.farmer?.name || "Farmer not recorded"}
+              <p className="text-xs text-base-content/70 mt-0.5">
+                {[animal.breed, animal.species].filter(Boolean).join(" · ") ||
+                  "Breed not recorded"}
               </p>
             </div>
+            {animal.status && (
+              <span className="badge badge-success badge-sm font-semibold">
+                {humanize(animal.status)}
+              </span>
+            )}
           </div>
-          <dl className="grid gap-x-5 gap-y-3 text-sm sm:grid-cols-3">
-            <Value label="Ear tag">{valueOrRecorded(animal.earTag)}</Value>
-            <Value label="Species">{valueOrRecorded(animal.species)}</Value>
-            <Value label="Breed">{valueOrRecorded(animal.breed)}</Value>
+          <dl className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-base-300/60">
+            <div>
+              <dt className="text-[10px] font-semibold uppercase text-base-content/60 block">
+                Ear tag
+              </dt>
+              <dd className="text-xs font-bold text-base-content block truncate">
+                {valueOrRecorded(animal.earTag)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase text-base-content/60 block">
+                Species
+              </dt>
+              <dd className="text-xs font-bold text-base-content block truncate">
+                {valueOrRecorded(animal.species)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase text-base-content/60 block">
+                Breed
+              </dt>
+              <dd className="text-xs font-bold text-base-content block truncate">
+                {valueOrRecorded(animal.breed)}
+              </dd>
+            </div>
           </dl>
         </div>
-      </section>
+
+        {/* Farmer Information */}
+        <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+            Farmer
+          </span>
+          <h4 className="font-bold text-sm text-base-content">
+            {farmer.name || "Farmer not recorded"}
+          </h4>
+          <p className="text-xs text-base-content/70 mt-0.5">
+            {formatFarmerLocation(farmer)}
+          </p>
+          {farmerPhone ? (
+            <a
+              href={`tel:${farmerPhone}`}
+              className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-2 hover:underline"
+            >
+              <Phone className="h-3 w-3" />
+              {farmerPhone}
+            </a>
+          ) : null}
+        </div>
+      </div>
 
       <DetailSection
         title={isRequestBacked ? "Request details" : "Official service details"}
@@ -185,9 +253,6 @@ const RecordDetails = ({
           label={details.serviceDateLabel || record.dateLabel || "Service date"}
         >
           {formatDate(details.serviceDate || record.date, record.datePrecision)}
-        </Value>
-        <Value label="Performed by">
-          {record.technician?.name || details.technician || "Not recorded"}
         </Value>
         {isRequestBacked && (
           <Value label="Status">{humanize(details.status)}</Value>
@@ -205,10 +270,11 @@ const RecordDetails = ({
                 ? "Not recorded"
                 : "#" + details.attemptNumber}
             </Value>
-            <Value label="Sire">
-              {[details.sireBreed, details.sireCode]
-                .filter(Boolean)
-                .join(" · ") || "Not recorded"}
+            <Value label="Sire breed">
+              {valueOrRecorded(details.sireBreed)}
+            </Value>
+            <Value label="Sire code">
+              {valueOrRecorded(details.sireCode)}
             </Value>
             <Value label="Estrus">{valueOrRecorded(details.estrus)}</Value>
             <Value label="Semen doses used">
@@ -341,7 +407,7 @@ const RecordDetails = ({
               >
                 {[calf.earTag ? "Tag " + calf.earTag : null, calf.sex]
                   .filter(Boolean)
-                  .join(" � ") || "Details not recorded"}
+                  .join(" · ") || "Details not recorded"}
               </Value>
             ))}
           </DetailSection>
@@ -349,17 +415,43 @@ const RecordDetails = ({
 
       {((!isRequestBacked && (details.technicianNote || details.advice)) ||
         details.farmerNotes) && (
-        <DetailSection title="Notes">
-          {!isRequestBacked && details.technicianNote && (
-            <Value label="Technician notes">{details.technicianNote}</Value>
-          )}
-          {!isRequestBacked && details.advice && (
-            <Value label="Advice">{details.advice}</Value>
-          )}
-          {details.farmerNotes && (
-            <Value label="Farmer notes">{details.farmerNotes}</Value>
-          )}
-        </DetailSection>
+        <section className="border border-base-300 rounded-2xl p-4 space-y-3 bg-base-200/50">
+          <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
+            Notes & Observations
+          </h4>
+          <div className="space-y-2.5">
+            {!isRequestBacked && details.technicianNote && (
+              <div>
+                <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                  Technician notes
+                </span>
+                <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium">
+                  {details.technicianNote}
+                </p>
+              </div>
+            )}
+            {!isRequestBacked && details.advice && (
+              <div>
+                <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                  Advice
+                </span>
+                <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium">
+                  {details.advice}
+                </p>
+              </div>
+            )}
+            {details.farmerNotes && (
+              <div>
+                <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                  Farmer notes
+                </span>
+                <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium">
+                  {details.farmerNotes}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       {attachments.length > 0 && (
@@ -371,51 +463,35 @@ const RecordDetails = ({
           downloadError={downloadError}
         />
       )}
-
-
     </div>
   );
 };
 
 const RecordSkeleton = () => (
-  <div className="space-y-6 animate-pulse">
-    <section className="card card-border bg-base-100 shadow-sm">
-      <div className="card-body gap-3 p-4">
-        <div className="flex items-start gap-3">
-          <div className="h-11 w-11 shrink-0 rounded-box bg-base-200" />
-          <div className="min-w-0 flex-1 space-y-2 py-1">
-            <div className="h-4 w-32 rounded bg-base-300" />
-            <div className="h-3 w-40 rounded bg-base-200" />
-          </div>
-        </div>
-        <div className="grid gap-x-5 gap-y-3 sm:grid-cols-3 mt-1">
-          <div>
-            <div className="mb-1.5 h-3 w-12 rounded bg-base-200" />
-            <div className="h-4 w-20 rounded bg-base-300" />
-          </div>
-          <div>
-            <div className="mb-1.5 h-3 w-14 rounded bg-base-200" />
-            <div className="h-4 w-24 rounded bg-base-300" />
-          </div>
-          <div>
-            <div className="mb-1.5 h-3 w-12 rounded bg-base-200" />
-            <div className="h-4 w-16 rounded bg-base-300" />
-          </div>
-        </div>
+  <div className="space-y-5 py-1 animate-pulse">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4 space-y-3">
+        <div className="h-3 w-24 rounded bg-base-300" />
+        <div className="h-4 w-36 rounded bg-base-300" />
+        <div className="h-3 w-28 rounded bg-base-200" />
       </div>
-    </section>
-
-    <section>
-      <div className="mb-2.5 h-3 w-32 rounded bg-base-300/60" />
-      <div className="grid gap-x-5 gap-y-4 rounded-box border border-base-300 bg-base-100 p-4 sm:grid-cols-2">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i}>
-            <div className="mb-1.5 h-3 w-20 rounded bg-base-200" />
-            <div className="h-4 w-32 rounded bg-base-300" />
+      <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4 space-y-3">
+        <div className="h-3 w-24 rounded bg-base-300" />
+        <div className="h-4 w-36 rounded bg-base-300" />
+        <div className="h-3 w-28 rounded bg-base-200" />
+      </div>
+    </div>
+    <div className="border border-base-300 rounded-2xl p-4 space-y-3 bg-base-200/50">
+      <div className="h-3 w-32 rounded bg-base-300" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="bg-base-100 border border-base-200 rounded-xl p-3 space-y-2">
+            <div className="h-2.5 w-16 rounded bg-base-200" />
+            <div className="h-3.5 w-24 rounded bg-base-300" />
           </div>
         ))}
       </div>
-    </section>
+    </div>
   </div>
 );
 

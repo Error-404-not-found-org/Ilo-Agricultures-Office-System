@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFarmerNote } from "./aiRequestNote";
+import { extractFarmerNote, formatHeatSignLabel } from "./aiRequestNote";
 
 describe("extractFarmerNote", () => {
   it("CASE A: extracts actual note from legacy composite comment", () => {
@@ -40,5 +40,17 @@ Sir pa ai ko bwas`;
     expect(extractFarmerNote(undefined)).toBe("");
     expect(extractFarmerNote("")).toBe("");
     expect(extractFarmerNote("   \n\t  ")).toBe("");
+  });
+});
+
+describe("formatHeatSignLabel", () => {
+  it("formats established labels and fallbacks correctly", () => {
+    expect(formatHeatSignLabel("standing_heat")).toBe("Standing Heat");
+    expect(formatHeatSignLabel("attempt_mount")).toBe("Attempting to Mount");
+    expect(formatHeatSignLabel("attempting_to_mount")).toBe("Attempting to Mount");
+    expect(formatHeatSignLabel("clear_mucus")).toBe("Clear Mucus Discharge");
+    expect(formatHeatSignLabel("mucus_discharge")).toBe("Clear Mucus Discharge");
+    expect(formatHeatSignLabel("custom_observation")).toBe("Custom Observation");
+    expect(formatHeatSignLabel("")).toBe("");
   });
 });
