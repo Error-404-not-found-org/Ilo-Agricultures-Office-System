@@ -64,6 +64,37 @@ export const getPhilippineDateKey = (value) => {
 export const getPhilippineTodayKey = (now = new Date()) =>
   getPhilippineDateKey(now);
 
+export const getManilaHour = (now = new Date()) => {
+  const hour = new Intl.DateTimeFormat("en-PH", {
+    hour: "2-digit",
+    hourCycle: "h23",
+    timeZone: PHILIPPINE_TIME_ZONE,
+  })
+    .formatToParts(now)
+    .find((part) => part.type === "hour")?.value;
+  return Number(hour || 0);
+};
+
+export const isFutureSchedule = (
+  scheduledDate,
+  visitPeriod,
+  now = new Date(),
+) => {
+  const scheduleKey = getPhilippineDateKey(scheduledDate);
+  const todayKey = getPhilippineTodayKey(now);
+  if (!scheduleKey || !todayKey) return false;
+  if (scheduleKey > todayKey) return true;
+  if (scheduleKey < todayKey) return false;
+
+  const normalizedPeriod = String(visitPeriod || "")
+    .toLowerCase()
+    .trim();
+  if (normalizedPeriod === "afternoon" && getManilaHour(now) < 12) {
+    return true;
+  }
+  return false;
+};
+
 export const getScheduleEntityKind = (item = {}) => {
   const raw = item.raw || {};
   const type = normalizeValue(item.type || item.workflowType);

@@ -866,11 +866,11 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(scheduled.attemptNumber, 1);
       assert.equal(scheduled.previousAttemptVerified, false);
 
-      const legacy = byId.get(ids.inProgress);
-      assert.equal(legacy.allowedAction, "RECORD_SERVICE");
-      assert.equal(legacy.actionLabel, "Record Insemination");
-      assert.equal(legacy.taskId, ids.linkedLegacyAiTask);
-      assert.equal(legacy.schedule.visitPeriod, null);
+      const inProgressItem = byId.get(ids.inProgress);
+      assert.equal(inProgressItem.allowedAction, "RECORD_SERVICE");
+      assert.equal(inProgressItem.actionLabel, "Continue Service");
+      assert.equal(inProgressItem.taskId, ids.linkedLegacyAiTask);
+      assert.equal(inProgressItem.schedule.visitPeriod, null);
 
       assert.equal(byId.has(ids.completed), false);
 

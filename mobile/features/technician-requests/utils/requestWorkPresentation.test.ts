@@ -420,3 +420,51 @@ test("terminal work keeps its completed presentation", () => {
   assert.equal(normalized.statusLabel, "Completed");
   assert.equal(normalized.isReadyToday, false);
 });
+
+test("early started AI visit with future scheduled visit preserves In Progress state and Continue Service action", () => {
+  const now = new Date("2026-09-11T04:00:00.000Z");
+  const item = {
+    id: "early-ai-1",
+    workflowId: "early-ai-1",
+    workflowType: "AI",
+    type: "ai",
+    status: "in-progress",
+    scheduledDate: "2026-09-12T04:00:00.000Z",
+    serviceStartedAt: "2026-09-11T11:52:07.068Z",
+    schedule: {
+      date: "2026-09-12T04:00:00.000Z",
+      visitPeriod: "morning",
+    },
+  };
+
+  const rawStatus = normalizeWorkflowStatus(item, now);
+  assert.equal(rawStatus, "in_progress");
+  assert.equal(getWorkflowStatusPresentation(rawStatus).label, "In Progress");
+
+  const normalized = normalizeTechnicianWorkItem(item as any, now);
+  assert.equal(normalized.state, "in_progress");
+  assert.equal(normalized.statusLabel, "In Progress");
+  assert.equal(normalized.actionLabel, "Continue Service");
+  assert.equal(normalized.scheduledDate, "2026-09-12T04:00:00.000Z");
+  assert.equal(normalized.visitPeriod, "morning");
+});
+
+test("terminal status always wins over serviceStartedAt", () => {
+  const now = new Date("2026-09-11T04:00:00.000Z");
+  const item = {
+    id: "finished-ai-1",
+    workflowId: "finished-ai-1",
+    workflowType: "AI",
+    type: "ai",
+    status: "done",
+    serviceStartedAt: "2026-09-11T11:52:07.068Z",
+  };
+
+  const rawStatus = normalizeWorkflowStatus(item, now);
+  assert.equal(rawStatus, "completed");
+  assert.equal(getWorkflowStatusPresentation(rawStatus).label, "Completed");
+
+  const normalized = normalizeTechnicianWorkItem(item as any, now);
+  assert.equal(normalized.state, "completed");
+  assert.equal(normalized.statusLabel, "Completed");
+});

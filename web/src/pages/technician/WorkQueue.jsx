@@ -11,6 +11,8 @@ import {
   PawPrint,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Info,
   HelpCircle,
   PhoneOff,
   MessageSquare,
@@ -36,6 +38,7 @@ import {
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
 } from "../../utils/requestWorkPresentation";
+import { isFutureSchedule } from "../../utils/technicianSchedulePresentation";
 import ImagePreviewModal from "../../components/ui/ImagePreviewModal";
 import { imagePreviewUrl } from "../../components/ui/imagePreviewUrl";
 import {
@@ -151,6 +154,8 @@ export default function WorkQueue({ embedded = false }) {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [previewImage, setPreviewImage] = useState(null);
+  const [earlyStartConfirmTask, setEarlyStartConfirmTask] = useState(null);
+  const [isStartingEarly, setIsStartingEarly] = useState(false);
   const itemsPerPage = 8;
 
   const handleCloseModal = () => {
@@ -159,6 +164,7 @@ export default function WorkQueue({ embedded = false }) {
     setBreedingFollowUp(null);
     setPregnancyLossReviewTask(null);
     setPreviewImage(null);
+    setEarlyStartConfirmTask(null);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -376,6 +382,52 @@ export default function WorkQueue({ embedded = false }) {
     }
   };
 
+  const handleConfirmStartEarly = async () => {
+    if (!earlyStartConfirmTask || isStartingEarly) return;
+    const task = earlyStartConfirmTask;
+    const workflowId = task.workflowId || task.id;
+    if (!isMongoId(workflowId)) {
+      toast.error("This AI work item has an invalid workflow identifier.");
+      return;
+    }
+
+    setIsStartingEarly(true);
+    try {
+      const response = await axiosInstance.patch(
+        `/ai-request/${encodeURIComponent(workflowId)}/status`,
+        {
+          status: "in-progress",
+          earlyStartConfirmed: true,
+        },
+      );
+
+      queryClient.invalidateQueries({ queryKey: ["technician"] });
+      setEarlyStartConfirmTask(null);
+
+      const updatedRequest = response.data?.request || response.data || {};
+      const updatedStartedAt =
+        updatedRequest.serviceStartedAt || new Date().toISOString();
+      const inProgressTask = {
+        ...task,
+        status: "in-progress",
+        serviceStartedAt: updatedStartedAt,
+        raw: {
+          ...(task.raw || {}),
+          ...updatedRequest,
+          status: "in-progress",
+          serviceStartedAt: updatedStartedAt,
+        },
+      };
+      setSelectedTaskWrapper(inProgressTask);
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to start AI service early.";
+      toast.error(message);
+    } finally {
+      setIsStartingEarly(false);
+    }
+  };
+
   const openTask = (task) => {
     if (
       task.sourceType === "farmer_pregnancy_loss_report" ||
@@ -387,11 +439,48 @@ export default function WorkQueue({ embedded = false }) {
       return;
     }
 
-    const timingDate = task.timing?.date || task.schedule?.date;
-    const isFuture = timingDate && new Date(timingDate).setHours(0,0,0,0) > new Date().setHours(0,0,0,0);
+    const scheduledDate =
+      task.scheduledDate ||
+      task.schedule?.date ||
+      task.timing?.date ||
+      task.raw?.scheduledDate;
+    const visitPeriod =
+      task.visitPeriod ||
+      task.schedule?.visitPeriod ||
+      task.timing?.visitPeriod ||
+      task.raw?.visitPeriod;
+    const isFuture = isFutureSchedule(scheduledDate, visitPeriod);
     const readiness = getTaskReadiness(task.raw || task);
+    const normalizedTaskStatus = String(task.status || "")
+      .toLowerCase()
+      .replaceAll("_", "-");
+    const isTerminal = [
+      "completed",
+      "done",
+      "resolved",
+      "cancelled",
+      "canceled",
+      "rejected",
+      "declined",
+    ].includes(normalizedTaskStatus);
+    const isInProgress =
+      !isTerminal &&
+      (["in-progress", "inprogress"].includes(normalizedTaskStatus) ||
+        Boolean(task.serviceStartedAt || task.raw?.serviceStartedAt));
 
-    if (!readiness.ready || isFuture) {
+    const isScheduledAI =
+      (task.workflowType === "AI" ||
+        task.type === "insemination" ||
+        task.type === "ai") &&
+      (normalizedTaskStatus === "scheduled" ||
+        task.allowedAction === "RECORD_SERVICE");
+
+    if (isScheduledAI && isFuture && !isInProgress) {
+      setEarlyStartConfirmTask(task);
+      return;
+    }
+
+    if (!readiness.ready || (isFuture && !isInProgress)) {
       setSelectedWorkDetails(task);
       return;
     }
@@ -534,7 +623,8 @@ export default function WorkQueue({ embedded = false }) {
           !selectedTaskWrapper &&
           !selectedWorkDetails &&
           !breedingFollowUp &&
-          !pregnancyLossReviewTask
+          !pregnancyLossReviewTask &&
+          !earlyStartConfirmTask
         ) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
           openTask(target);
@@ -562,6 +652,7 @@ export default function WorkQueue({ embedded = false }) {
     selectedWorkDetails,
     breedingFollowUp,
     pregnancyLossReviewTask,
+    earlyStartConfirmTask,
     currentIdentifier,
   ]);
 
@@ -1051,6 +1142,57 @@ export default function WorkQueue({ embedded = false }) {
           queryClient.invalidateQueries({ queryKey: ["technician"] });
         }}
       />
+      {earlyStartConfirmTask && (
+        <Modal
+          isOpen={Boolean(earlyStartConfirmTask)}
+          onClose={() => {
+            if (!isStartingEarly) {
+              setEarlyStartConfirmTask(null);
+            }
+          }}
+          title="Start service early?"
+          subtitle="Confirm early service start"
+          size="md"
+          icon={<AlertTriangle className="text-warning h-5 w-5" />}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isStartingEarly) {
+                    setEarlyStartConfirmTask(null);
+                  }
+                }}
+                disabled={isStartingEarly}
+                className="btn btn-sm btn-ghost text-base-content/70"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStartEarly}
+                disabled={isStartingEarly}
+                className={`btn btn-sm btn-primary font-bold gap-1.5 ${isStartingEarly ? "loading" : ""}`}
+              >
+                {isStartingEarly ? (
+                  <span className="loading loading-spinner loading-xs" />
+                ) : null}
+                Start Early
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 py-1">
+            <div className="alert alert-warning/15 border-warning/30 text-sm text-base-content/80 flex items-start gap-3 rounded-2xl py-3.5 px-4">
+              <Info className="h-5 w-5 shrink-0 text-warning mt-0.5" />
+              <p className="leading-relaxed">
+                This AI service is scheduled for a future visit. Are you sure you want
+                to start the service now?
+              </p>
+            </div>
+          </div>
+        </Modal>
+      )}
       <Modal
         isOpen={Boolean(selectedWorkDetails)}
         onClose={handleCloseModal}

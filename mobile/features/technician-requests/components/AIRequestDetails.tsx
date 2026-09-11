@@ -198,7 +198,7 @@ export function AIRequestDetails({
       : isScheduled
         ? { label: "Scheduled", variant: "scheduled" }
         : isInProgress
-          ? { label: "In progress", variant: "info" }
+          ? { label: "In Progress", variant: "info" }
           : isResolved
             ? { label: "Resolved", variant: "resolved" }
             : isCancelled

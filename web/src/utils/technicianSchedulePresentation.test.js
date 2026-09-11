@@ -3,6 +3,7 @@ import {
   buildScheduleItems,
   getScheduleNavigationTarget,
   getScheduleTimingState,
+  isFutureSchedule,
 } from "./technicianSchedulePresentation";
 
 const NOW = new Date("2026-09-02T04:00:00.000Z");
@@ -221,5 +222,33 @@ describe("technician Schedule presentation", () => {
         NOW,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("isFutureSchedule", () => {
+  // NOW is 2026-09-02T04:00:00.000Z = 12:00 PM Manila time
+  const morningNow = new Date("2026-09-02T01:00:00.000Z"); // 9:00 AM Manila time
+  const afternoonNow = new Date("2026-09-02T06:00:00.000Z"); // 2:00 PM Manila time
+
+  it("identifies tomorrow or later visits as future regardless of period", () => {
+    expect(isFutureSchedule("2026-09-03", "morning", morningNow)).toBe(true);
+    expect(isFutureSchedule("2026-09-03", "afternoon", afternoonNow)).toBe(true);
+  });
+
+  it("identifies today morning visit as not future when it is morning", () => {
+    expect(isFutureSchedule("2026-09-02", "morning", morningNow)).toBe(false);
+  });
+
+  it("identifies today afternoon visit as future when it is still morning", () => {
+    expect(isFutureSchedule("2026-09-02", "afternoon", morningNow)).toBe(true);
+  });
+
+  it("identifies today afternoon visit as not future when it is afternoon", () => {
+    expect(isFutureSchedule("2026-09-02", "afternoon", afternoonNow)).toBe(false);
+  });
+
+  it("identifies past dates as not future", () => {
+    expect(isFutureSchedule("2026-09-01", "morning", morningNow)).toBe(false);
+    expect(isFutureSchedule("2026-09-01", "afternoon", afternoonNow)).toBe(false);
   });
 });

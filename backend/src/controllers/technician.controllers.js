@@ -5445,9 +5445,10 @@ export const getWorkQueue = async (req, res) => {
       } else if (canonicalStatus === AI_STATUS.APPROVED) {
         allowedAction = "SCHEDULE_VISIT";
         actionLabel = "Schedule Visit";
-      } else if (
-        [AI_STATUS.SCHEDULED, AI_STATUS.IN_PROGRESS].includes(canonicalStatus)
-      ) {
+      } else if (canonicalStatus === AI_STATUS.IN_PROGRESS) {
+        allowedAction = "RECORD_SERVICE";
+        actionLabel = "Continue Service";
+      } else if (canonicalStatus === AI_STATUS.SCHEDULED) {
         allowedAction = "RECORD_SERVICE";
         actionLabel = "Record Insemination";
       } else if (canonicalStatus === AI_STATUS.DONE) {
@@ -5496,6 +5497,7 @@ export const getWorkQueue = async (req, res) => {
         },
         requestedAt: ins.createdAt || null,
         completedAt,
+        serviceStartedAt: ins.serviceStartedAt || null,
         isReadyToday:
           [AI_STATUS.APPROVED, AI_STATUS.SCHEDULED].includes(canonicalStatus) &&
           isToday(scheduleDate),
