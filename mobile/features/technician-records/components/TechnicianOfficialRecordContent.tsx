@@ -3,7 +3,6 @@ import { Image, ScrollView, StyleSheet, View, Pressable } from "react-native";
 import {
   CalendarCheck,
   CalendarDays,
-  Stethoscope,
   Syringe,
   ClipboardList,
   User as UserIcon,
@@ -31,6 +30,7 @@ import {
   Pill,
   MessageCircle,
   ShieldAlert,
+  Stethoscope,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -48,6 +48,7 @@ import {
   formatAnimalReference,
   getFullAnimalReference,
 } from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
+import { formatAddressLabel } from "@/constants/address";
 
 // --- EXISTING DATA HELPERS ---
 const hasValue = (value: unknown) => {
@@ -421,6 +422,19 @@ export function TechnicianOfficialRecordContent({
   const fullAnimalReference = record.animalId
     ? getFullAnimalReference(record.animalId)
     : "Animal record";
+  const farmer =
+    record.farmerId ||
+    (record as any).farmer ||
+    (record.animalId as any)?.farmerId;
+  const farmerName =
+    farmer?.name ||
+    [farmer?.firstName, farmer?.lastName].filter(Boolean).join(" ") ||
+    "Farmer not recorded";
+  const farmerLocation = formatAddressLabel(
+    farmer?.address,
+    farmer?.farmLocation,
+    "Location not provided",
+  );
   const nonOffspringEvidence = (record.attachments || []).filter(
     (attachment) => attachment.category !== "offspring_identity",
   );
@@ -928,13 +942,14 @@ export function TechnicianOfficialRecordContent({
               >
                 {[record.animalId.breed, record.animalId.species]
                   .filter(Boolean)
-                  .join(" • ")}
+                  .join(" · ")}
               </Text>
             ) : null}
           </View>
         </View>
-        {(record.animalId as any)?.farmerId?.firstName ||
-        (record.animalId as any)?.farmerId?.lastName ? (
+        {record.type !== "ai" &&
+        ((record.animalId as any)?.farmerId?.firstName ||
+          (record.animalId as any)?.farmerId?.lastName) ? (
           <RecordDetailRow
             label="Owner / Farmer"
             value={[
@@ -949,6 +964,33 @@ export function TechnicianOfficialRecordContent({
         ) : null}
       </RecordDetailCard>
 
+      {/* FARMER */}
+      {record.type === "ai" && (
+        <RecordDetailCard title="FARMER">
+          <View>
+            <Text
+              style={{
+                fontFamily: "Outfit_600SemiBold",
+                fontSize: 16,
+                color: colors.textPrimary,
+              }}
+            >
+              {farmerName}
+            </Text>
+            <Text
+              style={{
+                fontFamily: "Outfit_500Medium",
+                fontSize: 13,
+                color: colors.textSecondary,
+                marginTop: 2,
+              }}
+            >
+              {farmerLocation}
+            </Text>
+          </View>
+        </RecordDetailCard>
+      )}
+
       {/* 3. RECORD-SPECIFIC DETAILS */}
 
       {/* If it's a CALVING record, show unified card */}
@@ -961,13 +1003,7 @@ export function TechnicianOfficialRecordContent({
               }
               value={eventDate}
               icon={<CalendarDays size={18} color={colors.primary} />}
-            />
-          ) : null}
-          {hasValue(details.technician || record.technician?.name) ? (
-            <RecordDetailRow
-              label="Performed by"
-              value={details.technician || record.technician?.name || ""}
-              icon={<Stethoscope size={18} color={colors.primary} />}
+              isLast={visibleCalvingRows.length === 0}
             />
           ) : null}
           {visibleCalvingRows.length > 0 ? (
@@ -1019,22 +1055,9 @@ export function TechnicianOfficialRecordContent({
               value={eventDate}
               icon={<CalendarDays size={18} color={colors.primary} />}
               isLast={
-                !hasValue(details.technician || record.technician?.name) &&
                 visibleAiRows.length === 0 &&
                 visiblePregnancyRows.length === 0 &&
                 visibleHealthRows.length === 0
-              }
-            />
-          ) : null}
-          {hasValue(details.technician || record.technician?.name) ? (
-            <RecordDetailRow
-              label="Performed by"
-              value={details.technician || record.technician?.name || ""}
-              icon={<Stethoscope size={18} color={colors.primary} />}
-              isLast={
-                record.type !== "ai" &&
-                record.type !== "pregnancy" &&
-                record.type !== "health"
               }
             />
           ) : null}

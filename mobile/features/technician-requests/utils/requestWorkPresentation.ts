@@ -25,6 +25,7 @@ export type RequestWorkStatus =
   | "upcoming"
   | "due_today"
   | "overdue"
+  | "in_progress"
   | "completed"
   | "cancelled";
 
@@ -230,7 +231,7 @@ const statusLabelFor = (state: TechnicianWorkState) =>
     scheduled: "Scheduled",
     needs_confirmation: "Needs confirmation",
     monitoring: "Monitoring",
-    in_progress: "In progress",
+    in_progress: "In Progress",
     completed: "Completed",
     cancelled: "Cancelled",
   })[state];
@@ -314,7 +315,10 @@ export function normalizeTechnicianWorkItem(
   let state: TechnicianWorkState;
   if (cancelledStatuses.has(status)) state = "cancelled";
   else if (completedAt || terminalStatuses.has(status)) state = "completed";
-  else if (["in_progress", "inprogress"].includes(status) || serviceStartedAt) {
+  else if (
+    ["in_progress", "inprogress", "in-progress"].includes(status) ||
+    Boolean(serviceStartedAt)
+  ) {
     state = "in_progress";
   } else if (workType === "ai") {
     state = scheduledDate ? "scheduled" : "needs_scheduling";
@@ -348,10 +352,15 @@ export function normalizeTechnicianWorkItem(
   const todayKey = philippineDateKey(now);
   const unfinished = !["completed", "cancelled"].includes(state);
   const isReadyToday = Boolean(
-    unfinished && timingKey && timingKey === todayKey,
+    unfinished &&
+      (state === "in_progress" || (timingKey && timingKey === todayKey)),
   );
   const needsAttention = Boolean(
-    unfinished && timingKey && todayKey && timingKey < todayKey,
+    unfinished &&
+      state !== "in_progress" &&
+      timingKey &&
+      todayKey &&
+      timingKey < todayKey,
   );
   const overdue = needsAttention && timingKind !== "expected_event";
   const dateLabel = formatWorkDate(timingDate);
@@ -447,7 +456,9 @@ export function normalizeTechnicianWorkItem(
             : temporalStatusLabel || "Follow-up due"
           : state === "completed" && healthCompletionPresentation
             ? healthCompletionPresentation.statusLabel
-            : temporalStatusLabel || statusLabelFor(state),
+            : state === "in_progress"
+              ? "In Progress"
+              : temporalStatusLabel || statusLabelFor(state),
     actionLabel,
     scheduledDate,
     visitPeriod: period,
@@ -577,6 +588,18 @@ export function normalizeWorkflowStatus(
     return "needs_review";
   }
 
+  const isInProgressCanonical = [
+    "in_progress",
+    "inprogress",
+    "in-progress",
+  ].includes(status);
+  const hasServiceStarted = Boolean(
+    item.serviceStartedAt || item.raw?.serviceStartedAt,
+  );
+  if (isInProgressCanonical || hasServiceStarted) {
+    return "in_progress";
+  }
+
   const serviceType = normalizeServiceType(item);
   const rawHandlingMethod =
     item.handlingMethod ||
@@ -621,7 +644,6 @@ export function normalizeWorkflowStatus(
         "assigned",
         "triaged",
         "claimed",
-        "in_progress",
         "ready_today",
       ].includes(status)
     ) {
@@ -637,7 +659,6 @@ export function normalizeWorkflowStatus(
       "scheduled",
       "approved",
       "assigned",
-      "in_progress",
       "ready_today",
     ].includes(status)
   ) {
@@ -653,7 +674,7 @@ export function getWorkflowStatusPresentation(
     string,
     { label: string; tone: RequestWorkTone }
   > = {
-    open: { label: "Open", tone: "amber" },
+    open: { label: "Available", tone: "amber" },
     needs_review: { label: "Needs review", tone: "blue" },
     needs_response: { label: "Needs response", tone: "blue" },
     needs_scheduling: { label: "Needs scheduling", tone: "amber" },
@@ -662,11 +683,12 @@ export function getWorkflowStatusPresentation(
     upcoming: { label: "Upcoming", tone: "blue" },
     due_today: { label: "Due Today", tone: "amber" },
     overdue: { label: "Overdue", tone: "red" },
+    in_progress: { label: "In Progress", tone: "blue" },
     completed: { label: "Completed", tone: "green" },
     cancelled: { label: "Cancelled", tone: "slate" },
     triaged: { label: "Needs response", tone: "blue" },
   };
-  return presentations[status] || { label: "Open", tone: "amber" };
+  return presentations[status] || { label: "Available", tone: "amber" };
 }
 
 export function matchesServiceFilter(

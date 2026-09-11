@@ -5,11 +5,10 @@ import {
   CalendarDays,
   Check,
   Clock3,
+  Info,
   MapPin,
   Phone,
-  Tag,
-  MessageSquareText,
-  Image as ImageIcon,
+  Syringe,
 } from "lucide-react";
 
 import axiosInstance from "../../lib/axios";
@@ -21,6 +20,7 @@ import {
   getHealthVisitPeriodAvailability,
   getManilaDateKey,
 } from "../../utils/healthRequestWorkflow";
+import { extractFarmerNote } from "../../utils/aiRequestNote";
 
 const dateKeyWithOffset = (dayOffset = 0) => {
   const [year, month, day] = getManilaDateKey().split("-").map(Number);
@@ -35,10 +35,19 @@ const backendErrorDetails = (error) => ({
   status: error?.response?.status || null,
 });
 
-const humanizeStatus = (status) =>
-  String(status || "Pending")
+const humanizeStatus = (status) => {
+  const normalized = String(status || "pending").toLowerCase().trim();
+  if (normalized === "pending") return "Available";
+  return String(status || "Available")
     .replaceAll("_", " ")
     .replaceAll("-", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
+const humanizeObservation = (val) =>
+  String(val || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
 const formatRequestDate = (dateString) => {
@@ -80,8 +89,24 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
     request.farmerPhone ||
     request.farmerDetails?.phone ||
     "Not provided";
-  const animalTag = request.animalTag || request.earTag || null;
+  const animalTag =
+    request.animalTag || request.earTag || request.animalId?.earTag || null;
+  const animalName = request.animalName || request.animalId?.name || null;
+  const species = request.species || request.animalId?.species || "Cattle";
+  const breed = request.breed || request.animalId?.breed || null;
   const submittedAt = request.requestSubmissionDate || request.createdAt;
+
+  const heatSigns = Array.isArray(request.heatSigns)
+    ? request.heatSigns
+    : Array.isArray(request.raw?.heatSigns)
+      ? request.raw.heatSigns
+      : [];
+
+  const location =
+    request.locationLabel ||
+    request.location ||
+    request.farmerDetails?.location ||
+    "Location not provided";
 
   const attachmentUrls = getAIRequestPhotos(request);
   const [showAllPhotos, setShowAllPhotos] = useState(false);
@@ -96,169 +121,201 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
     request.raw?.farmerDescription ||
     request.raw?.farmerNotes ||
     request.raw?.notes ||
+    request.comment ||
     null;
 
-  const requestNotes =
-    rawNotes && rawNotes.startsWith("Additional Notes:\n")
-      ? rawNotes.substring(18).trim()
-      : rawNotes;
+  const requestNotes = extractFarmerNote(rawNotes);
+
+  const animalTitle = animalName
+    ? `${animalName} · Tag ${animalTag || "Unrecorded"}`
+    : animalTag
+      ? `Tag ${animalTag}`
+      : "Unrecorded Animal";
+
+  const animalSubtitle = [species, breed].filter(Boolean).join(" · ");
 
   return (
-    <div className="space-y-5">
-      {/* Farmer Information Section */}
-      <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+    <div className="space-y-5 py-1">
+      {/* Guidance Banner when in details view */}
+      {!compact && (
+        <div className="alert alert-info/15 border-info/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+          <Info className="h-4 w-4 shrink-0 text-info mt-0.5" />
+          <div>
+            <p className="font-bold text-base-content">
+              Reviewing Artificial Insemination Request
+            </p>
+            <p className="mt-0.5 leading-relaxed text-base-content/75">
+              Review the target animal, owner details, and heat signs before
+              setting a visit schedule.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Animal & Farmer Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Target Animal Card */}
+        <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+            Target Animal
+          </span>
+          <div className="flex items-start justify-between">
+            <div>
+              <h4 className="font-bold text-sm text-base-content">
+                {animalTitle}
+              </h4>
+              <p className="text-xs text-base-content/70 mt-0.5">
+                {animalSubtitle}
+              </p>
+            </div>
+            <span className="badge badge-primary badge-sm font-semibold capitalize">
+              {humanizeStatus(request.status)}
+            </span>
+          </div>
+          {animalTag && !animalName && (
+            <p className="text-[11px] text-base-content/60 mt-2">
+              Ear Tag:{" "}
+              <strong className="text-base-content">{animalTag}</strong>
+            </p>
+          )}
+        </div>
+
+        {/* Requesting Farmer Card */}
+        <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+            Requesting Farmer
+          </span>
+          <div className="flex items-start gap-3">
             <UserAvatar
               name={farmerName}
               imageUrl={
                 request.farmerImageUrl || request.raw?.farmerId?.imageUrl
               }
-              size={48}
-              sizeClass="h-12 w-12"
+              size={38}
+              sizeClass="h-9.5 w-9.5"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-base-content/55">
-                Farmer
-              </p>
-              <p className="truncate font-bold text-base-content">
+              <h4 className="font-bold text-sm text-base-content truncate">
                 {farmerName}
+              </h4>
+              <p className="text-xs text-base-content/70 mt-0.5 truncate flex items-center gap-1">
+                <MapPin className="h-3 w-3 shrink-0 text-primary" />
+                <span className="truncate">{location}</span>
               </p>
+              {phone && phone !== "Not provided" ? (
+                <a
+                  href={`tel:${phone}`}
+                  className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-1.5 hover:underline"
+                >
+                  <Phone className="h-3 w-3" />
+                  {phone}
+                </a>
+              ) : (
+                <span className="text-[11px] text-base-content/50 mt-1 block">
+                  Phone not provided
+                </span>
+              )}
             </div>
           </div>
-          {submittedAt && (
-            <div className="text-right shrink-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-base-content/55">
-                Submitted
-              </p>
-              <p className="text-xs text-base-content/70">
-                {formatRequestDate(submittedAt)}
-              </p>
+        </div>
+      </div>
+
+      {/* Request & Observations Section (when !compact) */}
+      {!compact && (
+        <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
+              Request & Heat Observations
+            </span>
+            {submittedAt && (
+              <span className="text-[11px] text-base-content/60 flex items-center gap-1">
+                <Clock3 className="h-3 w-3" />
+                Submitted {formatRequestDate(submittedAt)}
+              </span>
+            )}
+          </div>
+
+          {/* Observed Heat Signs */}
+          {heatSigns.length > 0 && (
+            <div className="bg-base-100 border border-base-200 rounded-xl p-3">
+              <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1.5">
+                Observed Heat Signs
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {heatSigns.map((sign, idx) => (
+                  <span
+                    key={idx}
+                    className="badge badge-sm badge-outline border-primary/40 text-primary font-semibold capitalize"
+                  >
+                    {humanizeObservation(sign)}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
+
+          {/* Farmer Note */}
+          {requestNotes ? (
+            <div>
+              <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                Farmer Note
+              </span>
+              <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium whitespace-pre-wrap">
+                {requestNotes}
+              </p>
+            </div>
+          ) : null}
+
+          {/* Farmer Request Photos */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-semibold uppercase text-base-content/60 block ">
+                Farmer request photos ({attachmentUrls.length})
+              </span>
+              {hasMorePhotos && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs text-[11px] text-primary font-semibold"
+                  onClick={() => setShowAllPhotos(!showAllPhotos)}
+                >
+                  {showAllPhotos
+                    ? "Show Less"
+                    : `Show All (${attachmentUrls.length})`}
+                </button>
+              )}
+            </div>
+
+            {attachmentUrls.length > 0 ? (
+              <div className="flex flex-wrap gap-2.5">
+                {displayedPhotos.map((url, idx) => (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => onPreviewImage?.(url)}
+                    className="group relative h-20 w-20 rounded-xl overflow-hidden border border-base-300 hover:opacity-90 transition-opacity focus:outline-none cursor-pointer"
+                    aria-label={`Enlarge request image ${idx + 1}`}
+                  >
+                    <img
+                      src={url}
+                      alt={`Farmer-submitted AI request photo ${idx + 1}`}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      loading="lazy"
+                    />
+                    {!showAllPhotos && idx === 3 && hasMorePhotos && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 font-bold text-white text-xs">
+                        +{attachmentUrls.length - 4}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-base-content/50 italic">
+                No request photos submitted.
+              </p>
+            )}
+          </div>
         </div>
-      </section>
-
-      {/* Request Details Section */}
-      {!compact && (
-        <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-bold uppercase tracking-wider text-base-content/60">
-              Request Details
-            </h4>
-            <span className="badge badge-sm badge-primary">
-              {humanizeStatus(request.status)}
-            </span>
-          </div>
-
-          <div className="space-y-4">
-            {/* Location and Contact */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                <MapPin size={16} className="shrink-0 text-primary" />
-                <span className="truncate text-base-content/70">
-                  {request.locationLabel ||
-                    request.location ||
-                    request.farmerDetails?.location ||
-                    "Location unknown"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                <Phone size={16} className="shrink-0 text-primary" />
-                <span className="truncate text-base-content/70">{phone}</span>
-              </div>
-            </div>
-
-            {/* Animal */}
-            <div className="grid gap-3 sm:grid-cols-1">
-              <div className="flex items-center gap-2 text-sm bg-base-100 rounded-lg p-3 border border-base-300">
-                <Tag size={16} className="shrink-0 text-primary" />
-                <span className="truncate text-base-content/70">
-                  Animal Ear tag:{" "}
-                  <strong className="text-base-content">{animalTag}</strong>
-                </span>
-              </div>
-            </div>
-
-            {/* Farmer Notes */}
-            {requestNotes && (
-              <div className="bg-base-100 rounded-lg p-4 border border-base-300">
-                <div className="flex items-start gap-2">
-                  <MessageSquareText
-                    size={16}
-                    className="shrink-0 mt-0.5 text-primary"
-                  />
-                  <div className="flex-1">
-                    <strong className="text-base-content block mb-2 text-sm">
-                      Farmer Notes:
-                    </strong>
-                    <p className="text-sm text-base-content/80 leading-relaxed whitespace-pre-wrap">
-                      {requestNotes}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Photos Section - Enhanced for multiple photos */}
-      {!compact && attachmentUrls.length > 0 && (
-        <section className="rounded-xl border border-base-300 bg-base-200 p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ImageIcon
-                size={16}
-                className="text-primary"
-                aria-hidden="true"
-              />
-              <h4 className="text-sm font-semibold text-base-content">
-                Farmer Request Photos ({attachmentUrls.length})
-              </h4>
-            </div>
-            {hasMorePhotos && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={() => setShowAllPhotos(!showAllPhotos)}
-              >
-                {showAllPhotos
-                  ? "Show Less"
-                  : `Show All (${attachmentUrls.length})`}
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {displayedPhotos.map((url, index) => (
-              <button
-                type="button"
-                key={url}
-                className="group relative aspect-video overflow-hidden rounded-xl border border-base-300 bg-base-100 transition-all hover:scale-105 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                aria-label={`Enlarge request image ${index + 1}`}
-                onClick={() => onPreviewImage?.(url)}
-              >
-                <img
-                  src={url}
-                  alt={`Farmer-submitted AI request photo ${index + 1}`}
-                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
-
-                {/* Photo counter overlay for photos beyond 4 when not showing all */}
-                {!showAllPhotos && index === 3 && hasMorePhotos && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    <span className="text-lg font-bold text-white">
-                      +{attachmentUrls.length - 4}
-                    </span>
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </section>
       )}
     </div>
   );
@@ -428,7 +485,7 @@ export default function AIRequestModal({
       <>
         <button
           type="button"
-          className="btn btn-sm btn-ghost"
+          className="btn btn-sm btn-ghost text-base-content/70 rounded-xl"
           onClick={closeModal}
         >
           Close
@@ -436,7 +493,7 @@ export default function AIRequestModal({
         {canClaimAndSchedule && (
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary font-bold rounded-xl gap-1.5"
             onClick={() => onViewChange("schedule")}
           >
             <CalendarDays size={16} aria-hidden="true" />
@@ -448,16 +505,16 @@ export default function AIRequestModal({
       <>
         <button
           type="button"
-          className="btn btn-sm btn-ghost mr-auto"
-          disabled={isSubmitting}
+          className="btn btn-sm btn-ghost text-base-content/70 rounded-xl mr-auto"
           onClick={() => onViewChange("details")}
+          disabled={isSubmitting}
         >
           <ArrowLeft size={16} aria-hidden="true" />
           Back to Details
         </button>
         <button
           type="button"
-          className="btn btn-sm btn-ghost"
+          className="btn btn-sm btn-ghost text-base-content/70 rounded-xl"
           disabled={isSubmitting}
           onClick={closeModal}
         >
@@ -465,7 +522,7 @@ export default function AIRequestModal({
         </button>
         <button
           type="button"
-          className="btn btn-sm btn-primary"
+          className="btn btn-sm btn-primary font-bold rounded-xl gap-1.5"
           disabled={isSubmitting || !canClaimAndSchedule}
           onClick={confirmSchedule}
         >
@@ -494,7 +551,8 @@ export default function AIRequestModal({
             ? "Choose the visit date and service period before assignment."
             : "Review the farmer's artificial insemination request."
         }
-        size="lg"
+        size="xl"
+        icon={<Syringe className="text-primary h-5 w-5" />}
         actions={actions}
       >
         {view === "details" ? (
@@ -503,20 +561,22 @@ export default function AIRequestModal({
             onPreviewImage={setPreviewImage}
           />
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-5 py-1">
             <AIRequestSummary request={request} compact />
 
             {errors.form && (
               <div
                 role="alert"
-                className="alert alert-error alert-soft text-sm"
+                className="alert alert-error/15 border-error/30 text-xs text-error rounded-2xl py-3 px-4"
               >
                 <span>{errors.form}</span>
               </div>
             )}
 
-            <fieldset className="fieldset">
-              <legend className="fieldset-legend">Visit date</legend>
+            <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
+                Visit Date
+              </span>
               <div className="grid gap-2 sm:grid-cols-3">
                 {[
                   ["today", "Today"],
@@ -525,7 +585,7 @@ export default function AIRequestModal({
                 ].map(([value, label]) => (
                   <label
                     key={value}
-                    className="flex cursor-pointer items-center gap-2 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"
+                    className="flex cursor-pointer items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 text-xs font-medium hover:bg-base-200/50 transition-colors"
                   >
                     <input
                       type="radio"
@@ -537,9 +597,9 @@ export default function AIRequestModal({
                         setSamePeriodConfirmed(false);
                         setErrors((current) => ({ ...current, date: null }));
                       }}
-                      className="radio radio-sm"
+                      className="radio radio-primary radio-sm"
                     />
-                    <span className="font-medium text-base-content">
+                    <span className="font-semibold text-base-content">
                       {label}
                     </span>
                   </label>
@@ -549,7 +609,7 @@ export default function AIRequestModal({
                 <input
                   type="date"
                   aria-label="Custom visit date"
-                  className={`input input-sm mt-2 w-full ${errors.date ? "input-error" : ""}`}
+                  className={`input input-sm mt-2 w-full rounded-xl text-xs font-medium ${errors.date ? "input-error" : ""}`}
                   min={dateKeyWithOffset(0)}
                   value={customDate}
                   onChange={(event) => {
@@ -560,14 +620,16 @@ export default function AIRequestModal({
                 />
               )}
               {errors.date && (
-                <p role="alert" className="label text-error">
+                <p role="alert" className="text-xs text-error font-medium">
                   {errors.date}
                 </p>
               )}
-            </fieldset>
+            </div>
 
-            <fieldset className="fieldset">
-              <legend className="fieldset-legend">Visit period</legend>
+            <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
+                Service Period
+              </span>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   ["morning", "Morning"],
@@ -580,7 +642,7 @@ export default function AIRequestModal({
                   return (
                     <label
                       key={value}
-                      className={`flex items-center gap-2 rounded-box border border-base-300 bg-base-100 px-3 py-2.5 ${availability.disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                      className={`flex items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5 text-xs font-medium transition-colors ${availability.disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-base-200/50"}`}
                     >
                       <input
                         type="radio"
@@ -596,14 +658,14 @@ export default function AIRequestModal({
                             visitPeriod: null,
                           }));
                         }}
-                        className="radio radio-sm"
+                        className="radio radio-primary radio-sm"
                       />
                       <Clock3
                         size={15}
                         className="text-base-content/55"
                         aria-hidden="true"
                       />
-                      <span className="font-medium text-base-content">
+                      <span className="font-semibold text-base-content">
                         {label}
                       </span>
                     </label>
@@ -612,10 +674,10 @@ export default function AIRequestModal({
               </div>
               {selectedPeriodAvailability.requiresConfirmation &&
               visitPeriod ? (
-                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-box border border-warning/40 bg-warning/10 p-3 text-sm">
+                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs">
                   <input
                     type="checkbox"
-                    className="checkbox checkbox-warning checkbox-sm mt-0.5"
+                    className="checkbox checkbox-warning checkbox-xs mt-0.5"
                     checked={samePeriodConfirmed}
                     onChange={(event) => {
                       setSamePeriodConfirmed(event.target.checked);
@@ -625,18 +687,18 @@ export default function AIRequestModal({
                       }));
                     }}
                   />
-                  <span>
+                  <span className="text-base-content font-medium">
                     I confirm I can still attend during this current service
                     period.
                   </span>
                 </label>
               ) : null}
               {errors.visitPeriod && (
-                <p role="alert" className="label text-error">
+                <p role="alert" className="text-xs text-error font-medium">
                   {errors.visitPeriod}
                 </p>
               )}
-            </fieldset>
+            </div>
           </div>
         )}
       </Modal>

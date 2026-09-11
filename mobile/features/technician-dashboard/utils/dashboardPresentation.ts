@@ -1,4 +1,4 @@
-import { getTechnicianRequestStatusPresentation } from "@/features/technician-requests/utils/requestPresentation";
+import { getTechnicianRequestStatusPresentation } from "../../technician-requests/utils/requestPresentation.ts";
 
 const EMPTY_LOCATION_LABEL = "Location not provided";
 
@@ -171,4 +171,36 @@ export function getTechnicianRequestBadge(item: any) {
         : "info",
     isAvailable: false,
   };
+}
+
+export function formatPlannedSchedule(item: any): string | null {
+  const rawDate =
+    item?.scheduledDate || item?.raw?.scheduledDate || item?.schedule?.date;
+  if (!rawDate) return null;
+  const date = new Date(String(rawDate));
+  if (Number.isNaN(date.getTime())) return null;
+
+  const dateStr = new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(date);
+
+  const rawPeriod = String(
+    item?.visitPeriod ||
+      item?.raw?.visitPeriod ||
+      item?.schedule?.visitPeriod ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  const periodLabel =
+    rawPeriod === "morning"
+      ? "Morning"
+      : rawPeriod === "afternoon"
+        ? "Afternoon"
+        : null;
+
+  return periodLabel ? `${dateStr} · ${periodLabel}` : dateStr;
 }

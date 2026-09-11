@@ -196,3 +196,31 @@ export const getStructuredHealthRequestPresentation = (request: {
         : "",
   };
 };
+
+const normalizeRequestText = (value: unknown) =>
+  Array.isArray(value)
+    ? value.filter(Boolean).join("\n\n").trim()
+    : typeof value === "string"
+      ? value.trim()
+      : "";
+
+export const getHealthRequestFarmerNote = (request: {
+  requestDetails?: Partial<FarmerHealthRequestDetails> | null;
+  farmerNotes?: unknown;
+  symptoms?: unknown;
+}) => {
+  const structuredDescription =
+    typeof request.requestDetails?.farmerDescription === "string"
+      ? request.requestDetails.farmerDescription.trim()
+      : "";
+  if (structuredDescription) return structuredDescription;
+
+  const explicitNote = normalizeRequestText(request.farmerNotes);
+  if (explicitNote) return explicitNote;
+
+  const legacyText = normalizeRequestText(request.symptoms);
+  const descriptionMatch = legacyText.match(
+    /(?:^|\n\n)(?:Description|Farmer notes?):\s*([\s\S]*?)(?=\n\n(?:Assistance requested|Observed signs|Description|Farmer notes?):|$)/i,
+  );
+  return descriptionMatch?.[1]?.trim() || "";
+};

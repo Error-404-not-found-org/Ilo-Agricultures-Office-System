@@ -358,7 +358,7 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`admin-sidebar relative flex min-h-0 flex-col border-r border-base-300 text-base-content transition-all duration-300 ease-in-out lg:translate-x-0 ${isAdmin ? "bg-base-100" : "bg-base-200"} ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
+        className={`admin-sidebar relative flex min-h-0 flex-col border-r border-base-300 bg-base-100 text-base-content transition-all duration-300 ease-in-out lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
       >
         {/* Logo */}
         {isCollapsed ? (
@@ -382,7 +382,7 @@ export default function Sidebar() {
           </div>
         ) : (
           <div
-            className={`group flex shrink-0 items-center justify-between border-b border-base-300/80 p-6 transition-all duration-300 ${isAdmin ? "bg-base-100" : "bg-base-200"}`}
+            className="group flex shrink-0 items-center justify-between border-b border-base-300/80 bg-base-100 p-6 transition-all duration-300"
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
@@ -570,7 +570,7 @@ export default function Sidebar() {
 
         {/* Footer User Block Integration */}
         <div
-          className={`admin-sidebar-footer shrink-0 border-t transition-all duration-300 ${isAdmin ? "border-base-300 bg-base-200/70 p-3" : "border-base-300/80 bg-base-200 p-4"} ${isCollapsed ? `flex flex-col items-center ${isAdmin ? "gap-2" : "gap-3"}` : isAdmin ? "space-y-1" : ""}`}
+          className={`admin-sidebar-footer shrink-0 border-t transition-all duration-300 ${isAdmin ? "border-base-300 bg-base-200/70 p-3" : "border-base-300/80 bg-base-100 p-4"} ${isCollapsed ? `flex flex-col items-center ${isAdmin ? "gap-2" : "gap-3"}` : isAdmin ? "space-y-1" : ""}`}
         >
           {isAdmin ? (
             <div

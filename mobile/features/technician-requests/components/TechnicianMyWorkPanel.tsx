@@ -22,6 +22,7 @@ import {
   MY_WORK_FILTERS,
   normalizeTechnicianWorkItems,
 } from "../utils/requestWorkPresentation";
+import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
 import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
@@ -79,10 +80,51 @@ export default function TechnicianMyWorkPanel({
         return;
       }
 
+      const targetWorkflowId = item.workflowId || item.id;
+      const isTerminal =
+        item.state === "completed" ||
+        item.allowedAction === "VIEW_RECORD" ||
+        ["completed", "done", "cancelled", "canceled"].includes(
+          String(item.status || "").toLowerCase(),
+        );
+
+      const isInProgress =
+        !isTerminal &&
+        (item.state === "in_progress" ||
+          ["in_progress", "inprogress", "in-progress"].includes(
+            String(item.status || "").toLowerCase(),
+          ) ||
+          item.actionLabel === "Continue Service");
+
+      if (isInProgress) {
+        if (!isCanonicalWorkflowId(targetWorkflowId)) {
+          toast.error("This AI work item is missing its canonical identifier.");
+          return;
+        }
+
+        router.push({
+          pathname: "/(technician)/record-ai",
+          params: {
+            mode: "request-linked",
+            requestId: targetWorkflowId,
+            workflowId: targetWorkflowId,
+            ...(item.taskId && isCanonicalWorkflowId(item.taskId)
+              ? { taskId: item.taskId }
+              : {}),
+            ...(item.scheduledDate ? { scheduleDate: item.scheduledDate } : {}),
+            ...(item.visitPeriod ? { visitPeriod: item.visitPeriod } : {}),
+            ...(item.farmerName ? { farmerName: item.farmerName } : {}),
+            ...(item.animalName ? { animalName: item.animalName } : {}),
+            ...(item.animalTag ? { earTag: item.animalTag } : {}),
+          },
+        });
+        return;
+      }
+
       router.push({
         pathname: "/(technician)/request-details",
         params: {
-          id: item.workflowId || item.id,
+          id: targetWorkflowId,
           type: "ai",
           viewOnly: item.allowedAction === "VIEW_RECORD" ? "true" : undefined,
           taskId: item.taskId || undefined,
@@ -121,6 +163,42 @@ export default function TechnicianMyWorkPanel({
       return;
     }
     toast.error("This work item is missing its task identifier.");
+  };
+
+  const performWorkItem = (item: TechnicianWorkItem) => {
+    if (item.workType !== "health") {
+      openWorkItem(item);
+      return;
+    }
+    const isServiceAction =
+      ["RECORD_SERVICE", "START_SERVICE"].includes(
+        String(item.allowedAction || ""),
+      ) ||
+      item.state === "in_progress" ||
+      ["Continue Service", "Record Health Assistance", "Complete Visit"].includes(
+        item.actionLabel,
+      );
+    if (!isServiceAction) {
+      openWorkItem(item);
+      return;
+    }
+    const requestId = item.workflowId || item.id;
+    if (!requestId) {
+      toast.error("This Health work item is missing its request identifier.");
+      return;
+    }
+    router.push({
+      pathname: "/(technician)/health-log",
+      params: {
+        mode: "request-linked",
+        requestId,
+        healthRequestId: requestId,
+        workflowId: requestId,
+        startService: "true",
+        taskId: item.taskId || undefined,
+        visitPeriod: item.visitPeriod || undefined,
+      },
+    });
   };
 
   const content = (
@@ -205,6 +283,7 @@ export default function TechnicianMyWorkPanel({
                   key={t.id}
                   item={t}
                   onPress={() => openWorkItem(t)}
+                  onActionPress={() => performWorkItem(t)}
                 />
               ))}
               {pagination.totalPages > 1 ? (

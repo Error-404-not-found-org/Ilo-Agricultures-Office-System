@@ -212,6 +212,18 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
     return "needs_review";
   }
 
+  const isInProgressCanonical = [
+    "in_progress",
+    "inprogress",
+    "in-progress",
+  ].includes(status);
+  const hasServiceStarted = Boolean(
+    item.serviceStartedAt || item.raw?.serviceStartedAt,
+  );
+  if (isInProgressCanonical || hasServiceStarted) {
+    return "in_progress";
+  }
+
   const serviceType = normalizeServiceType(item);
   const handlingMethod = getHandlingMethod(item);
   const scheduledVisitDate = item.schedule?.date || item.scheduledDate;
@@ -251,7 +263,6 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
         "assigned",
         "triaged",
         "claimed",
-        "in_progress",
         "ready_today",
       ].includes(status)
     ) {
@@ -266,7 +277,6 @@ export const normalizeWorkflowStatus = (item = {}, now = new Date()) => {
       "scheduled",
       "approved",
       "assigned",
-      "in_progress",
       "ready_today",
     ].includes(status)
   ) {
@@ -311,6 +321,11 @@ export const getWorkflowStatusPresentation = (status) =>
       badgeClass: "badge-warning",
     },
     overdue: { label: "Overdue", tone: "red", badgeClass: "badge-error" },
+    in_progress: {
+      label: "In Progress",
+      tone: "blue",
+      badgeClass: "badge-info badge-soft",
+    },
     completed: {
       label: "Completed",
       tone: "green",

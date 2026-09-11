@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Camera,
   Loader2,
-  LogOut,
   Mail,
   MapPin,
   Moon,
@@ -59,35 +58,49 @@ function DetailRow({ icon: Icon, label, value }) {
         <Icon size={18} className="shrink-0" aria-hidden="true" />
         {label}
       </dt>
-      <dd className="mt-1 break-words pl-8 text-sm font-medium">
+      <dd className="mt-1 wrap-break-word pl-8 text-sm font-medium">
         {value || "Not set"}
       </dd>
     </div>
   );
 }
 
-function SectionPanel({ title, description, children }) {
+function SectionPanel({ icon: Icon, title, description, children }) {
   return (
-    <section className="space-y-4 py-6">
-      <div>
-        <h2 className="text-base font-semibold text-base-content">{title}</h2>
-        {description ? <p className="mt-1 max-w-prose text-sm text-base-content/80">{description}</p> : null}
+    <section className="card card-border bg-base-100 shadow-sm">
+      <div className="card-body gap-5 p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          {Icon ? (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-box bg-primary/10 text-primary">
+              <Icon size={20} aria-hidden="true" />
+            </span>
+          ) : null}
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-base-content">
+              {title}
+            </h2>
+            {description ? (
+              <p className="mt-1 max-w-prose text-sm text-base-content/70">
+                {description}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {children}
       </div>
-      {children}
     </section>
   );
 }
 
 export default function TechMyProfile() {
   const toast = useToast();
-  const { signOut, openUserProfile } = useClerk();
+  const { openUserProfile } = useClerk();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [theme, setTheme] = useState(getStoredTheme);
   const [formError, setFormError] = useState("");
   const [accountError, setAccountError] = useState("");
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const [notice, setNotice] = useState("");
   const [isReadingPhoto, setIsReadingPhoto] = useState(false);
 
@@ -101,7 +114,8 @@ export default function TechMyProfile() {
     queryKey: ["technician", "profile-me"],
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/profile");
-      if (!res.data?._id) throw new Error("Your profile is unavailable. Please try again.");
+      if (!res.data?._id)
+        throw new Error("Your profile is unavailable. Please try again.");
       return res.data;
     },
   });
@@ -150,7 +164,10 @@ export default function TechMyProfile() {
       setIsEditing(false);
     },
     onError: (error) => {
-      setFormError(error.response?.data?.message || "Profile could not be updated. Please try again.");
+      setFormError(
+        error.response?.data?.message ||
+          "Profile could not be updated. Please try again.",
+      );
       toast.error(
         error.response?.data?.message ||
           error.message ||
@@ -226,7 +243,8 @@ export default function TechMyProfile() {
         imageUrl: String(reader.result || ""),
       }));
     };
-    reader.onerror = () => setFormError("The photo could not be read. Choose it again.");
+    reader.onerror = () =>
+      setFormError("The photo could not be read. Choose it again.");
     reader.onloadend = () => setIsReadingPhoto(false);
     reader.readAsDataURL(file);
   };
@@ -237,28 +255,32 @@ export default function TechMyProfile() {
       setTheme(applyTheme(nextTheme));
       setNotice("Appearance saved for this browser.");
     } catch {
-      setAccountError("Appearance could not be saved. Check your browser storage settings.");
+      setAccountError(
+        "Appearance could not be saved. Check your browser storage settings.",
+      );
     }
-  };
-
-  const handleSignOut = async () => {
-    setAccountError("");
-    setIsSigningOut(true);
-    try { await signOut(); }
-    catch { setAccountError("Sign out failed. Please try again."); }
-    finally { setIsSigningOut(false); }
   };
 
   const handleManageAccount = () => {
     setAccountError("");
-    try { openUserProfile(); }
-    catch { setAccountError("Account settings could not be opened. Please try again."); }
+    try {
+      openUserProfile();
+    } catch {
+      setAccountError(
+        "Account settings could not be opened. Please try again.",
+      );
+    }
   };
 
-  const hasUnsavedChanges = isEditing && JSON.stringify(editForm) !== JSON.stringify(profileFormFromUser(dbUser));
+  const hasUnsavedChanges =
+    isEditing &&
+    JSON.stringify(editForm) !== JSON.stringify(profileFormFromUser(dbUser));
   useEffect(() => {
     if (!hasUnsavedChanges) return;
-    const warnBeforeUnload = (event) => { event.preventDefault(); event.returnValue = ""; };
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [hasUnsavedChanges]);
@@ -281,7 +303,10 @@ export default function TechMyProfile() {
   if (isProfileError) {
     return (
       <div className={`${ui.page} font-sans`}>
-        <Topbar title="Profile" subtitle="Personal information and account preferences" />
+        <Topbar
+          title="Profile"
+          subtitle="Personal information and account preferences"
+        />
         <main className="mx-auto flex w-full max-w-3xl flex-1 items-center p-4 md:p-6">
           <div role="alert" className="alert alert-error alert-soft w-full">
             <AlertTriangle size={20} aria-hidden="true" />
@@ -337,60 +362,204 @@ export default function TechMyProfile() {
 
   return (
     <div className={`${ui.page} font-sans`}>
-      <Topbar title="Profile" subtitle="Personal information and account preferences" />
-      <main className="mx-auto w-full max-w-3xl flex-1 p-4 pb-10 md:p-6">
-        <div className="rounded-box bg-base-100 px-5 sm:px-7">
-          <header className="flex flex-wrap items-center gap-4 py-6">
+      <Topbar
+        title="Profile"
+        subtitle="Personal information and account preferences"
+      />
+      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-10 md:p-6">
+        <header className="relative overflow-hidden rounded-box bg-primary p-5 text-primary-content shadow-md sm:p-7">
+          <div
+            className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-primary-content/10"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute -bottom-20 right-24 size-36 rounded-full border border-primary-content/15"
+            aria-hidden="true"
+          />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="avatar avatar-placeholder shrink-0">
-              <div className="size-16 rounded-full bg-base-200 text-base-content">
-                {dbUser.imageUrl ? <img src={dbUser.imageUrl} width={64} height={64} alt="" className="object-cover" />
-                  : initials ? <span className="text-xl font-semibold">{initials}</span> : <User size={28} aria-hidden="true" />}
+              <div className="size-20 rounded-full bg-primary-content text-primary ring-4 ring-primary-content/20">
+                {dbUser.imageUrl ? (
+                  <img
+                    src={dbUser.imageUrl}
+                    width={64}
+                    height={64}
+                    alt=""
+                    className="object-cover"
+                  />
+                ) : initials ? (
+                  <span className="text-2xl font-bold">{initials}</span>
+                ) : (
+                  <User size={30} aria-hidden="true" />
+                )}
               </div>
             </div>
-            <div className="min-w-0 flex-1 basis-40">
-              <h1 className="break-words text-xl font-semibold text-balance">{dbUser.name || "Technician profile"}</h1>
-              <p className="mt-1 text-sm text-base-content/80">Technician</p>
-              {serviceMunicipalities.length > 0 && <p className="mt-1 break-words text-sm text-base-content/80">Service area: {serviceMunicipalities.join(", ")}</p>}
+            <div className="min-w-0 flex-1">
+              <span className="badge border-primary-content/20 bg-primary-content/15 font-semibold text-primary-content">
+                Livestock Technician
+              </span>
+              <h1 className="mt-3 wrap-break-word text-2xl font-bold text-balance sm:text-3xl">
+                {dbUser.name || "Technician profile"}
+              </h1>
+              {serviceMunicipalities.length > 0 && (
+                <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-primary-content/85">
+                  <MapPin
+                    size={17}
+                    className="mt-0.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  Service area: {serviceMunicipalities.join(", ")}
+                </p>
+              )}
             </div>
-            <button type="button" className="btn" onClick={openEditor}>Edit profile</button>
-          </header>
-          <p role="status" className="text-sm text-base-content">{notice}</p>
-          <div className="divide-y divide-base-300">
-            <SectionPanel title="Personal information" description="Your BreedSmart contact details.">
+            <button
+              type="button"
+              className="btn border-primary-content bg-primary-content text-primary hover:border-primary-content/90 hover:bg-primary-content/90"
+              onClick={openEditor}
+            >
+              Edit profile
+            </button>
+          </div>
+        </header>
+
+        {notice ? (
+          <div
+            role="status"
+            className="alert alert-success alert-soft mt-4 text-sm"
+          >
+            <ShieldCheck size={18} aria-hidden="true" />
+            <span>{notice}</span>
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-5">
+            <SectionPanel
+              icon={User}
+              title="Personal information"
+              description="Your contact details and registered address."
+            >
               <dl className="grid gap-5 sm:grid-cols-2">
                 <DetailRow icon={User} label="Full name" value={dbUser.name} />
-                <DetailRow icon={Mail} label="Email address" value={dbUser.email} />
-                <DetailRow icon={Phone} label="Phone number" value={dbUser.phoneNumber} />
-                <DetailRow icon={MapPin} label="Contact address" value={address} />
+                <DetailRow
+                  icon={Mail}
+                  label="Email address"
+                  value={dbUser.email}
+                />
+                <DetailRow
+                  icon={Phone}
+                  label="Phone number"
+                  value={dbUser.phoneNumber}
+                />
+                <DetailRow
+                  icon={MapPin}
+                  label="Contact address"
+                  value={address}
+                />
               </dl>
             </SectionPanel>
-            <SectionPanel title="Account & preferences">
+
+            <SectionPanel
+              icon={ShieldCheck}
+              title="Request availability"
+              description="Controls whether new farmer requests can be assigned to you."
+            >
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-box bg-base-200 p-4">
+                <span className="min-w-0">
+                  <span
+                    className={`badge badge-sm font-semibold ${acceptsNewRequests ? "badge-success badge-soft" : "badge-neutral badge-soft"}`}
+                  >
+                    {acceptsNewRequests ? "Accepting requests" : "Off duty"}
+                  </span>
+                  <span className="mt-2 block text-sm text-base-content/70">
+                    {acceptsNewRequests
+                      ? "Available for new farmer requests"
+                      : "New requests will not be assigned to you"}
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="toggle toggle-primary shrink-0"
+                  checked={acceptsNewRequests}
+                  disabled={dispatchMutation.isPending}
+                  onChange={(event) =>
+                    dispatchMutation.mutate(event.target.checked)
+                  }
+                  aria-label="Accept new farmer requests"
+                />
+              </label>
+
+              <dl className="grid gap-5 sm:grid-cols-2">
+                <DetailRow
+                  icon={MapPin}
+                  label="Service municipalities"
+                  value={serviceMunicipalities.join(", ") || "None assigned"}
+                />
+                <DetailRow
+                  icon={ShieldCheck}
+                  label="Service capabilities"
+                  value={serviceCapabilities.join(", ") || "None assigned"}
+                />
+              </dl>
+            </SectionPanel>
+          </div>
+
+          <div className="grid gap-5">
+            <SectionPanel
+              icon={darkModeEnabled ? Moon : Sun}
+              title="Appearance"
+              description="Choose how BreedSmart looks in this browser."
+            >
               <label className="flex cursor-pointer items-center justify-between gap-4">
                 <span className="flex items-start gap-3">
-                  {darkModeEnabled ? <Moon size={18} className="mt-1 shrink-0" aria-hidden="true" /> : <Sun size={18} className="mt-1 shrink-0" aria-hidden="true" />}
-                  <span><span className="block text-sm font-medium">Dark mode</span><span className="mt-1 block text-sm text-base-content/80">Saved for this browser.</span></span>
+                  {darkModeEnabled ? (
+                    <Moon
+                      size={18}
+                      className="mt-1 shrink-0"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Sun
+                      size={18}
+                      className="mt-1 shrink-0"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span>
+                    <span className="block text-sm font-medium">Dark mode</span>
+                    <span className="mt-1 block text-sm text-base-content/80">
+                      Saved for this browser.
+                    </span>
+                  </span>
                 </span>
-                <input type="checkbox" className="toggle shrink-0" checked={darkModeEnabled} onChange={handleThemeChange} aria-label="Use dark mode" />
+                <input
+                  type="checkbox"
+                  className="toggle toggle-primary shrink-0"
+                  checked={darkModeEnabled}
+                  onChange={handleThemeChange}
+                  aria-label="Use dark mode"
+                />
               </label>
             </SectionPanel>
-            <SectionPanel title="Request availability" description="Your existing availability and assigned service coverage.">
-              <label className="flex cursor-pointer items-center justify-between gap-4">
-                <span><span className="block text-sm font-medium">Accepting requests</span><span className="mt-1 block text-sm text-base-content/80">{acceptsNewRequests ? "Active for new farmer requests" : "Not accepting new requests"}</span></span>
-                <input type="checkbox" className="toggle shrink-0" checked={acceptsNewRequests} disabled={dispatchMutation.isPending} onChange={(event) => dispatchMutation.mutate(event.target.checked)} aria-label="Accept new farmer requests" />
-              </label>
-              {dispatchMutation.isPending && <p role="status" className="text-sm">Saving availability…</p>}
-              {dispatchMutation.isError && <p role="alert" className="text-sm">{dispatchMutation.error?.response?.data?.message || "Availability could not be saved. Please try again."}</p>}
-              <dl className="grid gap-5 sm:grid-cols-2">
-                <DetailRow icon={MapPin} label="Service municipalities" value={serviceMunicipalities.join(", ") || "None assigned"} />
-                <DetailRow icon={ShieldCheck} label="Service capabilities" value={serviceCapabilities.join(", ") || "None assigned"} />
-              </dl>
-            </SectionPanel>
-            <SectionPanel title="Account & security" description="Manage sign-in details and security in your account settings.">
-              <div className="flex flex-wrap gap-3">
-                <button type="button" className="btn" onClick={handleManageAccount}><ShieldCheck size={17} aria-hidden="true" />Manage account</button>
-                <button type="button" className="btn" onClick={handleSignOut} disabled={isSigningOut}><LogOut size={17} aria-hidden="true" />{isSigningOut ? "Signing out…" : "Sign out"}</button>
-              </div>
-              {accountError && <p role="alert" className="text-sm">{accountError}</p>}
+
+            <SectionPanel
+              icon={ShieldCheck}
+              title="Account & security"
+              description="Manage your sign-in details and account security through Clerk."
+            >
+              <button
+                type="button"
+                className="btn w-full sm:w-fit"
+                onClick={handleManageAccount}
+              >
+                <ShieldCheck size={17} aria-hidden="true" />
+                Manage account
+              </button>
+              {accountError && (
+                <p role="alert" className="text-sm text-error">
+                  {accountError}
+                </p>
+              )}
             </SectionPanel>
           </div>
         </div>
@@ -422,7 +591,11 @@ export default function TechMyProfile() {
             >
               {profileMutation.isPending ? (
                 <>
-                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                  <Loader2
+                    size={15}
+                    className="animate-spin"
+                    aria-hidden="true"
+                  />
                   Saving…
                 </>
               ) : (
@@ -437,246 +610,257 @@ export default function TechMyProfile() {
           onSubmit={handleSave}
           className="space-y-5"
         >
-          {formError && <p role="alert" className="text-sm text-base-content">{formError}</p>}
+          {formError && (
+            <p role="alert" className="text-sm text-base-content">
+              {formError}
+            </p>
+          )}
           {isReadingPhoto && <p role="status">Reading photo…</p>}
-          <fieldset disabled={profileMutation.isPending || isReadingPhoto} className="min-w-0 space-y-5">
-          <legend className="sr-only">Profile information</legend>
-          <div className="flex flex-col gap-4 rounded-box bg-base-200 p-4 sm:flex-row sm:items-center">
-            <div className="avatar avatar-placeholder shrink-0">
-              <div className="size-20 rounded-full bg-base-100 text-base-content">
-                {editForm.imageUrl ? (
-                  <img
-                    src={editForm.imageUrl}
-                    alt="Profile preview"
-                    width={80}
-                    height={80}
-                    className="object-cover"
-                  />
-                ) : (
-                  <User size={30} aria-hidden="true" />
-                )}
+          <fieldset
+            disabled={profileMutation.isPending || isReadingPhoto}
+            className="min-w-0 space-y-5"
+          >
+            <legend className="sr-only">Profile information</legend>
+            <div className="flex flex-col gap-4 rounded-box bg-base-200 p-4 sm:flex-row sm:items-center">
+              <div className="avatar avatar-placeholder shrink-0">
+                <div className="size-20 rounded-full bg-base-100 text-base-content">
+                  {editForm.imageUrl ? (
+                    <img
+                      src={editForm.imageUrl}
+                      alt="Profile preview"
+                      width={80}
+                      height={80}
+                      className="object-cover"
+                    />
+                  ) : (
+                    <User size={30} aria-hidden="true" />
+                  )}
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-base-content">Profile photo</p>
+                <p className="mt-1 text-xs text-base-content/80">
+                  Choose a clear image that farmers can recognize.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <label className="btn btn-sm cursor-pointer focus-within:outline-2 focus-within:outline-offset-2">
+                    <Camera size={15} aria-hidden="true" />
+                    Choose photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      aria-label="Choose profile photo"
+                      name="photo"
+                      className="sr-only"
+                      onChange={handleImageChange}
+                    />
+                  </label>
+                  {editForm.imageUrl ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost text-error"
+                      onClick={() =>
+                        setEditForm((current) => ({
+                          ...current,
+                          imageUrl: "",
+                        }))
+                      }
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-base-content">Profile photo</p>
-              <p className="mt-1 text-xs text-base-content/80">
-                Choose a clear image that farmers can recognize.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <label className="btn btn-sm cursor-pointer focus-within:outline-2 focus-within:outline-offset-2">
-                  <Camera size={15} aria-hidden="true" />
-                  Choose photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    aria-label="Choose profile photo"
-                    name="photo"
-                    className="sr-only"
-                    onChange={handleImageChange}
-                  />
-                </label>
-                {editForm.imageUrl ? (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-ghost text-error"
-                    onClick={() =>
-                      setEditForm((current) => ({
-                        ...current,
-                        imageUrl: "",
-                      }))
-                    }
-                  >
-                    <Trash2 size={15} aria-hidden="true" />
-                    Remove
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-base-content">
+                  Full name
+                </span>
+                <input
+                  type="text"
+                  className="input w-full"
+                  name="name"
+                  value={editForm.name}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  autoComplete="name"
+                  required
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-base-content">
+                  Email address
+                </span>
+                <input
+                  type="email"
+                  spellCheck={false}
+                  className="input w-full"
+                  name="email"
+                  value={editForm.email}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                  autoComplete="email"
+                  required
+                />
+              </label>
+            </div>
+
             <label className="grid gap-2">
               <span className="text-sm font-bold text-base-content">
-                Full name
+                Phone number
+              </span>
+              <input
+                type="tel"
+                aria-label="Phone number"
+                aria-describedby="profile-phone-help"
+                className="input w-full"
+                name="phone"
+                value={editForm.phone}
+                onChange={(event) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    phone: event.target.value,
+                  }))
+                }
+                pattern="09[0-9]{9}"
+                maxLength={11}
+                placeholder="09123456789"
+                title="Use 11 digits beginning with 09."
+                autoComplete="tel"
+                required
+              />
+              <span
+                id="profile-phone-help"
+                className="text-sm text-base-content/80"
+              >
+                Use an 11-digit Philippine mobile number beginning with 09.
+              </span>
+            </label>
+
+            <div className="border-t border-base-300 pt-5">
+              <h3 className="font-bold text-base-content">Contact address</h3>
+              <p className="mt-1 text-xs text-base-content/80">
+                This is your contact address, separate from assigned service
+                coverage.
+              </p>
+            </div>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-bold text-base-content">
+                Street or landmark
               </span>
               <input
                 type="text"
                 className="input w-full"
-                name="name"
-                value={editForm.name}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                autoComplete="name"
-                required
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Email address
-              </span>
-              <input
-                type="email"
-                spellCheck={false}
-                className="input w-full"
-                name="email"
-                value={editForm.email}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                autoComplete="email"
-                required
-              />
-            </label>
-          </div>
-
-          <label className="grid gap-2">
-            <span className="text-sm font-bold text-base-content">
-              Phone number
-            </span>
-            <input
-              type="tel"
-              aria-label="Phone number"
-              aria-describedby="profile-phone-help"
-              className="input w-full"
-              name="phone"
-                value={editForm.phone}
-              onChange={(event) =>
-                setEditForm((current) => ({
-                  ...current,
-                  phone: event.target.value,
-                }))
-              }
-              pattern="09[0-9]{9}"
-              maxLength={11}
-              placeholder="09123456789"
-              title="Use 11 digits beginning with 09."
-              autoComplete="tel"
-              required
-            />
-            <span id="profile-phone-help" className="text-sm text-base-content/80">
-              Use an 11-digit Philippine mobile number beginning with 09.
-            </span>
-          </label>
-
-          <div className="border-t border-base-300 pt-5">
-            <h3 className="font-bold text-base-content">Contact address</h3>
-            <p className="mt-1 text-xs text-base-content/80">
-              This is your contact address, separate from assigned service coverage.
-            </p>
-          </div>
-
-          <label className="grid gap-2">
-            <span className="text-sm font-bold text-base-content">
-              Street or landmark
-            </span>
-            <input
-              type="text"
-              className="input w-full"
-              name="street"
+                name="street"
                 value={editForm.street}
-              onChange={(event) =>
-                setEditForm((current) => ({
-                  ...current,
-                  street: event.target.value,
-                }))
-              }
-              autoComplete="street-address"
-              placeholder="Optional"
-            />
-          </label>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Municipality or city
-              </span>
-              <select
-                className="select w-full"
-                name="city"
-                value={editForm.city}
                 onChange={(event) =>
                   setEditForm((current) => ({
                     ...current,
-                    city: event.target.value,
-                    district: "",
-                    barangay: "",
+                    street: event.target.value,
                   }))
                 }
-                required
-              >
-                <option value="">Select municipality or city</option>
-                {ILOILO_MUNICIPALITY_OPTIONS.map((municipality) => (
-                  <option key={municipality} value={municipality}>
-                    {municipality}
-                  </option>
-                ))}
-              </select>
+                autoComplete="street-address"
+                placeholder="Optional"
+              />
             </label>
 
-            {editForm.city === ILOILO_CITY_NAME ? (
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2">
                 <span className="text-sm font-bold text-base-content">
-                  District
+                  Municipality or city
                 </span>
                 <select
                   className="select w-full"
-                  name="district"
-                value={editForm.district}
+                  name="city"
+                  value={editForm.city}
                   onChange={(event) =>
                     setEditForm((current) => ({
                       ...current,
-                      district: event.target.value,
+                      city: event.target.value,
+                      district: "",
                       barangay: "",
                     }))
                   }
                   required
                 >
-                  <option value="">Select district</option>
-                  {ILOILO_CITY_DISTRICT_OPTIONS.map((district) => (
-                    <option key={district} value={district}>
-                      {district}
+                  <option value="">Select municipality or city</option>
+                  {ILOILO_MUNICIPALITY_OPTIONS.map((municipality) => (
+                    <option key={municipality} value={municipality}>
+                      {municipality}
                     </option>
                   ))}
                 </select>
               </label>
-            ) : null}
 
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-base-content">
-                Barangay
-              </span>
-              <select
-                className="select w-full"
-                name="barangay"
-                value={editForm.barangay}
-                onChange={(event) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    barangay: event.target.value,
-                  }))
-                }
-                disabled={
-                  !editForm.city ||
-                  (editForm.city === ILOILO_CITY_NAME && !editForm.district)
-                }
-                required
-              >
-                <option value="">Select barangay</option>
-                {barangayOptions.map((barangay) => (
-                  <option key={barangay} value={barangay}>
-                    {barangay}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+              {editForm.city === ILOILO_CITY_NAME ? (
+                <label className="grid gap-2">
+                  <span className="text-sm font-bold text-base-content">
+                    District
+                  </span>
+                  <select
+                    className="select w-full"
+                    name="district"
+                    value={editForm.district}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        district: event.target.value,
+                        barangay: "",
+                      }))
+                    }
+                    required
+                  >
+                    <option value="">Select district</option>
+                    {ILOILO_CITY_DISTRICT_OPTIONS.map((district) => (
+                      <option key={district} value={district}>
+                        {district}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-base-content">
+                  Barangay
+                </span>
+                <select
+                  className="select w-full"
+                  name="barangay"
+                  value={editForm.barangay}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      barangay: event.target.value,
+                    }))
+                  }
+                  disabled={
+                    !editForm.city ||
+                    (editForm.city === ILOILO_CITY_NAME && !editForm.district)
+                  }
+                  required
+                >
+                  <option value="">Select barangay</option>
+                  {barangayOptions.map((barangay) => (
+                    <option key={barangay} value={barangay}>
+                      {barangay}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </fieldset>
         </form>
       </Modal>

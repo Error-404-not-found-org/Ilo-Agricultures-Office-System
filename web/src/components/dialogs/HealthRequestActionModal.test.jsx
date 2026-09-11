@@ -366,6 +366,36 @@ describe("HealthRequestActionModal", () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
+  it("starts a scheduled visit immediately when opened from the My Work service CTA", async () => {
+    const scheduled = ownedRequest({
+      status: "scheduled",
+      scheduledDate: "2026-08-31T04:00:00.000Z",
+      visitPeriod: "afternoon",
+    });
+    mocks.get.mockResolvedValue({ data: { data: scheduled } });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <HealthRequestActionModal
+          isOpen
+          startServiceOnOpen
+          onClose={vi.fn()}
+          task={{ ...task, status: "scheduled", raw: scheduled }}
+          onSuccess={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(mocks.patch).toHaveBeenCalledWith(
+        `/health-request/${requestId}/status`,
+        { status: "in-progress" },
+      ),
+    );
+  });
+
   it("preserves same-request input and resets it when the request identity changes", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -429,5 +459,63 @@ describe("HealthRequestActionModal", () => {
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /^Give Advice/ }));
     expect(screen.getByLabelText("Advice for Farmer")).toHaveValue("");
+  });
+
+  it("renders canonical Sick or Injured Animal and Unusual behavior instead of clinical Disease / Infection or Abnormal Behavior", async () => {
+    const diseaseRequest = ownedRequest({
+      requestType: "disease",
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "health_concern",
+        observedSigns: ["abnormal_behavior"],
+        farmerDescription: "Noticeable change in behavior.",
+      },
+    });
+    renderModal(diseaseRequest);
+
+    // Header badge & Assistance requested in details
+    const badges = await screen.findAllByText("Sick or Injured Animal");
+    expect(badges.length).toBeGreaterThanOrEqual(1);
+
+    // Clinical Request Details section has Assistance Requested label and canonical value
+    expect(screen.getByText("Assistance Requested")).toBeInTheDocument();
+    expect(screen.getByText("Unusual behavior")).toBeInTheDocument();
+    expect(screen.getByText("Noticeable change in behavior.")).toBeInTheDocument();
+
+    // Clinical/stale copy should NOT be shown
+    expect(screen.queryByText("Disease / Infection")).not.toBeInTheDocument();
+    expect(screen.queryByText("Abnormal Behavior")).not.toBeInTheDocument();
+  });
+
+  it("renders canonical Medicine or Dewormer with subtype when present", async () => {
+    const medicineRequest = ownedRequest({
+      requestType: "medicine",
+      subtype: "dewormer",
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "medicine_request",
+        observedSigns: [],
+        farmerDescription: "Need dewormer.",
+      },
+    });
+    renderModal(medicineRequest);
+
+    const medicineLabels = await screen.findAllByText("Medicine or Dewormer");
+    expect(medicineLabels.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Subtype")).toBeInTheDocument();
+    expect(screen.getByText("Dewormer")).toBeInTheDocument();
+  });
+
+  it("safely renders legacy health request without structured details", async () => {
+    const legacyRequest = ownedRequest({
+      requestType: "disease",
+      requestDetails: null,
+      symptoms: "Sick or Injured Animal\nUnusual behavior",
+    });
+    renderModal(legacyRequest);
+
+    const diseaseLabels = await screen.findAllByText("Sick or Injured Animal");
+    expect(diseaseLabels.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Assistance Requested")).toBeInTheDocument();
   });
 });

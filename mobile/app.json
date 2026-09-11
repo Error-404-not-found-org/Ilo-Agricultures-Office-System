@@ -2,7 +2,7 @@
   "expo": {
     "name": "BreedSmart",
     "slug": "mobile",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ilo-agriculture",
@@ -54,9 +54,7 @@
         {
           "photosPermission": "BreedSmart accesses livestock photos when you choose to save or manage them.",
           "savePhotosPermission": "BreedSmart saves livestock photos to your device only when you request it.",
-          "granularPermissions": [
-            "photo"
-          ]
+          "granularPermissions": ["photo"]
         }
       ],
       [

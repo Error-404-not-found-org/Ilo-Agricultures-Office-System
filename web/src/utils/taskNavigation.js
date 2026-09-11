@@ -80,7 +80,16 @@ export const getTaskPrimaryActionLabel = (task = {}) => {
         if (stage === PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP) return "Record Follow-up";
         return "Record Diagnosis";
       }
-      if (workflowType === "AI") return "Record AI";
+      if (workflowType === "AI") {
+        const normalized = String(task.status || "").toLowerCase().replaceAll("_", "-");
+        const isTerminal = ["completed", "done", "resolved", "cancelled", "canceled", "rejected", "declined"].includes(normalized);
+        const isInProgress = !isTerminal && (
+          ["in-progress", "inprogress"].includes(normalized) ||
+          Boolean(task.serviceStartedAt || task.raw?.serviceStartedAt)
+        );
+        if (isInProgress) return "Continue Service";
+        return "Record AI";
+      }
       if (
         ["Health", "Treatment", "Vaccination", "Deworming"].includes(workflowType)
       )

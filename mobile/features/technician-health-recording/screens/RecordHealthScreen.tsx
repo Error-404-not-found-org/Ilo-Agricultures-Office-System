@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, ScrollView, Text } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { toast } from "sonner-native";
@@ -29,6 +29,7 @@ export default function RecordHealthScreen() {
   const [reviewSnapshot, setReviewSnapshot] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const walkInIdempotencyKey = useRef<string | null>(null);
+  const autoStartedRequestId = useRef<string | null>(null);
 
   const { clientsQuery } = useTechnicianClients();
   const directHealthMutation = useDirectHealthRecordMutation();
@@ -49,10 +50,16 @@ export default function RecordHealthScreen() {
 
   const actualRequestId = (params.healthRequestId || params.requestId || requestId) as string;
   const routeVisitPeriod = params.visitPeriod as string;
+  const routeMode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  const routeSource = Array.isArray(params.source) ? params.source[0] : params.source;
   const requestMutation = useCompleteHealthRequestMutation(actualRequestId || "");
 
   const mode = {
-    kind: (isLocked && actualRequestId) ? "request-linked" : "direct",
+    kind:
+      actualRequestId &&
+      (routeMode === "request-linked" || routeSource === "task" || isLocked)
+        ? "request-linked"
+        : "direct",
     taskId,
     requestId: actualRequestId,
   };
@@ -89,8 +96,10 @@ export default function RecordHealthScreen() {
 
     walkInIdempotencyKey.current = null;
     setReviewSnapshot({
-      farmer: selectedFarmer,
-      animal: selectedAnimal,
+      farmer:
+        mode.kind === "request-linked" ? request?.farmerId : selectedFarmer,
+      animal:
+        mode.kind === "request-linked" ? request?.animalId : selectedAnimal,
       details: data,
     });
   };
@@ -161,6 +170,23 @@ export default function RecordHealthScreen() {
     }
   };
 
+  useEffect(() => {
+    const shouldStart = String(params.startService || "") === "true";
+    if (
+      !shouldStart ||
+      requestLoading ||
+      request?.status !== "scheduled" ||
+      !actualRequestId ||
+      autoStartedRequestId.current === actualRequestId
+    ) {
+      return;
+    }
+    autoStartedRequestId.current = actualRequestId;
+    void handleStartService();
+    // The explicit My Work CTA authorizes this one canonical status transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actualRequestId, params.startService, request?.status, requestLoading]);
+
   const returnToMyWork = () => {
     router.replace(MY_WORK_PATH as any);
   };
@@ -178,7 +204,6 @@ export default function RecordHealthScreen() {
   const isRequestLinked = mode.kind === "request-linked";
   const status = request?.status;
   const isPending = isRequestLinked && ["pending", "approved", "claimed"].includes(status);
-  const needsStartService = status === "scheduled";
   const blockingError = requestError ? (requestError as any).message : null;
 
   return (

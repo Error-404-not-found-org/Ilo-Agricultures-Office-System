@@ -3,18 +3,20 @@ import { View, Text, ScrollView, Image } from "react-native";
 import { FileText } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
 import { SectionCard } from "./HealthUI";
+import {
+  getHealthRequestFarmerNote,
+  getStructuredHealthRequestPresentation,
+} from "@/features/farmer-requests/utils/healthRequestInput";
 
 export default function FarmerConcernSection({ request }: { request: any }) {
   const { colors } = useTheme();
   
   if (!request) return null;
-  const symptomsText = Array.isArray(request?.symptoms)
+  const legacySymptomsText = Array.isArray(request?.symptoms)
     ? request.symptoms.filter(Boolean).join(", ")
     : String(request?.symptoms || "").trim();
-
-  const farmerNotesText = Array.isArray(request?.farmerNotes)
-    ? request.farmerNotes.filter(Boolean).join("\n\n")
-    : String(request?.farmerNotes || "").trim();
+  const structured = getStructuredHealthRequestPresentation(request);
+  const farmerNotesText = getHealthRequestFarmerNote(request);
 
   const photos = Array.isArray(request?.photos)
     ? request.photos.filter(Boolean)
@@ -39,7 +41,7 @@ export default function FarmerConcernSection({ request }: { request: any }) {
               fontSize: 12,
             }}
           >
-            Reported Symptoms
+            {structured ? "Assistance Requested" : "Symptoms / Description"}
           </Text>
           <Text
             style={{
@@ -50,29 +52,58 @@ export default function FarmerConcernSection({ request }: { request: any }) {
               marginTop: 3,
             }}
           >
-            {symptomsText || "No symptoms provided"}
+            {structured?.assistanceLabel || legacySymptomsText || "Not provided"}
           </Text>
-          <Text
-            style={{
-              color: colors.textPrimary,
-              fontFamily: "Outfit_600SemiBold",
-              fontSize: 12,
-              marginTop: 12,
-            }}
-          >
-            Farmer notes
-          </Text>
-          <Text
-            style={{
-              color: colors.textSecondary,
-              fontFamily: "Outfit_500Medium",
-              fontSize: 12,
-              lineHeight: 18,
-              marginTop: 3,
-            }}
-          >
-            {farmerNotesText || "No farmer note provided"}
-          </Text>
+          {structured?.observedSigns.length ? (
+            <>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                  marginTop: 12,
+                }}
+              >
+                Observed Signs
+              </Text>
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  lineHeight: 18,
+                  marginTop: 3,
+                }}
+              >
+                {structured.observedSigns.join(", ")}
+              </Text>
+            </>
+          ) : null}
+          {farmerNotesText ? (
+            <>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                  marginTop: 12,
+                }}
+              >
+                Farmer Note
+              </Text>
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  lineHeight: 18,
+                  marginTop: 3,
+                }}
+              >
+                {farmerNotesText}
+              </Text>
+            </>
+          ) : null}
         </View>
       </View>
 

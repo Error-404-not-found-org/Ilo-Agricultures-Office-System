@@ -42,6 +42,7 @@ type WorkCardItem = RequestItem | TechnicianWorkItem;
 interface RequestListCardProps {
   item: WorkCardItem;
   onPress: () => void;
+  onActionPress?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,7 +140,7 @@ function getActionLabel(item: WorkCardItem): string {
     (item as any).triage?.handlingMethod;
   const handlingMethod = String(rawHandlingMethod || "").toLowerCase().trim();
 
-  if (["pending"].includes(status)) return "Claim";
+  if (["pending"].includes(status)) return "Review Request";
   if (["approved", "assigned", "triaged"].includes(status)) {
     if (serviceType === "health") {
       if (handlingMethod === "farm_visit") return "Set Visit";
@@ -302,7 +303,7 @@ function isClosed(item: WorkCardItem): boolean {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function RequestListCard({ item, onPress }: RequestListCardProps) {
+export function RequestListCard({ item, onPress, onActionPress }: RequestListCardProps) {
   const { colors, isDark } = useTheme();
 
   const service = normalizeServiceType(item);
@@ -318,6 +319,10 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
   const animalTag = getAnimalTag(item);
   const location = getLocation(item);
   const timingLabel = getTimingLabel(item);
+  const isScheduledVisit = isTechnicianWorkItem(item)
+    ? item.timingKind === "scheduled_visit" || Boolean(item.scheduledDate)
+    : Boolean((item as RequestItem).scheduledDate);
+  const TimingIcon = isScheduledVisit ? Calendar : Clock;
   const visitPeriod = getVisitPeriod(item);
   const attemptNumber = getAttemptNumber(item);
   const previousAttemptVerified = getPreviousAttemptVerified(item);
@@ -627,7 +632,7 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
             >
-              <Calendar size={14} color={colors.textMuted} />
+              <TimingIcon size={14} color={colors.textMuted} />
               <Text
                 style={{
                   fontFamily: "Outfit_500Medium",
@@ -810,7 +815,10 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
             </Text>
           </View>
 
-          <View
+          <TouchableOpacity
+            onPress={onActionPress || onPress}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -838,7 +846,7 @@ export function RequestListCard({ item, onPress }: RequestListCardProps) {
               size={16}
               color={state === "completed" ? colors.success : colors.onPrimary}
             />
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
     </TouchableOpacity>

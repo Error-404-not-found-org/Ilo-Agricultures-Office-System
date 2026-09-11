@@ -10,6 +10,7 @@ import {
   summarizeTechnicianWork,
 } from "../../technician-requests/utils/requestWorkPresentation.ts";
 import { normalizeTechnicianDashboardStats } from "./dashboardStats.ts";
+import { formatPlannedSchedule } from "./dashboardPresentation.ts";
 
 const filters = {
   workState: "active" as const,
@@ -120,4 +121,24 @@ test("other Work Queue consumers use the canonical data array", () => {
   assert.match(animalDetails, /workQueue\?\.data\.find/);
   assert.doesNotMatch(animalDetails, /workQueue\?\.items/);
   assert.match(pregnancyVerification, /Array\.isArray\(oldData\.data\)/);
+});
+
+test("formatPlannedSchedule formats scheduled date and visit period for Today's Work card", () => {
+  const item = {
+    scheduledDate: "2026-09-12T00:00:00.000Z",
+    visitPeriod: "afternoon",
+  };
+  assert.equal(formatPlannedSchedule(item), "Sep 12, 2026 · Afternoon");
+  assert.equal(
+    formatPlannedSchedule({
+      scheduledDate: "2026-09-12T00:00:00.000Z",
+      visitPeriod: "morning",
+    }),
+    "Sep 12, 2026 · Morning",
+  );
+  assert.equal(
+    formatPlannedSchedule({ scheduledDate: "2026-09-12T00:00:00.000Z" }),
+    "Sep 12, 2026",
+  );
+  assert.equal(formatPlannedSchedule({}), null);
 });

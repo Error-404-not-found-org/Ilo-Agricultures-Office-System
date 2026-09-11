@@ -1333,15 +1333,15 @@ test("Official record detail queries populate farmerId for insemination, pregnan
   );
   assert.match(
     controller,
-    /if \(recordKind === "insemination"\) \{\s*query = Insemination\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId", "name"\)/,
+    /if \(recordKind === "insemination"\) \{\s*query = Insemination\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId",\s*"name phoneNumber phone address farmLocation"\)/,
   );
   assert.match(
     controller,
-    /else if \(recordKind === "pregnancy"\) \{\s*query = Pregnancy\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId", "name"\)/,
+    /else if \(recordKind === "pregnancy"\) \{\s*query = Pregnancy\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId",\s*"name phoneNumber phone address farmLocation"\)/,
   );
   assert.match(
     controller,
-    /else if \(recordKind === "calving"\) \{\s*query = Calving\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId", "name"\)/,
+    /else if \(recordKind === "calving"\) \{\s*query = Calving\.findOne\([^)]+\)[\s\S]*?\.populate\("farmerId",\s*"name phoneNumber phone address farmLocation"\)/,
   );
 
   const originals = {
@@ -1355,13 +1355,18 @@ test("Official record detail queries populate farmerId for insemination, pregnan
     species: "Dairy Cattle",
     breed: "Holstein",
   };
-  Animal.findOne = async () => animal;
+  Animal.findOne = () => queryResult(animal);
 
   Insemination.findOne = () =>
     queryResult({
       _id: "ai-1",
       animalId: animal,
-      farmerId: { _id: "farmer-1", name: "Farmer Juan" },
+      farmerId: {
+        _id: "farmer-1",
+        name: "Farmer Juan",
+        phoneNumber: "09123456789",
+        address: { barangay: "Bita Sur", city: "Oton" },
+      },
       status: "done",
       inseminationDate: new Date("2026-09-07T08:00:00.000Z"),
       completedAt: new Date("2026-09-07T08:30:00.000Z"),
@@ -1384,6 +1389,11 @@ test("Official record detail queries populate farmerId for insemination, pregnan
     assert.equal(recorder.statusCode, 200);
     assert.equal(recorder.body.data.farmerId?.name, "Farmer Juan");
     assert.equal(recorder.body.data.farmerId?.id, "farmer-1");
+    assert.equal(recorder.body.data.farmerId?.phoneNumber, "09123456789");
+    assert.deepEqual(recorder.body.data.farmerId?.address, {
+      barangay: "Bita Sur",
+      city: "Oton",
+    });
   } finally {
     Animal.findOne = originals.animal;
     Insemination.findOne = originals.insemination;

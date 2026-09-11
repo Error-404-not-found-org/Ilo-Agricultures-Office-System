@@ -117,11 +117,15 @@ export default function TechnicianInviteDialog({ open, onClose }) {
               <Stethoscope className="size-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 id="invite-technician-title" className="text-lg font-extrabold text-base-content">
+              <h2
+                id="invite-technician-title"
+                className="text-lg font-extrabold text-base-content"
+              >
                 Invite Technician
               </h2>
               <p className="mt-0.5 text-xs font-medium text-base-content/80">
-                Create a municipal Field Officer account and assign service capabilities.
+                Create a municipal Field Officer account and assign service
+                capabilities.
               </p>
             </div>
           </div>
@@ -143,7 +147,8 @@ export default function TechnicianInviteDialog({ open, onClose }) {
               Technician Account & Capability Assignment
             </p>
             <p className="mt-0.5 leading-relaxed text-base-content/75">
-              An invitation email will be sent with onboarding credentials. Assigned capabilities determine service request matching.
+              An invitation email will be sent with onboarding credentials.
+              Assigned capabilities determine service request matching.
             </p>
           </div>
         </div>
@@ -164,7 +169,9 @@ export default function TechnicianInviteDialog({ open, onClose }) {
               <input
                 className="input w-full"
                 value={form.firstName}
-                onChange={(event) => updateField("firstName", event.target.value)}
+                onChange={(event) =>
+                  updateField("firstName", event.target.value)
+                }
                 autoComplete="given-name"
                 maxLength={50}
                 required
@@ -175,7 +182,9 @@ export default function TechnicianInviteDialog({ open, onClose }) {
               <input
                 className="input w-full"
                 value={form.lastName}
-                onChange={(event) => updateField("lastName", event.target.value)}
+                onChange={(event) =>
+                  updateField("lastName", event.target.value)
+                }
                 autoComplete="family-name"
                 maxLength={50}
                 required
@@ -185,14 +194,16 @@ export default function TechnicianInviteDialog({ open, onClose }) {
               <span className="label font-semibold">Email address</span>
               <input
                 type="email"
-                className="input w-full"
-                placeholder="technician@oton.gov.ph"
+                className="input validator w-full"
+                aria-label="Email address"
+                placeholder="example@gmail.com"
                 value={form.email}
                 onChange={(event) => updateField("email", event.target.value)}
                 autoComplete="email"
-                maxLength={100}
+                maxLength={60}
                 required
               />
+              <p className="validator-hint">Enter a valid email address</p>
             </label>
             <label className="fieldset">
               <span className="label font-semibold">Phone number</span>
@@ -224,7 +235,9 @@ export default function TechnicianInviteDialog({ open, onClose }) {
           </div>
           <legend className="sr-only">Field area</legend>
           <div className="rounded-xl border border-base-300 bg-base-100/70 px-4 py-2.5">
-            <span className="text-[11px] font-semibold text-base-content/60 block">Assigned Municipality</span>
+            <span className="text-[11px] font-semibold text-base-content/60 block">
+              Assigned Municipality
+            </span>
             <p className="font-bold text-sm text-base-content mt-0.5">
               Oton, Iloilo
             </p>
@@ -235,7 +248,9 @@ export default function TechnicianInviteDialog({ open, onClose }) {
               <select
                 className="select w-full cursor-pointer"
                 value={form.barangay}
-                onChange={(event) => updateField("barangay", event.target.value)}
+                onChange={(event) =>
+                  updateField("barangay", event.target.value)
+                }
                 required
               >
                 <option value="" disabled>
@@ -292,7 +307,9 @@ export default function TechnicianInviteDialog({ open, onClose }) {
                     checked={isChecked}
                     onChange={() => toggleCapability(capability.id)}
                   />
-                  <span className="font-semibold text-xs text-base-content">{capability.label}</span>
+                  <span className="font-semibold text-xs text-base-content">
+                    {capability.label}
+                  </span>
                 </label>
               );
             })}

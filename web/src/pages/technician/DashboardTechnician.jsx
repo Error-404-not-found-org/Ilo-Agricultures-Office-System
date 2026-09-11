@@ -5,7 +5,6 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckCircle,
-  HeartPulse,
   MapPin,
   PawPrint,
   Sparkles,
@@ -23,6 +22,11 @@ import {
   getDashboardScheduleOverview,
   getDashboardScheduleSlot,
 } from "../../utils/dashboardWorkflow";
+import {
+  formatDashboardFarmerLocation,
+  formatPlannedSchedule,
+  getScheduleEntityKind,
+} from "../../utils/technicianSchedulePresentation";
 
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
@@ -222,10 +226,6 @@ export default function Dashboard() {
     [agendaItems],
   );
   const todayWork = scheduleOverview.todayWork.slice(0, 4);
-  const dueAndOverdue =
-    stats.dueToday != null && stats.overdue != null
-      ? Number(stats.dueToday) + Number(stats.overdue)
-      : null;
   const hasDashboardData = !dashboardQuery.isError;
   const metricValue = (value) =>
     hasDashboardData && value != null ? value : "Unavailable";
@@ -388,6 +388,35 @@ export default function Dashboard() {
                       : null;
                     const shiftBadgeClass = getShiftBadgeStyle(slotText);
 
+                    const isAI =
+                      item.scheduleKind === "ai" ||
+                      getScheduleEntityKind(item) === "ai" ||
+                      String(
+                        item.type || item.workflowType || item.taskType || "",
+                      )
+                        .toLowerCase()
+                        .includes("ai") ||
+                      String(
+                        item.type || item.workflowType || item.taskType || "",
+                      )
+                        .toLowerCase()
+                        .includes("insem");
+
+                    const status = String(item.status || item.raw?.status || "")
+                      .toLowerCase()
+                      .replace(/[_\s]+/g, "-");
+
+                    const isInProgress =
+                      status === "in-progress" ||
+                      Boolean(
+                        item.serviceStartedAt || item.raw?.serviceStartedAt,
+                      );
+
+                    const isInProgressAI = isAI && isInProgress;
+                    const plannedSchedule = formatPlannedSchedule(item);
+                    const displayedLocation =
+                      formatDashboardFarmerLocation(item);
+
                     return (
                       <article
                         key={String(item.taskId || item.workflowId || item.id)}
@@ -407,16 +436,33 @@ export default function Dashboard() {
                           <div className="min-w-0 flex-1">
                             {/* Badges row */}
                             <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                              <span
-                                className={`badge badge-soft badge-sm font-bold ${shiftBadgeClass}`}
-                              >
-                                {slotText}
-                              </span>
-                              <span
-                                className={`badge badge-soft badge-sm ${workStyle.badgeClass}`}
-                              >
-                                {workStyle.badgeText}
-                              </span>
+                              {isInProgressAI ? (
+                                <>
+                                  <span className="badge badge-soft badge-sm font-bold badge-info">
+                                    In Progress
+                                  </span>
+                                  <h3 className="inline-flex">
+                                    <span
+                                      className={`badge badge-soft badge-sm ${workStyle.badgeClass}`}
+                                    >
+                                      Artificial Insemination
+                                    </span>
+                                  </h3>
+                                </>
+                              ) : (
+                                <>
+                                  <span
+                                    className={`badge badge-soft badge-sm font-bold ${shiftBadgeClass}`}
+                                  >
+                                    {slotText}
+                                  </span>
+                                  <span
+                                    className={`badge badge-soft badge-sm ${workStyle.badgeClass}`}
+                                  >
+                                    {workStyle.badgeText}
+                                  </span>
+                                </>
+                              )}
                               {tagLabel && (
                                 <span className="badge badge-sm font-mono font-bold bg-base-200 text-base-content/80 border border-base-300">
                                   #{tagLabel}
@@ -424,10 +470,12 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            {/* Title */}
-                            <h3 className="text-sm sm:text-base font-bold text-base-content truncate group-hover:text-primary transition-colors">
-                              {item.scheduleLabel}
-                            </h3>
+                            {/* Title (for non-in-progress AI workflows) */}
+                            {!isInProgressAI && (
+                              <h3 className="text-sm sm:text-base font-bold text-base-content truncate group-hover:text-primary transition-colors">
+                                {item.scheduleLabel}
+                              </h3>
+                            )}
 
                             {/* Farmer and location */}
                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-base-content/65">
@@ -436,7 +484,7 @@ export default function Dashboard() {
                                   item.farmerName ||
                                   "Farmer not recorded"}
                               </span>
-                              {(item.farmLocationLabel || item.location) && (
+                              {displayedLocation && (
                                 <span className="flex items-center gap-1 text-base-content/50 truncate">
                                   <MapPin
                                     size={12}
@@ -444,11 +492,23 @@ export default function Dashboard() {
                                     aria-hidden="true"
                                   />
                                   <span className="truncate">
-                                    {item.farmLocationLabel || item.location}
+                                    {displayedLocation}
                                   </span>
                                 </span>
                               )}
                             </div>
+
+                            {/* Planned schedule */}
+                            {plannedSchedule && (
+                              <div className="mt-1 flex items-center gap-1 text-xs text-base-content/65">
+                                <CalendarDays
+                                  size={12}
+                                  className="shrink-0"
+                                  aria-hidden="true"
+                                />
+                                <span>Planned: {plannedSchedule}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 

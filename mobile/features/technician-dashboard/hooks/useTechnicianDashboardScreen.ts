@@ -1,17 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
 import { useAuth, useUser } from "@clerk/clerk-expo";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
 import { useApi } from "@/lib/api";
 import { useTechnicianDashboardQuery } from "@/features/technician/hooks/useTechnicianDashboard";
 import { normalizeTechnicianWorkItems } from "@/features/technician-requests/utils/requestWorkPresentation";
 import { normalizeTechnicianDashboardStats } from "../utils/dashboardStats";
+import {
+  AVAILABILITY_HELPER_FEEDBACK_COPY,
+  DISPATCH_STATUS_ENDPOINT,
+  dismissAvailabilityHelperForSession,
+  getAvailabilityHelperCopy,
+  getEnableRequestsPayload,
+  hasSeenAvailabilityHelperIntro,
+  isAvailabilityHelperDismissedThisSession,
+  markAvailabilityHelperIntroSeen,
+  qualifiesForAvailabilityHelper,
+} from "../utils/technicianAvailabilityHelper";
 
 export function useTechnicianDashboardScreen() {
   const api = useApi();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { isLoaded, isSignedIn } = useAuth();
   const { user: clerkUser } = useUser();
   const isEnabled = Boolean(isLoaded && isSignedIn);
@@ -60,16 +72,124 @@ export function useTechnicianDashboardScreen() {
     enabled: isEnabled,
   });
 
+  const technicianId = dbUser?._id
+    ? String(dbUser._id)
+    : clerkUser?.id
+      ? String(clerkUser.id)
+      : null;
+
+  // Intro-seen persisted local state (AsyncStorage)
+  const [hasSeenIntro, setHasSeenIntro] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (!technicianId) {
+      setHasSeenIntro(null);
+      return;
+    }
+    hasSeenAvailabilityHelperIntro(technicianId).then((seen) => {
+      if (!isCancelled) {
+        setHasSeenIntro(seen);
+      }
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [technicianId]);
+
+  const isIntroLoaded = hasSeenIntro !== null;
+
+  const [availabilityDismissed, setAvailabilityDismissed] = useState(false);
+  const [hasLandingPrecedence, setHasLandingPrecedence] = useState(false);
+
+  const availabilityHelperQualifies = Boolean(
+    isEnabled && qualifiesForAvailabilityHelper(dbUser),
+  );
+
+  const isSessionDismissed = Boolean(
+    availabilityDismissed ||
+      (technicianId && isAvailabilityHelperDismissedThisSession(technicianId)),
+  );
+
+  // Gated on isIntroLoaded so copy is fully resolved before dialog ever renders (no flash)
+  const availabilityHelperVisible = Boolean(
+    availabilityHelperQualifies &&
+      !isSessionDismissed &&
+      isIntroLoaded,
+  );
+
+  // When helper actually appears on this Home landing, mark landing precedence
+  useEffect(() => {
+    if (availabilityHelperVisible) {
+      setHasLandingPrecedence(true);
+    }
+  }, [availabilityHelperVisible]);
+
+  const availabilityHelperCopy = useMemo(
+    () => getAvailabilityHelperCopy({ hasSeenIntro: Boolean(hasSeenIntro) }),
+    [hasSeenIntro],
+  );
+
   const [profileWarningVisible, setProfileWarningVisible] = useState(false);
 
   useEffect(() => {
     if (!dbUser || Object.keys(dbUser).length === 0) return;
-    setProfileWarningVisible(
-      !dbUser.phoneNumber || !dbUser.address?.barangay,
-    );
-  }, [dbUser]);
+    if (hasLandingPrecedence || availabilityHelperQualifies) {
+      setProfileWarningVisible(false);
+      return;
+    }
+    const isProfileIncomplete =
+      !dbUser.phoneNumber || !dbUser.address?.barangay;
+    setProfileWarningVisible(isProfileIncomplete);
+  }, [dbUser, hasLandingPrecedence, availabilityHelperQualifies]);
+
+  const startAcceptingRequestsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(
+        DISPATCH_STATUS_ENDPOINT,
+        getEnableRequestsPayload(),
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      if (technicianId) {
+        markAvailabilityHelperIntroSeen(technicianId);
+      }
+      dismissAvailabilityHelperForSession(technicianId);
+      setAvailabilityDismissed(true);
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+      toast.success(
+        `${AVAILABILITY_HELPER_FEEDBACK_COPY.SUCCESS_TITLE}\n${AVAILABILITY_HELPER_FEEDBACK_COPY.SUCCESS_MESSAGE}`,
+      );
+    },
+    onError: () => {
+      toast.error(
+        `${AVAILABILITY_HELPER_FEEDBACK_COPY.ERROR_TITLE}\n${AVAILABILITY_HELPER_FEEDBACK_COPY.ERROR_MESSAGE}`,
+      );
+    },
+  });
+
+  const handleStartAcceptingRequests = () => {
+    if (startAcceptingRequestsMutation.isPending) return;
+    startAcceptingRequestsMutation.mutate();
+  };
+
+  const handleMaybeLater = () => {
+    if (technicianId) {
+      markAvailabilityHelperIntroSeen(technicianId);
+    }
+    dismissAvailabilityHelperForSession(technicianId);
+    setAvailabilityDismissed(true);
+  };
 
   const onRefresh = async () => {
+    if (technicianId) {
+      const seen = await hasSeenAvailabilityHelperIntro(technicianId);
+      setHasSeenIntro(seen);
+      if (!isAvailabilityHelperDismissedThisSession(technicianId)) {
+        setAvailabilityDismissed(false);
+      }
+    }
     await Promise.all([
       refetchDashboard(),
       refetchUnread(),
@@ -134,10 +254,20 @@ export function useTechnicianDashboardScreen() {
     dashboardStats,
     workLoading: loading,
     pendingRequests: data?.pendingRequests || [],
-    profileWarningVisible,
+    profileWarningVisible:
+      profileWarningVisible &&
+      !hasLandingPrecedence &&
+      !availabilityHelperQualifies,
     setProfileWarningVisible,
     handleAction: openItemDetails,
     handleRequestReview: openItemDetails,
     isUpdating: false,
+    // Availability Helper dialog state & actions
+    availabilityHelperVisible,
+    availabilityHelperCopy,
+    isEnablingRequests: startAcceptingRequestsMutation.isPending,
+    handleStartAcceptingRequests,
+    handleMaybeLater,
+    hasLandingPrecedence,
   };
 }

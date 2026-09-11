@@ -12,23 +12,12 @@ export function buildFarmerAIRequestPayload(
   photos: string[],
   comment: string,
   heatSigns: string[],
-  heatSignsMap: { id: string; label: string }[]
+  _heatSignsMap?: { id: string; label: string }[]
 ): FarmerAIRequestPayload {
-  const selectedLabels = heatSignsMap
-    .filter((s) => heatSigns.includes(s.id))
-    .map((s) => `• ${s.label}`);
-    
-  const formattedComment = [
-    "Observed Heat Signs:\n" + selectedLabels.join("\n"),
-    comment.trim() ? `Additional Notes:\n${comment.trim()}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
   return {
     animalId,
     photos: photos.slice(0, 5),
-    comment: formattedComment,
+    comment: comment?.trim() || "",
     heatSigns,
   };
 }
@@ -50,7 +39,7 @@ export function buildFarmerHealthRequestPayload(
   urgency: string,
   farmerNotes: string,
   photos: string[],
-  requestDetails?: FarmerHealthRequestDetails,
+  requestDetails?: FarmerHealthRequestDetails
 ): FarmerHealthRequestPayload {
   return {
     animalId,

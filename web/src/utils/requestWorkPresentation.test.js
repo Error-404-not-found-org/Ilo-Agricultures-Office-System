@@ -146,10 +146,29 @@ describe("request and work presentation", () => {
     expect(getWorkflowStatusPresentation("completed").label).toBe("Completed");
   });
 
-  it("maps legacy AI in-progress to scheduled instead of exposing it", () => {
-    expect(normalizeWorkflowStatus({ workflowType: "AI", status: "in-progress" })).toBe(
-      "scheduled",
+  it("preserves canonical AI in-progress state even with future scheduled visit", () => {
+    const futureItem = {
+      workflowType: "AI",
+      status: "in-progress",
+      scheduledDate: "2026-09-12",
+      serviceStartedAt: "2026-09-11T11:52:07.068Z",
+    };
+    const normalized = normalizeWorkflowStatus(
+      futureItem,
+      new Date("2026-09-11T04:00:00.000Z"),
     );
+    expect(normalized).toBe("in_progress");
+    expect(getWorkflowStatusPresentation(normalized).label).toBe("In Progress");
+  });
+
+  it("ensures terminal statuses always win over serviceStartedAt", () => {
+    const completedWithStart = {
+      workflowType: "AI",
+      status: "done",
+      serviceStartedAt: "2026-09-11T11:52:07.068Z",
+    };
+    expect(normalizeWorkflowStatus(completedWithStart)).toBe("completed");
+    expect(getWorkflowStatusPresentation("completed").label).toBe("Completed");
   });
 
   describe("canonical Health handling method state matrix", () => {

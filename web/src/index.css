@@ -160,6 +160,10 @@ html {
   min-height: 0;
 }
 
+[data-theme="breedsmart"] .drawer-side > .admin-sidebar {
+  box-shadow: 8px 0 24px color-mix(in oklab, var(--color-primary) 8%, transparent);
+}
+
 @supports (height: 100dvh) {
   .drawer-side > .admin-sidebar {
     height: 100dvh;
@@ -430,9 +434,8 @@ html {
   box-shadow: none !important;
 }
 
-:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus,
-:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-within,
-:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"]):focus-visible {
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"], :user-invalid):focus,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"], :user-invalid):focus-within,
+:where(.input-error, .select-error, .textarea-error, [aria-invalid="true"], :user-invalid):focus-visible {
   border-color: var(--color-error) !important;
 }
-

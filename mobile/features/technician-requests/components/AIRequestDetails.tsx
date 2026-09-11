@@ -54,6 +54,10 @@ import {
   getRelativeAIScheduleDayLabel,
 } from "../utils/aiScheduleAvailability";
 import { getAIRequestAttachmentUrls } from "../utils/aiRequestAttachments";
+import {
+  extractFarmerNote,
+  formatHeatSignLabel,
+} from "../utils/aiRequestNote";
 
 type ScheduleMode = "accept" | "schedule" | "reschedule";
 
@@ -81,11 +85,6 @@ const cleanText = (value: unknown) => {
 
 const getEntityId = (value: any) =>
   cleanText(value?._id) || cleanText(value?.id) || cleanText(value);
-
-const normalizeText = (value: unknown, separator = ", ") =>
-  Array.isArray(value)
-    ? value.map(cleanText).filter(Boolean).join(separator)
-    : cleanText(value);
 
 const formatLabel = (value: unknown, fallback: string) => {
   const text = cleanText(value) || fallback;
@@ -199,7 +198,7 @@ export function AIRequestDetails({
       : isScheduled
         ? { label: "Scheduled", variant: "scheduled" }
         : isInProgress
-          ? { label: "In progress", variant: "info" }
+          ? { label: "In Progress", variant: "info" }
           : isResolved
             ? { label: "Resolved", variant: "resolved" }
             : isCancelled
@@ -237,13 +236,24 @@ export function AIRequestDetails({
     cleanText(farmerAddress.city || farmerAddress.municipality) ||
     cleanText(request?.municipality);
   const candidateArea = [barangay, municipality].filter(Boolean).join(", ");
-  const rawNotes = normalizeText(
-    request?.farmerNotes || request?.comment || request?.note,
-    "\n\n",
-  );
-  const farmerNotes = rawNotes.startsWith("Additional Notes:\n")
-    ? rawNotes.substring(18).trim()
-    : rawNotes;
+  const rawNotes =
+    request?.farmerNotes ||
+    request?.comment ||
+    request?.note ||
+    request?.raw?.comment ||
+    null;
+  const farmerNotes = extractFarmerNote(rawNotes);
+
+  const heatSigns: string[] = useMemo(() => {
+    const raw = Array.isArray(request?.heatSigns)
+      ? request.heatSigns
+      : Array.isArray(request?.raw?.heatSigns)
+        ? request.raw.heatSigns
+        : [];
+    return raw.filter(
+      (s: unknown): s is string => typeof s === "string" && Boolean(s.trim()),
+    );
+  }, [request?.heatSigns, request?.raw?.heatSigns]);
   const attachments = useMemo(
     () => getAIRequestAttachmentUrls(request),
     [request],
@@ -793,8 +803,51 @@ export function AIRequestDetails({
             Request Details
           </Text>
 
+          {heatSigns.length > 0 ? (
+            <View style={{ marginTop: 14 }}>
+              <Text textRole="label" style={{ color: colors.textMuted }}>
+                Observed Heat Signs
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginTop: 6,
+                }}
+              >
+                {heatSigns.map((sign, idx) => {
+                  const label = formatHeatSignLabel(sign);
+                  return (
+                    <View
+                      key={`${sign}-${idx}`}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: colors.successBorder,
+                        backgroundColor: colors.successContainer,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "600",
+                          color: colors.successForeground,
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
           {farmerNotes ? (
-            <DetailRow label="Farmer notes" value={farmerNotes} />
+            <DetailRow label="Farmer note" value={farmerNotes} />
           ) : null}
 
           <Text
@@ -949,25 +1002,6 @@ export function AIRequestDetails({
                 </Text>
               )}
             </TouchableOpacity>
-
-            {isAvailable ? (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel="Skip Request"
-                disabled={updating}
-                onPress={() => setSkipConfirmationVisible(true)}
-                style={{
-                  minHeight: 48,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginTop: 8,
-                }}
-              >
-                <Text textRole="bodyStrong" style={{ color: colors.error }}>
-                  Skip Request
-                </Text>
-              </TouchableOpacity>
-            ) : null}
 
             {isScheduled ? (
               <TouchableOpacity
