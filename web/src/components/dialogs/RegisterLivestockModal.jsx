@@ -24,6 +24,7 @@ const initialFormData = {
   dob: "",
   farmerName: "",
 };
+const EAR_TAG_MAX_LENGTH = 20;
 
 const RegisterLivestockModal = ({
   isOpen,
@@ -39,6 +40,9 @@ const RegisterLivestockModal = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [formData, setFormData] = useState(initialFormData);
+  const [errors, setErrors] = useState({});
+  const [formError, setFormError] = useState("");
+  const [tagNotice, setTagNotice] = useState("");
 
   const {
     data: farmers = [],
@@ -96,9 +100,17 @@ const RegisterLivestockModal = ({
   const handleGenerateTag = () => {
     const name = effectiveFarmerName.trim();
     if (!name) {
-      toast.error("Please select a farmer first.");
+      setErrors((prev) => ({ ...prev, farmerName: "Please select a farmer first." }));
       return;
     }
+
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.farmerName;
+      delete next.earTag;
+      return next;
+    });
+    setFormError("");
 
     const nameParts = name.toUpperCase().split(/\s+/);
     let initials = "";
@@ -129,7 +141,7 @@ const RegisterLivestockModal = ({
     }
 
     setFormData((prev) => ({ ...prev, earTag: candidate }));
-    toast.success(`Generated ear tag: ${candidate}`);
+    setTagNotice("Suggested ear tag generated.");
   };
 
   const mutation = useMutation({
@@ -156,7 +168,7 @@ const RegisterLivestockModal = ({
       return response.data;
     },
     onSuccess: async (result) => {
-      toast.success(
+      toast?.success?.(
         livestock
           ? "Livestock profile updated successfully!"
           : "Livestock profile registered successfully!",
@@ -170,16 +182,24 @@ const RegisterLivestockModal = ({
       onClose();
     },
     onError: (error) => {
-      toast.error(
-        `${livestock ? "Failed to update livestock: " : "Failed to register livestock: "}${
-          error.response?.data?.message || error.message
-        }`,
+      const errorMsg =
+        error.response?.data?.message ||
+        error.message ||
+        "An unexpected error occurred.";
+      setFormError(
+        `${livestock ? "Failed to update livestock: " : "Failed to register livestock: "}${errorMsg}`,
       );
     },
   });
 
   useEffect(() => {
     if (!isOpen) return;
+
+    Promise.resolve().then(() => {
+      setErrors({});
+      setFormError("");
+      setTagNotice("");
+    });
 
     if (livestock) {
       const formattedDob = livestock.birthDate
@@ -226,11 +246,37 @@ const RegisterLivestockModal = ({
   if (!isOpen) return null;
 
   const updateField = (field) => (event) => {
-    setFormData((current) => ({ ...current, [field]: event.target.value }));
+    const val = event.target.value;
+    setFormData((current) => ({ ...current, [field]: val }));
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    if (formError) setFormError("");
   };
 
   const updateEarTag = (event) => {
     const val = event.target.value.toUpperCase();
+    if (val.trim().length > EAR_TAG_MAX_LENGTH) {
+      setErrors((prev) => ({
+        ...prev,
+        earTag: `Ear tag must be ${EAR_TAG_MAX_LENGTH} characters or fewer.`,
+      }));
+      setTagNotice("");
+      if (formError) setFormError("");
+      setFormData((current) => ({ ...current, earTag: val }));
+      return;
+    }
+    setErrors((prev) => {
+      if (!prev.earTag) return prev;
+      const next = { ...prev };
+      delete next.earTag;
+      return next;
+    });
+    setTagNotice("");
+    if (formError) setFormError("");
     setFormData((current) => ({ ...current, earTag: val }));
   };
 
@@ -239,12 +285,22 @@ const RegisterLivestockModal = ({
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       event.target.value = "";
-      return toast.error("Please select a valid image file.");
+      setErrors((prev) => ({ ...prev, photo: "Please select a valid image file." }));
+      return;
     }
     if (file.size > 5 * 1024 * 1024) {
       event.target.value = "";
-      return toast.error("Animal photos must be 5 MB or smaller.");
+      setErrors((prev) => ({ ...prev, photo: "Animal photos must be 5 MB or smaller." }));
+      return;
     }
+
+    setErrors((prev) => {
+      if (!prev.photo) return prev;
+      const next = { ...prev };
+      delete next.photo;
+      return next;
+    });
+    if (formError) setFormError("");
 
     const reader = new FileReader();
     reader.onloadend = () => setImagePreview(reader.result);
@@ -254,11 +310,53 @@ const RegisterLivestockModal = ({
   const handleSubmit = (event) => {
     event.preventDefault();
     if (mutation.isPending) return;
-    if (!formData.farmerName) return toast.error("Please select a livestock owner.");
-    if (!formData.breed) return toast.error("Breed is required.");
-    if (!formData.species) return toast.error("Species is required.");
 
-    mutation.mutate({ ...formData, imageUrl: imagePreview });
+    const newErrors = {};
+    const farmerIdToUse = effectiveFarmerId || formData.farmerName;
+    if (!farmerIdToUse) {
+      newErrors.farmerName = "Please select a livestock owner.";
+    }
+
+    const trimmedTag = (formData.earTag || "").trim();
+    if (!trimmedTag) {
+      newErrors.earTag = "Ear tag number is required.";
+    } else if (trimmedTag.length > EAR_TAG_MAX_LENGTH) {
+      newErrors.earTag = `Ear tag must be ${EAR_TAG_MAX_LENGTH} characters or fewer.`;
+    }
+
+    if (!formData.species) {
+      newErrors.species = "Species is required.";
+    }
+
+    if (!formData.breed) {
+      newErrors.breed = "Breed is required.";
+    }
+
+    if (!formData.color) {
+      newErrors.color = "Primary color is required.";
+    }
+
+    if (!formData.gender) {
+      newErrors.gender = "Sex is required.";
+    }
+
+    if (!formData.dob) {
+      newErrors.dob = "Birth date is required.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      setFormError("Please fill in all required fields marked with an asterisk (*).");
+      return;
+    }
+
+    setErrors({});
+    setFormError("");
+    mutation.mutate({
+      ...formData,
+      farmerName: farmerIdToUse,
+      imageUrl: imagePreview,
+    });
   };
 
   const closeSafely = () => {
@@ -305,12 +403,29 @@ const RegisterLivestockModal = ({
         </>
       }
     >
-      <form id="register-livestock-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-[240px_1fr]">
+      <form
+        id="register-livestock-form"
+        noValidate
+        onSubmit={handleSubmit}
+        className="grid grid-cols-1 gap-6 md:grid-cols-[240px_1fr]"
+      >
+        {formError && (
+          <div
+            role="alert"
+            className="alert alert-error alert-soft text-xs font-semibold flex items-center gap-2 md:col-span-2"
+          >
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{formError}</span>
+          </div>
+        )}
+
         <fieldset className="fieldset self-start">
           <legend className="fieldset-legend text-sm font-bold">Animal photo</legend>
           <label
             htmlFor="animal-photo"
-            className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-base-300 bg-base-200 transition-colors hover:border-primary focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+            className={`group relative aspect-square cursor-pointer overflow-hidden rounded-xl border bg-base-200 transition-colors hover:border-primary focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary ${
+              errors.photo ? "border-error" : "border-base-300"
+            }`}
           >
             {imagePreview ? (
               <img src={imagePreview} alt="Selected animal" className="h-full w-full object-cover" />
@@ -325,11 +440,18 @@ const RegisterLivestockModal = ({
             )}
             <input id="animal-photo" type="file" className="sr-only" accept="image/*" onChange={handleImageChange} />
           </label>
+          {errors.photo && (
+            <p className="text-xs font-semibold text-error mt-1.5 flex items-center gap-1" role="alert">
+              <AlertCircle size={13} />
+              <span>{errors.photo}</span>
+            </p>
+          )}
         </fieldset>
 
         <div className="space-y-6">
           <fieldset className="fieldset">
-            <legend className="fieldset-legend text-sm font-bold">Ownership details</legend>            <div className="relative">
+            <legend className="fieldset-legend text-sm font-bold">Ownership details</legend>
+            <div className="relative">
               {preSelectedFarmer ? (
                 <div className="flex h-12 items-center gap-3 rounded-field border border-base-300 bg-base-200 px-4">
                   <UserAvatar
@@ -347,7 +469,7 @@ const RegisterLivestockModal = ({
                   </span>
                 </div>
               ) : (
-                <label className="input w-full flex items-center gap-2">
+                <label className={`input w-full flex items-center gap-2 ${errors.farmerName ? "input-error" : ""}`}>
                   {selectedFarmer ? (
                     <UserAvatar
                       name={selectedFarmer.name}
@@ -372,6 +494,13 @@ const RegisterLivestockModal = ({
                     onChange={(event) => {
                       setSearchFarmer(event.target.value);
                       setFormData((current) => ({ ...current, farmerName: "" }));
+                      setErrors((prev) => {
+                        if (!prev.farmerName) return prev;
+                        const next = { ...prev };
+                        delete next.farmerName;
+                        return next;
+                      });
+                      if (formError) setFormError("");
                       setIsDropdownOpen(true);
                     }}
                     onFocus={() => !livestock && setIsDropdownOpen(true)}
@@ -458,6 +587,13 @@ const RegisterLivestockModal = ({
                         onClick={() => {
                           setFormData((current) => ({ ...current, farmerName: farmer._id }));
                           setSearchFarmer(farmer.name);
+                          setErrors((prev) => {
+                            if (!prev.farmerName) return prev;
+                            const next = { ...prev };
+                            delete next.farmerName;
+                            return next;
+                          });
+                          if (formError) setFormError("");
                           setIsDropdownOpen(false);
                         }}
                       >
@@ -496,6 +632,12 @@ const RegisterLivestockModal = ({
                 </div>
               )}
             </div>
+            {errors.farmerName && (
+              <p className="text-xs font-semibold text-error mt-1.5 flex items-center gap-1" role="alert">
+                <AlertCircle size={13} />
+                <span>{errors.farmerName}</span>
+              </p>
+            )}
           </fieldset>
 
           <fieldset className="fieldset">
@@ -524,17 +666,76 @@ const RegisterLivestockModal = ({
                   id="livestock-ear-tag"
                   required
                   value={formData.earTag}
-                  maxLength={20}
                   onChange={updateEarTag}
+                  maxLength={EAR_TAG_MAX_LENGTH}
+                  error={errors.earTag}
                   placeholder="e.g. 01MC or EAR-17"
                 />
+                {tagNotice && !errors.earTag && (
+                  <p className="mt-1.5 text-xs font-semibold text-success" role="status" aria-live="polite">
+                    {tagNotice}
+                  </p>
+                )}
               </div>
-              <Select id="livestock-species" label="Species" required value={formData.species} onChange={updateField("species")} options={CATTLE_SPECIES} placeholder="" />
-              <Select id="livestock-breed" label="Genetic breed" required value={formData.breed} onChange={updateField("breed")} options={BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS} placeholder="Select breed" />
-              <Select id="livestock-color" label="Primary color" required value={formData.color} onChange={updateField("color")} options={CATTLE_COLORS} placeholder="Select color" />
-              <Select id="livestock-gender" label="Sex" required value={formData.gender} onChange={updateField("gender")} options={["Female", "Male"]} placeholder="" />
-              <Input id="livestock-brand" label="Brand name (optional)" value={formData.brand} maxLength={15} onChange={updateField("brand")} placeholder="e.g. Circle-X" />
-              <Input id="livestock-birth-date" label="Birth date" required type="date" value={formData.dob} onChange={updateField("dob")} max={new Date().toISOString().split("T")[0]} />
+              <Select
+                id="livestock-species"
+                label="Species"
+                required
+                value={formData.species}
+                onChange={updateField("species")}
+                options={CATTLE_SPECIES}
+                error={errors.species}
+                placeholder=""
+              />
+              <Select
+                id="livestock-breed"
+                label="Genetic breed"
+                required
+                value={formData.breed}
+                onChange={updateField("breed")}
+                options={BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS}
+                error={errors.breed}
+                placeholder="Select breed"
+              />
+              <Select
+                id="livestock-color"
+                label="Primary color"
+                required
+                value={formData.color}
+                onChange={updateField("color")}
+                options={CATTLE_COLORS}
+                error={errors.color}
+                placeholder="Select color"
+              />
+              <Select
+                id="livestock-gender"
+                label="Sex"
+                required
+                value={formData.gender}
+                onChange={updateField("gender")}
+                options={["Female", "Male"]}
+                error={errors.gender}
+                placeholder=""
+              />
+              <Input
+                id="livestock-brand"
+                label="Brand name (optional)"
+                value={formData.brand}
+                maxLength={15}
+                onChange={updateField("brand")}
+                error={errors.brand}
+                placeholder="e.g. Circle-X"
+              />
+              <Input
+                id="livestock-birth-date"
+                label="Birth date"
+                required
+                type="date"
+                value={formData.dob}
+                onChange={updateField("dob")}
+                max={new Date().toISOString().split("T")[0]}
+                error={errors.dob}
+              />
             </div>
           </fieldset>
         </div>

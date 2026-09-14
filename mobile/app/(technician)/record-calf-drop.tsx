@@ -9,6 +9,7 @@ import { toast } from 'sonner-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
+import { getEarTagValidationError } from '@/components/earTagSuggestion';
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import {
     OfflineMutationLifecycleState,
@@ -149,7 +150,7 @@ export default function RecordCalfDropScreen() {
     );
 
     const [farmerName, setFarmerName] = useState('');
-    const [farmerAnimalCount, setFarmerAnimalCount] = useState(0);
+    const [farmerEarTags, setFarmerEarTags] = useState<string[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(!!initialMotherId);
 
     const selectActivePregnancy = (history: any, requestedPregnancyId?: string) => {
@@ -190,7 +191,7 @@ export default function RecordCalfDropScreen() {
                         const list = Array.isArray(farmerAnimalsRes.data)
                             ? farmerAnimalsRes.data
                             : (farmerAnimalsRes.data?.data || []);
-                        setFarmerAnimalCount(list.length);
+                        setFarmerEarTags(list.map((animal: any) => animal.earTag).filter(Boolean));
                         const historyRes = await api.get(`/technician/animal-history/${initialMotherId}`);
                         const activePregnancy = selectActivePregnancy(historyRes.data, initialPregnancyId);
                         if (!activePregnancy) {
@@ -240,7 +241,7 @@ export default function RecordCalfDropScreen() {
             // Load pregnant animals for the farmer
             const res = await api.get(`/animals/farmer/${farmer._id}`);
             const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-            setFarmerAnimalCount(list.length);
+            setFarmerEarTags(list.map((animal: any) => animal.earTag).filter(Boolean));
 
             // Filter to only those whose status is 'Pregnant'
             const pregnantCows = list.filter((a: any) => a.reproductiveStatus === 'Pregnant');
@@ -474,6 +475,14 @@ export default function RecordCalfDropScreen() {
             toast.error(isLiveBirth
                 ? `Please complete sex, ear tag, and color for Calf #${incompleteIndex + 1}.`
                 : `Please correct the sex for Stillborn Calf #${incompleteIndex + 1}.`);
+            return false;
+        }
+
+        const overlongIndex = normalizedCalves.findIndex(
+            (calf) => calf.isLiving !== false && Boolean(getEarTagValidationError(calf.earTag)),
+        );
+        if (overlongIndex >= 0) {
+            toast.error(`Calf #${overlongIndex + 1}: ${getEarTagValidationError(normalizedCalves[overlongIndex].earTag)}`);
             return false;
         }
 
@@ -1120,7 +1129,10 @@ export default function RecordCalfDropScreen() {
                                                 {calf.isLiving !== false && <View className="mt-2 ml-1">
                                                     <EarTagGenerator
                                                         farmerName={farmerName}
-                                                        animalCount={farmerAnimalCount + idx}
+                                                        existingEarTags={[
+                                                            ...farmerEarTags,
+                                                            ...calves.slice(0, idx).map((item) => item.earTag),
+                                                        ]}
                                                         onGenerate={(tag) => updateCalf(idx, 'earTag', tag)}
                                                         isDark={isDark}
                                                     />

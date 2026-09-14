@@ -20,6 +20,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { getEarTagValidationError } from "@/components/earTagSuggestion";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { useTheme } from "@/lib/theme";
 import {
@@ -87,8 +88,10 @@ export function AddAnimalScreen() {
   });
 
   const registerMutation = useRegisterAnimalMutation();
-  const { data: animalsData } = useMyAnimalsInfiniteQuery({ limit: 1 });
-  const totalAnimals = animalsData?.total || 0;
+  const { data: animalsData } = useMyAnimalsInfiniteQuery({ limit: 50 });
+  const activeEarTags = (animalsData?.animals || []).map(
+    (animal: any) => animal.earTag,
+  );
   const primaryColor = isDark ? colors.primary : "#00643B";
   const loadingForm = registerMutation.isPending;
 
@@ -115,6 +118,7 @@ export function AddAnimalScreen() {
   const validate = () => {
     const nextErrors: FormErrors = {};
     if (!formData.earTag.trim()) nextErrors.earTag = "Ear tag is required.";
+    else nextErrors.earTag = getEarTagValidationError(formData.earTag) || undefined;
     if (!formData.species) nextErrors.species = "Select the animal species.";
     if (!formData.breed) nextErrors.breed = "Select the animal breed.";
     if (!formData.birthDate) nextErrors.birthDate = "Birth date is required.";
@@ -275,7 +279,6 @@ export function AddAnimalScreen() {
             <InputField
               label="Ear Tag"
               value={formData.earTag}
-              maxLength={6}
               onChangeText={(text: string) => setField("earTag", text)}
               placeholder="Enter the ear tag number"
               error={errors.earTag}
@@ -289,7 +292,7 @@ export function AddAnimalScreen() {
                   `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
                   "Farmer"
                 }
-                animalCount={totalAnimals}
+                existingEarTags={activeEarTags}
                 onGenerate={(tag) => setField("earTag", tag)}
                 isDark={isDark}
               />

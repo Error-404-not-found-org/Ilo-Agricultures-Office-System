@@ -2,7 +2,7 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import cloudinary from "../config/cloudinary.js";
 import { getBreedProfile } from "../utils/cattleCore.js";
-import { Animal } from "../models/animal.model.js";
+import { Animal, ANIMAL_EAR_TAG_MAX_LENGTH } from "../models/animal.model.js";
 import { AnimalTimelineEvent } from "../models/animal-timeline-event.model.js";
 import { AuditLog } from "../models/audit-log.model.js";
 import { Calving } from "../models/calving.model.js";
@@ -70,6 +70,12 @@ const normalizeLivingCalves = (calves) => {
         status: 400,
         code: "CALF_EAR_TAG_REQUIRED",
       });
+    }
+    if (earTag.length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      throw new AppError(
+        `Calf #${index + 1} ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        { status: 400, code: "ANIMAL_EAR_TAG_TOO_LONG" },
+      );
     }
     if (!["M", "F"].includes(sex)) {
       throw new AppError(`Calf #${index + 1} requires a valid sex.`, {

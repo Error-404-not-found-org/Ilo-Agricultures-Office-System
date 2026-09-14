@@ -1,5 +1,5 @@
 import { User } from "../models/user.model.js";
-import { Animal } from "../models/animal.model.js";
+import { Animal, ANIMAL_EAR_TAG_MAX_LENGTH } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
@@ -60,6 +60,12 @@ export const registerAnimal = async (req, res) => {
     if (!species)
       return res.status(400).json({ message: "Species is required." });
     if (!breed) return res.status(400).json({ message: "Breed is required." });
+    if (String(earTag || "").trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
 
     const farmer = await User.findById(farmerId);
     if (!farmer) return res.status(404).json({ message: "Farmer not found." });
@@ -398,6 +404,13 @@ export const getAnimalById = async (req, res) => {
       });
     }
     assertAnimalAccess(req.user, animal);
+
+    if (String(payload.earTag || "").trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
     const visibleWork = filterAnimalWorkForViewer(
       {
         inseminations: inseminationsList,

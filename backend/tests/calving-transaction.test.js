@@ -542,6 +542,10 @@ test("Calving: rejects duplicate ear tags in one request", async () => {
 test("Calving: validates calf count, ear tag, and sex before writing", async () => {
   await assert.rejects(persistCalving(validInput({ numberOfCalves: 2 })), { code: "CALF_COUNT_MISMATCH" });
   await assert.rejects(persistCalving(validInput({ calves: [{ sex: "F" }] })), { code: "CALF_EAR_TAG_REQUIRED" });
+  await assert.rejects(
+    persistCalving(validInput({ calves: [{ earTag: "MANUAL-TAG-1234567890", sex: "F" }] })),
+    { code: "ANIMAL_EAR_TAG_TOO_LONG" },
+  );
   await assert.rejects(persistCalving(validInput({ calves: [{ earTag: "C-1", sex: "X" }] })), { code: "CALF_SEX_INVALID" });
 });
 

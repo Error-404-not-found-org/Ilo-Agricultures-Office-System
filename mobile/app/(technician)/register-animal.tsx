@@ -34,6 +34,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { getEarTagValidationError } from "@/components/earTagSuggestion";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { AppPageHeader } from "@/components/AppPageHeader";
@@ -99,7 +100,7 @@ export default function RegisterAnimalScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [farmerAnimalsCount, setFarmerAnimalsCount] = useState<number>(0);
+  const [farmerEarTags, setFarmerEarTags] = useState<string[]>([]);
 
   const mutation = useOfflineMutation(
     {
@@ -124,16 +125,16 @@ export default function RegisterAnimalScreen() {
     setSelectedFarmer(farmer);
     setShowFarmerModal(false);
     if (String(farmer._id || "").startsWith("local:")) {
-      setFarmerAnimalsCount(0);
+      setFarmerEarTags([]);
       return;
     }
     try {
       const res = await api.get(`/animals/farmer/${farmer._id}`);
       const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
-      setFarmerAnimalsCount(list.length);
+      setFarmerEarTags(list.map((animal: any) => animal.earTag).filter(Boolean));
     } catch (err) {
       console.error(err);
-      setFarmerAnimalsCount(0);
+      setFarmerEarTags([]);
     }
   };
 
@@ -204,6 +205,11 @@ export default function RegisterAnimalScreen() {
     }
     if (!formData.earTag.trim()) {
       toast.error("Ear Tag is required");
+      return;
+    }
+    const earTagError = getEarTagValidationError(formData.earTag);
+    if (earTagError) {
+      toast.error(earTagError);
       return;
     }
     if (!formData.breed) {
@@ -457,7 +463,7 @@ export default function RegisterAnimalScreen() {
             </View>
             <EarTagGenerator
               farmerName={selectedFarmer?.name}
-              animalCount={farmerAnimalsCount}
+              existingEarTags={farmerEarTags}
               onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
               isDark={isDark}
             />

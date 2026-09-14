@@ -59,7 +59,9 @@ describe("RegisterLivestockModal - Ear Tag and Generator", () => {
     const generateBtn = screen.getByRole("button", { name: /generate tag/i });
     fireEvent.click(generateBtn);
 
-    expect(toast.error).toHaveBeenCalledWith("Please select a farmer first.");
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.getByText("Please select a farmer first.")).toBeInTheDocument();
+    expect(screen.queryByText("Please select a farmer before generating an ear tag.")).not.toBeInTheDocument();
   });
 
   it("generates an ear tag based on farmer initials and sequential animal count", async () => {
@@ -75,7 +77,8 @@ describe("RegisterLivestockModal - Ear Tag and Generator", () => {
 
     const earTagInput = screen.getByPlaceholderText("e.g. 01MC or EAR-17");
     expect(earTagInput).toHaveValue("01MS");
-    expect(toast.success).toHaveBeenCalledWith("Generated ear tag: 01MS");
+    expect(screen.getByText("Suggested ear tag generated.")).toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("increments sequence if candidate ear tag already exists for the farmer", async () => {
@@ -113,17 +116,114 @@ describe("RegisterLivestockModal - Ear Tag and Generator", () => {
 
     const earTagInput = screen.getByPlaceholderText("e.g. 01MC or EAR-17");
     expect(earTagInput).toHaveValue("03DP");
-    expect(toast.success).toHaveBeenCalledWith("Generated ear tag: 03DP");
+    expect(screen.getByText("Suggested ear tag generated.")).toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("allows typing ear tag numbers longer than 3 characters and converts to uppercase", async () => {
+  it("accepts ear tags longer than 4 characters and reports values over 20 characters", async () => {
     await renderModal();
 
     const earTagInput = screen.getByPlaceholderText("e.g. 01MC or EAR-17");
     expect(earTagInput).toHaveAttribute("maxLength", "20");
-
     fireEvent.change(earTagInput, { target: { value: "tag-2026-xyz" } });
     expect(earTagInput).toHaveValue("TAG-2026-XYZ");
+
+    fireEvent.change(earTagInput, { target: { value: "MANUAL-TAG-1234567890" } });
+    expect(earTagInput).toHaveValue("MANUAL-TAG-1234567890");
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.getByText("Ear tag must be 20 characters or fewer.")).toBeInTheDocument();
+
+    fireEvent.change(earTagInput, { target: { value: "100DP" } });
+    expect(earTagInput).toHaveValue("100DP");
+    expect(screen.queryByText("Ear tag must be 20 characters or fewer.")).not.toBeInTheDocument();
+  });
+
+  it("displays inline validation errors when submitting an incomplete form", async () => {
+    await renderModal();
+
+    const form = document.getElementById("register-livestock-form");
+    fireEvent.submit(form);
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.getByText("Please select a livestock owner.")).toBeInTheDocument();
+    expect(screen.getByText("Ear tag number is required.")).toBeInTheDocument();
+    expect(screen.getByText("Please fill in all required fields marked with an asterisk (*).")).toBeInTheDocument();
+  });
+
+  it("displays inline error for invalid image type or oversized image", async () => {
+    await renderModal();
+
+    const photoInput = document.getElementById("animal-photo");
+    const invalidFile = new File(["dummy content"], "test.pdf", { type: "application/pdf" });
+    fireEvent.change(photoInput, { target: { files: [invalidFile] } });
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.getByText("Please select a valid image file.")).toBeInTheDocument();
+
+    const hugeFile = new File(["a".repeat(100)], "huge.png", { type: "image/png" });
+    Object.defineProperty(hugeFile, "size", { value: 6 * 1024 * 1024 });
+    fireEvent.change(photoInput, { target: { files: [hugeFile] } });
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.getByText("Animal photos must be 5 MB or smaller.")).toBeInTheDocument();
+
+    const validFile = new File(["image"], "animal.png", { type: "image/png" });
+    fireEvent.change(photoInput, { target: { files: [validFile] } });
+    await waitFor(() => {
+      expect(screen.queryByText("Animal photos must be 5 MB or smaller.")).not.toBeInTheDocument();
+    });
+  });
+
+  it("displays inline form alert and tag error on mutation failure", async () => {
+    axiosInstance.post.mockRejectedValueOnce({
+      response: {
+        data: { message: "Ear tag already exists for this farmer" },
+      },
+    });
+
+    const preSelectedFarmer = { _id: "farmer-1", name: "Danilo Perez" };
+    await renderModal({ preSelectedFarmer });
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. 01MC or EAR-17"), {
+      target: { value: "01DP" },
+    });
+    fireEvent.change(screen.getByLabelText(/genetic breed/i), {
+      target: { value: "Brahman" },
+    });
+    fireEvent.change(screen.getByLabelText(/primary color/i), {
+      target: { value: "Brown" },
+    });
+    fireEvent.change(screen.getByLabelText(/birth date/i), {
+      target: { value: "2024-01-01" },
+    });
+
+    const form = document.getElementById("register-livestock-form");
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to register livestock: Ear tag already exists/i)).toBeInTheDocument();
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps the final registration success notification after closing the modal", async () => {
+    axiosInstance.post.mockResolvedValueOnce({ data: { animal: { _id: "animal-1" } } });
+    const onClose = vi.fn();
+    const onSuccess = vi.fn();
+    await renderModal({
+      preSelectedFarmer: { _id: "farmer-1", name: "Danilo Perez" },
+      onClose,
+      onSuccess,
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. 01MC or EAR-17"), { target: { value: "100DP" } });
+    fireEvent.change(screen.getByLabelText(/genetic breed/i), { target: { value: "Brahman" } });
+    fireEvent.change(screen.getByLabelText(/primary color/i), { target: { value: "Brown" } });
+    fireEvent.change(screen.getByLabelText(/birth date/i), { target: { value: "2024-01-01" } });
+    fireEvent.submit(document.getElementById("register-livestock-form"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSuccess).toHaveBeenCalledWith({ _id: "animal-1" });
+    expect(toast.success).toHaveBeenCalledWith("Livestock profile registered successfully!");
   });
 });
-

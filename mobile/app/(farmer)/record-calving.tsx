@@ -41,6 +41,7 @@ import { useUser } from "@clerk/clerk-expo";
 import { format } from "date-fns";
 import { usePregnancyTrackerQuery } from "@/features/breeding/hooks/usePregnancyTracker";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { getEarTagValidationError } from "@/components/earTagSuggestion";
 import {
   getCalvingTooEarlyErrorMessage,
   getFarmerCalvingReadinessPresentation,
@@ -78,7 +79,9 @@ export default function RecordCalving() {
   const { myAnimalsQuery } = useFarmerDashboardQueries();
 
   const farmerName = user?.fullName || `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.username || "";
-  const animalCount = myAnimalsQuery.data?.length || 0;
+  const activeEarTags = (myAnimalsQuery.data || []).map(
+    (animal: any) => animal.earTag,
+  );
 
   const primaryColor = isDark ? colors.primary : '#00643B';
 
@@ -276,6 +279,8 @@ export default function RecordCalving() {
       if (!livingCalves[i].earTag?.trim()) {
         return toast.error(`Please provide an Ear Tag for Calf #${i + 1}`);
       }
+      const earTagError = getEarTagValidationError(livingCalves[i].earTag);
+      if (earTagError) return toast.error(`Calf #${i + 1}: ${earTagError}`);
     }
     if (livingCalves.length) {
       const normalizedTags = livingCalves.map((calf) => calf.earTag.trim().toLowerCase());
@@ -813,7 +818,10 @@ export default function RecordCalving() {
                     </Text>
                     <EarTagGenerator
                       farmerName={farmerName}
-                      animalCount={animalCount + index}
+                      existingEarTags={[
+                        ...activeEarTags,
+                        ...calves.slice(0, index).map((item) => item.earTag),
+                      ]}
                       onGenerate={(tag: string) => updateCalf(index, "earTag", tag)}
                     />
                   </View>

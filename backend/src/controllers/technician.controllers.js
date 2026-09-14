@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 import cloudinary from "../config/cloudinary.js";
-import { Animal } from "../models/animal.model.js";
+import { Animal, ANIMAL_EAR_TAG_MAX_LENGTH } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
@@ -79,6 +79,7 @@ import {
   getManilaMonthBounds,
 } from "../services/technician-workload-summary.service.js";
 import { getAIRequestPhotos } from "../domain/ai-request-attachments.js";
+import { resolveAnimalContext } from "../services/animal-resolution.service.js";
 
 const combineMongoFilters = (baseFilter, ...conditions) => {
   const { $and: baseAnd = [], ...base } = baseFilter;
@@ -1407,26 +1408,17 @@ export const walkInInsemination = async (req, res) => {
     }
 
     // 2. Resolve or Create Animal
-    let animal;
-    if (bodyAnimalId) {
-      animal = await Animal.findById(bodyAnimalId);
-    } else if (animalDetails?.earTag) {
-      animal = await Animal.findOne({ earTag: animalDetails.earTag });
-    } else if (animalDetails?.animalId) {
-      animal = await Animal.findOne({ animalId: animalDetails.animalId });
-    }
+    const animal = await resolveAnimalContext({
+      animalId: bodyAnimalId,
+      farmerId: farmer._id,
+      earTag: animalDetails?.earTag,
+    });
 
     if (!animal) {
       return res.status(400).json({
         code: "ANIMAL_SELECTION_REQUIRED",
         message:
           "Select an existing animal before recording AI. Historical or incomplete animal records must be entered through an authorized historical-record workflow.",
-      });
-    }
-    if (String(animal.farmerId) !== String(farmer._id)) {
-      return res.status(400).json({
-        code: "ANIMAL_FARMER_MISMATCH",
-        message: "The selected animal does not belong to the selected farmer.",
       });
     }
 
@@ -1560,25 +1552,16 @@ export const previousInsemination = async (req, res) => {
       return res.status(404).json({ message: "Farmer not found." });
     }
 
-    let animal;
-    if (bodyAnimalId) {
-      animal = await Animal.findById(bodyAnimalId);
-    } else if (animalDetails?.earTag) {
-      animal = await Animal.findOne({ earTag: animalDetails.earTag });
-    } else if (animalDetails?.animalId) {
-      animal = await Animal.findOne({ animalId: animalDetails.animalId });
-    }
+    const animal = await resolveAnimalContext({
+      animalId: bodyAnimalId,
+      farmerId: farmer._id,
+      earTag: animalDetails?.earTag,
+    });
 
     if (!animal) {
       return res.status(400).json({
         code: "ANIMAL_SELECTION_REQUIRED",
         message: "Select an existing animal before recording previous AI.",
-      });
-    }
-    if (String(animal.farmerId) !== String(farmer._id)) {
-      return res.status(400).json({
-        code: "ANIMAL_FARMER_MISMATCH",
-        message: "The selected animal does not belong to the selected farmer.",
       });
     }
 
@@ -2278,6 +2261,12 @@ export const walkInLivestock = async (req, res) => {
         message: "Missing required animal details (Tag, Species, Breed).",
       });
     }
+    if (String(earTag).trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
 
     // Handle Image Upload if base64
     let finalImageUrl = imageUrl;
@@ -2309,7 +2298,10 @@ export const walkInLivestock = async (req, res) => {
       });
     }
 
-    const existing = await Animal.findOne({ earTag });
+    const existing = await resolveAnimalContext({
+      farmerId: farmer._id,
+      earTag,
+    });
     if (existing) {
       return res
         .status(400)
@@ -2357,9 +2349,14 @@ export const walkInLivestock = async (req, res) => {
       .status(201)
       .json({ message: "Livestock registered successfully", animal });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to register livestock", error: error.message });
+    const duplicate = error?.code === 11000;
+    res.status(duplicate ? 400 : error.status || 500).json({
+      message: duplicate
+        ? "An active animal with this ear tag already exists for the selected Farmer."
+        : "Failed to register livestock",
+      code: duplicate ? "DUPLICATE_FARMER_EAR_TAG" : error.code,
+      error: error.message,
+    });
   }
 };
 
