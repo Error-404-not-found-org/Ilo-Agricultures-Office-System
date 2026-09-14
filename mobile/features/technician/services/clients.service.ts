@@ -3,9 +3,9 @@ import { AxiosInstance } from "axios";
 export interface UpdateFarmerPayload {
   name: string;
   email?: string;
-  phoneNumber: string;
+  phoneNumber?: string;
   address: {
-    phoneNumber: string;
+    phoneNumber?: string;
     barangay: string;
     city: string;
     province: string;
@@ -15,7 +15,7 @@ export interface UpdateFarmerPayload {
 export interface RegisterFarmerPayload {
   firstName: string;
   lastName: string;
-  phoneNumber: string;
+  phoneNumber?: string;
   email?: string;
   address: {
     barangay: string;

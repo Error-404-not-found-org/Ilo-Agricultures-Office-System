@@ -57,6 +57,7 @@ const RegisterFarmerModal = ({
 
   const mutation = useMutation({
     mutationFn: async (data) => {
+      const phoneNumber = data.phoneNumber.trim();
       const finalBarangay = data.city === "Iloilo City" && selectedDistrict
         ? `${data.barangay} (${selectedDistrict})`
         : data.barangay;
@@ -65,19 +66,22 @@ const RegisterFarmerModal = ({
         const payload = {
           name: `${data.firstName} ${data.lastName}`.trim(),
           email: data.email || "",
-          phoneNumber: data.phoneNumber,
+          ...(phoneNumber ? { phoneNumber } : {}),
           address: {
             barangay: finalBarangay,
             city: data.city,
             province: data.province,
-            phoneNumber: data.phoneNumber,
+            ...(phoneNumber ? { phoneNumber } : {}),
           },
         };
         const res = await axiosInstance.patch(`/user/${farmer.id || farmer._id}/technician-update`, payload);
         return res.data;
       } else {
+        const farmerData = { ...data };
+        delete farmerData.phoneNumber;
         const res = await axiosInstance.post(createEndpoint, {
-          ...data,
+          ...farmerData,
+          ...(phoneNumber ? { phoneNumber } : {}),
           ...(createRole ? { role: createRole } : {}),
           address: {
             barangay: finalBarangay,
@@ -158,10 +162,10 @@ const RegisterFarmerModal = ({
     if (!formData.lastName.trim()) {
       return toast.error("Last name is required.");
     }
-    if (formData.phoneNumber.length < 11) {
+    if (formData.phoneNumber && formData.phoneNumber.length < 11) {
       return toast.error("Phone number must be exactly 11 digits.");
     }
-    if (!formData.phoneNumber.startsWith("09")) {
+    if (formData.phoneNumber && !formData.phoneNumber.startsWith("09")) {
       return toast.error("Phone number must start with 09.");
     }
     if (!formData.barangay) {
@@ -255,7 +259,7 @@ const RegisterFarmerModal = ({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
             <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
-            <Input id="farmer-phone" label="Contact number" required type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Use an 11-digit Philippine mobile number beginning with 09." placeholder="e.g. 09123456789" />
+            <Input id="farmer-phone" label="Contact number (optional)" type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Optional. Needed if the Farmer will use the BreedSmart mobile app." placeholder="e.g. 09123456789" />
             <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
           </div>
         </fieldset>

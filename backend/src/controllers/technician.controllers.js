@@ -1811,15 +1811,17 @@ export const registerFarmer = async (req, res) => {
     const { firstName, lastName, phoneNumber, email, address } = req.body;
 
     // 1. Validation
-    if (!firstName || !lastName || !phoneNumber) {
+    if (!firstName || !lastName) {
       return res.status(400).json({
-        message: "First name, last name, and phone number are required.",
+        message: "First name and last name are required.",
       });
     }
 
     const resolution = await resolveOrCreateAssistedFarmer({
       email,
-      phoneNumber,
+      phoneNumber: typeof phoneNumber === "string" && phoneNumber.trim()
+        ? phoneNumber
+        : undefined,
       name: `${firstName} ${lastName}`.trim(),
       address: {
         street: address?.street || "",

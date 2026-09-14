@@ -78,6 +78,33 @@ test("fresh assisted Farmer sends one resumable invitation and creates one uncla
   assert.equal(result.farmer.registeredByTechnician, true);
 });
 
+test("fresh assisted Farmer without a phone omits phone storage and OTP state", async () => {
+  let createdPayload;
+  User.findOne = async () => null;
+  User.create = async (payload) => {
+    createdPayload = payload;
+    return farmer({ _id: "farmer-without-phone", ...payload });
+  };
+
+  const result = await resolveOrCreateAssistedFarmer({
+    name: "Phone-less Farmer",
+    address: {
+      barangay: "Poblacion",
+      city: "Oton",
+      province: "Iloilo",
+      phoneNumber: "",
+    },
+    source: "test",
+    invitationMode: "none",
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(Object.hasOwn(createdPayload, "phoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload, "normalizedPhoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload.address, "phoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload, "phoneVerification"), false);
+});
+
 test("existing unclaimed Farmer is reused and invitation is resent without User.create", async () => {
   const existing = farmer({ email: "farmer@example.com" });
   let createCount = 0;

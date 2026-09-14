@@ -4,11 +4,15 @@ import { clerkClient } from "@clerk/clerk-sdk-node";
 import { ENV } from "../src/config/env.js";
 import { User } from "../src/models/user.model.js";
 import { AuditLog } from "../src/models/audit-log.model.js";
-import { createInvitedUser } from "../src/controllers/user.controllers.js";
+import {
+  createInvitedUser,
+  updateFarmerProfileByTechnician,
+} from "../src/controllers/user.controllers.js";
 import { registerFarmer } from "../src/controllers/technician.controllers.js";
 
 const originals = {
   userFindOne: User.findOne,
+  userFindById: User.findById,
   userCreate: User.create,
   auditCreate: AuditLog.create,
   createInvitation: clerkClient.invitations.createInvitation,
@@ -17,6 +21,7 @@ const originals = {
 
 afterEach(() => {
   User.findOne = originals.userFindOne;
+  User.findById = originals.userFindById;
   User.create = originals.userCreate;
   AuditLog.create = originals.auditCreate;
   clerkClient.invitations.createInvitation = originals.createInvitation;
@@ -206,6 +211,32 @@ test("registerFarmer fresh path normalizes identity and creates exactly one prof
   assert.equal(recorder.body.invitationSent, true);
 });
 
+test("registerFarmer creates a Farmer without a phone and stores no phone sentinel", async () => {
+  let createdPayload;
+  User.findOne = async () => null;
+  User.create = async (payload) => {
+    createdPayload = payload;
+    return unclaimed({ _id: "farmer-without-phone", ...payload });
+  };
+
+  const recorder = responseRecorder();
+  await registerFarmer(
+    request({
+      firstName: "No",
+      lastName: "Phone",
+      phoneNumber: "   ",
+      address: { barangay: "Poblacion", city: "Oton" },
+    }),
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 201);
+  assert.equal(Object.hasOwn(createdPayload, "phoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload, "normalizedPhoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload.address, "phoneNumber"), false);
+  assert.equal(recorder.body.user.phoneVerification?.isVerified || false, false);
+});
+
 test("registerFarmer reuses normalized-phone unclaimed profile and resends invitation", async () => {
   const existing = unclaimed({
     normalizedPhoneNumber: "+639171234567",
@@ -235,4 +266,51 @@ test("registerFarmer reuses normalized-phone unclaimed profile and resends invit
   assert.equal(recorder.body.invitationResent, true);
   assert.equal(createCount, 0);
   assert.equal(existing.address, undefined);
+});
+
+test("staff can add a normalized unverified phone to an unclaimed phone-less Farmer", async () => {
+  const existing = unclaimed({
+    phoneVerification: { isVerified: false, verifiedAt: null },
+    address: { barangay: "Poblacion", city: "Oton", province: "Iloilo" },
+    async save() { return this; },
+  });
+  User.findById = async () => existing;
+  User.findOne = async () => null;
+
+  const recorder = responseRecorder();
+  await updateFarmerProfileByTechnician(
+    {
+      ...request({ phoneNumber: "+63 917 123 4567" }),
+      params: { id: existing._id },
+    },
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 200);
+  assert.equal(existing.phoneNumber, "09171234567");
+  assert.equal(existing.normalizedPhoneNumber, "+639171234567");
+  assert.equal(existing.address.phoneNumber, "09171234567");
+  assert.equal(existing.phoneVerification.isVerified, false);
+  assert.equal(existing.phoneVerification.verifiedAt, null);
+});
+
+test("staff edit rejects a duplicate normalized Farmer phone", async () => {
+  const existing = unclaimed({
+    address: { barangay: "Poblacion", city: "Oton", province: "Iloilo" },
+    async save() { return this; },
+  });
+  User.findById = async () => existing;
+  User.findOne = async () => unclaimed({ _id: "other-farmer" });
+
+  const recorder = responseRecorder();
+  await updateFarmerProfileByTechnician(
+    {
+      ...request({ phoneNumber: "09171234567" }),
+      params: { id: existing._id },
+    },
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 409);
+  assert.equal(recorder.body.code, "FARMER_PHONE_ALREADY_IN_USE");
 });

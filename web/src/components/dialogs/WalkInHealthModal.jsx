@@ -407,15 +407,15 @@ const WalkInHealthModal = ({
         setSubmissionError("Barangay is required.");
         return;
       }
-      if (!formData.phoneNumber || !formData.animalDetails.earTag) {
-        setSubmissionError("Phone number and Ear Tag are required.");
+      if (!formData.animalDetails.earTag) {
+        setSubmissionError("Animal Ear Tag is required.");
         return;
       }
-      if (formData.phoneNumber.length < 11) {
+      if (formData.phoneNumber && formData.phoneNumber.length < 11) {
         setSubmissionError("Phone number must be exactly 11 digits.");
         return;
       }
-      if (!formData.phoneNumber.startsWith("09")) {
+      if (formData.phoneNumber && !formData.phoneNumber.startsWith("09")) {
         setSubmissionError("Phone number must start with 09.");
         return;
       }
@@ -432,6 +432,9 @@ const WalkInHealthModal = ({
             formData.address.city === ILOILO_CITY_NAME ? selectedDistrict : "",
         },
       };
+      if (!submissionData.phoneNumber?.trim()) {
+        delete submissionData.phoneNumber;
+      }
     }
 
     submissionData.diagnosis = submissionData.diagnosis.trim();
@@ -1047,7 +1050,7 @@ const WalkInHealthModal = ({
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Contact Number</label>
+                    <label className={labelClass}>Contact Number (Optional)</label>
                     <div className="relative">
                       <Phone
                         size={16}

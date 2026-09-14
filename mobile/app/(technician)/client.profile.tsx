@@ -214,7 +214,9 @@ export default function ClientProfileScreen() {
   const accountStatusSubtext = isClaimed
     ? client.email || "Farmer login is linked"
     : isClaimable
-      ? "Farmer can verify this phone in the app"
+      ? hasClientPhone
+        ? "Farmer can verify this phone in the app"
+        : "Phone not provided. Technician-managed profile only."
       : "No app login linked";
   const accountStatusIcon = isClaimed
     ? "check-circle"

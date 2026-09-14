@@ -175,8 +175,8 @@ export default function UpdateClientProfileScreen() {
 
   const handleSave = async () => {
     if (
-      !formData.phoneNumber.trim() ||
-      !/^\d{11}$/.test(formData.phoneNumber)
+      formData.phoneNumber.trim() &&
+      !/^09\d{9}$/.test(formData.phoneNumber)
     ) {
       return toast.error("Phone number must be exactly 11 digits.");
     }
@@ -195,9 +195,13 @@ export default function UpdateClientProfileScreen() {
       const payload = {
         name: formData.name.trim(),
         email: formData.email.trim(),
-        phoneNumber: formData.phoneNumber.trim(),
+        ...(formData.phoneNumber.trim()
+          ? { phoneNumber: formData.phoneNumber.trim() }
+          : {}),
         address: {
-          phoneNumber: formData.phoneNumber.trim(), // Syncing backwards to support legacy nested schema
+          ...(formData.phoneNumber.trim()
+            ? { phoneNumber: formData.phoneNumber.trim() }
+            : {}),
           barangay: formData.barangay,
           city: formData.city.trim(),
           district: formData.city === ILOILO_CITY_NAME ? formData.district : "",
@@ -273,7 +277,7 @@ export default function UpdateClientProfileScreen() {
               />
 
               <InputField
-                label="Phone Number *"
+                label="Phone Number (Optional)"
                 value={formData.phoneNumber}
                 onChangeText={(t: string) =>
                   setFormData({ ...formData, phoneNumber: t })

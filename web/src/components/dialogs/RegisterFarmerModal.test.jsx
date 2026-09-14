@@ -89,4 +89,37 @@ describe("Admin assisted Farmer creation", () => {
       expect(toast.error).toHaveBeenCalledWith("Farmer email is already claimed.");
     });
   });
+
+  it("allows a blank optional phone and omits it from the assisted Farmer payload", async () => {
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /First name/ })).toHaveValue("");
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /First name/ }), { target: { value: "Maria" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Last name/ }), { target: { value: "Santos" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Barangay/ }), { target: { value: "Poblacion South" } });
+    fireEvent.submit(document.getElementById("register-farmer-form"));
+
+    await waitFor(() => {
+      const [, payload] = axiosInstance.post.mock.calls[0];
+      expect(payload).not.toHaveProperty("phoneNumber");
+      expect(payload.address).not.toHaveProperty("phoneNumber");
+    });
+  });
+
+  it("still blocks an invalid nonblank phone", async () => {
+    renderModal();
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /First name/ })).toHaveValue("");
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /First name/ }), { target: { value: "Maria" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Last name/ }), { target: { value: "Santos" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Contact number/ }), { target: { value: "0917" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Barangay/ }), { target: { value: "Poblacion South" } });
+    fireEvent.submit(document.getElementById("register-farmer-form"));
+
+    expect(toast.error).toHaveBeenCalledWith("Phone number must be exactly 11 digits.");
+    expect(axiosInstance.post).not.toHaveBeenCalled();
+  });
 });

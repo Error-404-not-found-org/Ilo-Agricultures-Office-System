@@ -49,6 +49,7 @@ import {
 import { DISPATCH_CAPABILITIES } from "../domain/geographic/constants.js";
 import {
   getFarmerInvitationRedirectUrl,
+  normalizeFarmerPhone,
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
 import {
@@ -2809,9 +2810,55 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
       user.rsbsaNumber = rsbsaNumber.trim();
     }
 
-    if (phoneNumber) {
-      user.phoneNumber = phoneNumber;
-      if (user.address) user.address.phoneNumber = phoneNumber;
+    if (typeof phoneNumber === "string" && phoneNumber.trim()) {
+      const phone = normalizeFarmerPhone(phoneNumber);
+      const currentNormalizedPhone = user.normalizedPhoneNumber || (
+        user.phoneNumber ? normalizeFarmerPhone(user.phoneNumber).normalized : undefined
+      );
+      const phoneChanged = currentNormalizedPhone !== phone.normalized;
+      const isClaimedOrVerified =
+        user.profileClaimStatus === "claimed" ||
+        Boolean(user.phoneVerification?.isVerified);
+
+      if (phoneChanged && isClaimedOrVerified) {
+        return res.status(409).json({
+          message:
+            "This Farmer's verified phone cannot be changed through ordinary profile editing.",
+          code: "VERIFIED_FARMER_PHONE_CHANGE_REQUIRES_RECOVERY",
+        });
+      }
+
+      const duplicate = await User.findOne({
+        _id: { $ne: user._id },
+        $or: [
+          { normalizedPhoneNumber: phone.normalized },
+          { phoneNumber: phone.local },
+          { phoneNumber: phone.normalized },
+        ],
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          message: "This phone number is already used by another Farmer profile.",
+          code: "FARMER_PHONE_ALREADY_IN_USE",
+        });
+      }
+
+      user.phoneNumber = phone.local;
+      user.normalizedPhoneNumber = phone.normalized;
+      if (user.address) user.address.phoneNumber = phone.local;
+      if (phoneChanged) {
+        user.phoneVerification = {
+          ...(user.phoneVerification?.toObject?.() || user.phoneVerification || {}),
+          pendingPhoneNumber: "",
+          pendingNormalizedPhoneNumber: "",
+          isVerified: false,
+          verifiedAt: null,
+          lastOtpSentAt: null,
+          otpHash: undefined,
+          otpExpiresAt: null,
+          failedAttempts: 0,
+        };
+      }
     }
 
     if (address) {
@@ -2899,8 +2946,11 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
     });
   } catch (error) {
     console.error("[updateFarmerProfileByTechnician ERROR]", error);
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
+    if (error.statusCode || error.status) {
+      return res.status(error.statusCode || error.status).json({
+        message: error.message,
+        code: error.code,
+      });
     }
     res.status(500).json({ message: "Failed to update farmer profile." });
   }

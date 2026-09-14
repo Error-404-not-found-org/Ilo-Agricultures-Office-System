@@ -797,8 +797,8 @@ export const walkInHealthRequest = async (req, res) => {
       }
     }
 
-    if (!farmerId && (!phoneNumber || !animalDetails?.earTag)) {
-      return res.status(400).json({ message: "Phone number and Animal Ear Tag are required for manual entry." });
+    if (!farmerId && !animalDetails?.earTag) {
+      return res.status(400).json({ message: "Animal Ear Tag is required for manual entry." });
     }
 
     if (!diagnosis) {

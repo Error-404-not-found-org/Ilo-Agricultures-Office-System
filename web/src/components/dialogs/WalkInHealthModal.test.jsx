@@ -47,4 +47,10 @@ describe("Web direct Health recording", () => {
       "preSelectedAnimal?._id || preSelectedAnimal?.id ||",
     );
   });
+
+  it("allows inline assisted Farmer details without a phone", () => {
+    expect(source).not.toContain("Phone number and Ear Tag are required.");
+    expect(source).toContain("Contact Number (Optional)");
+    expect(source).toContain("delete submissionData.phoneNumber");
+  });
 });

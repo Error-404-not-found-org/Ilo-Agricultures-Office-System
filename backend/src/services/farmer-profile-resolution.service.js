@@ -261,12 +261,26 @@ export const resolveOrCreateAssistedFarmer = async ({
 
   let farmer;
   try {
+    const assistedAddress = address && typeof address === "object"
+      ? { ...address }
+      : address;
+    if (
+      assistedAddress &&
+      typeof assistedAddress.phoneNumber === "string" &&
+      !assistedAddress.phoneNumber.trim()
+    ) {
+      delete assistedAddress.phoneNumber;
+    }
     farmer = await User.create({
       name: String(name || "").trim() || "Registered Farmer",
       email: identity.normalizedEmail,
-      phoneNumber: identity.phone.local,
-      normalizedPhoneNumber: identity.phone.normalized || "",
-      address,
+      ...(identity.phone.local
+        ? {
+            phoneNumber: identity.phone.local,
+            normalizedPhoneNumber: identity.phone.normalized,
+          }
+        : {}),
+      address: assistedAddress,
       imageUrl,
       role: "farmer",
       status: "active",

@@ -146,7 +146,7 @@ const userSchema = new mongoose.Schema(
     },
     normalizedPhoneNumber: {
       type: String,
-      default: "",
+      default: undefined,
       index: true,
     },
     registeredByTechnician: {
