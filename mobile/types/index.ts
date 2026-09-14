@@ -108,7 +108,9 @@ export interface AppUser {
     isVerified?: boolean;
     verifiedAt?: string | null;
     lastOtpSentAt?: string | null;
+    otpExpiresAt?: string | null;
     failedAttempts?: number;
+    retryAfterSeconds?: number;
   };
   address?: Address;
   farmLocation?: FarmLocation | null;

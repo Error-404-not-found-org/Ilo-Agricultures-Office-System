@@ -21,7 +21,7 @@ import {
   staffBootstrapUser,
 } from "../controllers/user.controllers.js";
 import { protectedRoute, requireRole, requireClerkAuthentication } from "../middleware/auth.middleware.js";
-import { otpLimiter } from "../middleware/rateLimit.middleware.js";
+import { otpSendLimiter, otpVerifyLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
@@ -42,8 +42,8 @@ router.get("/activity", protectedRoute, getMyActivityFeed);
 router.get("/archived", protectedRoute, requireRole(["admin"]), getArchivedUsers);
 
 router.post("/push-token", protectedRoute, updatePushToken);
-router.post("/otp/send", protectedRoute, otpLimiter, sendPhoneOtp);
-router.post("/otp/verify", protectedRoute, otpLimiter, verifyPhoneOtp);
+router.post("/otp/send", protectedRoute, otpSendLimiter, sendPhoneOtp);
+router.post("/otp/verify", protectedRoute, otpVerifyLimiter, verifyPhoneOtp);
 router.patch("/:id/technician-update", protectedRoute, requireRole(["technician", "admin"]), updateFarmerProfileByTechnician);
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);

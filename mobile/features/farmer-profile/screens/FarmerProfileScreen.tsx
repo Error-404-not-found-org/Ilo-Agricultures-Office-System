@@ -39,7 +39,9 @@ export const FarmerProfileScreen = () => {
     phoneOtpCooldown,
     phoneOtpRemainingSeconds,
     phoneError,
-    setPhoneError,
+    phoneFeedbackTitle,
+    phoneFeedbackKind,
+    clearPhoneFeedback,
     hasPhoneNumber,
     hasVerifiedPhone,
     isChangingPhoneNumber,
@@ -165,7 +167,9 @@ export const FarmerProfileScreen = () => {
         phoneOtpCooldown={phoneOtpCooldown}
         phoneOtpRemainingSeconds={phoneOtpRemainingSeconds}
         phoneError={phoneError}
-        onClearPhoneError={() => setPhoneError("")}
+        phoneFeedbackTitle={phoneFeedbackTitle}
+        phoneFeedbackKind={phoneFeedbackKind}
+        onClearPhoneError={clearPhoneFeedback}
         hasPhoneNumber={hasPhoneNumber}
         hasVerifiedPhone={hasVerifiedPhone}
         isChangingPhoneNumber={isChangingPhoneNumber}

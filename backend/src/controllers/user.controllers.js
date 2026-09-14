@@ -20,7 +20,14 @@ import {
   getOperationalUserRoleFilter,
 } from "../policies/user.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
-import { sendOtpSms, verifyOtpSms } from "../services/sms.service.js";
+import { sendOtpSms } from "../services/sms.service.js";
+import {
+  assertOtpHashConfigured,
+  assessOtpAttempt,
+  buildPendingPhoneVerification,
+  buildSafeUserPayload,
+  OTP_SEND_COOLDOWN_SECONDS,
+} from "../services/phone-otp.service.js";
 import {
   maskPhoneNumber,
   normalizePhilippineMobileNumber,
@@ -189,9 +196,7 @@ export const bootstrapUser = async (req, res) => {
     }
 
     // Return safe user payload (omit sensitive fields/tokens if any)
-    const safeUser = user.toObject();
-    delete safeUser.password;
-    delete safeUser.pushToken; // optional, but standard
+    const safeUser = buildSafeUserPayload(user);
 
     return res.status(200).json({
       success: true,
@@ -222,9 +227,7 @@ export const staffBootstrapUser = async (req, res) => {
     }
 
     const user = await resolveStaffUser(clerkId);
-    const safeUser = user.toObject();
-    delete safeUser.password;
-    delete safeUser.pushToken;
+    const safeUser = buildSafeUserPayload(user);
 
     return res.status(200).json({ success: true, user: safeUser });
   } catch (error) {
@@ -241,7 +244,7 @@ export const staffBootstrapUser = async (req, res) => {
 const FARM_LANDMARK_MAX_LENGTH = 80;
 const FARM_DIRECTIONS_MAX_LENGTH = 250;
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
-const OTP_SEND_COOLDOWN_MS = 60 * 1000;
+const OTP_SEND_COOLDOWN_MS = OTP_SEND_COOLDOWN_SECONDS * 1000;
 const OTP_MAX_FAILED_ATTEMPTS = 5;
 
 const countFarmerOwnedRecords = async (farmerId) => {
@@ -458,7 +461,7 @@ export const getMe = async (req, res) => {
       };
     }
 
-    res.status(200).json({ ...user.toObject(), stats });
+    res.status(200).json({ ...buildSafeUserPayload(user), stats });
   } catch (error) {
     console.error("[getMe ERROR]", error);
     res.status(500).json({ message: "Failed to fetch your profile." });
@@ -2493,8 +2496,12 @@ export const restoreUser = async (req, res) => {
   }
 };
 
-export const sendPhoneOtp = async (req, res) => {
+export const createSendPhoneOtpController = ({
+  sendOtp = sendOtpSms,
+  now = () => new Date(),
+} = {}) => async (req, res) => {
   try {
+    assertOtpHashConfigured();
     const { phoneNumber } = req.body;
     const phone = normalizePhilippineMobileNumber(
       phoneNumber || req.user?.phoneNumber,
@@ -2504,7 +2511,7 @@ export const sendPhoneOtp = async (req, res) => {
     const lastSentAt = currentVerification.lastOtpSentAt
       ? new Date(currentVerification.lastOtpSentAt).getTime()
       : 0;
-    const elapsedMs = Date.now() - lastSentAt;
+    const elapsedMs = now().getTime() - lastSentAt;
 
     if (lastSentAt && elapsedMs < OTP_SEND_COOLDOWN_MS) {
       const waitSeconds = Math.ceil((OTP_SEND_COOLDOWN_MS - elapsedMs) / 1000);
@@ -2515,75 +2522,96 @@ export const sendPhoneOtp = async (req, res) => {
       });
     }
 
-    await sendOtpSms(phone.local);
+    const { otpCode, otpExpiresAt } = await sendOtp(phone.local);
+    const sentAt = now();
 
-    req.user.phoneVerification = {
-      ...(req.user.phoneVerification?.toObject?.() ||
-        req.user.phoneVerification ||
-        {}),
-      pendingPhoneNumber: phone.local,
-      pendingNormalizedPhoneNumber: phone.normalized,
-      lastOtpSentAt: new Date(),
-      failedAttempts: 0,
-    };
+    req.user.phoneVerification = buildPendingPhoneVerification({
+      currentVerification: req.user.phoneVerification,
+      phoneNumber: phone.local,
+      normalizedPhoneNumber: phone.normalized,
+      otpCode,
+      otpExpiresAt,
+      sentAt,
+    });
     await req.user.save();
 
     res.status(200).json({
-      message: "OTP sent successfully.",
+      message: "Verification code sent.",
       data: {
         phoneNumber: maskPhoneNumber(phone.local),
-        expiresInMinutes: 5,
+        expiresAt: otpExpiresAt.toISOString(),
+        lastOtpSentAt: sentAt.toISOString(),
+        expiresInSeconds: Math.max(
+          0,
+          Math.ceil((otpExpiresAt.getTime() - sentAt.getTime()) / 1000),
+        ),
+        retryAfterSeconds: OTP_SEND_COOLDOWN_SECONDS,
       },
     });
   } catch (error) {
     console.error("[sendPhoneOtp ERROR]", error.message);
     res.status(error.statusCode || 500).json({
       message: error.message || "Failed to send OTP.",
-      code: error.statusCode === 503 ? "SMS_NOT_AVAILABLE" : "OTP_SEND_FAILED",
+      code:
+        error.code ||
+        (error.statusCode === 503 ? "SMS_NOT_AVAILABLE" : "OTP_SEND_FAILED"),
     });
   }
 };
 
+export const sendPhoneOtp = createSendPhoneOtpController();
+
 export const verifyPhoneOtp = async (req, res) => {
   try {
     const { phoneNumber, otpCode } = req.body;
-    const phone = normalizePhilippineMobileNumber(
-      phoneNumber || req.user?.phoneVerification?.pendingPhoneNumber,
+    const verificationUser = await User.findById(req.user._id).select(
+      "+phoneVerification.otpHash",
     );
-    const currentVerification = req.user.phoneVerification || {};
-
+    if (!verificationUser) {
+      return res.status(404).json({ message: "User not found.", code: "USER_NOT_FOUND" });
+    }
+    const currentVerification = verificationUser.phoneVerification || {};
     if (
-      currentVerification.pendingNormalizedPhoneNumber &&
-      currentVerification.pendingNormalizedPhoneNumber !== phone.normalized
+      !currentVerification.pendingNormalizedPhoneNumber ||
+      !currentVerification.otpHash ||
+      !currentVerification.otpExpiresAt
     ) {
       return res.status(400).json({
-        message: "This OTP was requested for a different phone number.",
-        code: "OTP_PHONE_MISMATCH",
+        message: "No verification code is pending. Request a new code.",
+        code: "OTP_NOT_PENDING",
       });
     }
+    const phone = normalizePhilippineMobileNumber(
+      phoneNumber || currentVerification.pendingPhoneNumber,
+    );
 
-    if ((currentVerification.failedAttempts || 0) >= OTP_MAX_FAILED_ATTEMPTS) {
-      return res.status(429).json({
-        message: "Too many failed OTP attempts. Please request a new code.",
-        code: "OTP_TOO_MANY_ATTEMPTS",
-      });
-    }
-
-    try {
-      await verifyOtpSms(phone.local, otpCode);
-    } catch (error) {
-      req.user.phoneVerification = {
-        ...(req.user.phoneVerification?.toObject?.() ||
-          req.user.phoneVerification ||
-          {}),
+    const assessment = assessOtpAttempt({
+      verification: currentVerification,
+      normalizedPhoneNumber: phone.normalized,
+      otpCode,
+      maxFailedAttempts: OTP_MAX_FAILED_ATTEMPTS,
+    });
+    if (!assessment.ok && assessment.incrementFailedAttempts) {
+      verificationUser.phoneVerification = {
+        ...(currentVerification.toObject?.() || currentVerification || {}),
         failedAttempts: (currentVerification.failedAttempts || 0) + 1,
       };
-      await req.user.save();
-      throw error;
+      await verificationUser.save();
+    }
+    if (!assessment.ok) {
+      const errors = {
+        OTP_NOT_PENDING: [400, "No verification code is pending. Request a new code."],
+        OTP_PHONE_MISMATCH: [400, "This code was requested for a different phone number."],
+        OTP_TOO_MANY_ATTEMPTS: [429, "Too many failed verification attempts. Please request a new code."],
+        OTP_EXPIRED: [400, "The verification code has expired. Request a new code."],
+        OTP_INVALID: [400, "The verification code is incorrect."],
+      };
+      const [status, message] = errors[assessment.code] || [400, "Phone verification failed."];
+      return res.status(status).json({ message, code: assessment.code });
     }
 
     const matchingPhoneUsers = await User.find({
-      _id: { $ne: req.user._id },
+      _id: { $ne: verificationUser._id },
       role: "farmer",
       deletedAt: null,
       $or: [
@@ -2627,9 +2655,9 @@ export const verifyPhoneOtp = async (req, res) => {
       });
     }
 
-    if (unclaimedProfiles.length === 1 && req.user.role === "farmer") {
+    if (unclaimedProfiles.length === 1 && verificationUser.role === "farmer") {
       const existingProfile = unclaimedProfiles[0];
-      const currentUserRecordCount = await countFarmerOwnedRecords(req.user._id);
+      const currentUserRecordCount = await countFarmerOwnedRecords(verificationUser._id);
 
       if (currentUserRecordCount > 0) {
         return res.status(409).json({
@@ -2639,7 +2667,7 @@ export const verifyPhoneOtp = async (req, res) => {
         });
       }
 
-      const currentUser = req.user;
+      const currentUser = verificationUser;
       const clerkId = currentUser.clerkId;
       const email = currentUser.email;
       const imageUrl = currentUser.imageUrl;
@@ -2647,6 +2675,8 @@ export const verifyPhoneOtp = async (req, res) => {
       currentUser.clerkId = undefined;
       currentUser.deletedAt = new Date();
       currentUser.deactivatedBy = currentUser._id;
+      currentUser.phoneVerification.otpHash = undefined;
+      currentUser.phoneVerification.otpExpiresAt = null;
       await currentUser.save();
 
       existingProfile.clerkId = clerkId;
@@ -2666,6 +2696,8 @@ export const verifyPhoneOtp = async (req, res) => {
           {}),
         pendingPhoneNumber: "",
         pendingNormalizedPhoneNumber: "",
+        otpHash: undefined,
+        otpExpiresAt: null,
         isVerified: true,
         verifiedAt: new Date(),
         failedAttempts: 0,
@@ -2694,23 +2726,25 @@ export const verifyPhoneOtp = async (req, res) => {
           phoneNumber: maskPhoneNumber(phone.local),
           isVerified: true,
           linkedExistingProfile: true,
-          user: existingProfile,
+          user: buildSafeUserPayload(existingProfile),
         },
       });
     }
 
-    req.user.phoneNumber = phone.local;
-    req.user.normalizedPhoneNumber = phone.normalized;
-    if (req.user.address) req.user.address.phoneNumber = phone.local;
-    req.user.phoneVerification = {
-      ...(req.user.phoneVerification?.toObject?.() || req.user.phoneVerification || {}),
+    verificationUser.phoneNumber = phone.local;
+    verificationUser.normalizedPhoneNumber = phone.normalized;
+    if (verificationUser.address) verificationUser.address.phoneNumber = phone.local;
+    verificationUser.phoneVerification = {
+      ...(currentVerification.toObject?.() || currentVerification || {}),
       pendingPhoneNumber: "",
       pendingNormalizedPhoneNumber: "",
+      otpHash: undefined,
+      otpExpiresAt: null,
       isVerified: true,
       verifiedAt: new Date(),
       failedAttempts: 0,
     };
-    await req.user.save();
+    await verificationUser.save();
 
     res.status(200).json({
       message: "Phone number verified successfully.",
@@ -2724,7 +2758,7 @@ export const verifyPhoneOtp = async (req, res) => {
     console.error("[verifyPhoneOtp ERROR]", error.message);
     res.status(error.statusCode || 400).json({
       message: error.message || "Invalid or expired OTP code.",
-      code: "OTP_VERIFY_FAILED",
+      code: error.code || "OTP_VERIFY_FAILED",
     });
   }
 };

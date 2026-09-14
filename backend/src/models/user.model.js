@@ -187,6 +187,15 @@ const userSchema = new mongoose.Schema(
         type: Date,
         default: null,
       },
+      otpHash: {
+        type: String,
+        select: false,
+        default: undefined,
+      },
+      otpExpiresAt: {
+        type: Date,
+        default: null,
+      },
       failedAttempts: {
         type: Number,
         default: 0,
