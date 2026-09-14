@@ -71,9 +71,12 @@ import {
   buildActiveAIWorkFilter,
   buildActiveHealthWorkFilter,
   buildActiveStandaloneTaskFilter,
+  buildAICompletedInRangeFilter,
   buildCompletedAIWorkFilter,
   buildCompletedHealthWorkFilter,
   buildCompletedStandaloneTaskFilter,
+  getManilaDayBounds,
+  getManilaMonthBounds,
 } from "../services/technician-workload-summary.service.js";
 import { getAIRequestPhotos } from "../domain/ai-request-attachments.js";
 
@@ -196,16 +199,13 @@ export const getTechnicianDashboardData = async (req, res) => {
       isFull && includeFutureDateBoundTasks === "true";
 
     const now = new Date();
-    const PHT_OFFSET = 8 * 60 * 60 * 1000;
-    const todayStart = new Date(now.getTime() + PHT_OFFSET);
-    todayStart.setUTCHours(0, 0, 0, 0);
-    todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
-    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const { start: todayStart, end: todayEnd } = getManilaDayBounds(now);
 
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { start: monthStart, end: nextMonthStart } =
+      getManilaMonthBounds(now);
 
     const isAdmin = req.user?.role === "admin";
     const aiDispatch = isAdmin
@@ -317,12 +317,13 @@ export const getTechnicianDashboardData = async (req, res) => {
       ]),
       // 6. Total Completed Today
       Promise.all([
-        Insemination.countDocuments({
-          ...buildCompletedAIWorkFilter({
+        Insemination.countDocuments(
+          buildAICompletedInRangeFilter({
             technicianId: isAdmin ? null : req.user._id,
+            start: todayStart,
+            end: todayEnd,
           }),
-          updatedAt: { $gte: todayStart, $lt: todayEnd },
-        }),
+        ),
         HealthRequest.countDocuments(
           combineMongoFilters(
             buildCompletedHealthWorkFilter({
@@ -457,7 +458,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       ]),
       // 7. Total AI Month
       Insemination.countDocuments({
-        inseminationDate: { $gte: monthStart },
+        inseminationDate: { $gte: monthStart, $lt: nextMonthStart },
         ...assigneeFilterAI,
       }),
       Pregnancy.countDocuments({

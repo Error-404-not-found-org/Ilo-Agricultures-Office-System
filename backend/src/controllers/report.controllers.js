@@ -4,6 +4,7 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { User } from "../models/user.model.js";
+import { getManilaMonthBoundsFor } from "../services/technician-workload-summary.service.js";
 
 export const getMonthlyAccomplishmentReport = async (req, res) => {
   try {
@@ -13,27 +14,35 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
       return res.status(400).json({ message: "Month and Year are required." });
     }
 
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    const numericMonth = Number(month);
+    const numericYear = Number(year);
+    const { start: startDate, end: endDate } = getManilaMonthBoundsFor(
+      numericYear,
+      numericMonth,
+    );
 
     // Fetch all related records for this month
     const [inseminations, pregnancies, calvings] = await Promise.all([
       Insemination.find({
         deletedAt: null,
         $or: [
-          { inseminationDate: { $gte: startDate, $lte: endDate } },
-          { createdAt: { $gte: startDate, $lte: endDate }, status: 'done' }
+          { inseminationDate: { $gte: startDate, $lt: endDate } },
+          {
+            inseminationDate: { $in: [null] },
+            createdAt: { $gte: startDate, $lt: endDate },
+            status: 'done'
+          }
         ]
       }).populate('animalId').populate('farmerId').lean(),
       
       Pregnancy.find({
         deletedAt: null,
-        "pregnancyDiagnosis.date": { $gte: startDate, $lte: endDate }
+        "pregnancyDiagnosis.date": { $gte: startDate, $lt: endDate }
       }).populate('animalId').populate('farmerId').lean(),
       
       Calving.find({
         deletedAt: null,
-        date: { $gte: startDate, $lte: endDate }
+        date: { $gte: startDate, $lt: endDate }
       }).populate('animalId').populate('farmerId').lean(),
     ]);
 

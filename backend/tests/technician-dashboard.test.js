@@ -9,10 +9,19 @@ import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { User } from "../src/models/user.model.js";
 import {
+  buildAICompletedInRangeFilter,
   buildDirectHealthCompletedInRangeFilter,
   getManilaDayBounds,
   loadTechnicianDashboardMetrics,
 } from "../src/services/technician-workload-summary.service.js";
+import * as workloadSummary from "../src/services/technician-workload-summary.service.js";
+
+const expectedManilaMonthBounds = (instant) => {
+  const shifted = new Date(instant.getTime() + 8 * 60 * 60 * 1000);
+  const start = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - 8 * 60 * 60 * 1000);
+  const end = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - 8 * 60 * 60 * 1000);
+  return { start, end };
+};
 
 describe("Technician Dashboard Regression Tests", () => {
   const otonDispatch = {
@@ -381,6 +390,7 @@ describe("Technician Dashboard Regression Tests", () => {
         status: "done",
         technicianId: techUser._id,
         approvedBy: techUser._id,
+        inseminationDate: now,
         completedAt: now,
       }),
       HealthRequest.create({
@@ -562,7 +572,7 @@ describe("Technician Dashboard Regression Tests", () => {
     );
   });
 
-  it("uses lifecycle evidence, not updatedAt, for completed-today AI", async () => {
+  it("does not substitute update or status-history timestamps for the AI service date", async () => {
     const { start } = getManilaDayBounds(new Date());
     const today = new Date(start.getTime() + 60 * 60 * 1000);
     const oldCompletion = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -606,9 +616,111 @@ describe("Technician Dashboard Regression Tests", () => {
     await getTechnicianDashboardData(req, res);
 
     assert.equal(response.statusCode, 200);
-    assert.equal(response.body.stats.completedToday, 1);
+    assert.equal(response.body.stats.aiCompletedToday, 0);
+    assert.equal(response.body.stats.completedToday, 0);
     assert.ok(legacyTransition);
     assert.ok(importedHistory);
+  });
+
+  it("counts Manila 00:15 and 23:59 services while ignoring scheduling or later edits", async () => {
+    const { start, end } = getManilaDayBounds(new Date());
+    const today = new Date(start.getTime() + 15 * 60 * 1000);
+    const oldServiceDate = new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const records = await Insemination.create([
+      {
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        inseminationDate: today,
+        completedAt: today,
+      },
+      {
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        inseminationDate: oldServiceDate,
+        completedAt: oldServiceDate,
+      },
+      {
+        farmerId: farmerUser._id,
+        animalId: animal3._id,
+        status: "scheduled",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        scheduledDate: today,
+      },
+      {
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        inseminationDate: new Date(end.getTime() - 60 * 1000),
+        completedAt: new Date(end.getTime() - 60 * 1000),
+      },
+    ]);
+    await Insemination.collection.updateOne(
+      { _id: records[1]._id },
+      { $set: { updatedAt: today } },
+    );
+
+    assert.equal(
+      await Insemination.countDocuments(
+        buildAICompletedInRangeFilter({
+          technicianId: techUser._id,
+          start,
+          end,
+        }),
+      ),
+      2,
+    );
+
+    const { req, res, response } = mockReqRes(techUser);
+    await getTechnicianDashboardData(req, res);
+    assert.equal(response.body.stats.aiCompletedToday, 2);
+  });
+
+  it("uses a bounded Manila month for monthly inseminations", async () => {
+    const { start, end } = expectedManilaMonthBounds(new Date());
+    const currentMonth = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const previousMonth = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+
+    await Insemination.create([
+      {
+        farmerId: farmerUser._id,
+        animalId: animal1._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        inseminationDate: currentMonth,
+      },
+      {
+        farmerId: farmerUser._id,
+        animalId: animal2._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        entryMode: "history_only",
+        inseminationDate: previousMonth,
+      },
+      {
+        farmerId: farmerUser._id,
+        animalId: animal3._id,
+        status: "done",
+        technicianId: techUser._id,
+        approvedBy: techUser._id,
+        inseminationDate: end,
+      },
+    ]);
+
+    const { req, res, response } = mockReqRes(techUser);
+    await getTechnicianDashboardData(req, res);
+    assert.equal(response.body.stats.totalInsemMonth, 1);
   });
 
   it("counts standalone direct Health by service date without double-counting linked records", async () => {
@@ -730,5 +842,14 @@ describe("Technician Dashboard Regression Tests", () => {
 
     assert.equal(start.toISOString(), "2026-09-03T16:00:00.000Z");
     assert.equal(end.toISOString(), "2026-09-04T16:00:00.000Z");
+  });
+
+  it("uses deployment-independent Manila month boundaries", () => {
+    assert.equal(typeof workloadSummary.getManilaMonthBounds, "function");
+    const september = workloadSummary.getManilaMonthBounds(
+      new Date("2026-09-14T12:00:00.000Z"),
+    );
+    assert.equal(september.start.toISOString(), "2026-08-31T16:00:00.000Z");
+    assert.equal(september.end.toISOString(), "2026-09-30T16:00:00.000Z");
   });
 });
