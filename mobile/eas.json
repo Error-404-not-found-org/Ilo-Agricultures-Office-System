@@ -7,9 +7,11 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "development",
+      "env": {
+        "APP_VARIANT": "development"
+      }
     },
-
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
@@ -17,6 +19,7 @@
         "buildType": "apk"
       },
       "env": {
+        "APP_VARIANT": "development",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dXAtcHVnLTQ2LmNsZXJrLmFjY291bnRzLmRldiQ",
         "EXPO_PUBLIC_API_URL": "https://summational-excludable-reagan.ngrok-free.dev/api"
       },
