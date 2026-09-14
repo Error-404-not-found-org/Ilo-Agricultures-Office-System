@@ -6,6 +6,7 @@ import {
   getScheduleNavigationTarget,
   getScheduleTimingState,
   getScheduleWorkLabel,
+  getPhilippineDateKey,
   isFutureSchedule,
 } from "./technicianSchedulePresentation";
 
@@ -31,6 +32,11 @@ const task = (overrides = {}) => ({
 });
 
 describe("technician Schedule presentation", () => {
+  it("maps UTC rollover timestamps to the Manila calendar day", () => {
+    expect(getPhilippineDateKey("2026-09-15T16:30:00.000Z")).toBe(
+      "2026-09-16",
+    );
+  });
   it("uses scheduledDate and visitPeriod for AI without legacy exact time", () => {
     const [item] = buildScheduleItems(
       [visit({ time: "10:30 AM", preferredDate: "2026-10-10" })],

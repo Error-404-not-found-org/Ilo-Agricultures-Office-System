@@ -19,7 +19,10 @@ export interface UpdateStatusPayload {
 
 export const getTechnicianDashboardData = async (
   api: AxiosInstance,
-  params?: { fullAgenda?: boolean },
+  params?: {
+    fullAgenda?: boolean;
+    includeFutureDateBoundTasks?: boolean;
+  },
 ) => {
   const response = await api.get("/technician/dashboard-data", { params });
   return response.data || {};

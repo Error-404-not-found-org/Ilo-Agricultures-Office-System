@@ -67,6 +67,41 @@ describe("TechnicianSchedule temporal work handling", () => {
     vi.clearAllMocks();
   });
 
+  it("does not render a work marker for selected today when there is no work", async () => {
+    renderSchedule([]);
+    await screen.findByText("Selected Day Work");
+    expect(screen.queryAllByTestId(/calendar-event-/)).toHaveLength(0);
+    expect(screen.getByText("No scheduled visits for this day.")).toBeTruthy();
+    expect(screen.getByText("No due work for this day.")).toBeTruthy();
+  });
+
+  it("separates one scheduled visit and one PD into two work items", async () => {
+    const todayIso = new Date().toISOString();
+    renderSchedule([
+      {
+        id: "ai-visit",
+        type: "insemination",
+        status: "scheduled",
+        scheduledDate: todayIso,
+        visitPeriod: "morning",
+      },
+      {
+        id: "pd-task",
+        taskId: "pd-task",
+        type: "task",
+        taskType: "PD",
+        status: "Pending",
+        dueDate: todayIso,
+      },
+    ]);
+
+    expect(await screen.findByText("2 items")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Scheduled Visits" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Due Work" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View Work" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View Task" })).toBeTruthy();
+  });
+
   it("opens read-only work details for future Pregnancy Check on Schedule without navigating to My Work", async () => {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 18); // Future date
@@ -104,6 +139,9 @@ describe("TechnicianSchedule temporal work handling", () => {
     fireEvent.click(dayEventButton);
 
     // Future Pregnancy Check appears under Selected Day Work with "Upcoming" badge
+    expect(screen.getByRole("heading", { name: "Scheduled Visits" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Due Work" })).toBeTruthy();
+    expect(screen.getByText("No scheduled visits for this day.")).toBeTruthy();
     expect(screen.getByText("Upcoming")).toBeTruthy();
     const viewButton = screen.getByRole("button", { name: /View Task/i });
     expect(viewButton).toBeTruthy();
@@ -114,8 +152,8 @@ describe("TechnicianSchedule temporal work handling", () => {
     // Read-only modal opens directly on Schedule
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeTruthy();
-    expect(dialog).toHaveTextContent(/Upcoming work details/i);
-    expect(dialog).toHaveTextContent(/scheduled for a future date/i);
+    expect(dialog).toHaveTextContent(/Scheduled follow-up/i);
+    expect(dialog).toHaveTextContent(/Recording becomes available when due/i);
     expect(dialog).toHaveTextContent(/Farmer Juan/i);
     expect(dialog).toHaveTextContent(/TAG-777/i);
 
@@ -201,7 +239,7 @@ describe("TechnicianSchedule temporal work handling", () => {
     expect(dialog).toBeTruthy();
     expect(dialog).toHaveTextContent(/Calving/i);
     expect(dialog).toHaveTextContent(/Calving Farmer/i);
-    expect(dialog).toHaveTextContent(/scheduled for a future date/i);
+    expect(dialog).toHaveTextContent(/Recording becomes available when due/i);
 
     // Remained on Schedule
     const location = screen.getByTestId("schedule-location");
@@ -237,6 +275,6 @@ describe("TechnicianSchedule temporal work handling", () => {
     expect(dialog).toBeTruthy();
     expect(dialog).toHaveTextContent(/Farmer Deep/i);
     expect(dialog).toHaveTextContent(/TAG-999/i);
-    expect(dialog).toHaveTextContent(/scheduled for a future date/i);
+    expect(dialog).toHaveTextContent(/Recording becomes available when due/i);
   });
 });

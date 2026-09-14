@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
-  AlertTriangle,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -16,7 +15,6 @@ import {
   MapPin,
   PawPrint,
   UserRound,
-  UsersRound,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -36,17 +34,17 @@ import {
 import { useTheme } from "@/lib/theme";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { AsyncState } from "@/components/shared";
-import {
-  useCurrentTechnicianProfileQuery,
-  useTechnicianFullAgendaQuery,
-} from "@/features/technician/hooks/useTechnicianDashboard";
+import { useTechnicianFullAgendaQuery } from "@/features/technician/hooks/useTechnicianDashboard";
 import {
   AgendaItem,
-  deduplicateCalendarVisits,
+  deduplicateCalendarWorkItems,
   getCalendarAnimalIdentity,
+  getCalendarActionLabel,
   getCalendarVisitDate,
   getCalendarVisitPeriodLabel,
   getCalendarVisitTarget,
+  getCalendarWorkCounts,
+  getCalendarWorkKind,
   isCalendarCancellationRequested,
 } from "@/features/technician-dashboard/utils/calendarPresentation";
 
@@ -67,11 +65,34 @@ const isUrgentVisit = (item: AgendaItem) =>
 const serviceName = (item: AgendaItem) => {
   if (item.type === "insemination" || item.type === "ai") return "AI Service";
   if (item.type === "health") return "Health Assistance";
+  const taskType = String(item.taskType || item.raw?.taskType || "")
+    .trim()
+    .toLowerCase();
+  if (taskType === "pd" || taskType === "pregnancy") {
+    return "Pregnancy Diagnosis";
+  }
+  if (taskType === "breedingfollowup" || taskType === "breeding_follow_up") {
+    return "Breeding Follow-up";
+  }
+  if (taskType === "cd" || taskType === "calving") return "Calving";
   return item.taskType || item.serviceType || "Farm Visit";
 };
 
 const statusName = (item: AgendaItem) => {
   if (item.overdue) return "Overdue";
+  if (item.type === "task") {
+    const normalizedStatus = String(item.displayStatus || item.status || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]/g, " ");
+    if (normalizedStatus === "in progress") return "In Progress";
+    const dueAt = new Date(
+      item.displayDate || item.dueDate || item.raw?.dueDate || "",
+    );
+    if (!Number.isNaN(dueAt.getTime())) {
+      return dueAt.getTime() > Date.now() ? "Upcoming" : "Due";
+    }
+  }
   const value = String(item.displayStatus || item.status || "Scheduled")
     .replace(/_/g, " ")
     .replace(/-/g, " ");
@@ -93,7 +114,6 @@ export default function TechnicianScheduleScreen({
     isError,
     refetch,
   } = useTechnicianFullAgendaQuery();
-  const { data: technician } = useCurrentTechnicianProfileQuery();
 
   useFocusEffect(
     useCallback(() => {
@@ -104,8 +124,11 @@ export default function TechnicianScheduleScreen({
     }, [refetch]),
   );
 
-  const visits = useMemo(
-    () => deduplicateCalendarVisits(dashboardData?.agendaItems || []),
+  const scheduleItems = useMemo(
+    () =>
+      deduplicateCalendarWorkItems(dashboardData?.agendaItems || []).filter(
+        (item) => getCalendarWorkKind(item) !== null,
+      ),
     [dashboardData?.agendaItems],
   );
 
@@ -118,38 +141,28 @@ export default function TechnicianScheduleScreen({
     });
   }, [currentMonth]);
 
-  const selectedVisits = useMemo(() => {
+  const selectedScheduleItems = useMemo(() => {
     const todaySelected = isToday(selectedDate);
-    return visits
-      .filter((visit) => {
-        const date = itemDate(visit);
+    return scheduleItems
+      .filter((item) => {
+        const date = itemDate(item);
         if (date && isSameDay(date, selectedDate)) return true;
-        return todaySelected && visit.overdue === true;
+        return todaySelected && item.overdue === true;
       })
       .sort((a, b) => {
         const aDate = itemDate(a)?.getTime() || 0;
         const bDate = itemDate(b)?.getTime() || 0;
         return aDate - bDate;
       });
-  }, [selectedDate, visits]);
+  }, [selectedDate, scheduleItems]);
 
-  const farmerCount = useMemo(() => {
-    const farmers = new Set(
-      selectedVisits
-        .map(
-          (visit) =>
-            visit.raw?.farmerId?._id ||
-            visit.farmerId ||
-            visit.farmerName ||
-            visit.farmer,
-        )
-        .filter(Boolean)
-        .map(String),
-    );
-    return farmers.size;
-  }, [selectedVisits]);
-
-  const urgentCount = selectedVisits.filter(isUrgentVisit).length;
+  const scheduledVisits = selectedScheduleItems.filter(
+    (item) => getCalendarWorkKind(item) === "visit",
+  );
+  const dueWork = selectedScheduleItems.filter(
+    (item) => getCalendarWorkKind(item) === "task",
+  );
+  const workCounts = getCalendarWorkCounts(selectedScheduleItems);
 
   const selectToday = () => {
     const today = new Date();
@@ -226,11 +239,11 @@ export default function TechnicianScheduleScreen({
             {calendarDays.map((day) => {
               const selected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, currentMonth);
-              const visitsOnDay = visits.filter((visit) => {
-                const date = itemDate(visit);
+              const workOnDay = scheduleItems.filter((item) => {
+                const date = itemDate(item);
                 return date ? isSameDay(date, day) : false;
               });
-              const urgent = visitsOnDay.some(isUrgentVisit);
+              const urgent = workOnDay.some(isUrgentVisit);
 
               return (
                 <TouchableOpacity
@@ -269,7 +282,7 @@ export default function TechnicianScheduleScreen({
                     </Text>
                   </View>
                   <View style={styles.markerSlot}>
-                    {visitsOnDay.length > 0 ? (
+                    {workOnDay.length > 0 ? (
                       <View
                         style={[
                           styles.marker,
@@ -301,8 +314,8 @@ export default function TechnicianScheduleScreen({
             ]}
           >
             <Text style={[styles.countText, { color: colors.primary }]}>
-              {selectedVisits.length}{" "}
-              {selectedVisits.length === 1 ? "visit" : "visits"}
+              {workCounts.totalWorkItems}{" "}
+              {workCounts.totalWorkItems === 1 ? "work item" : "work items"}
             </Text>
           </View>
         </View>
@@ -315,7 +328,17 @@ export default function TechnicianScheduleScreen({
         >
           <SummaryItem
             icon={CalendarDays}
-            value={selectedVisits.length}
+            value={workCounts.totalWorkItems}
+            label="Work Items"
+            color={colors.primary}
+            textColor={colors.textPrimary}
+          />
+          <View
+            style={[styles.summaryDivider, { backgroundColor: colors.border }]}
+          />
+          <SummaryItem
+            icon={CalendarDays}
+            value={workCounts.scheduledVisits}
             label="Visits"
             color={colors.primary}
             textColor={colors.textPrimary}
@@ -324,20 +347,10 @@ export default function TechnicianScheduleScreen({
             style={[styles.summaryDivider, { backgroundColor: colors.border }]}
           />
           <SummaryItem
-            icon={UsersRound}
-            value={farmerCount}
-            label="Farmers"
+            icon={Clock3}
+            value={workCounts.dueWork}
+            label="Due Work"
             color={colors.primary}
-            textColor={colors.textPrimary}
-          />
-          <View
-            style={[styles.summaryDivider, { backgroundColor: colors.border }]}
-          />
-          <SummaryItem
-            icon={AlertTriangle}
-            value={urgentCount}
-            label="Urgent"
-            color={colors.warning}
             textColor={colors.textPrimary}
           />
         </View>
@@ -367,35 +380,62 @@ export default function TechnicianScheduleScreen({
         </>
       ) : (
         <FlatList
-          data={selectedVisits}
+          data={scheduledVisits}
           keyExtractor={(item) => String(item.id)}
-          ListHeaderComponent={header}
+          ListHeaderComponent={
+            <>
+              {header}
+              <ScheduleSectionHeading
+                title="Scheduled Visits"
+                count={scheduledVisits.length}
+                colors={colors}
+              />
+            </>
+          }
           renderItem={({ item }) => (
-            <VisitCard
+            <ScheduleItemCard
               item={item}
-              technicianId={technician?._id}
               colors={colors}
               isDark={isDark}
               onPress={() => router.push(getCalendarVisitTarget(item) as never)}
             />
           )}
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View
-                style={[
-                  styles.emptyIcon,
-                  { backgroundColor: isDark ? colors.card : colors.tint },
-                ]}
-              >
-                <CalendarDays size={26} color={colors.primary} />
-              </View>
-              <Text style={[styles.stateTitle, { color: colors.textPrimary }]}>
-                No visits scheduled
-              </Text>
-              <Text style={[styles.stateText, { color: colors.textSecondary }]}>
-                Assigned and scheduled services will appear here.
-              </Text>
-            </View>
+            <EmptyScheduleSection
+              title="No scheduled visits"
+              message="Scheduled AI and Health farm visits will appear here."
+              colors={colors}
+              isDark={isDark}
+            />
+          }
+          ListFooterComponent={
+            <>
+              <ScheduleSectionHeading
+                title="Due Work"
+                count={dueWork.length}
+                colors={colors}
+              />
+              {dueWork.length > 0 ? (
+                dueWork.map((item) => (
+                  <ScheduleItemCard
+                    key={String(item.id)}
+                    item={item}
+                    colors={colors}
+                    isDark={isDark}
+                    onPress={() =>
+                      router.push(getCalendarVisitTarget(item) as never)
+                    }
+                  />
+                ))
+              ) : (
+                <EmptyScheduleSection
+                  title="No due work"
+                  message="Dated follow-ups and other assigned tasks will appear here."
+                  colors={colors}
+                  isDark={isDark}
+                />
+              )}
+            </>
           }
           contentContainerStyle={{
             paddingBottom: embeddedInTab
@@ -434,9 +474,44 @@ function SummaryItem({ icon: Icon, value, label, color, textColor }: any) {
   );
 }
 
-function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
+function ScheduleSectionHeading({ title, count, colors }: any) {
+  return (
+    <View style={styles.sectionHeading}>
+      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+        {title}
+      </Text>
+      <Text style={[styles.sectionCount, { color: colors.textMuted }]}>
+        {count}
+      </Text>
+    </View>
+  );
+}
+
+function EmptyScheduleSection({ title, message, colors, isDark }: any) {
+  return (
+    <View style={styles.emptyState}>
+      <View
+        style={[
+          styles.emptyIcon,
+          { backgroundColor: isDark ? colors.card : colors.tint },
+        ]}
+      >
+        <CalendarDays size={26} color={colors.primary} />
+      </View>
+      <Text style={[styles.stateTitle, { color: colors.textPrimary }]}>
+        {title}
+      </Text>
+      <Text style={[styles.stateText, { color: colors.textSecondary }]}>
+        {message}
+      </Text>
+    </View>
+  );
+}
+
+function ScheduleItemCard({ item, colors, isDark, onPress }: any) {
   const date = itemDate(item);
   const urgent = isUrgentVisit(item);
+  const isTask = getCalendarWorkKind(item) === "task";
   const animal = getCalendarAnimalIdentity(item);
   const farmer =
     item.farmerName || item.farmer || item.raw?.farmerId?.name || "Farmer";
@@ -499,11 +574,13 @@ function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
       <Text style={[styles.visitTitle, { color: colors.textPrimary }]}>
         {serviceName(item)}
       </Text>
-      <Metadata
-        icon={Clock3}
-        text={getCalendarVisitPeriodLabel(item)}
-        colors={colors}
-      />
+      {!isTask ? (
+        <Metadata
+          icon={Clock3}
+          text={getCalendarVisitPeriodLabel(item)}
+          colors={colors}
+        />
+      ) : null}
       <Metadata icon={UserRound} text={farmer} colors={colors} />
       <Metadata icon={PawPrint} text={animal.compact} colors={colors} />
       <Metadata icon={MapPin} text={location} colors={colors} />
@@ -511,11 +588,11 @@ function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
       <TouchableOpacity
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`View ${serviceName(item)} visit`}
+        accessibilityLabel={`View ${serviceName(item)} ${isTask ? "task" : "visit"}`}
         style={[styles.viewButton, { borderColor: colors.primary }]}
       >
         <Text style={[styles.viewButtonText, { color: colors.primary }]}>
-          View visit
+          {getCalendarActionLabel(item)}
         </Text>
       </TouchableOpacity>
     </View>
@@ -677,6 +754,24 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_500Medium",
     fontSize: 10,
     lineHeight: 13,
+  },
+  sectionHeading: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sectionTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 16,
+    lineHeight: 21,
+  },
+  sectionCount: {
+    fontFamily: "Outfit_600SemiBold",
+    fontSize: 12,
+    lineHeight: 16,
   },
   visitCard: {
     marginHorizontal: 16,

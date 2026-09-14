@@ -26,6 +26,7 @@ import Modal from "../../components/ui/Modal";
 import {
   buildScheduleItems,
   formatScheduleDate,
+  getScheduleEntityKind,
   getPhilippineTodayKey,
 } from "../../utils/technicianSchedulePresentation";
 
@@ -268,6 +269,12 @@ export default function TechnicianSchedule() {
   );
 
   const selectedDayItems = groupedByDate.get(selectedDateKey) || [];
+  const selectedDayVisits = selectedDayItems.filter((item) =>
+    ["ai", "health"].includes(getScheduleEntityKind(item)),
+  );
+  const selectedDayDueWork = selectedDayItems.filter(
+    (item) => !["ai", "health"].includes(getScheduleEntityKind(item)),
+  );
   const overdueItems = scheduleItems.filter(
     (item) => item.timingState === "overdue",
   );
@@ -560,13 +567,39 @@ export default function TechnicianSchedule() {
                     {selectedDayItems.length === 1 ? "item" : "items"}
                   </span>
                 </div>
-                <div className="schedule-scroll lg:max-h-64 lg:overflow-y-auto">
-                  <ScheduleWorkList
-                    items={selectedDayItems}
-                    emptyMessage="No date-bound work is scheduled for this day."
-                    emptyHint="Click a date on the calendar to review scheduled visits and due field work."
-                    onOpen={openWork}
-                  />
+                <div className="schedule-scroll space-y-5 lg:max-h-96 lg:overflow-y-auto">
+                  <div>
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <h3 className="text-sm font-bold text-base-content">
+                        Scheduled Visits
+                      </h3>
+                      <span className="text-xs font-medium text-base-content/55">
+                        {selectedDayVisits.length}
+                      </span>
+                    </div>
+                    <ScheduleWorkList
+                      items={selectedDayVisits}
+                      emptyMessage="No scheduled visits for this day."
+                      emptyHint="Scheduled AI and Health farm visits will appear here."
+                      onOpen={openWork}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <h3 className="text-sm font-bold text-base-content">
+                        Due Work
+                      </h3>
+                      <span className="text-xs font-medium text-base-content/55">
+                        {selectedDayDueWork.length}
+                      </span>
+                    </div>
+                    <ScheduleWorkList
+                      items={selectedDayDueWork}
+                      emptyMessage="No due work for this day."
+                      emptyHint="Dated follow-ups and other assigned tasks will appear here."
+                      onOpen={openWork}
+                    />
+                  </div>
                 </div>
               </div>
             </section>

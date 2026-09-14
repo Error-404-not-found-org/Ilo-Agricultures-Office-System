@@ -1,8 +1,8 @@
 import {
   formatAnimalReference,
   getFullAnimalReference,
-} from "../../farmer-dashboard/utils/farmerDashboard.transforms";
-import { philippineDateKey } from "../../technician-requests/utils/visitScheduleAvailability";
+} from "../../farmer-dashboard/utils/farmerDashboard.transforms.ts";
+import { philippineDateKey } from "../../technician-requests/utils/visitScheduleAvailability.ts";
 
 export type AgendaItem = Record<string, any> & {
   id: unknown;
@@ -41,6 +41,52 @@ export const isCalendarCancellationRequested = (item: AgendaItem) =>
   item.cancellationStatus === "requested" ||
   item.raw?.cancellationStatus === "requested";
 
+const normalizedValue = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_");
+
+export const getCalendarWorkKind = (
+  item: AgendaItem,
+): "visit" | "task" | null => {
+  if (item.type === "task") return "task";
+  if (item.type === "insemination" || item.type === "ai") return "visit";
+  if (item.type !== "health") return null;
+
+  const handlingMethod = normalizedValue(
+    item.handlingMethod || item.raw?.handlingMethod,
+  );
+  if (handlingMethod === "advice" || handlingMethod === "office_pickup") {
+    return null;
+  }
+  if (handlingMethod === "farm_visit") return "visit";
+
+  const status = normalizedValue(item.status || item.raw?.status);
+  return !handlingMethod &&
+    ["approved", "assigned", "in_progress", "scheduled"].includes(status)
+    ? "visit"
+    : null;
+};
+
+export const getCalendarWorkCounts = (items: AgendaItem[] = []) => {
+  const scheduledVisits = items.filter(
+    (item) => getCalendarWorkKind(item) === "visit",
+  ).length;
+  const dueWork = items.filter(
+    (item) => getCalendarWorkKind(item) === "task",
+  ).length;
+  return {
+    totalWorkItems: scheduledVisits + dueWork,
+    scheduledVisits,
+    dueWork,
+  };
+};
+
+export const getCalendarActionLabel = (item: AgendaItem) =>
+  getCalendarWorkKind(item) === "task" ? "View task" : "View visit";
+
 const requestIdsForTask = (item: AgendaItem) => {
   const raw = item.raw || {};
   const metadata = raw.metadata || item.metadata || {};
@@ -58,7 +104,7 @@ const requestIdsForTask = (item: AgendaItem) => {
     .filter((value): value is string => Boolean(value));
 };
 
-export const deduplicateCalendarVisits = (items: AgendaItem[] = []) => {
+export const deduplicateCalendarWorkItems = (items: AgendaItem[] = []) => {
   const requestById = new Map<string, AgendaItem>();
   items.forEach((item) => {
     if (item.type !== "task") requestById.set(String(item.id), item);
@@ -92,6 +138,9 @@ export const deduplicateCalendarVisits = (items: AgendaItem[] = []) => {
     (item) => item.type === "task" || !requestIdsWithTasks.has(String(item.id)),
   );
 };
+
+// Kept as a compatibility alias for existing callers outside Schedule.
+export const deduplicateCalendarVisits = deduplicateCalendarWorkItems;
 
 export const getCalendarVisitTarget = (item: AgendaItem) => {
   if (item.type === "task") {
