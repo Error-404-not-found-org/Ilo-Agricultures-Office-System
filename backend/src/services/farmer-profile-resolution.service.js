@@ -1,8 +1,12 @@
-import { clerkClient } from "@clerk/clerk-sdk-node";
 import { User } from "../models/user.model.js";
 import { normalizePhilippineMobileNumber } from "../utils/phone.js";
 import { AppError } from "../utils/app-error.js";
 import { ENV } from "../config/env.js";
+import {
+  createFarmerInvitationSnapshot,
+  resendFarmerAppInvitation,
+  revokeFarmerInvitationSnapshotBestEffort,
+} from "./farmer-app-invitation.service.js";
 
 export const getFarmerInvitationRedirectUrl = () =>
   ENV.FARMER_INVITATION_REDIRECT_URL.trim();
@@ -121,31 +125,6 @@ export const resolveFarmerIdentity = async ({ email, phoneNumber }) => {
   };
 };
 
-const inviteFarmer = async ({ email, redirectUrl, expiresInDays }) => {
-  const payload = {
-    emailAddress: email,
-    publicMetadata: { role: "farmer" },
-    ignoreExisting: true,
-    ...(redirectUrl ? { redirectUrl } : {}),
-    ...(expiresInDays ? { expiresInDays } : {}),
-  };
-  return clerkClient.invitations.createInvitation(payload);
-};
-
-const revokeInvitationBestEffort = async (invitation) => {
-  if (!invitation?.id || typeof clerkClient?.invitations?.revokeInvitation !== "function") {
-    return;
-  }
-  try {
-    await clerkClient.invitations.revokeInvitation(invitation.id);
-  } catch (error) {
-    console.error(
-      "[Farmer Profile Resolution] Failed to revoke invitation after profile creation failure:",
-      error?.message,
-    );
-  }
-};
-
 /**
  * Resolve an existing Farmer or create one Technician/Admin-assisted profile.
  * invitationMode:
@@ -163,8 +142,6 @@ export const resolveOrCreateAssistedFarmer = async ({
   invitationMode = "none",
   inviteExistingUnclaimed = false,
   allowClaimedExisting = false,
-  redirectUrl,
-  expiresInDays,
   isVerified = false,
 }) => {
   const identity = await resolveFarmerIdentity({ email, phoneNumber });
@@ -208,11 +185,27 @@ export const resolveOrCreateAssistedFarmer = async ({
   let invitationError = null;
   if (shouldInvite && invitationMode !== "none") {
     try {
-      invitation = await inviteFarmer({
-        email: identity.normalizedEmail,
-        redirectUrl,
-        expiresInDays,
-      });
+      if (identity.farmer) {
+        const previousEmail = identity.farmer.email;
+        const previousNormalizedEmail = identity.farmer.normalizedEmail;
+        if (shouldAttachInvitedEmail) {
+          identity.farmer.email = identity.normalizedEmail;
+          identity.farmer.normalizedEmail = identity.normalizedEmail;
+        }
+        try {
+          invitation = await resendFarmerAppInvitation({
+            farmer: identity.farmer,
+          });
+        } catch (error) {
+          identity.farmer.email = previousEmail;
+          identity.farmer.normalizedEmail = previousNormalizedEmail;
+          throw error;
+        }
+      } else {
+        invitation = await createFarmerInvitationSnapshot({
+          email: identity.normalizedEmail,
+        });
+      }
     } catch (error) {
       invitationError = error;
       if (invitationMode === "required") {
@@ -221,8 +214,8 @@ export const resolveOrCreateAssistedFarmer = async ({
             error?.errors?.[0]?.message ||
             "The Farmer profile was not created because the invitation could not be sent.",
           {
-            status: 400,
-            code: "CLERK_INVITATION_FAILED",
+            status: error?.status || 400,
+            code: error?.code || "CLERK_INVITATION_FAILED",
           },
         );
       }
@@ -234,18 +227,6 @@ export const resolveOrCreateAssistedFarmer = async ({
   }
 
   if (identity.farmer) {
-    if (shouldAttachInvitedEmail && invitation) {
-      try {
-        identity.farmer.email = identity.normalizedEmail;
-        identity.farmer.normalizedEmail = identity.normalizedEmail;
-        if (typeof identity.farmer.save === "function") {
-          await identity.farmer.save();
-        }
-      } catch (error) {
-        await revokeInvitationBestEffort(invitation);
-        throw error;
-      }
-    }
     return {
       farmer: identity.farmer,
       created: false,
@@ -287,9 +268,10 @@ export const resolveOrCreateAssistedFarmer = async ({
       isVerified,
       registeredByTechnician: true,
       profileClaimStatus: "unclaimed",
+      ...(invitation ? { farmerAppInvitation: invitation } : {}),
     });
   } catch (error) {
-    await revokeInvitationBestEffort(invitation);
+    await revokeFarmerInvitationSnapshotBestEffort(invitation);
     throw error;
   }
 

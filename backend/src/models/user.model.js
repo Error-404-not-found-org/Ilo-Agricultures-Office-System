@@ -166,6 +166,17 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    farmerAppInvitation: {
+      clerkInvitationId: { type: String, trim: true, select: false },
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "revoked", "expired"],
+      },
+      email: { type: String, trim: true, lowercase: true },
+      sentAt: { type: Date },
+      expiresAt: { type: Date },
+      lastCheckedAt: { type: Date },
+    },
     phoneVerification: {
       pendingPhoneNumber: {
         type: String,
@@ -292,6 +303,14 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      transform(_document, returned) {
+        if (returned.farmerAppInvitation) {
+          delete returned.farmerAppInvitation.clerkInvitationId;
+        }
+        return returned;
+      },
+    },
   },
 );
 

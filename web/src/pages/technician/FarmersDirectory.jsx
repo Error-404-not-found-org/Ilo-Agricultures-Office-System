@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -10,10 +10,12 @@ import {
   Edit,
   Eye,
   MapPin,
+  Mail,
   MoreVertical,
   Phone,
   Plus,
   RefreshCw,
+  RotateCw,
   Search,
   UserPlus,
   Users,
@@ -28,6 +30,7 @@ import TableNameLink from "../../components/ui/TableNameLink";
 import OverviewMetricCard from "../../components/ui/OverviewMetricCard";
 import { ui } from "../../components/ui/uiClasses";
 import { getIloiloBarangayOptions } from "../../utils/addressOptions";
+import { useToast } from "../../contexts/ToastContext";
 
 const ITEMS_PER_PAGE = 10;
 const OTON_BARANGAYS = getIloiloBarangayOptions("Oton");
@@ -53,12 +56,14 @@ const formatAnimalCount = (count) => {
 
 const ACCESS_STATUS = {
   connected: { label: "Connected", className: "badge-success badge-soft" },
+  invitation_sent: { label: "Invitation Sent", className: "badge-info badge-soft" },
+  invitation_expired: { label: "Invitation Expired", className: "badge-warning badge-soft" },
   no_app_account: { label: "No App Account", className: "badge-info badge-soft" },
   profile_only: { label: "No App Account", className: "badge-info badge-soft" },
   blocked: { label: "Blocked", className: "badge-error badge-soft" },
 };
 
-function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal }) {
+function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvitation, onCancelInvitation, invitationPending }) {
   const instanceId = useId().replace(/:/g, "-");
   const menuId = `farmer-actions-${farmer.id}-${instanceId}`;
   const anchorName = `--${menuId}`;
@@ -68,6 +73,34 @@ function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal 
     { label: "View Animals", icon: Beef, onClick: onViewAnimals },
     { label: "Add Animal", icon: Plus, onClick: onAddAnimal },
   ];
+  if (
+    farmer.email &&
+    ["no_app_account", "profile_only"].includes(farmer.appAccountStatus)
+  ) {
+    actions.push({
+      label: "Send Invitation",
+      icon: Mail,
+      onClick: () => onInvitation(farmer, false),
+      disabled: invitationPending,
+    });
+  } else if (
+    ["invitation_sent", "invitation_expired"].includes(farmer.appAccountStatus)
+  ) {
+    actions.push({
+      label: "Resend Invitation",
+      icon: RotateCw,
+      onClick: () => onInvitation(farmer, true),
+      disabled: invitationPending,
+    });
+  }
+  if (farmer.appAccountStatus === "invitation_sent") {
+    actions.push({
+      label: "Cancel Invitation",
+      icon: X,
+      onClick: () => onCancelInvitation(farmer),
+      disabled: invitationPending,
+    });
+  }
 
   return (
     <div className="inline-flex">
@@ -89,12 +122,13 @@ function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal 
         style={{ positionAnchor: anchorName }}
         className="dropdown dropdown-end menu menu-sm z-50 w-52 rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl"
       >
-        {actions.map(({ label, icon: Icon, onClick }) => (
+        {actions.map(({ label, icon: Icon, onClick, disabled }) => (
           <li key={label} role="none">
             <button
               type="button"
               role="menuitem"
               className="text-xs font-bold"
+              disabled={disabled}
               onClick={(event) => {
                 event.currentTarget.closest("[popover]")?.hidePopover?.();
                 onClick(farmer);
@@ -110,7 +144,7 @@ function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal 
   );
 }
 
-function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal }) {
+function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvitation, onCancelInvitation, invitationPending }) {
   const access = ACCESS_STATUS[farmer.appAccountStatus] || ACCESS_STATUS.profile_only;
   return (
     <article className="card card-sm card-border bg-base-100">
@@ -158,6 +192,9 @@ function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal }) {
             onEdit={onEdit}
             onViewAnimals={onViewAnimals}
             onAddAnimal={onAddAnimal}
+          onInvitation={onInvitation}
+          onCancelInvitation={onCancelInvitation}
+            invitationPending={invitationPending}
           />
         </div>
       </div>
@@ -167,10 +204,15 @@ function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal }) {
 
 export default function FarmersDirectory() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRegisterFarmerOpen, setIsRegisterFarmerOpen] = useState(false);
   const [selectedFarmerForEdit, setSelectedFarmerForEdit] = useState(null);
   const [selectedFarmerForAnimal, setSelectedFarmerForAnimal] = useState(null);
+  const [invitationFeedback, setInvitationFeedback] = useState(null);
+  const [farmerToCancelInvitation, setFarmerToCancelInvitation] = useState(null);
+  const [cancelInvitationError, setCancelInvitationError] = useState("");
 
   const searchQuery = searchParams.get("search") || "";
   const barangayFilter = searchParams.get("barangay") || "";
@@ -254,6 +296,7 @@ export default function FarmersDirectory() {
           animals: Number.isFinite(animalCount) ? animalCount : null,
           imageUrl: farmer.imageUrl || farmer.profileImage || null,
           appAccountStatus: farmer.appAccountStatus,
+          email: farmer.email || "",
         };
       }),
     [rawFarmers],
@@ -289,6 +332,58 @@ export default function FarmersDirectory() {
   const viewFarmerAnimals = (farmer) =>
     navigate(`/technician/farmers/${farmer.id}#animals`);
   const addAnimal = (farmer) => setSelectedFarmerForAnimal(farmer.raw);
+  const invitationMutation = useMutation({
+    mutationFn: async ({ farmer, resend }) => {
+      const suffix = resend ? "/resend" : "";
+      const response = await axiosInstance.post(
+        `/user/${farmer.id}/app-invitation${suffix}`,
+      );
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      setInvitationFeedback(null);
+      toast.success(
+        variables.resend
+          ? "Invitation resent successfully."
+          : "Invitation sent successfully.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["technician", "farmers"] });
+    },
+    onError: (error) => {
+      setInvitationFeedback({
+        type: "error",
+        message: error.response?.data?.message || "The invitation could not be sent. Try again.",
+      });
+    },
+  });
+  const handleInvitation = (farmer, resend) => {
+    setInvitationFeedback(null);
+    invitationMutation.mutate({ farmer, resend });
+  };
+  const cancelInvitationMutation = useMutation({
+    mutationFn: async (farmer) => {
+      const response = await axiosInstance.delete(
+        `/user/${farmer.id}/app-invitation`,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      setFarmerToCancelInvitation(null);
+      setCancelInvitationError("");
+      setInvitationFeedback(null);
+      toast.success("Invitation cancelled successfully.");
+      queryClient.invalidateQueries({ queryKey: ["technician", "farmers"] });
+    },
+    onError: (error) => {
+      setCancelInvitationError(
+        error.response?.data?.message || "The invitation could not be cancelled. Try again.",
+      );
+    },
+  });
+  const requestInvitationCancellation = (farmer) => {
+    setCancelInvitationError("");
+    setFarmerToCancelInvitation(farmer);
+  };
   const clearFilters = () =>
     setSearchParams(new URLSearchParams(), { replace: true });
 
@@ -339,6 +434,14 @@ export default function FarmersDirectory() {
         </section>
         <section className="card card-border bg-base-100">
           <div className="card-body gap-4 p-4 md:p-5">
+            {invitationFeedback?.type === "error" && (
+              <div
+                role="alert"
+                className="alert alert-error"
+              >
+                <span>{invitationFeedback.message}</span>
+              </div>
+            )}
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-3xl">
                 <label className="input w-full sm:flex-1">
@@ -483,6 +586,9 @@ export default function FarmersDirectory() {
                       onEdit={editFarmer}
                       onViewAnimals={viewFarmerAnimals}
                       onAddAnimal={addAnimal}
+                      onInvitation={handleInvitation}
+                      onCancelInvitation={requestInvitationCancellation}
+                      invitationPending={invitationMutation.isPending || cancelInvitationMutation.isPending}
                     />
                   ))}
                 </div>
@@ -555,6 +661,9 @@ export default function FarmersDirectory() {
                                 onEdit={editFarmer}
                                 onViewAnimals={viewFarmerAnimals}
                                 onAddAnimal={addAnimal}
+                                onInvitation={handleInvitation}
+                                onCancelInvitation={requestInvitationCancellation}
+                                invitationPending={invitationMutation.isPending || cancelInvitationMutation.isPending}
                               />
                             </div>
                           </td>
@@ -619,6 +728,44 @@ export default function FarmersDirectory() {
         preSelectedFarmer={selectedFarmerForAnimal}
         onClose={() => setSelectedFarmerForAnimal(null)}
       />
+      {farmerToCancelInvitation && (
+        <dialog open className="modal" aria-labelledby="cancel-invitation-title">
+          <div className="modal-box max-w-md">
+            <h2 id="cancel-invitation-title" className="text-lg font-bold">
+              Cancel invitation?
+            </h2>
+            <p className="mt-2 text-sm text-base-content/70">
+              The current invitation link will stop working. You can send a new invitation later.
+            </p>
+            {cancelInvitationError && (
+              <div role="alert" className="alert alert-error mt-4 text-sm">
+                <span>{cancelInvitationError}</span>
+              </div>
+            )}
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                disabled={cancelInvitationMutation.isPending}
+                onClick={() => {
+                  setCancelInvitationError("");
+                  setFarmerToCancelInvitation(null);
+                }}
+              >
+                Keep Invitation
+              </button>
+              <button
+                type="button"
+                className="btn btn-error"
+                disabled={cancelInvitationMutation.isPending}
+                onClick={() => cancelInvitationMutation.mutate(farmerToCancelInvitation)}
+              >
+                {cancelInvitationMutation.isPending ? "Cancelling…" : "Cancel Invitation"}
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
     </div>
   );
 }

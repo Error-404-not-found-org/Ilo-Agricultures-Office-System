@@ -66,7 +66,8 @@ test("fresh assisted Farmer sends one resumable invitation and creates one uncla
   assert.equal(result.created, true);
   assert.equal(result.invitationSent, true);
   assert.equal(invitationPayload.emailAddress, "new.farmer@example.com");
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
+  assert.equal(invitationPayload.expiresInDays, 7);
   assert.equal(invitationPayload.publicMetadata.role, "farmer");
   assert.equal(
     invitationPayload.redirectUrl,
@@ -76,6 +77,31 @@ test("fresh assisted Farmer sends one resumable invitation and creates one uncla
   assert.equal(result.farmer.normalizedPhoneNumber, "+639171234567");
   assert.equal(result.farmer.profileClaimStatus, "unclaimed");
   assert.equal(result.farmer.registeredByTechnician, true);
+});
+
+test("fresh registration revokes its Clerk invitation when Mongo profile creation fails", async () => {
+  User.findOne = async () => null;
+  User.create = async () => {
+    throw new Error("Mongo write failed");
+  };
+  clerkClient.invitations.createInvitation = async () => ({ id: "invitation-orphan" });
+  let revokedId;
+  clerkClient.invitations.revokeInvitation = async (id) => {
+    revokedId = id;
+    return { id, status: "revoked" };
+  };
+
+  await assert.rejects(
+    () => resolveOrCreateAssistedFarmer({
+      email: "new@example.com",
+      name: "New Farmer",
+      source: "test",
+      invitationMode: "required",
+      inviteExistingUnclaimed: true,
+    }),
+    /Mongo write failed/,
+  );
+  assert.equal(revokedId, "invitation-orphan");
 });
 
 test("fresh assisted Farmer without a phone omits phone storage and OTP state", async () => {
@@ -131,7 +157,7 @@ test("existing unclaimed Farmer is reused and invitation is resent without User.
   assert.equal(result.reused, true);
   assert.equal(result.invitationResent, true);
   assert.equal(createCount, 0);
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
   assert.equal(
     invitationPayload.redirectUrl,
     ENV.FARMER_INVITATION_REDIRECT_URL,
@@ -247,7 +273,7 @@ test("walk-in fresh Farmer survives invitation failure and reports it truthfully
     assert.equal(result.created, true);
     assert.equal(result.invitationAttempted, true);
     assert.equal(result.invitationSent, false);
-    assert.match(result.invitationError, /Clerk unavailable/);
+    assert.match(result.invitationError, /temporarily unavailable/i);
   } finally {
     console.error = originalConsoleError;
   }

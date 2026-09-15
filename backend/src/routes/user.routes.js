@@ -19,6 +19,9 @@ import {
   verifyPhoneOtp,
   bootstrapUser,
   staffBootstrapUser,
+  sendFarmerAppInvitationController,
+  resendFarmerAppInvitationController,
+  cancelFarmerAppInvitationController,
 } from "../controllers/user.controllers.js";
 import { protectedRoute, requireRole, requireClerkAuthentication } from "../middleware/auth.middleware.js";
 import { otpSendLimiter, otpVerifyLimiter } from "../middleware/rateLimit.middleware.js";
@@ -44,6 +47,24 @@ router.get("/archived", protectedRoute, requireRole(["admin"]), getArchivedUsers
 router.post("/push-token", protectedRoute, updatePushToken);
 router.post("/otp/send", protectedRoute, otpSendLimiter, sendPhoneOtp);
 router.post("/otp/verify", protectedRoute, otpVerifyLimiter, verifyPhoneOtp);
+router.post(
+  "/:id/app-invitation",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  sendFarmerAppInvitationController,
+);
+router.post(
+  "/:id/app-invitation/resend",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  resendFarmerAppInvitationController,
+);
+router.delete(
+  "/:id/app-invitation",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  cancelFarmerAppInvitationController,
+);
 router.patch("/:id/technician-update", protectedRoute, requireRole(["technician", "admin"]), updateFarmerProfileByTechnician);
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);

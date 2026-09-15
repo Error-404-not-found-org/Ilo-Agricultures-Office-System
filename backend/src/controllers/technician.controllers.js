@@ -1818,7 +1818,6 @@ export const registerFarmer = async (req, res) => {
       inviteExistingUnclaimed: true,
       allowClaimedExisting: false,
       redirectUrl: getFarmerInvitationRedirectUrl(),
-      expiresInDays: 1,
       isVerified: false,
     });
 

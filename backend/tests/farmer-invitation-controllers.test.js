@@ -97,7 +97,8 @@ test("createInvitedUser creates one unclaimed assisted Farmer and sends resumabl
   assert.equal(recorder.body.newUser.profileClaimStatus, "unclaimed");
   assert.equal(recorder.body.newUser.registeredByTechnician, true);
   assert.equal(recorder.body.invitationSent, true);
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
+  assert.equal(invitationPayload.expiresInDays, 7);
   assert.equal(
     invitationPayload.redirectUrl,
     ENV.FARMER_INVITATION_REDIRECT_URL,
@@ -203,7 +204,10 @@ test("registerFarmer fresh path normalizes identity and creates exactly one prof
   assert.equal(createdPayload.email, "new@example.com");
   assert.equal(createdPayload.phoneNumber, "09171234567");
   assert.equal(createdPayload.normalizedPhoneNumber, "+639171234567");
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
+  assert.equal(invitationPayload.expiresInDays, 7);
+  assert.equal(createdPayload.farmerAppInvitation.status, "pending");
+  assert.equal(createdPayload.farmerAppInvitation.clerkInvitationId, "invitation-1");
   assert.equal(
     invitationPayload.redirectUrl,
     ENV.FARMER_INVITATION_REDIRECT_URL,

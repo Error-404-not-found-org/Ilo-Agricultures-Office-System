@@ -53,6 +53,13 @@ import {
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
 import {
+  cancelFarmerAppInvitation,
+  deriveFarmerInvitationStatus,
+  loadInvitableFarmer,
+  resendFarmerAppInvitation,
+  sendFarmerAppInvitation,
+} from "../services/farmer-app-invitation.service.js";
+import {
   clearPushTokenForUser,
   registerPushTokenForUser,
 } from "../services/push-token-ownership.service.js";
@@ -1031,6 +1038,7 @@ const TECHNICIAN_FARMER_DIRECTORY_PROJECTION = [
   "clerkId",
   "profileClaimStatus",
   "registeredByTechnician",
+  "farmerAppInvitation",
 ].join(" ");
 
 export const getFarmerAppAccountStatus = (farmer) => {
@@ -1038,10 +1046,20 @@ export const getFarmerAppAccountStatus = (farmer) => {
     Boolean(farmer?.clerkId) &&
     !String(farmer.clerkId).startsWith("manual_");
 
-  if (farmer?.profileClaimStatus === "blocked") return "blocked";
+  if (
+    farmer?.profileClaimStatus === "blocked" ||
+    farmer?.status === "suspended"
+  ) return "blocked";
   if (farmer?.profileClaimStatus === "claimed" || hasRealClerkAccount) {
     return "connected";
   }
+  const invitationStatus = deriveFarmerInvitationStatus(
+    farmer?.farmerAppInvitation,
+    new Date(),
+    farmer?.email,
+  );
+  if (invitationStatus === "pending") return "invitation_sent";
+  if (invitationStatus === "expired") return "invitation_expired";
   if (
     farmer?.profileClaimStatus === "unclaimed" ||
     (farmer?.registeredByTechnician && !farmer?.email)
@@ -1071,7 +1089,12 @@ export const buildTechnicianFarmerMetricsPipeline = (farmerMatch) => [
         $switch: {
           branches: [
             {
-              case: { $eq: ["$profileClaimStatus", "blocked"] },
+              case: {
+                $or: [
+                  { $eq: ["$profileClaimStatus", "blocked"] },
+                  { $eq: ["$status", "suspended"] },
+                ],
+              },
               then: "blocked",
             },
             {
@@ -1097,6 +1120,45 @@ export const buildTechnicianFarmerMetricsPipeline = (farmerMatch) => [
                 ],
               },
               then: "connected",
+            },
+            {
+              case: {
+                $and: [
+                  { $eq: ["$farmerAppInvitation.status", "pending"] },
+                  { $gt: ["$farmerAppInvitation.expiresAt", "$$NOW"] },
+                  {
+                    $eq: [
+                      { $toLower: { $trim: { input: { $ifNull: ["$farmerAppInvitation.email", ""] } } } },
+                      { $toLower: { $trim: { input: { $ifNull: ["$email", ""] } } } },
+                    ],
+                  },
+                ],
+              },
+              then: "invitation_sent",
+            },
+            {
+              case: {
+                $or: [
+                  { $eq: ["$farmerAppInvitation.status", "expired"] },
+                  {
+                    $and: [
+                      { $eq: ["$farmerAppInvitation.status", "pending"] },
+                      {
+                        $or: [
+                          { $lte: ["$farmerAppInvitation.expiresAt", "$$NOW"] },
+                          {
+                            $ne: [
+                              { $toLower: { $trim: { input: { $ifNull: ["$farmerAppInvitation.email", ""] } } } },
+                              { $toLower: { $trim: { input: { $ifNull: ["$email", ""] } } } },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              then: "invitation_expired",
             },
             {
               case: {
@@ -1134,7 +1196,7 @@ export const buildTechnicianFarmerMetricsPipeline = (farmerMatch) => [
             {
               $in: [
                 "$directoryAccountStatus",
-                ["no_app_account", "profile_only"],
+                ["no_app_account", "profile_only", "invitation_expired"],
               ],
             },
             1,
@@ -1171,6 +1233,10 @@ export const toTechnicianFarmerDirectoryEntry = (farmer) => {
 
 export const presentUserDetailForRequester = ({ requester, target }) => {
   const rawUser = target?.toObject ? target.toObject() : { ...(target || {}) };
+  if (rawUser.farmerAppInvitation?.clerkInvitationId) {
+    rawUser.farmerAppInvitation = { ...rawUser.farmerAppInvitation };
+    delete rawUser.farmerAppInvitation.clerkInvitationId;
+  }
   if (requester?.role === "admin") return rawUser;
 
   const presented =
@@ -2665,6 +2731,77 @@ export const createSendPhoneOtpController = ({
       code:
         error.code ||
         (error.statusCode === 503 ? "SMS_NOT_AVAILABLE" : "OTP_SEND_FAILED"),
+    });
+  }
+};
+
+const handleFarmerInvitationAction = async (req, res, mode) => {
+  try {
+    const farmer = await loadInvitableFarmer(req.params.id);
+    const snapshot = mode === "resend"
+      ? await resendFarmerAppInvitation({ farmer })
+      : await sendFarmerAppInvitation({ farmer });
+
+    await createAuditLog({
+      entityType: "User",
+      entityId: farmer._id,
+      action: mode === "resend" ? "resend_farmer_invitation" : "send_farmer_invitation",
+      actorId: req.user?._id,
+      before: null,
+      after: {
+        appAccountStatus: "invitation_sent",
+        invitationEmail: snapshot.email,
+        expiresAt: snapshot.expiresAt,
+      },
+    });
+
+    return res.status(200).json({
+      message: mode === "resend"
+        ? `A new app invitation was sent to ${snapshot.email}.`
+        : `App invitation sent to ${snapshot.email}.`,
+      appAccountStatus: "invitation_sent",
+      invitationExpiresAt: snapshot.expiresAt,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to send Farmer invitation.",
+      code: error.code,
+    });
+  }
+};
+
+export const sendFarmerAppInvitationController = (req, res) =>
+  handleFarmerInvitationAction(req, res, "send");
+
+export const resendFarmerAppInvitationController = (req, res) =>
+  handleFarmerInvitationAction(req, res, "resend");
+
+export const cancelFarmerAppInvitationController = async (req, res) => {
+  try {
+    const farmer = await loadInvitableFarmer(req.params.id);
+    const snapshot = await cancelFarmerAppInvitation({ farmer });
+    const appAccountStatus = getFarmerAppAccountStatus(farmer);
+
+    await createAuditLog({
+      entityType: "User",
+      entityId: farmer._id,
+      action: "cancel_farmer_invitation",
+      actorId: req.user?._id,
+      before: null,
+      after: {
+        appAccountStatus,
+        invitationStatus: snapshot?.status || "revoked",
+      },
+    });
+
+    return res.status(200).json({
+      message: "Invitation cancelled.",
+      appAccountStatus,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "The invitation could not be cancelled. Try again.",
+      code: error.code,
     });
   }
 };
