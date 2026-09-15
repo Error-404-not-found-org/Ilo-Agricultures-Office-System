@@ -33,6 +33,30 @@ import { filterAnimalWorkForViewer } from "../domain/animal-work-visibility.js";
 import { assertPregnancyMutationAuthority } from "../policies/pregnancy-mutation.policy.js";
 import { buildInseminationIdMatch } from "../services/breeding-observation-followup.service.js";
 import { buildFarmerAIRequest } from "../domain/ai-request-presentation.js";
+import { getManilaMonthUtcRange } from "../domain/service-date-time.js";
+
+export const buildAnimalDirectoryMetricQueries = (
+  query,
+  now = new Date(),
+) => {
+  const month = getManilaMonthUtcRange(now);
+  return {
+    animalsFound: query,
+    inseminated: {
+      $and: [query, { reproductiveStatus: "Inseminated" }],
+    },
+    pregnant: {
+      $and: [query, { reproductiveStatus: "Pregnant" }],
+    },
+    expectedCalvingThisMonth: {
+      $and: [
+        query,
+        { reproductiveStatus: "Pregnant" },
+        { expectedCalvingDate: { $gte: month.start, $lt: month.end } },
+      ],
+    },
+  };
+};
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -248,9 +272,17 @@ export const getAllAnimals = async (req, res) => {
         .limit(limitNum)
         .lean();
 
-      const [total, cattleCount, pregnantCount, availableCount] =
+      const metricQueries = buildAnimalDirectoryMetricQueries(query);
+      const [
+        total,
+        cattleCount,
+        pregnantCount,
+        availableCount,
+        inseminatedCount,
+        expectedCalvingThisMonthCount,
+      ] =
         await Promise.all([
-          Animal.countDocuments(query),
+          Animal.countDocuments(metricQueries.animalsFound),
           Animal.countDocuments({
             $and: [
               query,
@@ -276,6 +308,8 @@ export const getAllAnimals = async (req, res) => {
               { reproductiveStatus: reproductiveStatusQuery("Normal") },
             ],
           }),
+          Animal.countDocuments(metricQueries.inseminated),
+          Animal.countDocuments(metricQueries.expectedCalvingThisMonth),
         ]);
 
       res.status(200).json({
@@ -291,6 +325,12 @@ export const getAllAnimals = async (req, res) => {
           cattle: cattleCount,
           pregnant: pregnantCount,
           available: availableCount,
+        },
+        metrics: {
+          animalsFound: total,
+          inseminated: inseminatedCount,
+          pregnant: pregnantCount,
+          expectedCalvingThisMonth: expectedCalvingThisMonthCount,
         },
       });
     } else {
