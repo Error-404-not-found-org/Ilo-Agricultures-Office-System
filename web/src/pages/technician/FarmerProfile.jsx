@@ -451,7 +451,7 @@ export default function FarmerProfile() {
           </div>
         </section>
 
-        <section className="card card-border min-w-0 bg-base-100">
+        <section id="animals" className="card card-border min-w-0 bg-base-100 scroll-mt-4">
           <div className="card-body gap-4 p-4 md:p-6">
             <div>
               <h2 className="card-title">Animals</h2>

@@ -1051,6 +1051,102 @@ export const getFarmerAppAccountStatus = (farmer) => {
   return "profile_only";
 };
 
+export const buildTechnicianFarmerMetricsPipeline = (farmerMatch) => [
+  { $match: farmerMatch },
+  {
+    $lookup: {
+      from: Animal.collection.name,
+      let: { farmerId: "$_id" },
+      pipeline: [
+        { $match: { $expr: { $eq: ["$farmerId", "$$farmerId"] } } },
+        { $match: { deletedAt: null } },
+        { $limit: 1 },
+      ],
+      as: "currentAnimals",
+    },
+  },
+  {
+    $set: {
+      directoryAccountStatus: {
+        $switch: {
+          branches: [
+            {
+              case: { $eq: ["$profileClaimStatus", "blocked"] },
+              then: "blocked",
+            },
+            {
+              case: {
+                $or: [
+                  { $eq: ["$profileClaimStatus", "claimed"] },
+                  {
+                    $and: [
+                      { $eq: [{ $type: "$clerkId" }, "string"] },
+                      { $ne: ["$clerkId", ""] },
+                      {
+                        $not: [
+                          {
+                            $regexMatch: {
+                              input: { $ifNull: ["$clerkId", ""] },
+                              regex: /^manual_/,
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              then: "connected",
+            },
+            {
+              case: {
+                $or: [
+                  { $eq: ["$profileClaimStatus", "unclaimed"] },
+                  {
+                    $and: [
+                      { $eq: ["$registeredByTechnician", true] },
+                      { $in: [{ $ifNull: ["$email", ""] }, [null, ""]] },
+                    ],
+                  },
+                ],
+              },
+              then: "no_app_account",
+            },
+          ],
+          default: "profile_only",
+        },
+      },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      farmersFound: { $sum: 1 },
+      withAnimals: {
+        $sum: { $cond: [{ $gt: [{ $size: "$currentAnimals" }, 0] }, 1, 0] },
+      },
+      noAnimals: {
+        $sum: { $cond: [{ $eq: [{ $size: "$currentAnimals" }, 0] }, 1, 0] },
+      },
+      noAppAccount: {
+        $sum: {
+          $cond: [
+            {
+              $in: [
+                "$directoryAccountStatus",
+                ["no_app_account", "profile_only"],
+              ],
+            },
+            1,
+            0,
+          ],
+        },
+      },
+    },
+  },
+  { $project: { _id: 0 } },
+];
+
 export const toTechnicianFarmerDirectoryEntry = (farmer) => {
   const source = farmer?.toObject ? farmer.toObject() : farmer || {};
 
@@ -1255,13 +1351,18 @@ export const getUsers = async (req, res) => {
       const limitNum = parseInt(limit, 10) || 10;
       const skip = (pageNum - 1) * limitNum;
 
-      const [users, total] = await Promise.all([
+      const metricsPromise =
+        req.user.role === "technician"
+          ? User.aggregate(buildTechnicianFarmerMetricsPipeline(query))
+          : Promise.resolve([]);
+      const [users, total, metricsResult] = await Promise.all([
         User.find(query)
           .select(selectFields)
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limitNum),
         User.countDocuments(query),
+        metricsPromise,
       ]);
 
       let responseData = users;
@@ -1274,12 +1375,20 @@ export const getUsers = async (req, res) => {
         responseData = await Promise.all(users.map((u) => enrichFarmerData(u)));
       }
 
+      const metrics = metricsResult[0] || {
+        farmersFound: total,
+        withAnimals: 0,
+        noAnimals: 0,
+        noAppAccount: 0,
+      };
+
       return res.status(200).json({
         data: responseData,
         total,
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
+        ...(req.user.role === "technician" ? { metrics } : {}),
       });
     }
 

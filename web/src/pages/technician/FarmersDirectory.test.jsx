@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +46,13 @@ vi.mock("../../components/dialogs/RegisterFarmerModal", () => ({
     ) : null,
 }));
 
+vi.mock("../../components/dialogs/RegisterLivestockModal", () => ({
+  default: ({ isOpen, preSelectedFarmer }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="Add Animal" data-farmer-id={preSelectedFarmer?._id || ""} />
+    ) : null,
+}));
+
 import FarmersDirectory from "./FarmersDirectory";
 
 const farmer = {
@@ -69,6 +76,12 @@ const page = ({ data = [farmer], total = data.length, currentPage = 1 } = {}) =>
     page: currentPage,
     limit: 10,
     totalPages: Math.max(1, Math.ceil(total / 10)),
+    metrics: {
+      farmersFound: total,
+      withAnimals: 17,
+      noAnimals: 7,
+      noAppAccount: 11,
+    },
   },
 });
 
@@ -115,7 +128,7 @@ describe("Technician Farmers directory", () => {
     );
 
     expect(screen.getAllByText("Maria Santos").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Poblacion South, Oton").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Poblacion South").length).toBeGreaterThan(0);
     expect(screen.getAllByText("09171234567").length).toBeGreaterThan(0);
     expect(screen.getByText("3 registered animals")).toBeTruthy();
     expect(screen.queryByText(farmer._id)).toBeNull();
@@ -165,7 +178,7 @@ describe("Technician Farmers directory", () => {
     renderDirectory();
     await screen.findAllByText("Maria Santos");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "View Profile" })[0]);
+    fireEvent.click(screen.getByRole("link", { name: "Open profile for Maria Santos" }));
     expect(await screen.findByText("Farmer Profile destination")).toBeTruthy();
 
     mocks.get.mockClear();
@@ -176,7 +189,9 @@ describe("Technician Farmers directory", () => {
 
     renderDirectory();
     await screen.findAllByText("Maria Santos");
-    fireEvent.click(screen.getByRole("button", { name: "Edit Maria Santos" }));
+    fireEvent.click(
+      screen.getAllByRole("menuitem", { name: "Edit Farmer", hidden: true })[0],
+    );
     expect(screen.getByRole("dialog", { name: "Edit Farmer" })).toHaveAttribute(
       "data-farmer-id",
       farmer._id,
@@ -230,5 +245,60 @@ describe("Technician Farmers directory", () => {
 
     expect((await screen.findAllByText("Not available")).length).toBeGreaterThan(0);
     expect(screen.queryByText("0 registered animals")).toBeNull();
+  });
+
+  it("uses backend aggregate metrics rather than current-page rows", async () => {
+    mocks.get.mockResolvedValueOnce(page({ data: [farmer], total: 24 }));
+    renderDirectory();
+
+    const metrics = await screen.findByRole("region", { name: "Farmer directory metrics" });
+    await waitFor(() => expect(within(metrics).getByText("24")).toBeTruthy());
+    expect(within(metrics).getByText("Farmers found")).toBeTruthy();
+    expect(within(metrics).getByText("With animals")).toBeTruthy();
+    expect(within(metrics).getByText("17")).toBeTruthy();
+    expect(within(metrics).getByText("No animals")).toBeTruthy();
+    expect(within(metrics).getByText("7")).toBeTruthy();
+    expect(within(metrics).getByText("No App Account")).toBeTruthy();
+    expect(within(metrics).getByText("11")).toBeTruthy();
+  });
+
+  it("shows Barangay and truthful account access states without Clerk internals", async () => {
+    mocks.get.mockResolvedValueOnce(
+      page({
+        data: [
+          { ...farmer, _id: "linked", appAccountStatus: "connected", clerkId: "user_private" },
+          { ...farmer, _id: "profile", name: "Profile Farmer", appAccountStatus: "profile_only", phoneNumber: "" },
+          { ...farmer, _id: "blocked", name: "Blocked Farmer", appAccountStatus: "blocked" },
+        ],
+      }),
+    );
+    renderDirectory();
+
+    expect(await screen.findAllByText("Connected")).not.toHaveLength(0);
+    expect(screen.getAllByText("No App Account").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Phone not provided").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("columnheader", { name: "Barangay" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Poblacion South").length).toBeGreaterThan(0);
+    expect(screen.queryByText("user_private")).toBeNull();
+    expect(screen.queryByText("Profile Only")).toBeNull();
+    expect(screen.queryByText("Technician-managed")).toBeNull();
+    expect(screen.queryByText(/Invitation (sent|expired|revoked)/i)).toBeNull();
+  });
+
+  it("uses compact Farmer action menus instead of permanent row action buttons", async () => {
+    renderDirectory();
+    await screen.findAllByText("Maria Santos");
+
+    expect(screen.queryByRole("button", { name: "View Profile" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit Maria Santos" })).toBeNull();
+
+    expect(screen.getAllByRole("button", { name: "Actions for Maria Santos" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("menuitem", { name: "View Farmer Profile", hidden: true }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("menuitem", { name: "Edit Farmer", hidden: true }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("menuitem", { name: "View Animals", hidden: true }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("menuitem", { name: "Add Animal", hidden: true }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("menuitem", { name: /Invitation/i, hidden: true })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Delete Farmer/i, hidden: true })).toBeNull();
   });
 });

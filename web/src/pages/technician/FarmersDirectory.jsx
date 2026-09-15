@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -6,9 +6,13 @@ import {
   Beef,
   ChevronLeft,
   ChevronRight,
+  CircleUserRound,
   Edit,
+  Eye,
   MapPin,
+  MoreVertical,
   Phone,
+  Plus,
   RefreshCw,
   Search,
   UserPlus,
@@ -17,9 +21,11 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
 import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
 import TableNameLink from "../../components/ui/TableNameLink";
+import OverviewMetricCard from "../../components/ui/OverviewMetricCard";
 import { ui } from "../../components/ui/uiClasses";
 import { getIloiloBarangayOptions } from "../../utils/addressOptions";
 
@@ -45,7 +51,67 @@ const formatAnimalCount = (count) => {
   return `${count} registered animal${count === 1 ? "" : "s"}`;
 };
 
-function FarmerCard({ farmer, onOpen, onEdit }) {
+const ACCESS_STATUS = {
+  connected: { label: "Connected", className: "badge-success badge-soft" },
+  no_app_account: { label: "No App Account", className: "badge-info badge-soft" },
+  profile_only: { label: "No App Account", className: "badge-info badge-soft" },
+  blocked: { label: "Blocked", className: "badge-error badge-soft" },
+};
+
+function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal }) {
+  const instanceId = useId().replace(/:/g, "-");
+  const menuId = `farmer-actions-${farmer.id}-${instanceId}`;
+  const anchorName = `--${menuId}`;
+  const actions = [
+    { label: "View Farmer Profile", icon: Eye, onClick: onOpen },
+    { label: "Edit Farmer", icon: Edit, onClick: onEdit },
+    { label: "View Animals", icon: Beef, onClick: onViewAnimals },
+    { label: "Add Animal", icon: Plus, onClick: onAddAnimal },
+  ];
+
+  return (
+    <div className="inline-flex">
+      <button
+        type="button"
+        popoverTarget={menuId}
+        style={{ anchorName }}
+        className="btn btn-ghost btn-circle btn-sm"
+        aria-label={`Actions for ${farmer.name}`}
+        aria-haspopup="menu"
+      >
+        <MoreVertical size={16} aria-hidden="true" />
+      </button>
+      <ul
+        id={menuId}
+        popover="auto"
+        role="menu"
+        aria-label={`Actions for ${farmer.name}`}
+        style={{ positionAnchor: anchorName }}
+        className="dropdown dropdown-end menu menu-sm z-50 w-52 rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl"
+      >
+        {actions.map(({ label, icon: Icon, onClick }) => (
+          <li key={label} role="none">
+            <button
+              type="button"
+              role="menuitem"
+              className="text-xs font-bold"
+              onClick={(event) => {
+                event.currentTarget.closest("[popover]")?.hidePopover?.();
+                onClick(farmer);
+              }}
+            >
+              <Icon size={14} aria-hidden="true" />
+              {label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal }) {
+  const access = ACCESS_STATUS[farmer.appAccountStatus] || ACCESS_STATUS.profile_only;
   return (
     <article className="card card-sm card-border bg-base-100">
       <div className="card-body gap-4">
@@ -60,7 +126,7 @@ function FarmerCard({ farmer, onOpen, onEdit }) {
             <h2 className="card-title text-base">{farmer.name}</h2>
             <p className="mt-1 flex items-start gap-2 text-sm text-base-content/70">
               <MapPin size={15} className="mt-0.5 shrink-0" />
-              {farmer.location}
+              {farmer.barangay}
             </p>
           </div>
         </div>
@@ -80,23 +146,19 @@ function FarmerCard({ farmer, onOpen, onEdit }) {
             <Beef size={15} className="shrink-0" />
             {formatAnimalCount(farmer.animals)}
           </p>
+          <span className={`badge badge-sm ${access.className}`}>
+            {access.label}
+          </span>
         </div>
 
-        <div className="card-actions grid grid-cols-2 border-t border-base-300 pt-3">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => onOpen(farmer)}
-          >
-            View Profile
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost text-info btn-sm hover:bg-info/10 hover:text-info"
-            onClick={() => onEdit(farmer)}
-          >
-            <Edit size={15} /> Edit
-          </button>
+        <div className="card-actions justify-end border-t border-base-300 pt-3">
+          <FarmerActionsMenu
+            farmer={farmer}
+            onOpen={onOpen}
+            onEdit={onEdit}
+            onViewAnimals={onViewAnimals}
+            onAddAnimal={onAddAnimal}
+          />
         </div>
       </div>
     </article>
@@ -108,6 +170,7 @@ export default function FarmersDirectory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRegisterFarmerOpen, setIsRegisterFarmerOpen] = useState(false);
   const [selectedFarmerForEdit, setSelectedFarmerForEdit] = useState(null);
+  const [selectedFarmerForAnimal, setSelectedFarmerForAnimal] = useState(null);
 
   const searchQuery = searchParams.get("search") || "";
   const barangayFilter = searchParams.get("barangay") || "";
@@ -176,12 +239,7 @@ export default function FarmersDirectory() {
     () =>
       rawFarmers.map((farmer) => {
         const address = getAddress(farmer.address);
-        const location = [
-          cleanLocationPart(address.barangay),
-          cleanLocationPart(address.city || address.municipality),
-        ]
-          .filter(Boolean)
-          .join(", ") || "Location not provided";
+        const barangay = cleanLocationPart(address.barangay) || "Barangay not provided";
         const animalCount =
           farmer.animalsCount == null ? null : Number(farmer.animalsCount);
 
@@ -192,9 +250,10 @@ export default function FarmersDirectory() {
           phoneNumber: farmer.phoneNumber || address.phoneNumber || "",
           contact:
             farmer.phoneNumber || address.phoneNumber || "Phone not provided",
-          location,
+          barangay,
           animals: Number.isFinite(animalCount) ? animalCount : null,
           imageUrl: farmer.imageUrl || farmer.profileImage || null,
+          appAccountStatus: farmer.appAccountStatus,
         };
       }),
     [rawFarmers],
@@ -210,6 +269,12 @@ export default function FarmersDirectory() {
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
   const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
   const hasFilters = Boolean(searchQuery || barangayFilter);
+  const metrics = farmersPage.metrics || {
+    farmersFound: totalItems,
+    withAnimals: 0,
+    noAnimals: 0,
+    noAppAccount: 0,
+  };
 
   const openFarmer = (farmer) =>
     navigate(`/technician/farmers/${farmer.id}`);
@@ -221,6 +286,9 @@ export default function FarmersDirectory() {
     setSelectedFarmerForEdit(null);
     setIsRegisterFarmerOpen(true);
   };
+  const viewFarmerAnimals = (farmer) =>
+    navigate(`/technician/farmers/${farmer.id}#animals`);
+  const addAnimal = (farmer) => setSelectedFarmerForAnimal(farmer.raw);
   const clearFilters = () =>
     setSearchParams(new URLSearchParams(), { replace: true });
 
@@ -231,6 +299,44 @@ export default function FarmersDirectory() {
         subtitle="Find a Farmer and open or update their profile"
       />
       <main className={ui.main}>
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Farmer directory metrics">
+          <OverviewMetricCard
+            icon={Users}
+            label="Farmers found"
+            value={Number(metrics.farmersFound) || 0}
+            description="Matching current filters"
+            borderClass="border-l-primary"
+            iconClass="bg-primary/10 text-primary"
+            isLoading={isLoading}
+          />
+          <OverviewMetricCard
+            icon={Beef}
+            label="With animals"
+            value={Number(metrics.withAnimals) || 0}
+            description="Registered livestock"
+            borderClass="border-l-success"
+            iconClass="bg-success/10 text-success"
+            isLoading={isLoading}
+          />
+          <OverviewMetricCard
+            icon={AlertCircle}
+            label="No animals"
+            value={Number(metrics.noAnimals) || 0}
+            description="No livestock yet"
+            borderClass="border-l-warning"
+            iconClass="bg-warning/15 text-warning"
+            isLoading={isLoading}
+          />
+          <OverviewMetricCard
+            icon={CircleUserRound}
+            label="No App Account"
+            value={Number(metrics.noAppAccount) || 0}
+            description="No linked app account"
+            borderClass="border-l-info"
+            iconClass="bg-info/10 text-info"
+            isLoading={isLoading}
+          />
+        </section>
         <section className="card card-border bg-base-100">
           <div className="card-body gap-4 p-4 md:p-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -325,17 +431,18 @@ export default function FarmersDirectory() {
                       <tr className="bg-base-200 uppercase text-xs">
                         <th>Farmer</th>
                         <th>Contact</th>
-                        <th>Location</th>
+                        <th>Barangay</th>
                         <th>Animals</th>
+                        <th>Access Status</th>
                         <th className="text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[0, 1, 2, 3, 4].map((row) => (
                         <tr key={row}>
-                          <td colSpan={5}>
-                            <div className="grid grid-cols-[1.4fr_1fr_1.2fr_.6fr_1fr] gap-5 py-1">
-                              {[0, 1, 2, 3, 4].map((column) => (
+                          <td colSpan={6}>
+                            <div className="grid grid-cols-[1.4fr_1fr_1fr_.6fr_1fr_.4fr] gap-5 py-1">
+                              {[0, 1, 2, 3, 4, 5].map((column) => (
                                 <span key={column} className="skeleton h-4" />
                               ))}
                             </div>
@@ -374,6 +481,8 @@ export default function FarmersDirectory() {
                       farmer={farmer}
                       onOpen={openFarmer}
                       onEdit={editFarmer}
+                      onViewAnimals={viewFarmerAnimals}
+                      onAddAnimal={addAnimal}
                     />
                   ))}
                 </div>
@@ -384,8 +493,9 @@ export default function FarmersDirectory() {
                       <tr className="bg-base-200 uppercase text-xs">
                         <th>Farmer</th>
                         <th>Contact</th>
-                        <th>Location</th>
+                        <th>Barangay</th>
                         <th>Animals</th>
+                        <th>Access Status</th>
                         <th className="text-right">Actions</th>
                       </tr>
                     </thead>
@@ -425,29 +535,27 @@ export default function FarmersDirectory() {
                               </span>
                             )}
                           </td>
-                          <td>{farmer.location}</td>
+                          <td>{farmer.barangay}</td>
                           <td>
                             {Number.isFinite(farmer.animals)
                               ? farmer.animals
                               : "Not available"}
                           </td>
                           <td>
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                className="btn btn-primary btn-sm"
-                                onClick={() => openFarmer(farmer)}
-                              >
-                                View Profile
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost text-info btn-sm hover:bg-info/10 hover:text-info"
-                                aria-label={`Edit ${farmer.name}`}
-                                onClick={() => editFarmer(farmer)}
-                              >
-                                <Edit size={15} /> Edit
-                              </button>
+                            {(() => {
+                              const access = ACCESS_STATUS[farmer.appAccountStatus] || ACCESS_STATUS.profile_only;
+                              return <span className={`badge badge-sm ${access.className}`}>{access.label}</span>;
+                            })()}
+                          </td>
+                          <td>
+                            <div className="flex justify-end">
+                              <FarmerActionsMenu
+                                farmer={farmer}
+                                onOpen={openFarmer}
+                                onEdit={editFarmer}
+                                onViewAnimals={viewFarmerAnimals}
+                                onAddAnimal={addAnimal}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -505,6 +613,11 @@ export default function FarmersDirectory() {
           setIsRegisterFarmerOpen(false);
           setSelectedFarmerForEdit(null);
         }}
+      />
+      <RegisterLivestockModal
+        isOpen={Boolean(selectedFarmerForAnimal)}
+        preSelectedFarmer={selectedFarmerForAnimal}
+        onClose={() => setSelectedFarmerForAnimal(null)}
       />
     </div>
   );
