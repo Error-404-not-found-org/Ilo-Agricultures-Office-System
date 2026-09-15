@@ -445,12 +445,6 @@ export const getAnimalById = async (req, res) => {
     }
     assertAnimalAccess(req.user, animal);
 
-    if (String(payload.earTag || "").trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
-      return res.status(400).json({
-        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
-        code: "ANIMAL_EAR_TAG_TOO_LONG",
-      });
-    }
     const visibleWork = filterAnimalWorkForViewer(
       {
         inseminations: inseminationsList,
@@ -564,6 +558,13 @@ export const updateAnimalWizard = async (req, res) => {
   try {
     const { id } = req.params;
     const payload = req.body;
+
+    if (String(payload.earTag || "").trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
 
     const lifecycleFields = [
       "aiDate",
