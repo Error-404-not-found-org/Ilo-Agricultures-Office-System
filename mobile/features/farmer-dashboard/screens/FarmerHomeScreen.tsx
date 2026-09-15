@@ -169,7 +169,10 @@ export function FarmerHomeScreen() {
 
   const { data: pendingOutcomes } = pendingOutcomesQuery;
   const { data: milestones } = milestonesQuery;
-  const { data: myAnimals } = myAnimalsQuery;
+  const { data: myAnimalsCollection } = myAnimalsQuery;
+  const myAnimals = myAnimalsCollection?.items;
+  const registeredLivestockCount =
+    myAnimalsCollection?.total ?? stats.totalAnimals;
   const { data: activityFeed } = activityFeedQuery;
   const dashboardLayout = React.useMemo(
     () => getFarmerDashboardLayout(screenWidth),
@@ -492,11 +495,11 @@ export function FarmerHomeScreen() {
                       lineHeight: 42,
                     }}
                   >
-                    {isLoading
+                    {isLoading && !myAnimalsCollection
                       ? "-"
-                      : stats.totalAnimals <= 0
+                      : registeredLivestockCount <= 0
                         ? "0"
-                        : stats.totalAnimals}
+                        : registeredLivestockCount}
                   </Text>
                   <Text
                     numberOfLines={1}

@@ -101,7 +101,10 @@ export interface FarmerDashboardData {
   upcomingVisits: UpcomingVisit[];
   pendingOutcomes: AIRequest[];
   milestones: FarmerMilestone[];
-  myAnimals: Animal[];
+  myAnimals: {
+    items: Animal[];
+    total: number;
+  };
   activityFeed: FarmerActivity[];
 }
 

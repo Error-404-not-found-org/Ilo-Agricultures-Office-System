@@ -55,6 +55,17 @@ const toArray = <T>(body: unknown): T[] => {
 
 export const responseToArray = toArray;
 
+export const responseToCollection = <T>(body: unknown) => {
+  const items = toArray<T>(body);
+  const responseTotal =
+    body && typeof body === "object" ? Number((body as any).total) : NaN;
+
+  return {
+    items,
+    total: Number.isFinite(responseTotal) ? responseTotal : items.length,
+  };
+};
+
 export const buildUpcomingVisits = (
   aiBody: unknown,
   healthBody: unknown,

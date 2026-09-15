@@ -79,7 +79,7 @@ export default function RecordCalving() {
   const { myAnimalsQuery } = useFarmerDashboardQueries();
 
   const farmerName = user?.fullName || `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.username || "";
-  const activeEarTags = (myAnimalsQuery.data || []).map(
+  const activeEarTags = (myAnimalsQuery.data?.items || []).map(
     (animal: any) => animal.earTag,
   );
 

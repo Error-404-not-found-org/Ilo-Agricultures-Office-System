@@ -2,7 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { selectNeedsAttention } from "./farmerDashboard.transforms.ts";
+import {
+  responseToCollection,
+  selectNeedsAttention,
+} from "./farmerDashboard.transforms.ts";
+
+test("preserves the authoritative animals total from a paginated response", () => {
+  const result = responseToCollection<{ _id: string }>({
+    data: [{ _id: "animal-3" }],
+    total: 3,
+  });
+
+  assert.deepEqual(result.items, [{ _id: "animal-3" }]);
+  assert.equal(result.total, 3);
+});
+
+test("supports legacy array responses when deriving an animals total", () => {
+  const result = responseToCollection<{ _id: string }>([
+    { _id: "animal-1" },
+    { _id: "animal-2" },
+  ]);
+
+  assert.equal(result.total, 2);
+});
 
 const heatFollowUp = {
   type: "heat_check",
