@@ -243,3 +243,113 @@ test("H4 unclaimed technician Health detail includes review contact and location
     HealthRequest.findOne = originalFindOne;
   }
 });
+
+test("Farmer scheduled Health detail exposes the canonical Technician and visit schedule", async () => {
+  const originalFindOne = HealthRequest.findOne;
+  const requestRecord = {
+    _id: "health-scheduled-1",
+    status: "scheduled",
+    farmerId: { _id: "farmer-1", name: "Farmer One" },
+    animalId: { _id: "animal-1", earTag: "01FO" },
+    handledBy: {
+      _id: "technician-1",
+      name: "Test Technician",
+      role: "technician",
+      phoneNumber: "09171234567",
+      clerkId: "private-clerk-id",
+    },
+    assignedTechnicianId: {
+      _id: "technician-1",
+      name: "Test Technician",
+      role: "technician",
+      phoneNumber: "09171234567",
+      clerkId: "private-clerk-id",
+    },
+    scheduledDate: "2026-09-18T00:00:00.000Z",
+    visitPeriod: "morning",
+  };
+
+  try {
+    HealthRequest.findOne = () => {
+      const query = {
+        populate: () => query,
+        lean: async () => requestRecord,
+      };
+      return query;
+    };
+
+    const req = {
+      params: { id: requestRecord._id },
+      user: { _id: "farmer-1", role: "farmer" },
+    };
+    const res = {
+      statusCode: 0,
+      payload: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.payload = payload;
+        return this;
+      },
+    };
+
+    await getHealthRequestDetail(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.data.status, "scheduled");
+    assert.equal(res.payload.data.scheduledDate, requestRecord.scheduledDate);
+    assert.equal(res.payload.data.visitPeriod, "morning");
+    assert.equal(res.payload.data.technicianDisplayName, "Test Technician");
+    assert.equal(res.payload.data.assignedTechnicianId, undefined);
+    assert.equal(res.payload.data.handledBy._id, undefined);
+    assert.equal(res.payload.data.handledBy.phoneNumber, undefined);
+    assert.doesNotMatch(JSON.stringify(res.payload), /private-clerk-id|09171234567/);
+  } finally {
+    HealthRequest.findOne = originalFindOne;
+  }
+});
+
+test("Farmer cannot read another Farmer's Health request detail", async () => {
+  const originalFindOne = HealthRequest.findOne;
+  try {
+    HealthRequest.findOne = () => {
+      const query = {
+        populate: () => query,
+        lean: async () => ({
+          _id: "health-private-1",
+          status: "scheduled",
+          farmerId: { _id: "farmer-owner", name: "Owner" },
+          animalId: { _id: "animal-1", earTag: "01OW" },
+          handledBy: { _id: "technician-1", name: "Test Technician" },
+        }),
+      };
+      return query;
+    };
+
+    const req = {
+      params: { id: "health-private-1" },
+      user: { _id: "farmer-other", role: "farmer" },
+    };
+    const res = {
+      statusCode: 0,
+      payload: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.payload = payload;
+        return this;
+      },
+    };
+
+    await getHealthRequestDetail(req, res);
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.payload.code, "HEALTH_REQUEST_ACCESS_DENIED");
+  } finally {
+    HealthRequest.findOne = originalFindOne;
+  }
+});

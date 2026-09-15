@@ -31,6 +31,7 @@ export const buildFarmerHealthRequest = (request) => {
   if (result.handledBy && typeof result.handledBy === "object") {
     const publicTechnician = { ...result.handledBy };
     delete publicTechnician._id;
+    delete publicTechnician.clerkId;
     delete publicTechnician.address;
     delete publicTechnician.phoneNumber;
     result.handledBy = publicTechnician;

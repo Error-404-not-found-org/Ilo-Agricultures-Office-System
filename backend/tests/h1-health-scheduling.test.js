@@ -428,7 +428,10 @@ test("HEALTH SCHEDULING", async (t) => {
     await updateHealthRequestStatus(req, res);
     
     const notif = await Notification.findOne({ "metadata.requestId": hr3._id }).sort({ createdAt: -1 });
+    const scheduledRequest = await HealthRequest.findById(hr3._id);
     assert.ok(notif, "Notification should be created");
+    assert.equal(scheduledRequest.handledBy.toString(), techId.toString());
+    assert.equal(notif.metadata.technicianName, req.user.name);
     assert.equal(notif.metadata.visitPeriod, "morning");
     assert.equal(notif.metadata.diagnosis, undefined);
     assert.equal(notif.metadata.findings, undefined);

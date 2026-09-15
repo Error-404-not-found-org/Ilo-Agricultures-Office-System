@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Image,
   Text,
@@ -23,7 +23,7 @@ import {
   Ban,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { healthRequestKeys } from "@/lib/queryKeys";
@@ -256,6 +256,17 @@ export default function HealthRequestDetailScreen() {
     enabled: Boolean(id),
     queryFn: () => getHealthRequestDetail(api, id),
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      void queryClient.invalidateQueries({
+        queryKey: healthRequestKeys.detail(id),
+        exact: true,
+        refetchType: "active",
+      });
+    }, [id, queryClient]),
+  );
 
   const galleryImages = useMemo<ImageViewerItem[]>(() => {
     const request = query.data;
