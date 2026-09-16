@@ -149,10 +149,12 @@ export const getHealthRequestInputValidationMessage = ({
   assistanceRequested,
   observedSigns,
   farmerDescription,
+  photoCount,
 }: {
   assistanceRequested: FarmerHealthAssistance;
   observedSigns: FarmerHealthObservedSign[];
   farmerDescription: string;
+  photoCount: number;
 }) => {
   if (
     ["health_concern", "other"].includes(assistanceRequested) &&
@@ -160,6 +162,9 @@ export const getHealthRequestInputValidationMessage = ({
     !farmerDescription.trim()
   ) {
     return "Please select an observed sign or add a short description.";
+  }
+  if (photoCount < 1) {
+    return "Please attach at least one photo of the animal.";
   }
   return null;
 };

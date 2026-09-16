@@ -21,6 +21,45 @@ const normalizedValue = (value) =>
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
 
+export const formatHealthRequestType = (type) => {
+  if (!type) return "Not specified";
+  const normalized = normalizedValue(type);
+
+  if (
+    [
+      "disease",
+      "disease_infection",
+      "disease_/_infection",
+      "injury",
+      "wound",
+      "sick",
+      "sick_or_injured",
+      "sick_or_injured_animal",
+      "health_concern",
+    ].includes(normalized)
+  ) {
+    return "Sick or Injured Animal";
+  }
+  if (normalized === "pregnancy_complication") {
+    return "Pregnancy-related health concern";
+  }
+  if (
+    ["medicine", "deworming", "medicine_request", "medicine_or_dewormer"].includes(
+      normalized,
+    )
+  ) {
+    return "Medicine or Dewormer";
+  }
+  if (["checkup", "vaccination", "preventive_care"].includes(normalized)) {
+    return "Checkup or Vaccination";
+  }
+  if (normalized === "other") return "Other Health Assistance";
+
+  return String(type)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
 export const formatCanonicalVisitSchedule = (schedule = {}) => {
   if (!schedule?.date) return "Not scheduled";
 

@@ -164,7 +164,9 @@ export default function RecordHealthScreen() {
       toast.success("Service started.");
       await refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to start service.");
+      toast.error(
+        err.apiError?.message || err.message || "Failed to start service.",
+      );
     } finally {
       setSaving(false);
     }

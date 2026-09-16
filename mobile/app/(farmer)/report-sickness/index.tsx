@@ -309,6 +309,7 @@ export default function ReportSickness() {
         assistanceRequested: category,
         observedSigns: selectedOptions,
         farmerDescription: description,
+        photoCount: photos.length,
       });
       if (validationMessage) {
         showSubmitError(validationMessage);
@@ -874,7 +875,7 @@ export default function ReportSickness() {
                 { color: colors.textMuted },
               ]}
             >
-              Photos (Optional){" "}
+              Photos *{" "}
               {photos.length > 0 ? `(${photos.length}/5)` : ""}
             </Text>
             {photos.length > 0 && photos.length < 5 && (
@@ -916,7 +917,7 @@ export default function ReportSickness() {
                 className="text-[13px] font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                Add up to 5 photos if they help explain the concern
+                Add at least 1 clear photo of the animal (up to 5)
               </Text>
             </TouchableOpacity>
           ) : (

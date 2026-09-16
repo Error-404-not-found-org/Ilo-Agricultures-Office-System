@@ -13,6 +13,7 @@ export type AllowedAction =
   | "VIEW_RECORD"
   | "COMPLETE_TASK"
   | "START_SERVICE"
+  | "VIEW_DETAILS"
   | "SCHEDULE_VISIT"
   | "CLAIM"
   | null;
@@ -151,6 +152,7 @@ export interface WorkQueueItem {
   taskType?: string;
   urgent?: boolean;
   overdue?: boolean;
+  workTiming?: "upcoming" | "actionable" | "overdue" | null;
   farmerimageUrl?: string | null;
   notes?: string;
   raw?: any;

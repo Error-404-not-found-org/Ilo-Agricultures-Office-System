@@ -37,6 +37,7 @@ import {
   normalizeServiceType,
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
+  formatHealthRequestType,
 } from "../../utils/requestWorkPresentation";
 import { isFutureSchedule } from "../../utils/technicianSchedulePresentation";
 import ImagePreviewModal from "../../components/ui/ImagePreviewModal";
@@ -118,10 +119,7 @@ const getOfficialRecordIdentity = (task) => {
     };
   }
 
-  if (
-    task.workflowType === "Calving" &&
-    isMongoId(task.context?.calvingId)
-  ) {
+  if (task.workflowType === "Calving" && isMongoId(task.context?.calvingId)) {
     return {
       animalId,
       recordKind: "calving",
@@ -144,8 +142,11 @@ export default function WorkQueue({ embedded = false }) {
     () => searchParams.get("typeFilter") || "all",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
-  const [startHealthServiceOnOpen, setStartHealthServiceOnOpen] = useState(false);
+  const [retainedHealthTask, setRetainedHealthTask] = useState(null);
+  const [startHealthServiceOnOpen, setStartHealthServiceOnOpen] =
+    useState(false);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
+  const [retainedWorkDetails, setRetainedWorkDetails] = useState(null);
   const [breedingFollowUp, setBreedingFollowUp] = useState(null);
   const [pregnancyLossReviewTask, setPregnancyLossReviewTask] = useState(null);
   const [breedingFollowUpStep, setBreedingFollowUpStep] = useState("overview");
@@ -158,6 +159,28 @@ export default function WorkQueue({ embedded = false }) {
   const [earlyStartConfirmTask, setEarlyStartConfirmTask] = useState(null);
   const [isStartingEarly, setIsStartingEarly] = useState(false);
   const itemsPerPage = 8;
+
+  useEffect(() => {
+    if (
+      selectedTaskWrapper &&
+      String(selectedTaskWrapper?.workflowType || "").toLowerCase() === "health"
+    ) {
+      setRetainedHealthTask(selectedTaskWrapper);
+    }
+  }, [selectedTaskWrapper]);
+
+  useEffect(() => {
+    if (selectedWorkDetails) {
+      setRetainedWorkDetails(selectedWorkDetails);
+    }
+  }, [selectedWorkDetails]);
+
+  const activeHealthTask =
+    selectedTaskWrapper &&
+    String(selectedTaskWrapper?.workflowType || "").toLowerCase() === "health"
+      ? selectedTaskWrapper
+      : retainedHealthTask;
+  const activeWorkDetails = selectedWorkDetails ?? retainedWorkDetails;
 
   const handleCloseModal = () => {
     setSelectedTaskWrapper(null);
@@ -174,9 +197,10 @@ export default function WorkQueue({ embedded = false }) {
         next.delete("requestId");
         return next;
       },
-      { replace: true }
+      { replace: true },
     );
   };
+
   const formatRelativeSchedule = (value) => {
     if (!value) return "No date recorded";
     const targetDate = new Date(value);
@@ -272,14 +296,8 @@ export default function WorkQueue({ embedded = false }) {
   const breedingFollowUpTaskId =
     breedingFollowUp?.taskId || breedingFollowUp?.id || null;
   const breedingFollowUpDetailsQuery = useQuery({
-    queryKey: [
-      "technician",
-      "tasks",
-      "detail",
-      breedingFollowUpTaskId || "",
-    ],
-    enabled:
-      Boolean(breedingFollowUp) && isMongoId(breedingFollowUpTaskId),
+    queryKey: ["technician", "tasks", "detail", breedingFollowUpTaskId || ""],
+    enabled: Boolean(breedingFollowUp) && isMongoId(breedingFollowUpTaskId),
     queryFn: async () => {
       const response = await axiosInstance.get(
         `/tasks/${encodeURIComponent(breedingFollowUpTaskId)}`,
@@ -482,6 +500,16 @@ export default function WorkQueue({ embedded = false }) {
       return;
     }
 
+    if (
+      String(task.workflowType || "").toLowerCase() === "health" &&
+      task.allowedAction === "VIEW_DETAILS" &&
+      !isTerminal
+    ) {
+      setStartHealthServiceOnOpen(false);
+      setSelectedTaskWrapper(task);
+      return;
+    }
+
     if (!readiness.ready || (isFuture && !isInProgress)) {
       setSelectedWorkDetails(task);
       return;
@@ -517,8 +545,7 @@ export default function WorkQueue({ embedded = false }) {
         setStartHealthServiceOnOpen(startHealthService);
         setSelectedTaskWrapper(task);
         return;
-      case "VIEW_RECORD":
-      {
+      case "VIEW_RECORD": {
         const record = getOfficialRecordIdentity(task);
         if (record) {
           navigate(
@@ -537,8 +564,15 @@ export default function WorkQueue({ embedded = false }) {
       case "VIEW_RESPONSE":
         setSelectedWorkDetails(task);
         return;
-      case "VIEW_DETAILS":
-      {
+      case "VIEW_DETAILS": {
+        if (
+          String(task.workflowType || "").toLowerCase() === "health" &&
+          !isTerminal
+        ) {
+          setStartHealthServiceOnOpen(false);
+          setSelectedTaskWrapper(task);
+          return;
+        }
         const record = getOfficialRecordIdentity(task);
         if (record) {
           navigate(
@@ -622,7 +656,10 @@ export default function WorkQueue({ embedded = false }) {
   useEffect(() => {
     if (!hasDeepLink) {
       firedDeepLinkIdentifier.current = null;
-    } else if (deepLinkQuery.isSuccess && firedDeepLinkIdentifier.current !== currentIdentifier) {
+    } else if (
+      deepLinkQuery.isSuccess &&
+      firedDeepLinkIdentifier.current !== currentIdentifier
+    ) {
       firedDeepLinkIdentifier.current = currentIdentifier;
       const target = deepLinkQuery.data;
       if (target) {
@@ -645,7 +682,7 @@ export default function WorkQueue({ embedded = false }) {
             next.delete("requestId");
             return next;
           },
-          { replace: true }
+          { replace: true },
         );
       }
     }
@@ -798,6 +835,12 @@ export default function WorkQueue({ embedded = false }) {
                     const serviceType = normalizeServiceType(task);
                     const servicePresentation =
                       getServicePresentation(serviceType);
+                    const healthRequestType =
+                      task.requestType || task.raw?.requestType;
+                    const taskLabel =
+                      serviceType === "health" && healthRequestType
+                        ? formatHealthRequestType(healthRequestType)
+                        : task.title || servicePresentation.label;
                     const readiness = getTaskReadiness(task.raw || task);
                     const actionDisabled =
                       !readiness.ready ||
@@ -825,8 +868,7 @@ export default function WorkQueue({ embedded = false }) {
                           : `Due ${formatRelativeSchedule(timing.date)}`;
                     const isHealthFarmVisitScheduled =
                       task.workflowType === "Health" &&
-                      (task.status === "scheduled" ||
-                        task.allowedAction === "START_SERVICE");
+                      task.allowedAction === "START_SERVICE";
                     const primaryActionLabel = isHealthFarmVisitScheduled
                       ? "Record Health Assistance"
                       : task.actionLabel || getTaskPrimaryActionLabel(task);
@@ -839,7 +881,7 @@ export default function WorkQueue({ embedded = false }) {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="badge badge-sm badge-primary badge-soft">
-                                {task.title || servicePresentation.label}
+                                {taskLabel}
                               </span>
                               <span
                                 className={`badge badge-sm border ${statusPresentation.badgeClass}`}
@@ -913,13 +955,19 @@ export default function WorkQueue({ embedded = false }) {
                                   aria-hidden="true"
                                 />
                                 <span className="font-medium text-base-content/75 transition-colors group-hover:text-primary">
-                                  Tag {animalReference !== "Not recorded" ? animalReference : "Unknown"}
+                                  Tag{" "}
+                                  {animalReference !== "Not recorded"
+                                    ? animalReference
+                                    : "Unknown"}
                                 </span>
                               </button>
                             ) : (
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-base-content/60">
                                 <span className="font-medium text-base-content/75">
-                                  Tag {animalReference !== "Not recorded" ? animalReference : "Unknown"}
+                                  Tag{" "}
+                                  {animalReference !== "Not recorded"
+                                    ? animalReference
+                                    : "Unknown"}
                                 </span>
                               </div>
                             )}
@@ -930,11 +978,17 @@ export default function WorkQueue({ embedded = false }) {
                                   <>
                                     <p className="line-clamp-2 text-xs text-base-content/55">
                                       {formatTaskSummary(
-                                        task.summary.split(/(Contact the.*)/i)[0],
+                                        task.summary.split(
+                                          /(Contact the.*)/i,
+                                        )[0],
                                       )}
                                     </p>
                                     <div className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary">
-                                      {task.summary.match(/(Contact the.*)/i)[0]}
+                                      {
+                                        task.summary.match(
+                                          /(Contact the.*)/i,
+                                        )[0]
+                                      }
                                     </div>
                                   </>
                                 ) : (
@@ -1105,12 +1159,14 @@ export default function WorkQueue({ embedded = false }) {
       <HealthRequestActionModal
         isOpen={
           Boolean(selectedTaskWrapper) &&
-          selectedTaskWrapper?.workflowType === "Health"
+          String(selectedTaskWrapper?.workflowType || "").toLowerCase() ===
+            "health"
         }
         onClose={handleCloseModal}
-        startServiceOnOpen={startHealthServiceOnOpen}
+          startServiceOnOpen={startHealthServiceOnOpen}
         task={
-          selectedTaskWrapper?.workflowType === "Health"
+          String(selectedTaskWrapper?.workflowType || "").toLowerCase() ===
+          "health"
             ? {
                 ...selectedTaskWrapper,
                 id: selectedTaskWrapper.workflowId,
@@ -1196,15 +1252,15 @@ export default function WorkQueue({ embedded = false }) {
             <div className="alert alert-warning/15 border-warning/30 text-sm text-base-content/80 flex items-start gap-3 rounded-2xl py-3.5 px-4">
               <Info className="h-5 w-5 shrink-0 text-warning mt-0.5" />
               <p className="leading-relaxed">
-                This AI service is scheduled for a future visit. Are you sure you want
-                to start the service now?
+                This AI service is scheduled for a future visit. Are you sure
+                you want to start the service now?
               </p>
             </div>
           </div>
         </Modal>
       )}
       <Modal
-        isOpen={Boolean(selectedWorkDetails)}
+        isOpen={Boolean(selectedWorkDetails) && !selectedTaskWrapper}
         onClose={handleCloseModal}
         title={
           selectedWorkDetails?.title ||
@@ -1269,7 +1325,9 @@ export default function WorkQueue({ embedded = false }) {
               <div>
                 <p className="text-xs text-base-content/55">Location</p>
                 <p className="font-semibold">
-                  {selectedWorkDetails.location || selectedWorkDetails.farmer?.location || "Location not recorded"}
+                  {selectedWorkDetails.location ||
+                    selectedWorkDetails.farmer?.location ||
+                    "Location not recorded"}
                 </p>
               </div>
             </div>
@@ -1424,8 +1482,7 @@ export default function WorkQueue({ embedded = false }) {
                 <div className="flex justify-between items-center">
                   <span className="text-base-content/60">Sire</span>
                   <span className="font-medium text-base-content">
-                    {breedingFollowUpSire ||
-                      breedingFollowUpUnavailableLabel}
+                    {breedingFollowUpSire || breedingFollowUpUnavailableLabel}
                   </span>
                 </div>
               </div>
@@ -1444,14 +1501,16 @@ export default function WorkQueue({ embedded = false }) {
                     </span>
                   ) : null}
                 </div>
-                {farmerObservation.hasObservation && farmerObservation.reportedAt ? (
+                {farmerObservation.hasObservation &&
+                farmerObservation.reportedAt ? (
                   <span className="text-xs text-base-content/60">
                     Submitted {formatSubmittedAt(farmerObservation.reportedAt)}
                   </span>
                 ) : null}
               </div>
 
-              {breedingFollowUpDetailsQuery.isLoading && !farmerObservation.hasObservation ? (
+              {breedingFollowUpDetailsQuery.isLoading &&
+              !farmerObservation.hasObservation ? (
                 <div className="flex items-center justify-center py-6 text-xs text-base-content/50">
                   <span className="loading loading-spinner loading-sm mr-2" />
                   Loading farmer update…
@@ -1460,7 +1519,9 @@ export default function WorkQueue({ embedded = false }) {
                 <div className="space-y-3">
                   {farmerObservation.reportType ? (
                     <h4 className="text-base font-bold text-base-content">
-                      {getBreedingObservationLabel(farmerObservation.reportType)}
+                      {getBreedingObservationLabel(
+                        farmerObservation.reportType,
+                      )}
                     </h4>
                   ) : null}
 
@@ -1496,25 +1557,27 @@ export default function WorkQueue({ embedded = false }) {
                         Supporting photos:
                       </span>
                       <div className="flex flex-wrap gap-2">
-                        {farmerObservation.evidencePhotos.map((photo, index) => {
-                          const url = imagePreviewUrl(photo);
-                          return (
-                            <button
-                              key={url || index}
-                              type="button"
-                              className="relative h-16 w-16 overflow-hidden rounded-lg border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
-                              onClick={() => setPreviewImage(photo)}
-                              aria-label={`View supporting photo ${index + 1}`}
-                            >
-                              <img
-                                src={url}
-                                alt={`Supporting photo ${index + 1}`}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                            </button>
-                          );
-                        })}
+                        {farmerObservation.evidencePhotos.map(
+                          (photo, index) => {
+                            const url = imagePreviewUrl(photo);
+                            return (
+                              <button
+                                key={url || index}
+                                type="button"
+                                className="relative h-16 w-16 overflow-hidden rounded-lg border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
+                                onClick={() => setPreviewImage(photo)}
+                                aria-label={`View supporting photo ${index + 1}`}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Supporting photo ${index + 1}`}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            );
+                          },
+                        )}
                       </div>
                     </div>
                   ) : null}

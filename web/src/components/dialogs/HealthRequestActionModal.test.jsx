@@ -22,13 +22,14 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("../ui/Modal", () => ({
-  default: ({ isOpen, title, children, actions }) =>
-    isOpen ? (
-      <div role="dialog" aria-label={title}>
+  default: ({ isOpen, title, subtitle, children, actions }) =>
+    (
+      <div role={isOpen ? "dialog" : undefined} aria-label={title}>
+        {subtitle ? <p>{subtitle}</p> : null}
         <div>{children}</div>
         <footer>{actions}</footer>
       </div>
-    ) : null,
+    ),
 }));
 
 import HealthRequestActionModal from "./HealthRequestActionModal";
@@ -87,6 +88,46 @@ const renderModal = (
 };
 
 describe("HealthRequestActionModal", () => {
+  it("retains the active Health request data when closing clears the parent selection", async () => {
+    const request = ownedRequest({
+      status: "scheduled",
+      requestType: "disease",
+      farmerId: { _id: "farmer-a", name: "Farmer A" },
+      animalId: { _id: "animal-a", earTag: "HEALTH-A" },
+    });
+    mocks.get.mockResolvedValue({ data: { data: request } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const props = {
+      onClose: vi.fn(),
+      onSuccess: vi.fn(),
+      task: { ...task, raw: request },
+    };
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <HealthRequestActionModal isOpen {...props} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Farmer A")).toBeInTheDocument();
+    expect(screen.getByText(/HEALTH-A/)).toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <HealthRequestActionModal
+          {...props}
+          isOpen={false}
+          task={null}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("Farmer A")).toBeInTheDocument();
+    expect(screen.getByText(/HEALTH-A/)).toBeInTheDocument();
+    expect(screen.queryByText("Not recorded")).toBeNull();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.patch.mockResolvedValue({ data: { data: ownedRequest() } });
@@ -351,6 +392,18 @@ describe("HealthRequestActionModal", () => {
     fireEvent.change(screen.getByLabelText("Treatment"), {
       target: { value: "Supportive treatment" },
     });
+    fireEvent.change(screen.getByLabelText("Medication Given"), {
+      target: { value: "Oxytetracycline" },
+    });
+    fireEvent.change(screen.getByLabelText("Dosage"), {
+      target: { value: "10 mL" },
+    });
+    fireEvent.change(screen.getByLabelText("Withdrawal Period (Days)"), {
+      target: { value: "7" },
+    });
+    fireEvent.change(screen.getByLabelText("Clinical Advice for Farmer"), {
+      target: { value: "Monitor appetite." },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Complete Service" }));
     await waitFor(() =>
       expect(mocks.patch).toHaveBeenCalledWith(
@@ -359,6 +412,10 @@ describe("HealthRequestActionModal", () => {
           status: "resolved",
           diagnosis: "Digestive infection",
           treatment: "Supportive treatment",
+          medicineGiven: "Oxytetracycline",
+          dosage: "10 mL",
+          withdrawalPeriodDays: 7,
+          advice: "Monitor appetite.",
           taskId,
         },
       ),
@@ -485,6 +542,126 @@ describe("HealthRequestActionModal", () => {
     // Clinical/stale copy should NOT be shown
     expect(screen.queryByText("Disease / Infection")).not.toBeInTheDocument();
     expect(screen.queryByText("Abnormal Behavior")).not.toBeInTheDocument();
+  });
+
+  it("does not expose an Internal Note field in Farm Visit clinical recording", async () => {
+    const inProgress = ownedRequest({ status: "in-progress" });
+    renderModal(inProgress, {
+      ...task,
+      status: "in-progress",
+      raw: inProgress,
+    });
+
+    await screen.findByLabelText("Diagnosis");
+    expect(screen.queryByLabelText("Clinical Internal Note")).toBeNull();
+  });
+
+  it("presents an upcoming farm visit as scheduled work with rescheduling but no start action", async () => {
+    const scheduled = ownedRequest({
+      status: "scheduled",
+      requestType: "disease",
+      handlingMethod: "farm_visit",
+      scheduledDate: "2099-12-01T04:00:00.000Z",
+      visitPeriod: "afternoon",
+      requestDetails: {
+        version: 1,
+        assistanceRequested: "health_concern",
+        observedSigns: ["diarrhea"],
+        farmerDescription: "Loose stool since yesterday.",
+      },
+      animalId: {
+        _id: "animal-1",
+        earTag: "03MC",
+        species: "Cattle",
+        breed: "Braford",
+      },
+    });
+    renderModal(scheduled, {
+      ...task,
+      status: "scheduled",
+      allowedAction: "VIEW_DETAILS",
+      workTiming: "upcoming",
+      raw: scheduled,
+    });
+
+    expect(
+      await screen.findByRole("dialog", { name: "Scheduled Health Visit" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Scheduled visit details")).toBeInTheDocument();
+    expect(await screen.findByText("Diarrhea")).toBeInTheDocument();
+    expect(screen.queryByText("Recorded workflow summary")).toBeNull();
+    expect(screen.queryByText(/^disease$/i)).toBeNull();
+    expect(screen.getAllByText("Sick or Injured Animal").length).toBeGreaterThan(0);
+    expect(screen.getByText("December 1, 2099 · Afternoon")).toBeInTheDocument();
+    expect(screen.getAllByText("Farm Visit")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Reschedule Visit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record Health Assistance" })).toBeNull();
+  });
+
+  it("reschedules upcoming work through the canonical scheduled status endpoint", async () => {
+    const scheduled = ownedRequest({
+      status: "scheduled",
+      handlingMethod: "farm_visit",
+      scheduledDate: "2099-12-01T04:00:00.000Z",
+      visitPeriod: "afternoon",
+    });
+    renderModal(scheduled, {
+      ...task,
+      status: "scheduled",
+      allowedAction: "VIEW_DETAILS",
+      workTiming: "upcoming",
+      raw: scheduled,
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Reschedule Visit" }),
+    );
+    fireEvent.change(screen.getByLabelText("Visit date"), {
+      target: { value: "2099-12-02" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Morning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save New Visit" }));
+
+    await waitFor(() =>
+      expect(mocks.patch).toHaveBeenCalledWith(
+        `/health-request/${requestId}/status`,
+        {
+          status: "scheduled",
+          scheduledDate: "2099-12-02",
+          visitPeriod: "morning",
+        },
+      ),
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it("allows completing treatment without medication or dosage", async () => {
+    const inProgress = ownedRequest({ status: "in-progress" });
+    renderModal(inProgress, {
+      ...task,
+      status: "in-progress",
+      raw: inProgress,
+    });
+
+    fireEvent.change(await screen.findByLabelText("Diagnosis"), {
+      target: { value: "Minor wound" },
+    });
+    fireEvent.change(screen.getByLabelText("Treatment"), {
+      target: { value: "Wound cleaning" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Complete Service" }));
+
+    await waitFor(() =>
+      expect(mocks.patch).toHaveBeenCalledWith(
+        `/health-request/${requestId}/status`,
+        {
+          status: "resolved",
+          diagnosis: "Minor wound",
+          treatment: "Wound cleaning",
+          taskId,
+        },
+      ),
+    );
   });
 
   it("renders canonical Medicine or Dewormer with subtype when present", async () => {

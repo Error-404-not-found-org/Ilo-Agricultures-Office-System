@@ -368,6 +368,7 @@ test("Official records: request-linked Health outcome stays one MedicalRecord wi
       medicineName: "Oxytetracycline",
       dosage: "10 mL",
     },
+    note: "Internal differential diagnosis.",
   };
 
   Insemination.find = () => queryResult([]);
@@ -409,6 +410,11 @@ test("Official records: request-linked Health outcome stays one MedicalRecord wi
     assert.equal(
       recorder.body.data[0].source.details.medicineName,
       "Oxytetracycline",
+    );
+    assert.equal(recorder.body.data[0].source.note, undefined);
+    assert.doesNotMatch(
+      JSON.stringify(recorder.body.data[0]),
+      /Internal differential diagnosis/,
     );
 
     const healthRequestPopulate = populateCalls.find(
@@ -909,6 +915,7 @@ test("Official record detail: linked MedicalRecord exposes the Health report act
         symptoms: "Low appetite",
         urgency: "medium",
         farmerNotes: "Started yesterday",
+        advice: "Monitor appetite and provide clean water.",
         photos: [
           "https://example.test/health-1.jpg",
           "https://example.test/shared.jpg",
@@ -920,8 +927,10 @@ test("Official record detail: linked MedicalRecord exposes the Health report act
       details: {
         diagnosis: "Bacterial infection",
         treatment: "Antibiotic",
+        advice: "Monitor appetite and provide clean water.",
         withdrawalPeriodDays: 7,
       },
+      note: "Internal differential diagnosis.",
       imageUrl: "https://example.test/medical.jpg",
       createdAt: new Date("2026-08-08T04:30:00.000Z"),
     });
@@ -944,6 +953,15 @@ test("Official record detail: linked MedicalRecord exposes the Health report act
     assert.equal(recorder.body.data.type, "health");
     assert.equal(recorder.body.data.details.symptoms, "Low appetite");
     assert.equal(recorder.body.data.details.diagnosis, "Bacterial infection");
+    assert.equal(
+      recorder.body.data.details.advice,
+      "Monitor appetite and provide clean water.",
+    );
+    assert.equal(recorder.body.data.details.technicianNote, undefined);
+    assert.doesNotMatch(
+      JSON.stringify(recorder.body.data),
+      /Internal differential diagnosis/,
+    );
     assert.equal(recorder.body.data.dateLabel, "Health service record date");
     assert.deepEqual(
       recorder.body.data.attachments.map((attachment) => attachment.url),

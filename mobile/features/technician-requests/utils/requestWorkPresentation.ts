@@ -402,7 +402,9 @@ export function normalizeTechnicianWorkItem(
         : workType === "health"
           ? handlingMethod === "farm_visit"
             ? scheduledDate
-              ? "Record Health Assistance"
+              ? item.allowedAction === "VIEW_DETAILS"
+                ? item.actionLabel || "View Scheduled Visit"
+                : "Record Health Assistance"
               : "Set Visit"
             : handlingMethod === "advice"
               ? "Send Advice"

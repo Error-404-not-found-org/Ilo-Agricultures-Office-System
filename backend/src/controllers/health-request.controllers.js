@@ -50,6 +50,7 @@ import {
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
 import { resolveRequestNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
+import { getHealthVisitAvailability } from "../domain/health-visit-availability.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -162,6 +163,13 @@ export const createHealthRequest = async (req, res) => {
       return res.status(400).json({
         code: "TOO_MANY_PHOTOS",
         message: "Maximum of 5 photos allowed.",
+      });
+    }
+
+    if (candidatePhotos.length === 0) {
+      return res.status(400).json({
+        code: "HEALTH_REQUEST_PHOTO_REQUIRED",
+        message: "Please attach at least one photo of the animal.",
       });
     }
 
@@ -528,6 +536,30 @@ export const updateHealthRequestStatus = async (req, res) => {
       });
     }
 
+    if (
+      status === "in-progress" &&
+      existing.status === "scheduled"
+    ) {
+      const availability = getHealthVisitAvailability({
+        scheduledDate: existing.scheduledDate,
+      });
+      if (availability?.workTiming === "upcoming") {
+        const scheduleLabel = new Intl.DateTimeFormat("en-PH", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "Asia/Manila",
+        }).format(existing.scheduledDate);
+        const periodLabel = existing.visitPeriod
+          ? ` · ${existing.visitPeriod === "morning" ? "Morning" : "Afternoon"}`
+          : "";
+        return res.status(409).json({
+          message: `This farm visit is scheduled for ${scheduleLabel}${periodLabel}. Reschedule it to today before starting the service.`,
+          code: "HEALTH_VISIT_NOT_DUE",
+        });
+      }
+    }
+
     assertStatusTransition("health", existing.status, status, { isAdmin: req.user.role === "admin" });
 
     const mayAtomicallyClaimPending =
@@ -601,6 +633,7 @@ export const updateHealthRequestStatus = async (req, res) => {
             dosage: updateFields.dosage || existing.dosage || "",
             diagnosis: updateFields.diagnosis || existing.diagnosis || "No specific diagnosis logged.",
             treatment: updateFields.treatment || existing.treatment || "No treatment logged.",
+            advice: updateFields.advice || existing.advice || undefined,
             withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
             withdrawalEndDate,
           },

@@ -97,21 +97,19 @@ test.afterEach(() => {
   cloudinary.uploader.destroy = originalDestroy;
 });
 
-test("1. Health Request with 0 photos still works", async () => {
-  let createdPayload = null;
+test("1. Farmer Health Request with 0 photos is rejected", async () => {
+  let created = false;
   HealthRequest.create = async (payload) => {
-    createdPayload = payload;
+    created = true;
     return { _id: "health-0", ...payload };
   };
 
   const { req, res } = mockReqRes({ photos: [] });
   await createHealthRequest(req, res);
 
-  assert.equal(res.statusCode, 201);
-  assert.deepEqual(res.body.request.photos, []);
-  assert.equal(res.body.request.imageUrl, "");
-  assert.deepEqual(createdPayload.photos, []);
-  assert.equal(createdPayload.imageUrl, "");
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.code, "HEALTH_REQUEST_PHOTO_REQUIRED");
+  assert.equal(created, false);
 });
 
 test("2. 1 base64 photo uploads to Cloudinary", async () => {

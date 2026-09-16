@@ -448,6 +448,31 @@ test("HEALTH START", async (t) => {
   const techId = new mongoose.Types.ObjectId();
   const techId2 = new mongoose.Types.ObjectId();
 
+  await t.test("future scheduled farm visit is blocked without mutation", async () => {
+    const animalId = new mongoose.Types.ObjectId();
+    await Animal.create({ _id: animalId, farmerId, animalId: "HL-FUTURE", species: "Carabao", breed: "Native" });
+    const futureVisit = await HealthRequest.create({
+      farmerId,
+      animalId,
+      symptoms: "s",
+      status: "scheduled",
+      handledBy: techId,
+      scheduledDate: new Date("2099-12-01T04:00:00.000Z"),
+      visitPeriod: "afternoon",
+      handlingMethod: "farm_visit",
+    });
+    const { req, res } = reqRes({ status: "in-progress" }, "technician", techId);
+    req.params.id = futureVisit._id;
+    await updateHealthRequestStatus(req, res);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, "HEALTH_VISIT_NOT_DUE");
+    assert.match(res.body.message, /Reschedule it to today/i);
+    const unchanged = await HealthRequest.findById(futureVisit._id);
+    assert.equal(unchanged.status, "scheduled");
+    assert.equal(unchanged.serviceStartedAt, undefined);
+  });
+
   await t.test("unscheduled blocked", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-ST1", species: "Carabao", breed: "Native" });

@@ -166,6 +166,8 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
       treatment: "Vaccine shot",
       medicineGiven: "Rabies Vac",
       dosage: "2ml",
+      advice: "Monitor appetite and provide clean water.",
+      technicianNote: "Internal follow-up context.",
       withdrawalPeriodDays: 5
     };
 
@@ -181,6 +183,8 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
     assert.strictEqual(rec.details.dosage, "2ml");
     assert.strictEqual(rec.details.diagnosis, "Healthy");
     assert.strictEqual(rec.details.treatment, "Vaccine shot");
+    assert.strictEqual(rec.details.advice, "Monitor appetite and provide clean water.");
+    assert.strictEqual(rec.note, "Internal follow-up context.");
     assert.strictEqual(rec.details.withdrawalPeriodDays, 5);
     assert.ok(rec.details.withdrawalEndDate);
 

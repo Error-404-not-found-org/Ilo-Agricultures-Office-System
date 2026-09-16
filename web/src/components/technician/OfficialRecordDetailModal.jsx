@@ -348,7 +348,9 @@ const RecordDetails = ({
                 </Value>
                 <Value label="Diagnosis">{valueOrRecorded(details.diagnosis)}</Value>
                 <Value label="Medication">{valueOrRecorded(details.medicine)}</Value>
-                <Value label="Dosage">{valueOrRecorded(details.dosage)}</Value>
+                {details.medicine && details.medicine !== "None" ? (
+                  <Value label="Dosage">{valueOrRecorded(details.dosage)}</Value>
+                ) : null}
               </>
             )}
             {details.followUpDate && (
@@ -430,7 +432,7 @@ const RecordDetails = ({
                 </p>
               </div>
             )}
-            {!isRequestBacked && details.advice && (
+            {!isRequestBacked && record.type !== "health" && details.advice && (
               <div>
                 <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
                   Advice

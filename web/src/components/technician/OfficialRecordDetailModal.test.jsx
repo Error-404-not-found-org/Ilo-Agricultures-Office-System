@@ -113,6 +113,27 @@ describe("OfficialRecordDetailModal attachments", () => {
     expect(screen.queryByText("Attachments")).toBeNull();
   });
 
+  it("shows Farmer advice and omits dosage when no medication was administered", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord(),
+        details: {
+          ...healthRecord().details,
+          medicine: "None",
+          dosage: "",
+          advice: "Monitor appetite and provide clean water.",
+        },
+      },
+    });
+
+    expect(
+      await screen.findByText("Monitor appetite and provide clean water."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Medication")).toBeInTheDocument();
+    expect(screen.getByText("None")).toBeInTheDocument();
+    expect(screen.queryByText("Dosage")).toBeNull();
+  });
+
   it("omits the section for an AI record without evidence", async () => {
     renderDetail({
       record: {

@@ -241,6 +241,29 @@ test("State 5: Claimed Health with farm_visit handling method and scheduled date
   assert.equal(item.actionLabel, "Record Health Assistance");
 });
 
+test("future scheduled Health visit preserves backend read-only action", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "health-visit-future",
+    workflowId: "health-visit-future",
+    workflowType: "HEALTH",
+    serviceType: "health",
+    status: "scheduled",
+    handlingMethod: "farm_visit",
+    scheduledDate: "2099-12-01T04:00:00.000Z",
+    schedule: {
+      date: "2099-12-01T04:00:00.000Z",
+      visitPeriod: "afternoon",
+    },
+    allowedAction: "VIEW_DETAILS",
+    actionLabel: "View Scheduled Visit",
+    workTiming: "upcoming",
+    assignedTechnicianId: "tech-1",
+  } as any);
+
+  assert.equal(item.actionLabel, "View Scheduled Visit");
+  assert.equal(item.allowedAction, "VIEW_DETAILS");
+});
+
 test("AI claimed without schedule remains Needs scheduling with Set Visit", () => {
   const item = normalizeTechnicianWorkItem({
     id: "ai-claimed-unscheduled",

@@ -156,7 +156,7 @@ const animalSummary = (recordAnimal, fallbackAnimal) => {
   };
 };
 
-const officialRecordDetail = ({ recordKind, record, animal }) => {
+const officialRecordDetail = ({ recordKind, record, animal, viewerRole }) => {
   const sourceId = idOf(record);
   const subject = animalSummary(record.animalId, animal);
   const resolvedFarmer =
@@ -534,7 +534,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
     description:
       record.details?.diagnosis ||
       record.details?.treatment ||
-      record.note ||
+      (viewerRole === "farmer" ? null : record.note) ||
       "Health record completed",
     date: record.date || record.createdAt,
     dateLabel: "Health service record date",
@@ -564,8 +564,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       advice:
         linkedRequest?.advice ||
         linkedRequest?.resolutionNotes ||
-        record.details?.advice ||
-        record.note,
+        record.details?.advice,
       followUpDate: record.followUpDate || linkedRequest?.followUpDate,
       withdrawalPeriodDays: record.details?.withdrawalPeriodDays,
       withdrawalEndDate: record.details?.withdrawalEndDate,
@@ -573,7 +572,7 @@ const officialRecordDetail = ({ recordKind, record, animal }) => {
       performedByName: record.performedByName,
       lateEntryReason: record.lateEntryReason,
       technician: technician?.name || "",
-      technicianNote: record.note,
+      technicianNote: viewerRole === "farmer" ? undefined : record.note,
     },
     actions: {
       reportPreviewAvailable: record.type !== "General Note",
@@ -680,7 +679,12 @@ export const getOfficialRecordDetail = async (req, res) => {
         : record;
     return sendDetail(
       res,
-      officialRecordDetail({ recordKind, record: presentedRecord, animal }),
+      officialRecordDetail({
+        recordKind,
+        record: presentedRecord,
+        animal,
+        viewerRole: req.user.role,
+      }),
     );
   } catch (error) {
     return res.status(error.status || 500).json({
@@ -989,6 +993,10 @@ export const getOfficialRecords = async (req, res) => {
       })),
       ...medicalRecords.map((item) => {
         const isGeneralNote = item.type === "General Note";
+        const farmerSafeSource =
+          req.user.role === "farmer"
+            ? { ...item, note: undefined, technicianNote: undefined }
+            : item;
         return {
           id: item._id,
           recordKind: "medical_record",
@@ -999,13 +1007,13 @@ export const getOfficialRecords = async (req, res) => {
           summary:
             item.details?.diagnosis ||
             item.details?.treatment ||
-            item.note ||
+            (req.user.role === "farmer" ? null : item.note) ||
             (isGeneralNote ? "General animal note" : "Health record completed"),
           status: "completed",
           farmerId: item.farmerId,
           animalId: item.animalId,
           technicianId: item.technicianId,
-          source: item,
+          source: farmerSafeSource,
         };
       }),
       ...cancelledInseminations.map((item) => ({
@@ -1304,10 +1312,16 @@ export const getAnimalRecords = async (req, res) => {
       })),
       ...medicalRecords.map((item) => ({
         ...item,
+        ...(req.user.role === "farmer"
+          ? { note: undefined, technicianNote: undefined }
+          : {}),
         recordKind: "medical_record",
         recordDate: item.date || item.createdAt,
         title: item.type || "Medical Record",
-        summary: item.details?.diagnosis || item.note || "Medical record",
+        summary:
+          item.details?.diagnosis ||
+          (req.user.role === "farmer" ? null : item.note) ||
+          "Medical record",
       })),
     ];
 

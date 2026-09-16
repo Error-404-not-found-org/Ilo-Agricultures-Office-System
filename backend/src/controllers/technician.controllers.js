@@ -58,6 +58,7 @@ import {
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { AI_STATUS, normalizeAIStatus } from "../domain/status-vocabulary.js";
+import { getHealthVisitAvailability } from "../domain/health-visit-availability.js";
 import {
   assertTechnicianEligibleForNewRequest,
   buildNewRequestDispatchFilter,
@@ -5562,6 +5563,7 @@ export const getWorkQueue = async (req, res) => {
       let allowedAction = null;
       let actionLabel = null;
       let stateIssue = null;
+      let workTiming = null;
       if (
         ["pending", "triaged", "assigned", "approved"].includes(healthStatus)
       ) {
@@ -5573,8 +5575,12 @@ export const getWorkQueue = async (req, res) => {
           Boolean(scheduleDate) &&
           ["morning", "afternoon"].includes(String(req.visitPeriod || ""));
         if (hasCanonicalFarmVisit) {
-          allowedAction = "START_SERVICE";
-          actionLabel = "Start Visit";
+          const availability = getHealthVisitAvailability({
+            scheduledDate: scheduleDate,
+          });
+          allowedAction = availability?.allowedAction || "VIEW_DETAILS";
+          actionLabel = availability?.actionLabel || "Review Request";
+          workTiming = availability?.workTiming || null;
         } else {
           allowedAction = "VIEW_DETAILS";
           actionLabel = "Review Request";
@@ -5603,6 +5609,7 @@ export const getWorkQueue = async (req, res) => {
         medicalRecordId,
         allowedAction,
         actionLabel,
+        workTiming,
         stateIssue,
         title: req.requestType || "Health Assistance",
         summary: req.handlingMethod
