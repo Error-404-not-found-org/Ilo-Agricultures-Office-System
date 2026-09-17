@@ -30,6 +30,7 @@ import { excludeRequestsWithOfficialMedicalRecords } from "../utils/health-recor
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
 import { isAnimalHealthWorkVisibleToViewer } from "../domain/animal-work-visibility.js";
 import { buildFarmerAIRequest } from "../domain/ai-request-presentation.js";
+import { normalizeHealthRecordNote } from "../domain/health-record-note.js";
 
 const getAccessibleAnimal = async (id, user) => {
   const animal = await Animal.findOne({ _id: id, deletedAt: null });
@@ -506,6 +507,7 @@ const officialRecordDetail = ({ recordKind, record, animal, viewerRole }) => {
       : null;
   const isDirectHealthService = !linkedRequest;
   const technician = record.technicianId || null;
+  const genuineTechnicianNote = normalizeHealthRecordNote(record.note);
   const attachments = uniqueRecordAttachments([
     ...(linkedRequest?.photos || []).map((url, index) => ({
       url,
@@ -534,7 +536,7 @@ const officialRecordDetail = ({ recordKind, record, animal, viewerRole }) => {
     description:
       record.details?.diagnosis ||
       record.details?.treatment ||
-      (viewerRole === "farmer" ? null : record.note) ||
+      (viewerRole === "farmer" ? null : genuineTechnicianNote) ||
       "Health record completed",
     date: record.date || record.createdAt,
     dateLabel: "Health service record date",
@@ -561,10 +563,7 @@ const officialRecordDetail = ({ recordKind, record, animal, viewerRole }) => {
       treatment: record.details?.treatment,
       medicine: record.details?.medicineName,
       dosage: record.details?.dosage,
-      advice:
-        linkedRequest?.advice ||
-        linkedRequest?.resolutionNotes ||
-        record.details?.advice,
+      advice: linkedRequest?.advice || record.details?.advice,
       followUpDate: record.followUpDate || linkedRequest?.followUpDate,
       withdrawalPeriodDays: record.details?.withdrawalPeriodDays,
       withdrawalEndDate: record.details?.withdrawalEndDate,
@@ -572,7 +571,8 @@ const officialRecordDetail = ({ recordKind, record, animal, viewerRole }) => {
       performedByName: record.performedByName,
       lateEntryReason: record.lateEntryReason,
       technician: technician?.name || "",
-      technicianNote: viewerRole === "farmer" ? undefined : record.note,
+      technicianNote:
+        viewerRole === "farmer" ? undefined : genuineTechnicianNote,
     },
     actions: {
       reportPreviewAvailable: record.type !== "General Note",
@@ -993,10 +993,13 @@ export const getOfficialRecords = async (req, res) => {
       })),
       ...medicalRecords.map((item) => {
         const isGeneralNote = item.type === "General Note";
+        const visibleNote = isGeneralNote
+          ? item.note
+          : normalizeHealthRecordNote(item.note);
         const farmerSafeSource =
           req.user.role === "farmer"
             ? { ...item, note: undefined, technicianNote: undefined }
-            : item;
+            : { ...item, note: visibleNote };
         return {
           id: item._id,
           recordKind: "medical_record",
@@ -1007,7 +1010,7 @@ export const getOfficialRecords = async (req, res) => {
           summary:
             item.details?.diagnosis ||
             item.details?.treatment ||
-            (req.user.role === "farmer" ? null : item.note) ||
+            (req.user.role === "farmer" ? null : visibleNote) ||
             (isGeneralNote ? "General animal note" : "Health record completed"),
           status: "completed",
           farmerId: item.farmerId,
@@ -1310,19 +1313,25 @@ export const getAnimalRecords = async (req, res) => {
         title: "Calving / Offspring",
         summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
       })),
-      ...medicalRecords.map((item) => ({
-        ...item,
-        ...(req.user.role === "farmer"
-          ? { note: undefined, technicianNote: undefined }
-          : {}),
-        recordKind: "medical_record",
-        recordDate: item.date || item.createdAt,
-        title: item.type || "Medical Record",
-        summary:
-          item.details?.diagnosis ||
-          (req.user.role === "farmer" ? null : item.note) ||
-          "Medical record",
-      })),
+      ...medicalRecords.map((item) => {
+        const isGeneralNote = item.type === "General Note";
+        const visibleNote = isGeneralNote
+          ? item.note
+          : normalizeHealthRecordNote(item.note);
+        return {
+          ...item,
+          ...(req.user.role === "farmer"
+            ? { note: undefined, technicianNote: undefined }
+            : { note: visibleNote }),
+          recordKind: "medical_record",
+          recordDate: item.date || item.createdAt,
+          title: item.type || "Medical Record",
+          summary:
+            item.details?.diagnosis ||
+            (req.user.role === "farmer" ? null : visibleNote) ||
+            "Medical record",
+        };
+      }),
     ];
 
     const filtered = records

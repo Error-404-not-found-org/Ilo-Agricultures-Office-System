@@ -74,9 +74,7 @@ export const mapHealthMedicalRecordDetails = (
     treatment: getRecordText(details.treatment || source?.treatment),
     medicine: getRecordText(details.medicineName || source?.medicineGiven),
     dosage: getRecordText(details.dosage || source?.dosage),
-    advice: getRecordText(
-      linkedRequest.advice || linkedRequest.resolutionNotes || source?.note,
-    ),
+    advice: getRecordText(linkedRequest.advice || details.advice),
     followUpDate: formatOfficialRecordDate(
       source?.followUpDate ||
         linkedRequest.followUpDate ||

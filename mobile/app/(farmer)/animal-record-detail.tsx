@@ -164,9 +164,7 @@ export default function AnimalRecordDetailScreen() {
             treatment: record.treatment,
             advice:
               record.advice ||
-              record.comment ||
-              record.note ||
-              record.technicianNote ||
+              record.details?.advice ||
               "",
             serviceDate: record.recordDate || record.date
               ? new Date(record.recordDate || record.date).toLocaleDateString()

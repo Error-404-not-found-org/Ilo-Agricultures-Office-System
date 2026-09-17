@@ -86,9 +86,17 @@ const observedSignLabel = new Map(
   HEALTH_OBSERVED_SIGN_OPTIONS.map((option) => [option.value, option.label]),
 );
 
-const assistanceLabel = new Map(
-  HEALTH_REQUEST_CATEGORIES.map((option) => [option.value, option.label]),
-);
+export const formatHealthAssistanceLabel = (value: unknown) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  const category = HEALTH_REQUEST_CATEGORIES.find(
+    (option) =>
+      option.value === normalized || option.legacyRequestType === normalized,
+  );
+  return category?.label || "Health assistance";
+};
 
 export const getLegacyRequestType = (category: FarmerHealthAssistance) =>
   HEALTH_REQUEST_CATEGORIES.find((item) => item.value === category)
@@ -191,9 +199,7 @@ export const getStructuredHealthRequestPresentation = (request: {
     : [];
 
   return {
-    assistanceLabel:
-      assistanceLabel.get(details.assistanceRequested) ||
-      "Health assistance",
+    assistanceLabel: formatHealthAssistanceLabel(details.assistanceRequested),
     observedSigns,
     farmerDescription:
       typeof details.farmerDescription === "string"

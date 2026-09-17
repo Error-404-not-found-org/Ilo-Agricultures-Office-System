@@ -113,6 +113,74 @@ describe("OfficialRecordDetailModal attachments", () => {
     expect(screen.queryByText("Attachments")).toBeNull();
   });
 
+  it("hides the exact legacy synthetic Health note", async () => {
+    renderDetail({
+      record: {
+        ...directHealthRecord(),
+        details: {
+          ...directHealthRecord().details,
+          technicianNote: "Resolved through health request queue.",
+        },
+      },
+    });
+
+    await screen.findByText("Bacterial infection");
+    expect(screen.queryByText("Notes & Observations")).toBeNull();
+    expect(screen.queryByText("Resolved through health request queue.")).toBeNull();
+  });
+
+  it("continues to show a genuine Technician Health note", async () => {
+    renderDetail({
+      record: {
+        ...directHealthRecord(),
+        details: {
+          ...directHealthRecord().details,
+          technicianNote: "Animal remained weak after treatment.",
+        },
+      },
+    });
+
+    expect(
+      await screen.findByText("Animal remained weak after treatment."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Notes & Observations")).toBeInTheDocument();
+  });
+
+  it("separates Farmer request details from Technician Health service details", async () => {
+    renderDetail({
+      record: {
+        ...healthRecord(),
+        details: {
+          ...healthRecord().details,
+          requestDetails: {
+            version: 1,
+            assistanceRequested: "health_concern",
+            observedSigns: ["diarrhea"],
+            farmerDescription: "Loose stool since yesterday.",
+          },
+          symptoms:
+            "Assistance requested:\nSick or Injured Animal\n\nObserved signs:\n• Diarrhea",
+          medicine: "None",
+          dosage: "",
+          advice: "Keep clean water available.",
+        },
+      },
+    });
+
+    expect(await screen.findByText("Request details")).toBeInTheDocument();
+    expect(screen.getByText("Assistance requested")).toBeInTheDocument();
+    expect(screen.getByText("Sick or Injured Animal")).toBeInTheDocument();
+    expect(screen.getAllByText("Diarrhea")).toHaveLength(1);
+    expect(screen.getByText("Loose stool since yesterday.")).toBeInTheDocument();
+    expect(screen.queryByText("Disease")).toBeNull();
+    expect(screen.getByText("Diagnosis")).toBeInTheDocument();
+    expect(screen.getByText("Treatment or service")).toBeInTheDocument();
+    expect(screen.getByText("Medication")).toBeInTheDocument();
+    expect(screen.queryByText("Dosage")).toBeNull();
+    expect(screen.getByText("Advice for Farmer")).toBeInTheDocument();
+    expect(screen.queryByText("Notes & Observations")).toBeNull();
+  });
+
   it("shows Farmer advice and omits dosage when no medication was administered", async () => {
     renderDetail({
       record: {

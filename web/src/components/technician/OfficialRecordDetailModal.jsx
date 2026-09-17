@@ -7,13 +7,13 @@ import {
   Eye,
   FileImage,
   HeartPulse,
-  PawPrint,
   Phone,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Modal from "../ui/Modal";
 import ImagePreviewModal from "../ui/ImagePreviewModal";
 import { formatFarmerLocation } from "../dialogs/PregnancyLossReviewModal";
+import { formatHealthRequestType } from "../../utils/requestWorkPresentation";
 import {
   downloadRecordAttachment,
   normalizeRecordAttachments,
@@ -34,6 +34,16 @@ const valueOrRecorded = (value) =>
   value === null || value === undefined || value === ""
     ? "Not recorded"
     : String(value);
+
+const LEGACY_SYNTHETIC_HEALTH_NOTE =
+  "Resolved through health request queue.";
+
+const getVisibleTechnicianNote = (record) => {
+  const note = record?.details?.technicianNote;
+  return record?.type === "health" && note === LEGACY_SYNTHETIC_HEALTH_NOTE
+    ? undefined
+    : note;
+};
 
 const humanize = (value) =>
   valueOrRecorded(value)
@@ -158,6 +168,7 @@ const RecordDetails = ({
   downloadError,
 }) => {
   const details = record.details || {};
+  const technicianNote = getVisibleTechnicianNote(record);
   const animal = record.animalId || {};
   const farmer = record.farmerId || record.farmer || {};
   const farmerPhone =
@@ -169,6 +180,27 @@ const RecordDetails = ({
     record.sourceKind,
   );
   const isHealthRequest = record.sourceKind === "health_request";
+  const isHealthRecord = record.type === "health";
+  const isHealthMedicalRecord = isHealthRecord && !isHealthRequest;
+  const structuredHealthRequest =
+    isHealthMedicalRecord &&
+    !details.isDirectHealthService &&
+    details.requestDetails
+      ? details.requestDetails
+      : null;
+  const healthAssistanceLabel = formatHealthRequestType(
+    structuredHealthRequest?.assistanceRequested || details.requestType,
+  );
+  const healthObservedSigns = Array.isArray(
+    structuredHealthRequest?.observedSigns,
+  )
+    ? structuredHealthRequest.observedSigns
+    : [];
+  const showNotesAndObservations = Boolean(
+    (!isRequestBacked && technicianNote) ||
+      (!isRequestBacked && !isHealthRecord && details.advice) ||
+      (!isHealthRecord && details.farmerNotes),
+  );
 
   return (
     <div className="space-y-5 py-1">
@@ -246,6 +278,24 @@ const RecordDetails = ({
         </div>
       </div>
 
+      {isHealthMedicalRecord && !details.isDirectHealthService && (
+        <DetailSection title="Request details">
+          <Value label="Assistance requested">{healthAssistanceLabel}</Value>
+          {healthObservedSigns.length > 0 ? (
+            <Value label="Observed signs">
+              {healthObservedSigns.map((sign) => humanize(sign)).join(", ")}
+            </Value>
+          ) : details.symptoms ? (
+            <Value label="Observed signs">{details.symptoms}</Value>
+          ) : null}
+          {structuredHealthRequest?.farmerDescription ? (
+            <Value label="Farmer description">
+              {structuredHealthRequest.farmerDescription}
+            </Value>
+          ) : null}
+        </DetailSection>
+      )}
+
       <DetailSection
         title={isRequestBacked ? "Request details" : "Official service details"}
       >
@@ -286,27 +336,11 @@ const RecordDetails = ({
         )}
         {record.type === "health" && (
           <>
-            <Value
-              label={
-                details.isDirectHealthService ? "Service type" : "Request type"
-              }
-            >
-              {humanize(details.serviceType || details.requestType)}
-            </Value>
-            {Array.isArray(details.requestDetails?.observedSigns) &&
-              details.requestDetails.observedSigns.length > 0 && (
-                <Value label="Observed signs">
-                  {details.requestDetails.observedSigns
-                    .map((sign) => humanize(sign))
-                    .join(", ")}
-                </Value>
-              )}
-            {details.requestDetails?.farmerDescription && (
-              <Value label="Farmer description">
-                {details.requestDetails.farmerDescription}
+            {details.isDirectHealthService ? (
+              <Value label="Service type">
+                {humanize(details.serviceType || details.requestType)}
               </Value>
-            )}
-            {details.advice && <Value label="Advice">{details.advice}</Value>}
+            ) : null}
             {details.pickupItem && (
               <Value label="Item available for pickup">{details.pickupItem}</Value>
             )}
@@ -352,6 +386,9 @@ const RecordDetails = ({
                   <Value label="Dosage">{valueOrRecorded(details.dosage)}</Value>
                 ) : null}
               </>
+            )}
+            {details.advice && (
+              <Value label="Advice for Farmer">{details.advice}</Value>
             )}
             {details.followUpDate && (
               <Value label="Follow-up date">{formatDate(details.followUpDate)}</Value>
@@ -415,20 +452,19 @@ const RecordDetails = ({
           </DetailSection>
         )}
 
-      {((!isRequestBacked && (details.technicianNote || details.advice)) ||
-        details.farmerNotes) && (
+      {showNotesAndObservations && (
         <section className="border border-base-300 rounded-2xl p-4 space-y-3 bg-base-200/50">
           <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
             Notes & Observations
           </h4>
           <div className="space-y-2.5">
-            {!isRequestBacked && details.technicianNote && (
+            {!isRequestBacked && technicianNote && (
               <div>
                 <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
                   Technician notes
                 </span>
                 <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium">
-                  {details.technicianNote}
+                  {technicianNote}
                 </p>
               </div>
             )}

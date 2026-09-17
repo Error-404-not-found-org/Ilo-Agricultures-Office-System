@@ -653,11 +653,12 @@ test("H4 Farmer official Health record presentation", async (t) => {
     const details = mapHealthMedicalRecordDetails(
       {
         type: "Check-up",
+        note: "Private technician observation",
         details: {
           diagnosis: "Mild dehydration",
           treatment: "Oral fluids",
+          advice: "Keep water available",
         },
-        note: "Keep water available",
       },
       { technicianId: { name: "Tech Ana" } },
     );
@@ -670,6 +671,23 @@ test("H4 Farmer official Health record presentation", async (t) => {
     assert.equal(details.symptoms, undefined);
     assert.equal(details.urgency, undefined);
     assert.equal(details.farmerNotes, undefined);
+  });
+
+  await t.test("Farmer Health advice never falls back to private or synthetic notes", () => {
+    const privateNote = mapHealthMedicalRecordDetails({
+      type: "Treatment",
+      note: "Private technician observation",
+      healthRequestId: { resolutionNotes: "Internal resolution context" },
+      details: { diagnosis: "Mild dehydration" },
+    });
+    const syntheticNote = mapHealthMedicalRecordDetails({
+      type: "Treatment",
+      note: "Resolved through health request queue.",
+      details: { diagnosis: "Mild dehydration" },
+    });
+
+    assert.equal(privateNote.advice, undefined);
+    assert.equal(syntheticNote.advice, undefined);
   });
 
   await t.test("official Health records are enriched without relabeling General Notes", async () => {

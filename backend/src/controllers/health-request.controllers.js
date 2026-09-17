@@ -51,6 +51,7 @@ import {
 } from "../services/farmer-profile-resolution.service.js";
 import { resolveRequestNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
 import { getHealthVisitAvailability } from "../domain/health-visit-availability.js";
+import { firstGenuineHealthRecordNote } from "../domain/health-record-note.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -637,7 +638,14 @@ export const updateHealthRequestStatus = async (req, res) => {
             withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
             withdrawalEndDate,
           },
-          note: updateFields.resolutionNotes || updateFields.technicianNote || updateFields.findings || existing.resolutionNotes || existing.technicianNote || existing.findings || "Resolved through health request queue.",
+          note: firstGenuineHealthRecordNote(
+            updateFields.resolutionNotes,
+            updateFields.technicianNote,
+            updateFields.findings,
+            existing.resolutionNotes,
+            existing.technicianNote,
+            existing.findings,
+          ),
           followUpDate: updateFields.followUpDate,
         },
       });
