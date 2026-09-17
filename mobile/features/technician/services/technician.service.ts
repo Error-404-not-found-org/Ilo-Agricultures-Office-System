@@ -15,6 +15,7 @@ export interface UpdateStatusPayload {
   visitPeriod?: string;
   samePeriodConfirmed?: boolean;
   earlyStartConfirmed?: boolean;
+  farmerPreparationNote?: string;
 }
 
 export const getTechnicianDashboardData = async (

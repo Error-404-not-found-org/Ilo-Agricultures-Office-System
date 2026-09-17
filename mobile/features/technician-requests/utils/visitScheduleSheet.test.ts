@@ -102,6 +102,23 @@ test("shared scheduling sheet keeps confirmation and errors local", async (t) =>
     assert.match(aiCode, /onErrorClear=\{\(\) => setScheduleError\(null\)\}/);
   });
 
+  await t.test("AI schedule and reschedule use the canonical Farmer Preparation Note", () => {
+    assert.match(sheetCode, /Farmer Preparation Note/);
+    assert.match(sheetCode, /maxLength=\{500\}/);
+    assert.match(
+      sheetCode,
+      /farmerPreparationNote: farmerPreparationNote\.trim\(\)/,
+    );
+    assert.match(
+      aiCode,
+      /initialFarmerPreparationNote=\{request\?\.farmerPreparationNote \|\| ""\}/,
+    );
+    assert.match(
+      aiCode,
+      /farmerPreparationNote: payload\.farmerPreparationNote/,
+    );
+  });
+
   await t.test("Health claim and schedule conflicts remain recoverable", () => {
     const claimConflictStart = healthCode.indexOf("const handleClaimConflict");
     const claimConflictEnd = healthCode.indexOf(

@@ -26,6 +26,7 @@ export interface ClaimAndSchedulePayload {
   scheduledDate: string;
   visitPeriod: VisitPeriod;
   samePeriodConfirmed?: boolean;
+  farmerPreparationNote?: string;
 }
 
 export const claimAndScheduleAIRequest = async (

@@ -358,6 +358,9 @@ export default function AiRequestDetailScreen() {
     (date) => format(date, "MMM d, yyyy 'at' h:mm a"),
   );
   const technicianNote = getRequestText(request.technicianNote);
+  const farmerPreparationNote = getRequestText(
+    request.farmerPreparationNote,
+  );
   const hasRecordedObservation = Boolean(request.farmerOutcomeReport);
   const observationReadiness = getFarmerBreedingObservationReadiness(request);
   const observationLabel = getBreedingObservationLabel(
@@ -605,6 +608,14 @@ export default function AiRequestDetailScreen() {
             value={visitSchedule || preferredDate || "Not scheduled yet"}
             isLast={!inseminationDate}
           />
+          {visitSchedule && farmerPreparationNote ? (
+            <View className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+              <RequestDetailField
+                label="Before the Visit"
+                value={farmerPreparationNote}
+              />
+            </View>
+          ) : null}
           {inseminationDate ? (
             <RequestDetailRow
               icon={<CheckCircle2 size={17} color={colors.primary} />}

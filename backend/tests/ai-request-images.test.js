@@ -96,6 +96,16 @@ test("historical imageUrl-only AI records present as one request photo", () => {
   assert.equal(farmerView.imageUrl, "historical-photo");
 });
 
+test("Farmer AI request presentation keeps preparation guidance separate from private technician notes", () => {
+  const farmerView = buildFarmerAIRequest({
+    farmerPreparationNote: "Keep the cow secured.",
+    technicianNote: "Internal service note.",
+  });
+
+  assert.equal(farmerView.farmerPreparationNote, "Keep the cow secured.");
+  assert.equal(Object.hasOwn(farmerView, "technicianNote"), false);
+});
+
 test("AI photo presentation is safe when no image exists", () => {
   assert.deepEqual(getAIRequestPhotos({}), []);
   assert.deepEqual(getAIRequestPhotos({ photos: [], imageUrl: "" }), []);

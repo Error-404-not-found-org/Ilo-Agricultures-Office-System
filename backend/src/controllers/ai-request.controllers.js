@@ -86,6 +86,24 @@ import {
   normalizeSubmittedAIRequestPhotos,
 } from "../domain/ai-request-attachments.js";
 
+const normalizeFarmerPreparationNote = (body) => {
+  if (!Object.hasOwn(body, "farmerPreparationNote")) return undefined;
+  if (typeof body.farmerPreparationNote !== "string") {
+    const error = new Error("Farmer Preparation Note must be text.");
+    error.status = 400;
+    error.code = "INVALID_FARMER_PREPARATION_NOTE";
+    throw error;
+  }
+  const note = body.farmerPreparationNote.trim();
+  if (note.length > 500) {
+    const error = new Error("Farmer Preparation Note cannot exceed 500 characters.");
+    error.status = 400;
+    error.code = "FARMER_PREPARATION_NOTE_TOO_LONG";
+    throw error;
+  }
+  return note;
+};
+
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
 export const createAIRequest = async (req, res) => {
@@ -644,6 +662,7 @@ export const updateRequestStatus = async (req, res) => {
       earlyStartConfirmed,
     } = req.body;
     const normalizedTechnicianNote = normalizeTechnicianNoteInput(req.body);
+    const farmerPreparationNote = normalizeFarmerPreparationNote(req.body);
 
     const VALID_STATUSES = Object.values(AI_STATUS);
     if (!VALID_STATUSES.includes(status)) {
@@ -800,6 +819,9 @@ export const updateRequestStatus = async (req, res) => {
 
     if (status === "scheduled") {
       updateData.scheduledDate = normalizedScheduledDate;
+      if (farmerPreparationNote !== undefined) {
+        updateData.farmerPreparationNote = farmerPreparationNote;
+      }
     }
 
     if (status === "in-progress" && startTiming) {
@@ -988,6 +1010,8 @@ export const claimAndScheduleAIRequest = async (req, res) => {
 
     const scheduledDate = normalizeAIScheduleDate(req.body.scheduledDate);
     const visitPeriod = normalizeVisitPeriod(req.body.visitPeriod);
+    const farmerPreparationNote =
+      normalizeFarmerPreparationNote(req.body) ?? "";
     if (visitPeriod === undefined) {
       return res.status(400).json({
         message: "Choose morning or afternoon before scheduling.",
@@ -1034,6 +1058,7 @@ export const claimAndScheduleAIRequest = async (req, res) => {
           approvedBy: req.user._id,
           scheduledDate,
           visitPeriod,
+          farmerPreparationNote,
           status: AI_STATUS.SCHEDULED,
           claimedAt: changedAt,
           scheduledAt: changedAt,

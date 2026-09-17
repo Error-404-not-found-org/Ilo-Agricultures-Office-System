@@ -673,6 +673,16 @@ test("H4 Farmer official Health record presentation", async (t) => {
     assert.equal(details.farmerNotes, undefined);
   });
 
+  await t.test("scheduled AI details show non-empty preparation guidance only", () => {
+    assert.match(aiDetailCode, /farmerPreparationNote/);
+    assert.match(aiDetailCode, /label="Before the Visit"/);
+    assert.match(
+      aiDetailCode,
+      /visitSchedule && farmerPreparationNote \? \(/,
+    );
+    assert.doesNotMatch(aiDetailCode, /label="Technician Note"[\s\S]*farmerPreparationNote/);
+  });
+
   await t.test("Farmer Health advice never falls back to private or synthetic notes", () => {
     const privateNote = mapHealthMedicalRecordDetails({
       type: "Treatment",

@@ -322,6 +322,22 @@ describe("Unified AI Request modal", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("submits a trimmed optional Farmer Preparation Note", async () => {
+    mocks.patch.mockResolvedValue({ data: { request: { status: "scheduled" } } });
+    renderModal({ initialView: "schedule" });
+    chooseTomorrowAndMorning();
+
+    fireEvent.change(screen.getByLabelText("Farmer Preparation Note"), {
+      target: { value: "  Keep the cow secured.  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce());
+    expect(mocks.patch.mock.calls[0][1]).toMatchObject({
+      farmerPreparationNote: "Keep the cow secured.",
+    });
+  });
+
   it("requires current-period confirmation and sends the canonical acknowledgement", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-08-31T07:00:00.000Z"));

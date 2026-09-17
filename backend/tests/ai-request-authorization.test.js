@@ -182,11 +182,13 @@ test("AI authorization: assigned technician update uses an atomic assignment and
     scheduledDate: null,
   };
   let capturedFilter;
+  let capturedUpdate;
   Insemination.findById = () => populatedQuery(existing);
   Insemination.findOne = async () => null;
   HealthRequest.findOne = async () => null;
   Insemination.findOneAndUpdate = (filter, update) => {
     capturedFilter = filter;
+    capturedUpdate = update;
     return populatedQuery({
       ...existing,
       status: "scheduled",
@@ -219,7 +221,78 @@ test("AI authorization: assigned technician update uses an atomic assignment and
   assert.equal(capturedFilter.status, "approved");
   assert.equal(capturedFilter.approvedBy, "technician-1");
   assert.equal(capturedFilter.deletedAt, null);
+  assert.equal(
+    Object.hasOwn(capturedUpdate.$set, "farmerPreparationNote"),
+    false,
+  );
   assert.equal(recorder.body.request.visitPeriod, "morning");
+});
+
+test("AI reschedule replaces or explicitly clears the Farmer Preparation Note", async (t) => {
+  const originals = {
+    findById: Insemination.findById,
+    findOne: Insemination.findOne,
+    findOneAndUpdate: Insemination.findOneAndUpdate,
+    healthFindOne: HealthRequest.findOne,
+  };
+  t.after(() => {
+    Insemination.findById = originals.findById;
+    Insemination.findOne = originals.findOne;
+    Insemination.findOneAndUpdate = originals.findOneAndUpdate;
+    HealthRequest.findOne = originals.healthFindOne;
+  });
+
+  const existing = {
+    _id: "request-1",
+    status: "scheduled",
+    approvedBy: "technician-1",
+    farmerId: null,
+    animalId: "animal-1",
+    scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    visitPeriod: "morning",
+    farmerPreparationNote: "Old instructions",
+  };
+  const updates = [];
+  Insemination.findById = () => populatedQuery(existing);
+  Insemination.findOne = async () => null;
+  HealthRequest.findOne = async () => null;
+  Insemination.findOneAndUpdate = (_filter, update) => {
+    updates.push(update);
+    return populatedQuery({
+      ...existing,
+      ...update.$set,
+      animalId: { _id: "animal-1", earTag: "AI-1" },
+    });
+  };
+
+  const invoke = async (farmerPreparationNote) => {
+    const recorder = createResponseRecorder();
+    await updateRequestStatus(
+      {
+        params: { id: "request-1" },
+        body: {
+          status: "scheduled",
+          scheduledDate: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+          visitPeriod: "afternoon",
+          farmerPreparationNote,
+        },
+        user: {
+          _id: "technician-1",
+          role: "technician",
+          name: "Technician One",
+        },
+        app: { get: () => ({ emit() {} }) },
+      },
+      recorder.response,
+    );
+    assert.equal(recorder.statusCode, 200);
+  };
+
+  await invoke("  New instructions  ");
+  await invoke("");
+
+  assert.equal(updates[0].$set.farmerPreparationNote, "New instructions");
+  assert.equal(updates[1].$set.farmerPreparationNote, "");
 });
 
 test("AI concurrency: reusable assignment guard permits only self or pending unassigned", () => {

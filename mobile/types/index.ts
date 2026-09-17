@@ -232,6 +232,7 @@ export interface AIRequest extends ServiceRequest {
   heatSigns?: string[];
   imageUrl?: string | null;
   technicianNote?: string | null;
+  farmerPreparationNote?: string | null;
   cancellationStatus?:
     | "requested"
     | "approved"

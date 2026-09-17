@@ -73,6 +73,7 @@ interface AISchedulePayload {
   scheduledDate: string;
   visitPeriod: VisitPeriod;
   samePeriodConfirmed?: boolean;
+  farmerPreparationNote?: string;
 }
 
 const cleanText = (value: unknown) => {
@@ -334,6 +335,7 @@ export function AIRequestDetails({
           scheduledDate: payload.scheduledDate,
           visitPeriod: payload.visitPeriod,
           samePeriodConfirmed: payload.samePeriodConfirmed,
+          farmerPreparationNote: payload.farmerPreparationNote,
           technicianNote:
             scheduleMode === "reschedule"
               ? "AI visit rescheduled."
@@ -1058,6 +1060,7 @@ export function AIRequestDetails({
           scheduleMode === "reschedule" ? request?.scheduledDate : null
         }
         initialVisitPeriod={scheduleMode === "reschedule" ? visitPeriod : null}
+        initialFarmerPreparationNote={request?.farmerPreparationNote || ""}
         onClose={() => {
           if (!updating) {
             setScheduleVisible(false);
@@ -1336,6 +1339,7 @@ function AIScheduleModal({
   errorMessage,
   initialDate,
   initialVisitPeriod,
+  initialFarmerPreparationNote,
   onClose,
   onErrorClear,
   onConfirm,
@@ -1346,6 +1350,7 @@ function AIScheduleModal({
   errorMessage?: string | null;
   initialDate?: string | null;
   initialVisitPeriod?: VisitPeriod | null;
+  initialFarmerPreparationNote?: string | null;
   onClose: () => void;
   onErrorClear?: () => void;
   onConfirm: (payload: AISchedulePayload) => Promise<void>;
@@ -1366,6 +1371,8 @@ function AIScheduleModal({
       errorMessage={errorMessage}
       initialDate={initialDate}
       initialVisitPeriod={initialVisitPeriod}
+      initialFarmerPreparationNote={initialFarmerPreparationNote}
+      showFarmerPreparationNote
       getPeriodAvailability={(date, period, now) =>
         getAISchedulePeriodAvailability(date, period, now)
       }
