@@ -35,6 +35,13 @@ export const getRequestList = (value: unknown): string[] => {
     .filter((item): item is string => item !== null);
 };
 
+export const getFarmerAIVisitGuidance = (
+  request: { farmerPreparationNote?: unknown } | null | undefined,
+): { label: "Before the Visit"; value: string } | null => {
+  const value = getRequestText(request?.farmerPreparationNote);
+  return value ? { label: "Before the Visit", value } : null;
+};
+
 export const formatRequestDateTime = (
   value: unknown,
   formatter: (date: Date) => string,
