@@ -9,6 +9,7 @@ interface EarTagGeneratorProps {
   existingEarTags?: (string | null | undefined)[];
   onGenerate: (tag: string) => void;
   isDark?: boolean;
+  disabled?: boolean;
 }
 
 export default function EarTagGenerator({
@@ -16,10 +17,13 @@ export default function EarTagGenerator({
   existingEarTags = [],
   onGenerate,
   isDark,
+  disabled = false,
 }: EarTagGeneratorProps) {
   const lastClickRef = React.useRef<number>(0);
 
   const handleGenerate = () => {
+    if (disabled) return;
+
     const now = Date.now();
     if (now - lastClickRef.current < 2000) {
       return; // Silently ignore spam clicks to prevent toast pileup
@@ -47,12 +51,14 @@ export default function EarTagGenerator({
   return (
     <TouchableOpacity
       onPress={handleGenerate}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       className={`flex-row items-center justify-center px-2 py-1 rounded-lg border ${
         isDark
           ? "bg-green-950/30 border-green-800/50"
           : "bg-green-50 border-green-200"
       }`}
-      style={{ alignSelf: "flex-start" }}
+      style={{ alignSelf: "flex-start", opacity: disabled ? 0.55 : 1 }}
     >
       <Sparkles
         size={10}
@@ -64,7 +70,7 @@ export default function EarTagGenerator({
           isDark ? "text-green-300" : "text-green-900"
         }`}
       >
-        Generate TAG
+        {disabled ? "Loading tags…" : "Generate TAG"}
       </Text>
     </TouchableOpacity>
   );

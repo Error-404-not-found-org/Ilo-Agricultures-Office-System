@@ -10,8 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Camera, ChevronDown, X } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -34,6 +34,7 @@ import {
 } from "../hooks/useMyAnimals";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
+import { hasAnimalFormErrors } from "../utils/animalFormValidation";
 
 const SPECIES_OPTIONS = CATTLE_SPECIES;
 
@@ -88,12 +89,30 @@ export function AddAnimalScreen() {
   });
 
   const registerMutation = useRegisterAnimalMutation();
-  const { data: animalsData } = useMyAnimalsInfiniteQuery({ limit: 50 });
+  const {
+    data: animalsData,
+    refetch: refetchAnimals,
+    isFetching: animalsRefreshing,
+    hasNextPage: hasNextAnimalsPage,
+    fetchNextPage: fetchNextAnimalsPage,
+  } = useMyAnimalsInfiniteQuery({ limit: 50 });
   const activeEarTags = (animalsData?.animals || []).map(
     (animal: any) => animal.earTag,
   );
   const primaryColor = isDark ? colors.primary : "#00643B";
   const loadingForm = registerMutation.isPending;
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchAnimals();
+    }, [refetchAnimals]),
+  );
+
+  useEffect(() => {
+    if (hasNextAnimalsPage && !animalsRefreshing) {
+      void fetchNextAnimalsPage();
+    }
+  }, [animalsRefreshing, fetchNextAnimalsPage, hasNextAnimalsPage]);
 
   useEffect(() => {
     if (!formData.species) return;
@@ -124,7 +143,7 @@ export function AddAnimalScreen() {
     if (!formData.birthDate) nextErrors.birthDate = "Birth date is required.";
 
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return !hasAnimalFormErrors(nextErrors);
   };
 
   const handleSave = async () => {
@@ -293,6 +312,7 @@ export function AddAnimalScreen() {
                   "Farmer"
                 }
                 existingEarTags={activeEarTags}
+                disabled={animalsRefreshing}
                 onGenerate={(tag) => setField("earTag", tag)}
                 isDark={isDark}
               />
