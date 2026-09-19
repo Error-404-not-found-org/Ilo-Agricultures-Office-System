@@ -88,10 +88,8 @@ export const isHealthFarmVisitEligible = (request = {}) => {
 export const buildHealthAdvicePayload = ({
   adviceForFarmer = "",
   followUpDate = "",
-  internalNote = "",
 } = {}) => {
   const payload = { advice: adviceForFarmer.trim() };
-  if (internalNote.trim()) payload.technicianNote = internalNote.trim();
   if (followUpDate.trim()) payload.followUpDate = followUpDate.trim();
   return payload;
 };
@@ -112,7 +110,6 @@ export const buildHealthOfficePickupPayload = ({
   dosageInstructions = "",
   withdrawalGuidance = "",
   followUpDate = "",
-  internalNote = "",
 } = {}) => {
   const payload = {
     item: item.trim(),
@@ -123,7 +120,6 @@ export const buildHealthOfficePickupPayload = ({
     ["farmerMessage", farmerMessage],
     ["dosageOrUseInstructions", dosageInstructions],
     ["withdrawalGuidance", withdrawalGuidance],
-    ["technicianNote", internalNote],
     ["followUpDate", followUpDate],
   ];
   for (const [field, value] of optionalFields) {
@@ -149,7 +145,6 @@ export const validateHealthOfficePickup = (draft = {}) => {
     ["Message for Farmer", draft.farmerMessage],
     ["Dosage / Use instructions", draft.dosageInstructions],
     ["Withdrawal guidance", draft.withdrawalGuidance],
-    ["Internal Note", draft.internalNote],
   ];
   const tooLong = fields.find(
     ([, value]) => text(value).length > PICKUP_TEXT_MAX_LENGTH,

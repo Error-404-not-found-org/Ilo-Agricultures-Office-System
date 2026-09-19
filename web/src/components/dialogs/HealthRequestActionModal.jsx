@@ -43,7 +43,6 @@ import {
 const EMPTY_ADVICE = {
   adviceForFarmer: "",
   followUpDate: "",
-  internalNote: "",
 };
 
 const EMPTY_PICKUP = {
@@ -54,7 +53,6 @@ const EMPTY_PICKUP = {
   dosageInstructions: "",
   withdrawalGuidance: "",
   followUpDate: "",
-  internalNote: "",
 };
 
 const text = (value) => (typeof value === "string" ? value.trim() : "");
@@ -306,7 +304,6 @@ export default function HealthRequestActionModal({
       await invalidateHealth();
       const refreshed = await detailQuery.refetch();
       if (refreshed.error) throw refreshed.error;
-      toast.success("Health request claimed");
       setJustClaimed(true);
       setView("summary");
     } catch (error) {
@@ -442,7 +439,6 @@ export default function HealthRequestActionModal({
       await invalidateHealth();
       const refreshed = await detailQuery.refetch();
       if (refreshed.error) throw refreshed.error;
-      toast.success("Health service started");
     } catch (error) {
       setErrorMessage(
         getErrorMessage(error, "The Health visit could not be started."),
@@ -1177,25 +1173,6 @@ export default function HealthRequestActionModal({
                       }}
                     />
                   </Field>
-                  <Field
-                    label="Internal Note"
-                    helper="Optional. Only visible to technicians and administrators."
-                  >
-                    <textarea
-                      aria-label="Internal Note"
-                      className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
-                      maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
-                      value={advice.internalNote}
-                      onChange={(event) => {
-                        setAdvice({
-                          ...advice,
-                          internalNote: event.target.value,
-                        });
-                        setErrorMessage("");
-                      }}
-                      placeholder="Notes for municipal staff..."
-                    />
-                  </Field>
                 </div>
               ) : null}
 
@@ -1322,23 +1299,6 @@ export default function HealthRequestActionModal({
                         });
                         setErrorMessage("");
                       }}
-                    />
-                  </Field>
-                  <Field
-                    label="Internal Note"
-                    helper="Optional. Only visible to technicians and administrators."
-                  >
-                    <textarea
-                      aria-label="Pickup Internal Note"
-                      className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl min-h-20 resize-none"
-                      maxLength={HEALTH_PICKUP_TEXT_MAX_LENGTH}
-                      value={pickup.internalNote}
-                      onChange={(event) =>
-                        setPickup({
-                          ...pickup,
-                          internalNote: event.target.value,
-                        })
-                      }
                     />
                   </Field>
                 </div>

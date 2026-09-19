@@ -236,6 +236,37 @@ describe("HealthRequestActionModal", () => {
     expect(
       await screen.findByRole("button", { name: /^Give Advice/ }),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Request claimed successfully. Please select a response method below.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Office Pickup/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Schedule Farm Visit/ }),
+    ).toBeInTheDocument();
+    expect(mocks.success).not.toHaveBeenCalledWith("Health request claimed");
+  });
+
+  it("keeps claim failures visible inside the open modal", async () => {
+    const unclaimed = ownedRequest({
+      status: "pending",
+      handledBy: null,
+      assignedTechnicianId: null,
+    });
+    mocks.patch.mockRejectedValueOnce({
+      response: { data: { message: "This request was claimed by another technician." } },
+    });
+    renderModal(unclaimed, { ...task, status: "pending", raw: unclaimed });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Claim Request" }));
+
+    expect(
+      await screen.findByRole("alert"),
+    ).toHaveTextContent("This request was claimed by another technician.");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("validates Advice and resolves the original request without scheduling or walk-in creation", async () => {
@@ -250,8 +281,10 @@ describe("HealthRequestActionModal", () => {
     fireEvent.change(screen.getByLabelText("Advice for Farmer"), {
       target: { value: "  Keep the animal hydrated.  " },
     });
-    fireEvent.change(screen.getByLabelText("Internal Note"), {
-      target: { value: "  Technician-only context.  " },
+    expect(screen.getByLabelText("Follow-up date")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Internal Note")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Follow-up date"), {
+      target: { value: "2099-09-03" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send Advice" }));
 
@@ -260,7 +293,7 @@ describe("HealthRequestActionModal", () => {
         `/health-request/${requestId}/advice`,
         {
           advice: "Keep the animal hydrated.",
-          technicianNote: "Technician-only context.",
+          followUpDate: "2099-09-03",
         },
       ),
     );
@@ -268,6 +301,9 @@ describe("HealthRequestActionModal", () => {
     expect(payload.scheduledDate).toBeUndefined();
     expect(payload.visitPeriod).toBeUndefined();
     expect(mocks.post).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(mocks.success).toHaveBeenCalledWith("Advice sent to farmer"),
+    );
   });
 
   it("requires Office Pickup fields and submits only the canonical payload", async () => {
@@ -303,6 +339,10 @@ describe("HealthRequestActionModal", () => {
     fireEvent.change(screen.getByLabelText("Message for Farmer"), {
       target: { value: " Please bring this request reference. " },
     });
+    expect(screen.getByLabelText("Dosage / Use instructions")).toBeInTheDocument();
+    expect(screen.getByLabelText("Withdrawal guidance")).toBeInTheDocument();
+    expect(screen.getByLabelText("Pickup follow-up date")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Pickup Internal Note")).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Send Pickup Information" }),
     );
@@ -429,7 +469,14 @@ describe("HealthRequestActionModal", () => {
       scheduledDate: "2026-08-31T04:00:00.000Z",
       visitPeriod: "afternoon",
     });
-    mocks.get.mockResolvedValue({ data: { data: scheduled } });
+    const inProgress = ownedRequest({
+      status: "in-progress",
+      scheduledDate: scheduled.scheduledDate,
+      visitPeriod: scheduled.visitPeriod,
+    });
+    mocks.get
+      .mockResolvedValueOnce({ data: { data: scheduled } })
+      .mockResolvedValue({ data: { data: inProgress } });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -451,6 +498,37 @@ describe("HealthRequestActionModal", () => {
         { status: "in-progress" },
       ),
     );
+    expect(await screen.findByText("Record Health Service")).toBeInTheDocument();
+    expect(screen.getByLabelText("Diagnosis")).toBeInTheDocument();
+    expect(screen.getByLabelText("Treatment")).toBeInTheDocument();
+    expect(screen.getByLabelText("Medication Given")).toBeInTheDocument();
+    expect(screen.getByLabelText("Dosage")).toBeInTheDocument();
+    expect(screen.getByLabelText("Withdrawal Period (Days)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Clinical Advice for Farmer")).toBeInTheDocument();
+    expect(mocks.success).not.toHaveBeenCalledWith("Health service started");
+  });
+
+  it("keeps start-service failures visible inside the open modal", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-08-31T05:00:00.000Z"));
+    const scheduled = ownedRequest({
+      status: "scheduled",
+      scheduledDate: "2026-08-31T04:00:00.000Z",
+      visitPeriod: "afternoon",
+    });
+    mocks.patch.mockRejectedValueOnce({
+      response: { data: { message: "The Health visit could not be started." } },
+    });
+    renderModal(scheduled, { ...task, status: "scheduled", raw: scheduled });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Record Health Assistance" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The Health visit could not be started.",
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("preserves same-request input and resets it when the request identity changes", async () => {
