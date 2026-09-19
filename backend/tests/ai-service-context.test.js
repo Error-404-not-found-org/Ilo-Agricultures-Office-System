@@ -52,7 +52,7 @@ test("AI service context directs an unclaimed request to claiming", () => {
   assert.equal(context.activeRequest.assignment, "unclaimed");
   assert.deepEqual(context.allowedActions, ["claim_request"]);
   assert.equal(context.timing.isToday, true);
-  assert.equal(context.timing.isEarly, true);
+  assert.equal(context.timing.workTiming, "actionable");
 });
 
 test("AI service context opens a request assigned to the current technician", () => {

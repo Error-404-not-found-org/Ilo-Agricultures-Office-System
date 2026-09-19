@@ -228,6 +228,42 @@ test("AI authorization: assigned technician update uses an atomic assignment and
   assert.equal(recorder.body.request.visitPeriod, "morning");
 });
 
+test("AI start is idempotent once the request is already in progress", async (t) => {
+  const originalFindById = Insemination.findById;
+  const originalFindOneAndUpdate = Insemination.findOneAndUpdate;
+  t.after(() => {
+    Insemination.findById = originalFindById;
+    Insemination.findOneAndUpdate = originalFindOneAndUpdate;
+  });
+
+  const startedAt = new Date("2026-09-18T01:00:00+08:00");
+  Insemination.findById = () => populatedQuery({
+    _id: "request-1",
+    status: "in-progress",
+    approvedBy: "technician-1",
+    animalId: { _id: "animal-1", earTag: "01MC" },
+    scheduledDate: new Date("2026-09-18T00:00:00+08:00"),
+    visitPeriod: "afternoon",
+    serviceStartedAt: startedAt,
+  });
+  let mutationCount = 0;
+  Insemination.findOneAndUpdate = () => {
+    mutationCount += 1;
+    return populatedQuery(null);
+  };
+
+  const recorder = createResponseRecorder();
+  await updateRequestStatus({
+    params: { id: "request-1" },
+    body: { status: "in-progress" },
+    user: { _id: "technician-1", role: "technician" },
+  }, recorder.response);
+
+  assert.equal(recorder.statusCode, 200);
+  assert.equal(recorder.body.request.serviceStartedAt, startedAt);
+  assert.equal(mutationCount, 0);
+});
+
 test("AI reschedule replaces or explicitly clears the Farmer Preparation Note", async (t) => {
   const originals = {
     findById: Insemination.findById,
@@ -265,7 +301,7 @@ test("AI reschedule replaces or explicitly clears the Farmer Preparation Note", 
     });
   };
 
-  const invoke = async (farmerPreparationNote) => {
+  const invoke = async (farmerPreparationNote, includeNote = true) => {
     const recorder = createResponseRecorder();
     await updateRequestStatus(
       {
@@ -274,7 +310,7 @@ test("AI reschedule replaces or explicitly clears the Farmer Preparation Note", 
           status: "scheduled",
           scheduledDate: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
           visitPeriod: "afternoon",
-          farmerPreparationNote,
+          ...(includeNote ? { farmerPreparationNote } : {}),
         },
         user: {
           _id: "technician-1",
@@ -290,9 +326,12 @@ test("AI reschedule replaces or explicitly clears the Farmer Preparation Note", 
 
   await invoke("  New instructions  ");
   await invoke("");
+  await invoke(undefined, false);
 
   assert.equal(updates[0].$set.farmerPreparationNote, "New instructions");
   assert.equal(updates[1].$set.farmerPreparationNote, "");
+  assert.equal(Object.hasOwn(updates[2].$set, "farmerPreparationNote"), false);
+  assert.ok(updates.every((update) => update.$set.scheduledAt instanceof Date));
 });
 
 test("AI concurrency: reusable assignment guard permits only self or pending unassigned", () => {

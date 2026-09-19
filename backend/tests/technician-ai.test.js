@@ -404,6 +404,41 @@ test("Technician AI Service Suite", async (t) => {
     }
   });
 
+  await t.test("rejects direct completion of a future request-linked AI", async () => {
+    const harness = installHarness({
+      task: { ...baseTask, status: "Pending", metadata: { requestId: ids.request } },
+      insemination: {
+        ...baseInsemination,
+        status: "scheduled",
+        scheduledDate: new Date("2099-12-01T00:00:00+08:00"),
+        visitPeriod: "afternoon",
+      },
+    });
+
+    try {
+      await assert.rejects(
+        recordTechnicianAIService({
+          taskId: ids.task,
+          requestId: ids.request,
+          farmerId: ids.farmer,
+          animalId: ids.animal,
+          inseminationDate: new Date(),
+          sireBreed: "Holstein",
+          sireCode: "HOL-202",
+          estrus: "Natural",
+          actorId: ids.technician,
+          isAdmin: false,
+        }),
+        (error) => error.code === "AI_VISIT_NOT_DUE" && error.status === 409,
+      );
+      assert.equal(harness.state.inseminationUpdates.length, 0);
+      assert.equal(harness.state.notifications.length, 0);
+      assert.equal(harness.state.audits.length, 0);
+    } finally {
+      harness.uninstall();
+    }
+  });
+
   await t.test("enforces context validation", async () => {
     const harness = installHarness({
       task: { ...baseTask, farmerId: "mismatched-farmer" },

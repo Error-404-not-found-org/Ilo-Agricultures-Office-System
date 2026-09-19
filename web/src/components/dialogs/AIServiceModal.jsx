@@ -1756,11 +1756,6 @@ const AIServiceModal = ({
                               <span className="badge badge-sm badge-info badge-soft font-semibold">
                                 {requestStatusLabel(activeRequest.status)}
                               </span>
-                              {serviceContext.timing?.isEarly && (
-                                <span className="badge badge-sm badge-warning badge-soft font-semibold">
-                                  Scheduled later
-                                </span>
-                              )}
                               {serviceContext.timing?.isOverdue && (
                                 <span className="badge badge-sm badge-warning badge-soft font-semibold">
                                   Overdue

@@ -4,10 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  EARLY_START_GRACE_MS,
-  getEarlyStartTiming,
-} from "../src/domain/service-timing.js";
+import { getAIVisitAvailability } from "../src/domain/ai-visit-availability.js";
 import { updateRequestStatus } from "../src/controllers/ai-request.controllers.js";
 import {
   requiresHistoricalAIWorkflow,
@@ -19,30 +16,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const source = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
-test("AI service timing only requires confirmation outside the start grace period", () => {
-  const now = new Date("2026-07-30T01:00:00.000Z");
-  const early = getEarlyStartTiming(
-    new Date(now.getTime() + 45 * 60 * 1000),
-    now,
-  );
-  const withinGrace = getEarlyStartTiming(
-    new Date(now.getTime() + EARLY_START_GRACE_MS),
-    now,
-  );
-
-  assert.equal(early.isEarly, true);
-  assert.equal(early.earlyStartMinutes, 45);
-  assert.equal(withinGrace.isEarly, false);
-  assert.equal(withinGrace.earlyStartMinutes, 0);
+test("AI service timing uses the Manila calendar date, not a grace period", () => {
+  const now = new Date("2026-07-30T08:00:00+08:00");
+  assert.equal(getAIVisitAvailability({ scheduledDate: "2026-07-31", now }).workTiming, "upcoming");
+  assert.equal(getAIVisitAvailability({ scheduledDate: "2026-07-30T12:00:00+08:00", now }).workTiming, "actionable");
 });
 
-test("AI status endpoint rejects an unconfirmed early start with a readable contract", async (t) => {
+test("AI status endpoint rejects a future-calendar start even with legacy confirmation", async (t) => {
   const originalFindById = Insemination.findById;
   Insemination.findById = () => ({
     populate: async () => ({
       _id: "request-1",
       status: "scheduled",
-      scheduledDate: new Date(Date.now() + 60 * 60 * 1000),
+      scheduledDate: new Date("2099-12-01T00:00:00+08:00"),
       approvedBy: "technician-1",
     }),
   });
@@ -66,7 +52,7 @@ test("AI status endpoint rejects an unconfirmed early start with a readable cont
   await updateRequestStatus(
     {
       params: { id: "request-1" },
-      body: { status: "in-progress" },
+      body: { status: "in-progress", earlyStartConfirmed: true },
       user: {
         _id: "technician-1",
         role: "technician",
@@ -77,9 +63,8 @@ test("AI status endpoint rejects an unconfirmed early start with a readable cont
   );
 
   assert.equal(statusCode, 409);
-  assert.equal(responseBody.code, "EARLY_START_CONFIRMATION_REQUIRED");
-  assert.match(responseBody.message, /confirm.+start.+early/i);
-  assert.ok(responseBody.earlyStartMinutes >= 59);
+  assert.equal(responseBody.code, "AI_VISIT_NOT_DUE");
+  assert.match(responseBody.message, /reschedule.+today/i);
 });
 
 test("walk-in AI rejects a non-string technician note before recording", async () => {
@@ -183,9 +168,10 @@ test("technician request starts and AI completion stay responsive and visible", 
 
   assert.match(list, /pathname: "\/\(technician\)\/request-details"/);
   assert.doesNotMatch(list, /pathname: "\/\(technician\)\/record-ai"/);
-  assert.match(controller, /EARLY_START_CONFIRMATION_REQUIRED/);
+  assert.match(controller, /AI_VISIT_NOT_DUE/);
+  assert.doesNotMatch(controller, /EARLY_START_CONFIRMATION_REQUIRED/);
   assert.match(controller, /updateData\.serviceStartedAt/);
-  assert.match(controller, /updateData\.earlyStartMinutes/);
+  assert.doesNotMatch(controller, /updateData\.earlyStartMinutes/);
   assert.match(controller, /request = await completeInsemination\(\{/);
   assert.match(controller, /normalizeTechnicianNoteInput\(req\.body\)/);
   assert.match(

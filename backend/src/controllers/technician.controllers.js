@@ -59,6 +59,7 @@ import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { AI_STATUS, normalizeAIStatus } from "../domain/status-vocabulary.js";
 import { getHealthVisitAvailability } from "../domain/health-visit-availability.js";
+import { getAIVisitAvailability } from "../domain/ai-visit-availability.js";
 import {
   assertTechnicianEligibleForNewRequest,
   buildNewRequestDispatchFilter,
@@ -5437,6 +5438,7 @@ export const getWorkQueue = async (req, res) => {
       let allowedAction = null;
       let actionLabel = null;
       let stateIssue = null;
+      let workTiming = null;
       if (canonicalStatus === AI_STATUS.PENDING) {
         actionLabel = "Schedule review required";
         stateIssue = scheduleDate
@@ -5449,8 +5451,12 @@ export const getWorkQueue = async (req, res) => {
         allowedAction = "RECORD_SERVICE";
         actionLabel = "Continue Service";
       } else if (canonicalStatus === AI_STATUS.SCHEDULED) {
-        allowedAction = "RECORD_SERVICE";
-        actionLabel = "Record Insemination";
+        const availability = getAIVisitAvailability({
+          scheduledDate: scheduleDate,
+        });
+        allowedAction = availability?.allowedAction || "VIEW_DETAILS";
+        actionLabel = availability?.actionLabel || "View Scheduled Visit";
+        workTiming = availability?.workTiming || null;
       } else if (canonicalStatus === AI_STATUS.DONE) {
         allowedAction = "VIEW_RECORD";
         actionLabel = "View Record";
@@ -5476,6 +5482,7 @@ export const getWorkQueue = async (req, res) => {
         status: canonicalStatus,
         allowedAction,
         actionLabel,
+        workTiming,
         stateIssue,
         title: "Artificial Insemination",
         summary: `Attempt ${ins.attemptNumber || 1}`,

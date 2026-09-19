@@ -14,7 +14,6 @@ export interface UpdateStatusPayload {
   scheduledDate?: string;
   visitPeriod?: string;
   samePeriodConfirmed?: boolean;
-  earlyStartConfirmed?: boolean;
   farmerPreparationNote?: string;
 }
 

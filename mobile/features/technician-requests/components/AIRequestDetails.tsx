@@ -32,7 +32,7 @@ import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { StatusBadge } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useApi } from "@/lib/api";
-import { aiRequestKeys, technicianKeys } from "@/lib/queryKeys";
+import { technicianKeys } from "@/lib/queryKeys";
 import { useTheme } from "@/lib/theme";
 import {
   declineTechnicianRequest,
@@ -50,9 +50,9 @@ import {
 } from "../utils/aiWorkflow";
 import {
   getAISchedulePeriodAvailability,
-  getAIScheduleTiming,
   getRelativeAIScheduleDayLabel,
 } from "../utils/aiScheduleAvailability";
+import { getAIVisitWorkTiming } from "../utils/aiVisitWorkTiming";
 import { getAIRequestAttachmentUrls } from "../utils/aiRequestAttachments";
 import {
   extractFarmerNote,
@@ -148,7 +148,6 @@ export function AIRequestDetails({
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [earlyStartVisible, setEarlyStartVisible] = useState(false);
   const [skipConfirmationVisible, setSkipConfirmationVisible] = useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
@@ -265,9 +264,10 @@ export function AIRequestDetails({
     request?.visitPeriod,
   ).toLowerCase() as VisitPeriod;
   const scheduleTiming = isScheduled
-    ? getAIScheduleTiming(request?.scheduledDate, visitPeriod)
+    ? getAIVisitWorkTiming(request?.scheduledDate)
     : "unknown";
-  const isPastSchedule = scheduleTiming === "past";
+  const isPastSchedule = scheduleTiming === "overdue";
+  const isUpcomingSchedule = scheduleTiming === "upcoming";
   const relativeScheduleDay = getRelativeAIScheduleDayLabel(
     request?.scheduledDate,
   );
@@ -407,7 +407,7 @@ export function AIRequestDetails({
     });
   };
 
-  const handleStartAIRecord = async (earlyStartConfirmed = false) => {
+  const handleStartAIRecord = async () => {
     if (
       submittingRef.current ||
       !(await requireOnline(
@@ -427,7 +427,6 @@ export function AIRequestDetails({
     try {
       const result = await updateRequestStatus(api, "ai", workflowId, {
         status: "in-progress",
-        ...(earlyStartConfirmed ? { earlyStartConfirmed: true } : {}),
       });
       const authoritativeRequest = result?.request;
       if (authoritativeRequest?.status !== "in-progress") {
@@ -436,15 +435,8 @@ export function AIRequestDetails({
 
       await invalidateWorkflow();
       await onRefresh().catch(() => undefined);
-      setEarlyStartVisible(false);
       openAIRecord();
     } catch (error: any) {
-      const code = String(error?.response?.data?.code || "");
-      if (code === "EARLY_START_CONFIRMATION_REQUIRED") {
-        setEarlyStartVisible(true);
-        return;
-      }
-
       const message = getAIStartErrorMessage(error);
       setActionNotice(message);
       toast.error(message);
@@ -461,7 +453,9 @@ export function AIRequestDetails({
     : isClaimedUnscheduled
       ? "Set Visit"
       : isScheduled
-        ? isPastSchedule
+        ? isUpcomingSchedule
+          ? ""
+          : isPastSchedule
           ? "Record Completed Service"
           : "Record AI Service"
         : isInProgress
@@ -980,9 +974,9 @@ export function AIRequestDetails({
           />
         ) : null}
 
-        {primaryLabel && !cancellationRequested ? (
+        {(primaryLabel || isScheduled) && !cancellationRequested ? (
           <View style={cardStyle}>
-            <TouchableOpacity
+            {primaryLabel ? <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={primaryLabel}
               disabled={updating}
@@ -1003,7 +997,7 @@ export function AIRequestDetails({
                   {primaryLabel}
                 </Text>
               )}
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
 
             {isScheduled ? (
               <TouchableOpacity
@@ -1081,17 +1075,6 @@ export function AIRequestDetails({
         onClose={() => setSkipConfirmationVisible(false)}
         onCancel={() => setSkipConfirmationVisible(false)}
         onConfirm={handleDecline}
-      />
-      <ConfirmationModal
-        visible={earlyStartVisible}
-        title="Start service early?"
-        message={`This AI service is scheduled for ${relativeScheduleDay || "the planned visit"}${visitPeriod ? ` ${visitPeriod}` : ""}. Are you sure you want to start it now?`}
-        confirmText="Start Early"
-        cancelText="Go Back"
-        isDestructive={false}
-        onClose={() => setEarlyStartVisible(false)}
-        onCancel={() => setEarlyStartVisible(false)}
-        onConfirm={() => handleStartAIRecord(true)}
       />
       <Modal
         visible={reasonVisible}

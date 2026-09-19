@@ -1,4 +1,4 @@
-import { getEarlyStartTiming } from "./service-timing.js";
+import { getAIVisitAvailability } from "./ai-visit-availability.js";
 
 const idOf = (value) => value?._id || value || null;
 
@@ -50,14 +50,12 @@ export const buildAIServiceContext = ({
   const canOpen = isAdmin || assignment !== "other";
   const scheduledDate =
     activeRequest.scheduledDate || activeRequest.preferredDate || null;
-  const earlyTiming = scheduledDate
-    ? getEarlyStartTiming(scheduledDate, now)
-    : { isEarly: false, earlyStartMinutes: 0 };
+  const availability = scheduledDate
+    ? getAIVisitAvailability({ scheduledDate, now })
+    : null;
   const scheduledAt = scheduledDate ? new Date(scheduledDate) : null;
   const validSchedule = scheduledAt && !Number.isNaN(scheduledAt.getTime());
-  const isOverdue = Boolean(
-    validSchedule && scheduledAt.getTime() < new Date(now).getTime(),
-  );
+  const isOverdue = availability?.workTiming === "overdue";
 
   return {
     mode: canOpen ? "request" : "blocked",
@@ -86,8 +84,7 @@ export const buildAIServiceContext = ({
         validSchedule &&
           dateKeyInManila(scheduledAt) === dateKeyInManila(now),
       ),
-      isEarly: Boolean(earlyTiming.isEarly),
-      earlyStartMinutes: earlyTiming.earlyStartMinutes || 0,
+      workTiming: availability?.workTiming || null,
       isOverdue,
     },
     allowedActions: canOpen

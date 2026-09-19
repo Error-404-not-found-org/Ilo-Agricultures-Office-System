@@ -841,8 +841,9 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.has(ids.calvingTask), true);
 
       const scheduled = byId.get(ids.scheduled);
-      assert.equal(scheduled.allowedAction, "RECORD_SERVICE");
-      assert.equal(scheduled.actionLabel, "Record Insemination");
+      assert.equal(scheduled.allowedAction, "VIEW_DETAILS");
+      assert.equal(scheduled.actionLabel, "View Scheduled Visit");
+      assert.equal(scheduled.workTiming, "upcoming");
       assert.equal(scheduled.workflowId, ids.scheduled);
       assert.equal(scheduled.taskId, ids.linkedAiTask);
       assert.notEqual(scheduled.workflowId, scheduled.taskId);

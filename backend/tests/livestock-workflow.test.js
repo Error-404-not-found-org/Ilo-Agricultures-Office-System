@@ -29,6 +29,8 @@ test("Livestock workflow rejects completion shortcuts and terminal reopening", (
   assert.throws(() => assertStatusTransition("ai", "approved", "done"), (error) => error.code === "INVALID_STATUS_TRANSITION" && error.status === 409);
   assert.throws(() => assertStatusTransition("health", "approved", "resolved"), (error) => error.code === "INVALID_STATUS_TRANSITION");
   assert.throws(() => assertStatusTransition("ai", "done", "scheduled"), (error) => error.code === "INVALID_STATUS_TRANSITION");
+  assert.throws(() => assertStatusTransition("ai", "in-progress", "scheduled"), (error) => error.code === "INVALID_STATUS_TRANSITION");
+  assert.doesNotThrow(() => assertStatusTransition("health", "in-progress", "scheduled"));
 });
 
 test("Pregnancy result maps through the shared animal lifecycle vocabulary", () => {
