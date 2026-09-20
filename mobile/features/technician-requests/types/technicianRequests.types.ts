@@ -229,6 +229,7 @@ export interface TechnicianWorkItem {
   animalTag: string | null;
   location: string | null;
   timingLabel: string | null;
+  contextLabel?: string | null;
   isReadyToday: boolean;
   needsAttention: boolean;
   overdue: boolean;

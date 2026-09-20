@@ -150,6 +150,82 @@ describe("Technician Dashboard current-work hierarchy", () => {
     ).toBeTruthy();
   });
 
+  it("shows overdue unresolved work and keeps Pregnancy Loss Review distinct", async () => {
+    renderDashboard({
+      stats: {}, pendingRequests: [],
+      agendaItems: [{
+        id: "loss-overdue", taskId: "loss-overdue", type: "task",
+        taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report",
+        status: "Pending", dueDate: "2020-09-19T00:00:00.000Z",
+      }],
+    });
+    expect(await screen.findByText("Pregnancy Loss Review")).toBeTruthy();
+    expect(screen.getByText("Needs review")).toBeTruthy();
+    expect(screen.getByText("Farmer reported pregnancy loss")).toBeTruthy();
+    expect(screen.queryByText("Task")).toBeNull();
+    expect(screen.queryByText(/Planned:/)).toBeNull();
+    expect(screen.queryByText("No work due today")).toBeNull();
+  });
+
+  it("uses work-type icons rather than completion or decorative status icons", async () => {
+    const today = getPhilippineTodayKey();
+    renderDashboard({
+      stats: {},
+      pendingRequests: [],
+      agendaItems: [
+        {
+          id: "follow-up",
+          taskId: "follow-up",
+          type: "task",
+          taskType: "BreedingFollowUp",
+          status: "Pending",
+          dueDate: today,
+          scheduleLabel: "Breeding Follow-up",
+        },
+        {
+          id: "pregnancy-check",
+          taskId: "pregnancy-check",
+          type: "task",
+          taskType: "PD",
+          status: "Pending",
+          dueDate: today,
+          scheduleLabel: "Pregnancy Check",
+        },
+        {
+          id: "pregnancy-loss",
+          taskId: "pregnancy-loss",
+          type: "task",
+          taskType: "BreedingFollowUp",
+          sourceType: "farmer_pregnancy_loss_report",
+          status: "Pending",
+          dueDate: today,
+          scheduleLabel: "Pregnancy Loss Review",
+        },
+        {
+          id: "expected-calving",
+          taskId: "expected-calving",
+          type: "task",
+          taskType: "Calving",
+          status: "Pending",
+          dueDate: today,
+          scheduleLabel: "Expected Calving",
+        },
+      ],
+    });
+
+    await screen.findByText("Pregnancy Loss Review");
+    const cards = document.querySelectorAll("article");
+    const cardFor = (title) =>
+      Array.from(cards).find((card) => card.textContent.includes(title));
+
+    expect(cardFor("Breeding Follow-up")?.querySelector(".lucide-calendar-check")).toBeTruthy();
+    expect(cardFor("Pregnancy Check")?.querySelector(".lucide-heart-pulse")).toBeTruthy();
+    expect(cardFor("Pregnancy Check")?.querySelector(".lucide-circle-check")).toBeNull();
+    expect(cardFor("Pregnancy Loss Review")?.querySelector(".lucide-heart-crack")).toBeTruthy();
+    expect(cardFor("Expected Calving")?.querySelector(".lucide-baby")).toBeTruthy();
+    expect(cardFor("Expected Calving")?.querySelector(".lucide-sparkles")).toBeNull();
+  });
+
   it("renders in-progress AI Today's Work card with canonical status, service title, planned schedule, and farmer home address instead of farm GPS location", async () => {
     renderDashboard({
       stats: { urgentHealth: 0, completedToday: 0 },

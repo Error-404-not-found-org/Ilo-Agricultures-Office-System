@@ -546,30 +546,29 @@ test("H4 Farmer AI lifecycle and combined request filters", async (t) => {
       "Scheduled",
       "In Progress",
       "Completed",
-      "Pending Cancellation",
     ]) {
       assert.match(myRequestsCode, new RegExp(`label: "${label}"`));
     }
     assert.doesNotMatch(myRequestsCode, /label: "Approved"/);
     assert.doesNotMatch(myRequestsCode, /label: "Resolved"/);
     assert.equal(
-      presentation.mapFarmerRequestFilterStatus("ai", "completed"),
+      presentation.getFarmerRequestFilterQuery("ai", "completed").status,
       "done",
     );
     assert.equal(
-      presentation.mapFarmerRequestFilterStatus("health", "completed"),
+      presentation.getFarmerRequestFilterQuery("health", "completed").status,
       "resolved",
     );
-    assert.equal(
-      presentation.mapFarmerRequestFilterStatus("ai", "in-progress"),
-      "all",
+    assert.deepEqual(
+      presentation.getFarmerRequestFilterQuery("ai", "in-progress"),
+      { statusGroup: "in_progress" },
     );
-    assert.match(myRequestsCode, /\["in-progress", "in_progress"\]/);
+    assert.doesNotMatch(myRequestsCode, /label: "Pending Cancellation"/);
   });
 
   await t.test("legacy accepted records remain readable under All", () => {
     assert.equal(
-      presentation.mapFarmerRequestFilterStatus("ai", "all"),
+      presentation.getFarmerRequestFilterQuery("ai", "all").status,
       "all",
     );
     assert.equal(

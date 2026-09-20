@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  Baby,
   CalendarCheck,
   CalendarDays,
   CheckCircle,
+  HeartCrack,
+  HeartPulse,
   MapPin,
   PawPrint,
-  Sparkles,
   Stethoscope,
   Syringe,
   UserPlus,
@@ -27,6 +29,7 @@ import {
   formatPlannedSchedule,
   getScheduleEntityKind,
 } from "../../utils/technicianSchedulePresentation";
+import { getLifecycleTaskPresentation } from "../../utils/technicianLifecyclePresentation";
 
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
@@ -128,9 +131,17 @@ function getShiftBadgeStyle(slotText) {
   return "bg-slate-700 text-white border-slate-700 dark:bg-slate-600 dark:border-slate-600 font-bold";
 }
 function getWorkTypeStyle(item = {}) {
-  const kind = String(
-    item.type || item.workflowType || item.taskType || "",
-  ).toLowerCase();
+  const kind = [
+    item.type,
+    item.workflowType,
+    item.taskType,
+    item.sourceType,
+    item.raw?.taskType,
+    item.raw?.sourceType,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   const label = String(item.scheduleLabel || "").toLowerCase();
 
   if (kind.includes("ai") || kind.includes("insem") || label.includes("ai")) {
@@ -144,12 +155,25 @@ function getWorkTypeStyle(item = {}) {
     };
   }
   if (
+    kind.includes("farmer_pregnancy_loss_report") ||
+    label.includes("pregnancy loss")
+  ) {
+    return {
+      icon: HeartCrack,
+      badgeText: "Pregnancy Loss Review",
+      iconClass:
+        "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
+      badgeClass:
+        "bg-rose-600 text-white border-rose-600 dark:bg-rose-500 dark:border-rose-500 font-bold",
+    };
+  }
+  if (
     kind.includes("pd") ||
     kind.includes("preg") ||
     label.includes("pregnancy")
   ) {
     return {
-      icon: CheckCircle,
+      icon: HeartPulse,
       badgeText: "Pregnancy Check",
       iconClass:
         "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20",
@@ -163,12 +187,12 @@ function getWorkTypeStyle(item = {}) {
     label.includes("calving")
   ) {
     return {
-      icon: Sparkles,
-      badgeText: "Calving Due",
+      icon: Baby,
+      badgeText: "Expected Calving",
       iconClass:
-        "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+        "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20",
       badgeClass:
-        "bg-amber-500 text-white border-amber-500 dark:bg-amber-400 dark:border-amber-400 font-bold",
+        "bg-cyan-600 text-white border-cyan-600 dark:bg-cyan-500 dark:border-cyan-500 font-bold",
     };
   }
   if (kind.includes("health") || label.includes("health")) {
@@ -380,6 +404,7 @@ export default function Dashboard() {
                 <div className="space-y-3 p-4 sm:p-5">
                   {todayWork.map((item) => {
                     const target = item.navigationTarget;
+                    const lifecycle = getLifecycleTaskPresentation(item);
                     const workStyle = getWorkTypeStyle(item);
                     const WorkIcon = workStyle.icon;
                     const slotText = getDashboardScheduleSlot(item);
@@ -413,7 +438,7 @@ export default function Dashboard() {
                       );
 
                     const isInProgressAI = isAI && isInProgress;
-                    const plannedSchedule = formatPlannedSchedule(item);
+                    const plannedSchedule = lifecycle ? null : formatPlannedSchedule(item);
                     const displayedLocation =
                       formatDashboardFarmerLocation(item);
 
@@ -449,6 +474,10 @@ export default function Dashboard() {
                                     </span>
                                   </h3>
                                 </>
+                              ) : lifecycle ? (
+                                <span className={`badge badge-soft badge-sm font-bold ${lifecycle.actionState ? "badge-info" : workStyle.badgeClass}`}>
+                                  {lifecycle.actionState || lifecycle.timing}
+                                </span>
                               ) : (
                                 <>
                                   <span
@@ -477,6 +506,12 @@ export default function Dashboard() {
                               </h3>
                             )}
 
+                            {lifecycle?.context && (
+                              <p className="mt-1 text-xs text-base-content/65">
+                                {lifecycle.context}
+                              </p>
+                            )}
+
                             {/* Farmer and location */}
                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-base-content/65">
                               <span className="font-medium text-base-content/85 truncate">
@@ -499,14 +534,20 @@ export default function Dashboard() {
                             </div>
 
                             {/* Planned schedule */}
-                            {plannedSchedule && (
+                            {(plannedSchedule ||
+                              lifecycle?.detail ||
+                              (!lifecycle?.actionState && lifecycle?.date)) && (
                               <div className="mt-1 flex items-center gap-1 text-xs text-base-content/65">
                                 <CalendarDays
                                   size={12}
                                   className="shrink-0"
                                   aria-hidden="true"
                                 />
-                                <span>Planned: {plannedSchedule}</span>
+                                <span>
+                                  {lifecycle
+                                    ? lifecycle.detail || lifecycle.date
+                                    : `Planned: ${plannedSchedule}`}
+                                </span>
                               </div>
                             )}
                           </div>

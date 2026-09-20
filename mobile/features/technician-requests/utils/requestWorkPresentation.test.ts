@@ -5,6 +5,7 @@ import {
   getWorkflowStatusPresentation,
   normalizeTechnicianWorkItem,
   normalizeTechnicianWorkItems,
+  getDashboardAttentionItems,
   normalizeWorkflowStatus,
 } from "./requestWorkPresentation.ts";
 
@@ -78,6 +79,7 @@ test("Farmer return-to-heat BreedingFollowUp is presented as an update review in
   assert.equal(item.actionLabel, "Review Update");
   assert.equal(item.requestKind, "breeding_observation_review");
   assert.equal(item.statusLabel, "Needs review");
+  assert.equal(item.contextLabel, "Return to heat reported");
   assert.equal(normalizeWorkflowStatus(item), "needs_review");
   assert.doesNotMatch(item.timingLabel || "", /Pregnancy confirmation/);
 });
@@ -241,6 +243,91 @@ test("State 5: Claimed Health with farm_visit handling method and scheduled date
   assert.equal(item.actionLabel, "Record Health Assistance");
 });
 
+test("lifecycle task timing separates reports, readiness, deadlines, and expected calving", () => {
+  const now = new Date("2026-09-20T04:00:00.000Z");
+  const task = (taskType: string, dueDate: string, extra = {}) =>
+    normalizeTechnicianWorkItem({ id: taskType, type: "task", taskType, status: "Pending", dueDate, ...extra } as any, now);
+  assert.equal(task("PD", "2026-09-20").statusLabel, "Ready for check");
+  assert.equal(task("PD", "2026-09-20").timingLabel, null);
+  assert.equal(task("PD", "2026-09-18").statusLabel, "Ready for check");
+  assert.equal(task("PD", "2026-09-18").timingLabel, "Since Sep 18, 2026");
+  assert.equal(task("PD", "2026-09-24").timingLabel, "Check from Sep 24, 2026");
+  assert.equal(task("BreedingFollowUp", "2026-09-24").timingLabel, "Due Sep 24, 2026");
+  const loss = task("BreedingFollowUp", "2026-09-19", {
+    sourceType: "farmer_pregnancy_loss_report",
+    raw: { metadata: { reportedAt: "2026-09-20T02:00:00.000Z" } },
+  });
+  assert.equal(loss.title, "Pregnancy Loss Review");
+  assert.equal(loss.contextLabel, "Farmer reported pregnancy loss");
+  assert.equal(loss.statusLabel, "Needs review");
+  assert.equal(loss.timingLabel, "Reported today");
+  const returnToHeat = task("BreedingFollowUp", "2026-09-20T02:00:00.000Z", {
+    sourceType: "farmer_requested_verification",
+    raw: {
+      metadata: { reportType: "return_to_heat" },
+      updatedAt: "2026-09-25T02:00:00.000Z",
+    },
+  });
+  assert.equal(returnToHeat.statusLabel, "Needs review");
+  assert.equal(returnToHeat.contextLabel, "Return to heat reported");
+  assert.equal(returnToHeat.timingLabel, "Reported today");
+  const missingReportTime = normalizeTechnicianWorkItem({
+    id: "report-without-time",
+    type: "task",
+    taskType: "BreedingFollowUp",
+    status: "Pending",
+    raw: {
+      metadata: { reportType: "return_to_heat" },
+      updatedAt: "2026-09-20T02:00:00.000Z",
+    },
+  } as any, now);
+  assert.equal(missingReportTime.contextLabel, "Return to heat reported");
+  assert.equal(missingReportTime.timingLabel, null);
+  assert.equal(task("CD", "2026-09-20").timingLabel, "Expected today");
+  assert.equal(task("CD", "2026-09-15").timingLabel, "Past expected date · Sep 15, 2026");
+  assert.equal(task("CD", "2026-09-24").timingLabel, "Expected Sep 24, 2026");
+  assert.equal(
+    task("CD", "2026-09-20", { allowedAction: "RECORD_SERVICE" }).actionLabel,
+    "Record Calving",
+  );
+});
+
+test("scheduled Pregnancy Check uses appointment timing over readiness wording", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "pd-scheduled",
+    type: "task",
+    taskType: "PD",
+    status: "Pending",
+    dueDate: "2026-09-20",
+    schedule: { date: "2026-09-24", visitPeriod: "morning" },
+  } as any, new Date("2026-09-20T04:00:00.000Z"));
+  assert.equal(item.statusLabel, "Scheduled");
+  assert.equal(item.timingLabel, "Scheduled Sep 24, 2026 · Morning");
+  assert.doesNotMatch(item.timingLabel || "", /Ready|Due|Overdue/);
+});
+
+test("dashboard attention includes due and overdue canonical work but not future or terminal work", () => {
+  const now = new Date("2026-09-20T04:00:00.000Z");
+  const raw = [
+    { id: "followup-today", type: "task", taskType: "BreedingFollowUp", status: "Pending", dueDate: "2026-09-20" },
+    { id: "followup-overdue", type: "task", taskType: "BreedingFollowUp", status: "Pending", dueDate: "2026-09-19" },
+    { id: "followup-future", type: "task", taskType: "BreedingFollowUp", status: "Pending", dueDate: "2026-09-21" },
+    { id: "loss-today", type: "task", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", status: "Pending", dueDate: "2026-09-20" },
+    { id: "loss-overdue", type: "task", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", status: "Pending", dueDate: "2026-09-19" },
+    { id: "loss-completed", type: "task", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", status: "Completed", dueDate: "2026-09-19" },
+    { id: "calving-overdue", type: "task", taskType: "CD", status: "Pending", dueDate: "2026-09-19" },
+    { id: "visit-today", type: "ai", status: "scheduled", scheduledDate: "2026-09-20" },
+    { id: "visit-future", type: "ai", status: "scheduled", scheduledDate: "2026-09-21", allowedAction: "VIEW_DETAILS" },
+    { id: "visit-cancelled", type: "ai", status: "cancelled", scheduledDate: "2026-09-20" },
+  ] as any[];
+  const selected = getDashboardAttentionItems(normalizeTechnicianWorkItems(raw, now));
+  assert.deepEqual(selected.map((item) => item.id), [
+    "followup-today", "followup-overdue", "loss-today", "loss-overdue", "calving-overdue", "visit-today",
+  ]);
+  assert.equal(selected.find((item) => item.id === "loss-overdue")?.title, "Pregnancy Loss Review");
+  assert.equal(raw.find((item) => item.id === "visit-future")?.allowedAction, "VIEW_DETAILS");
+});
+
 test("future scheduled Health visit preserves backend read-only action", () => {
   const item = normalizeTechnicianWorkItem({
     id: "health-visit-future",
@@ -332,6 +419,7 @@ test("dated work uses source-aware status labels without changing readiness", ()
       },
       status: "due_today",
       label: "Due Today",
+      normalizedLabel: "Ready for check",
       isReadyToday: true,
     },
     {
@@ -393,6 +481,7 @@ test("dated work uses source-aware status labels without changing readiness", ()
       },
       status: "overdue",
       label: "Overdue",
+      normalizedLabel: "Ready for check",
       isReadyToday: false,
     },
   ] as const;
@@ -414,7 +503,13 @@ test("dated work uses source-aware status labels without changing readiness", ()
       } as any,
       now,
     );
-    assert.equal(normalized.statusLabel, scenario.label, scenario.name);
+    assert.equal(
+      normalized.statusLabel,
+      "normalizedLabel" in scenario
+        ? scenario.normalizedLabel
+        : scenario.label,
+      scenario.name,
+    );
     assert.equal(
       normalized.isReadyToday,
       scenario.isReadyToday,

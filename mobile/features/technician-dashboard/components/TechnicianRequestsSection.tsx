@@ -1,10 +1,9 @@
 import React from "react";
-import { Image, View, TouchableOpacity } from "react-native";
+import { Image, View, Text, TouchableOpacity } from "react-native";
 import {
   ClipboardCheck,
-  Hand,
+  Clock,
   MapPin,
-  Send,
   Stethoscope,
   Syringe,
   UserRound,
@@ -12,7 +11,7 @@ import {
 import { useRouter } from "expo-router";
 
 import { AsyncState, SectionHeader, StatusBadge } from "@/components/shared";
-import { Text } from "@/components/ui/Text";
+import { Text as AppText } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
 import { hasTechnicianRequestAssignee } from "@/features/technician-requests/utils/requestPresentation";
 import {
@@ -88,7 +87,7 @@ export function TechnicianRequestsSection({
           ))}
 
           {remainingCount > 0 && (
-            <Text
+            <AppText
               style={{
                 textAlign: "center",
                 color: colors.primary,
@@ -99,7 +98,7 @@ export function TechnicianRequestsSection({
             >
               + {remainingCount} more pending{" "}
               {remainingCount === 1 ? "request" : "requests"}
-            </Text>
+            </AppText>
           )}
         </View>
       )}
@@ -151,12 +150,13 @@ function RequestRow({ item, onPress, isUpdating }: any) {
       accessibilityLabel={`Open ${serviceLabel} request from ${item.farmer}`}
       style={{
         marginBottom: 12,
-        padding: 14,
+        padding: 12,
         flexDirection: "row",
         alignItems: "center",
         opacity: isUpdating ? 0.6 : 1,
       }}
     >
+      {/* Left: Avatar (Center Left) */}
       <View
         style={{
           width: 44,
@@ -167,6 +167,7 @@ function RequestRow({ item, onPress, isUpdating }: any) {
           alignItems: "center",
           justifyContent: "center",
           marginRight: 12,
+          alignSelf: "center",
         }}
       >
         {item.farmerImageUrl ? (
@@ -179,102 +180,78 @@ function RequestRow({ item, onPress, isUpdating }: any) {
         )}
       </View>
 
-      <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
+      {/* Center: Content */}
+      <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
+        {/* Title: Farmer Name with exact Farmer Upcoming Visits font style */}
+        <Text
+          numberOfLines={1}
+          className="w-full font-outfit-bold text-[14px] leading-5 text-slate-800 dark:text-white"
         >
-          <Text
-            variant="bold"
-            size={14}
-            numberOfLines={1}
-            style={{ flex: 1, color: colors.textPrimary }}
-          >
-            {item.farmer || "Farmer Request"}
-          </Text>
-        </View>
+          {item.farmer || "Farmer Request"}
+        </Text>
 
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            marginTop: 3,
-          }}
-        >
-          <ServiceIcon size={14} color={colors.primary} />
+        {/* Service Row */}
+        <View className="flex-row items-center mt-1">
+          <ServiceIcon size={12} color="#94a3b8" />
           <Text
-            variant="medium"
-            size={13}
             numberOfLines={1}
-            style={{ flex: 1, color: colors.textSecondary }}
+            className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400"
           >
             {serviceLabel}
           </Text>
         </View>
 
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 4,
-            marginTop: 4,
-          }}
-        >
-          <MapPin size={13} color={colors.textMuted} />
-          <Text
-            size={12}
-            numberOfLines={1}
-            style={{ flex: 1, color: colors.textSecondary }}
-          >
-            {location}
-          </Text>
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 4,
-            marginTop: 4,
-          }}
-        >
-          <Send size={13} color={colors.textMuted} />
-          <Text size={12} numberOfLines={1} style={{ color: colors.textMuted }}>
-            {formatSentAt(sentAt)}
-          </Text>
-        </View>
-
-        {badgeInfo.isAvailable ? (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              marginTop: 4,
-            }}
-          >
+        {/* Location Row */}
+        {location ? (
+          <View className="flex-row items-center mt-1">
+            <MapPin size={12} color="#94a3b8" />
             <Text
-              variant="semibold"
-              size={12}
               numberOfLines={1}
-              style={{ flex: 1, color: colors.warningForeground }}
+              className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400"
             >
-              Tap to review request
+              {location}
             </Text>
           </View>
         ) : null}
+
+        {/* Sent At Row */}
+        {sentAt ? (
+          <View className="flex-row items-center mt-1">
+            <Clock size={12} color="#94a3b8" />
+            <Text
+              numberOfLines={1}
+              className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400"
+            >
+              {formatSentAt(sentAt)}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Action Prompt */}
+        {badgeInfo.isAvailable ? (
+          <Text
+            numberOfLines={1}
+            className="font-outfit-semibold text-[11px] text-amber-600 dark:text-amber-400 mt-1"
+          >
+            Tap to review request
+          </Text>
+        ) : null}
       </View>
 
-      <View style={{ justifyContent: "center" }}>
+      {/* Right: Badge (Center Right) */}
+      <View
+        style={{
+          marginLeft: 8,
+          alignSelf: "center",
+          alignItems: "flex-end",
+          justifyContent: "center",
+        }}
+      >
         <StatusBadge
           label={badgeInfo.label}
           variant={badgeInfo.variant}
           domain="request"
+          size={9}
           compact
         />
       </View>

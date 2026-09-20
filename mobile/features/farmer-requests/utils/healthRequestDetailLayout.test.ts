@@ -13,27 +13,27 @@ test("keeps pending Health requests request-first", () => {
 test("puts a scheduled Farm Visit before the original request", () => {
   assert.deepEqual(
     getFarmerHealthRequestDetailSections({ status: "scheduled" }),
-    ["scheduled_visit", "original_request"],
+    ["scheduled_visit", "original_request", "progress"],
   );
 });
 
-test("puts resolved Advice before the original request without clinical details", () => {
+test("puts resolved Advice before the original request and keeps truthful progress", () => {
   assert.deepEqual(
     getFarmerHealthRequestDetailSections({
       status: "resolved",
       handlingMethod: "advice",
     }),
-    ["response", "original_request"],
+    ["response", "original_request", "progress"],
   );
 });
 
-test("puts resolved Office Pickup before the original request without clinical details", () => {
+test("puts resolved Office Pickup before the original request and keeps truthful progress", () => {
   assert.deepEqual(
     getFarmerHealthRequestDetailSections({
       status: "resolved",
       handlingMethod: "office-pickup",
     }),
-    ["response", "original_request"],
+    ["response", "original_request", "progress"],
   );
 });
 

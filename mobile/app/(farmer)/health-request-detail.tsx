@@ -34,6 +34,7 @@ import { getHealthRequestDetail } from "@/features/health-requests/services/heal
 import { getStructuredHealthRequestPresentation } from "@/features/farmer-requests/utils/healthRequestInput";
 import { getHealthUrgencyPresentation } from "@/features/farmer-requests/utils/healthRequestState";
 import { getFarmerHealthRequestDetailSections } from "@/features/farmer-requests/utils/healthRequestDetailLayout";
+import { getFarmerHealthCaseProgress } from "@/features/farmer-requests/utils/healthRequestCaseProgress";
 import {
   FarmerScreen,
   AsyncState,
@@ -51,30 +52,10 @@ import {
 import { HealthRequestResponseSections } from "@/features/farmer-requests/components/HealthRequestResponseSections";
 import {
   formatVisitSchedule,
+  getFarmerHealthStatusLabel,
   getRequestList,
   getRequestText,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
-
-const stages = [
-  { key: "pending", label: "Submitted" },
-  { key: "triaged", label: "Reviewed" },
-  { key: "scheduled", label: "Visit scheduled" },
-  { key: "in_progress", label: "Assistance in progress" },
-  { key: "resolved", label: "Resolved" },
-];
-
-const stageIndex = (status?: string) =>
-  ({
-    pending: 0,
-    triaged: 1,
-    assigned: 1,
-    approved: 1,
-    scheduled: 2,
-    "in-progress": 3,
-    in_progress: 3,
-    resolved: 4,
-    done: 4,
-  })[status || "pending"] ?? 0;
 
 const getHealthCategoryLabel = (value: unknown) => {
   const normalized = getRequestText(value)?.toLowerCase();
@@ -319,14 +300,10 @@ export default function HealthRequestDetailScreen() {
     resolvedHandlingMethod === "office_pickup";
   const isNonClinicalResponse = isAdviceResponse || isOfficePickupResponse;
   const hasOfficialMedicalRecord = Boolean(request.medicalRecordId);
-  const displayStatusLabel = isAdviceResponse
-    ? "Advice provided"
-    : isOfficePickupResponse
-      ? "Pickup information available"
-      : ["resolved", "done", "completed"].includes(status) &&
-          !hasOfficialMedicalRecord
-        ? "Request resolved"
-        : statusLabel;
+  const displayStatusLabel = getFarmerHealthStatusLabel(
+    status,
+    resolvedHandlingMethod,
+  );
   const structuredInput = getStructuredHealthRequestPresentation(request);
   const requestType =
     structuredInput?.assistanceLabel ||
@@ -380,11 +357,7 @@ export default function HealthRequestDetailScreen() {
         ["Resolution", getRequestText(request.resolutionNotes)],
       ].filter((entry): entry is [string, string] => entry[1] !== null)
     : [];
-  const showProgress =
-    !isNonClinicalResponse &&
-    status !== "unknown" &&
-    status !== "cancelled" &&
-    status !== "rejected";
+  const caseProgress = getFarmerHealthCaseProgress(request);
   const detailSections = getFarmerHealthRequestDetailSections(request);
   const responseFirst = detailSections[0] === "response";
   const scheduledVisitFirst = detailSections[0] === "scheduled_visit";
@@ -618,16 +591,12 @@ export default function HealthRequestDetailScreen() {
               borderColor: colors.border,
             }}
           >
-            <SectionHeader
-              title={
-                isNonClinicalResponse ? "Technician responded" : "Case progress"
-              }
-            />
-            {showProgress ? (
+            <SectionHeader title="Case progress" />
+            {caseProgress.length ? (
               <View className="mt-2">
                 <WorkflowProgress
-                  steps={stages}
-                  currentIndex={stageIndex(status)}
+                  steps={caseProgress}
+                  currentIndex={caseProgress.length - 1}
                 />
               </View>
             ) : null}
@@ -653,7 +622,7 @@ export default function HealthRequestDetailScreen() {
                   if (s === "pending")
                     return "Your health report has been submitted. A technician will review and assign your case shortly.";
                   if (s === "approved" || s === "assigned" || s === "triaged")
-                    return "Your case has been approved. A technician will contact you to schedule a visit shortly.";
+                    return "A technician is reviewing your health concern and will provide the appropriate assistance.";
                   if (s === "scheduled") {
                     return scheduledDate
                       ? `A visit has been scheduled for ${scheduledDate}. Please make sure someone is available to assist.`

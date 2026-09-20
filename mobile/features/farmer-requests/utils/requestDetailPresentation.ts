@@ -167,15 +167,42 @@ export const getFarmerAINextStepMessage = (
 
 export type FarmerRequestService = "ai" | "health";
 
-export const mapFarmerRequestFilterStatus = (
+export const getFarmerRequestFilterQuery = (
   service: FarmerRequestService,
   filter: string,
-): string => {
-  if (filter === "completed") return service === "ai" ? "done" : "resolved";
-  if (filter === "in-progress" || filter === "pending_cancellation") {
-    return "all";
+): { status?: string; statusGroup?: "pending" | "in_progress" } => {
+  if (filter === "completed") {
+    return { status: service === "ai" ? "done" : "resolved" };
   }
-  return filter;
+  if (filter === "in-progress") return { statusGroup: "in_progress" };
+  if (service === "health" && filter === "pending") {
+    return { statusGroup: "pending" };
+  }
+  return { status: filter };
+};
+
+export const getFarmerHealthStatusLabel = (
+  value: unknown,
+  handlingMethod?: unknown,
+): string => {
+  const status = normalizeRequestStatus(value).replaceAll("-", "_");
+  const method = normalizeRequestStatus(handlingMethod).replaceAll("-", "_");
+
+  if (status === "pending") return "Awaiting Review";
+  if (["approved", "assigned", "triaged"].includes(status)) {
+    return "Under Review";
+  }
+  if (status === "scheduled") return "Scheduled";
+  if (status === "in_progress") return "In Progress";
+  if (["resolved", "done", "completed"].includes(status)) {
+    if (method === "advice") return "Advice Provided";
+    if (method === "office_pickup") return "Pickup Arranged";
+    if (method === "farm_visit") return "Completed";
+    return "Resolved";
+  }
+  if (status === "cancelled") return "Cancelled";
+  if (status === "rejected") return "Not Approved";
+  return "Status Unavailable";
 };
 
 export const getFarmerRequestListStatusLabel = (value: unknown): string => {

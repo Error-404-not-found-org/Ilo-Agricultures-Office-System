@@ -88,6 +88,7 @@ const formatRequestDate = (dateString) => {
     return new Intl.DateTimeFormat("en-PH", {
       dateStyle: "medium",
       timeStyle: "short",
+      timeZone: "Asia/Manila",
     }).format(new Date(dateString));
   } catch {
     return "Invalid date";
@@ -220,6 +221,11 @@ export default function HealthRequestActionModal({
   const status = normalizeHealthStatus(request?.status);
   const isOwned = isOwnedHealthRequest(request);
   const isScheduled = status === "scheduled";
+  const cancellationRequested =
+    Boolean(detailQuery.data) &&
+    !detailQuery.isError &&
+    isOwned &&
+    request?.cancellationStatus === "requested";
   const isUpcomingScheduledVisit =
     isScheduled &&
     (task?.workTiming === "upcoming" || task?.allowedAction === "VIEW_DETAILS");
@@ -368,6 +374,10 @@ export default function HealthRequestActionModal({
 
   const submitSchedule = async (samePeriodConfirmed = false) => {
     if (busy) return;
+    if (cancellationRequested) {
+      setErrorMessage("Respond to the Farmer's cancellation request before rescheduling.");
+      return;
+    }
     if (!schedule.scheduledDate || !schedule.visitPeriod) {
       setErrorMessage("Choose a visit date and period.");
       return;
@@ -417,6 +427,7 @@ export default function HealthRequestActionModal({
   };
 
   const startVisit = async () => {
+    if (cancellationRequested) return;
     if (busy) return;
     const scheduledKey = text(request?.scheduledDate).match(
       /^(\d{4}-\d{2}-\d{2})/,
@@ -453,6 +464,7 @@ export default function HealthRequestActionModal({
       !startServiceOnOpen ||
       detailQuery.isLoading ||
       !isScheduled ||
+      cancellationRequested ||
       !requestId ||
       autoStartedRequestId.current === requestId
     ) {
@@ -462,7 +474,7 @@ export default function HealthRequestActionModal({
     void startVisit();
     // This runs once for the explicit My Work service action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailQuery.isLoading, isScheduled, requestId, startServiceOnOpen]);
+  }, [cancellationRequested, detailQuery.isLoading, isScheduled, requestId, startServiceOnOpen]);
 
   const completeVisit = async () => {
     if (busy) return;
@@ -517,7 +529,46 @@ export default function HealthRequestActionModal({
     setErrorMessage("");
   };
 
+  const respondToCancellation = async (approved) => {
+    if (busy || !cancellationRequested) return;
+    setBusy(true);
+    setErrorMessage("");
+    try {
+      await axiosInstance.patch(`/health-request/${requestId}/cancel-respond`, {
+        approved,
+      });
+      await invalidateHealth();
+      const refreshed = await detailQuery.refetch();
+      if (refreshed.error) throw refreshed.error;
+      if (
+        approved &&
+        (normalizeHealthStatus(refreshed.data?.status) !== "cancelled" ||
+          refreshed.data?.cancellationStatus !== "approved")
+      ) {
+        throw new Error("The cancellation response was saved, but the updated request could not be confirmed. Please try refreshing.");
+      }
+      await onSuccess?.();
+      if (approved) onClose();
+    } catch (error) {
+      if ([400, 409].includes(error?.response?.status)) {
+        await detailQuery.refetch();
+      }
+      setErrorMessage(
+        getErrorMessage(error, "The cancellation response could not be saved."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const actions = (() => {
+    if (cancellationRequested && view === "summary") {
+      return (
+        <button type="button" className="btn btn-ghost btn-sm font-bold rounded-xl" disabled={busy} onClick={onClose}>
+          Close
+        </button>
+      );
+    }
     if (view === "advice") {
       return (
         <>
@@ -1022,6 +1073,21 @@ export default function HealthRequestActionModal({
                   />
                   <span className="font-semibold">{errorMessage}</span>
                 </div>
+              ) : null}
+
+              {!detailQuery.isLoading && view === "summary" && cancellationRequested ? (
+                <section className="rounded-2xl border border-warning/40 bg-warning/10 p-4 space-y-3" aria-label="Cancellation review">
+                  <div>
+                    <h4 className="font-bold text-base-content">Cancellation Requested</h4>
+                    <p className="text-xs text-base-content/70">The Health request remains {status.replaceAll("-", " ")} until you respond.</p>
+                  </div>
+                  <div className="text-sm"><span className="font-semibold">Farmer reason</span><p>{text(request.cancellationReason) || "No reason provided."}</p></div>
+                  {request.cancellationRequestedAt ? <div className="text-sm"><span className="font-semibold">Requested</span><p>{formatRequestDate(request.cancellationRequestedAt)}</p></div> : null}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="btn btn-sm btn-outline" disabled={busy} onClick={() => respondToCancellation(false)}>Keep Request</button>
+                    <button type="button" className="btn btn-sm btn-error" disabled={busy} onClick={() => respondToCancellation(true)}>Approve Cancellation</button>
+                  </div>
+                </section>
               ) : null}
 
               {!detailQuery.isLoading && view === "summary" && isScheduled ? (

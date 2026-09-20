@@ -312,6 +312,11 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
   const statusColor = getStatusColor(item, colors);
   const StatusIcon = getStatusIcon(item);
   const statusLabel = getStatusLabel(item);
+  const showStatusBadge =
+    !isTechnicianWorkItem(item) ||
+    ["ai", "health", "pregnancy_check"].includes(item.workType) ||
+    statusLabel === "Needs review" ||
+    item.state === "in_progress";
   const borderColor = getCardBorderColor(item, colors);
   const actionLabel = getActionLabel(item);
 
@@ -392,7 +397,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
           borderBottomColor: colors.border,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 }}>
           {/* Avatar / Icon */}
           <View
             style={{
@@ -416,8 +421,10 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
             )}
           </View>
 
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
               style={{
                 fontFamily: "Outfit_700Bold",
                 fontSize: 15,
@@ -427,10 +434,13 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
               {farmerName || "Farmer"}
             </Text>
             <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 }}
             >
               <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
                 style={{
+                  flexShrink: 1,
                   fontFamily: "Outfit_500Medium",
                   fontSize: 11,
                   color: colors.textMuted,
@@ -447,7 +457,10 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
                 }}
               />
               <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
                 style={{
+                  flexShrink: 1,
                   fontFamily: "Outfit_600SemiBold",
                   fontSize: 11,
                   color:
@@ -465,10 +478,12 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
         </View>
 
         {/* Status Badge */}
-        <View
+        {showStatusBadge ? <View
           style={{
             flexDirection: "row",
             alignItems: "center",
+            flexShrink: 0,
+            marginLeft: 8,
             gap: 6,
             paddingHorizontal: 10,
             paddingVertical: 4,
@@ -486,7 +501,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
           >
             {statusLabel}
           </Text>
-        </View>
+        </View> : null}
       </View>
 
       {/* ─── Body ───────────────────────────────────────────────────────────── */}
@@ -504,8 +519,14 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
           {title}
         </Text>
 
+        {isTechnicianWorkItem(item) && item.contextLabel ? (
+          <Text textRole="caption" color="secondary">
+            {item.contextLabel}
+          </Text>
+        ) : null}
+
         {/* Urgency / Re-insemination / Pregnancy Check badges */}
-        {(urgent || reInsemination || pregnancyCheck) && (
+        {(urgent || reInsemination || (pregnancyCheck && !isTechnicianWorkItem(item))) && (
           <View
             style={{
               flexDirection: "row",
@@ -561,7 +582,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
                 </Text>
               </View>
             )}
-            {pregnancyCheck && (
+            {pregnancyCheck && !isTechnicianWorkItem(item) && (
               <View
                 style={{
                   paddingHorizontal: 10,

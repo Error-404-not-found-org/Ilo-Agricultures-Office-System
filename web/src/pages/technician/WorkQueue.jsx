@@ -15,6 +15,9 @@ import {
   PhoneOff,
   MessageSquare,
   Phone,
+  Clock,
+  Info,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
@@ -25,7 +28,9 @@ import AIScheduledVisitModal from "../../components/dialogs/AIScheduledVisitModa
 import HealthRequestActionModal from "../../components/dialogs/HealthRequestActionModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
-import PregnancyLossReviewModal from "../../components/dialogs/PregnancyLossReviewModal";
+import PregnancyLossReviewModal, {
+  formatFarmerLocation,
+} from "../../components/dialogs/PregnancyLossReviewModal";
 import Modal from "../../components/ui/Modal";
 import { getTaskReadiness } from "../../constants/technicianWorkflow";
 import { getTaskPrimaryActionLabel } from "../../utils/taskNavigation";
@@ -39,6 +44,7 @@ import {
   formatHealthRequestType,
 } from "../../utils/requestWorkPresentation";
 import { isFutureSchedule } from "../../utils/technicianSchedulePresentation";
+import { getLifecycleTaskPresentation } from "../../utils/technicianLifecyclePresentation";
 import ImagePreviewModal from "../../components/ui/ImagePreviewModal";
 import { imagePreviewUrl } from "../../components/ui/imagePreviewUrl";
 import {
@@ -292,6 +298,18 @@ export default function WorkQueue({ embedded = false }) {
     },
   });
 
+  const handledHealthLinkQuery = useQuery({
+    queryKey: ["technician", "health-request", "handled-deep-link", deepLinkRequestId],
+    enabled: Boolean(deepLinkRequestId) && deepLinkQuery.isSuccess && !deepLinkQuery.data,
+    retry: false,
+    queryFn: async () => {
+      const response = await axiosInstance.get(
+        `/health-request/${encodeURIComponent(deepLinkRequestId)}`,
+      );
+      return response.data?.data || response.data?.request || response.data;
+    },
+  });
+
   const breedingFollowUpTaskId =
     breedingFollowUp?.taskId || breedingFollowUp?.id || null;
   const breedingFollowUpDetailsQuery = useQuery({
@@ -330,6 +348,56 @@ export default function WorkQueue({ embedded = false }) {
       breedingFollowUpDetails ||
       breedingFollowUp,
   );
+
+  const breedingFollowUpFarmerName =
+    (typeof breedingFollowUpFarmer?.name === "string" &&
+      breedingFollowUpFarmer.name.trim()) ||
+    (typeof breedingFollowUpFarmer?.fullName === "string" &&
+      breedingFollowUpFarmer.fullName.trim()) ||
+    [breedingFollowUpFarmer?.firstName, breedingFollowUpFarmer?.lastName]
+      .filter((p) => typeof p === "string" && p.trim().length > 0)
+      .join(" ") ||
+    breedingFollowUp?.farmerName ||
+    "Farmer";
+
+  const breedingFollowUpFarmerPhone =
+    (typeof breedingFollowUpFarmer?.phoneNumber === "string" &&
+      breedingFollowUpFarmer.phoneNumber.trim()) ||
+    (typeof breedingFollowUpFarmer?.phone === "string" &&
+      breedingFollowUpFarmer.phone.trim()) ||
+    (typeof breedingFollowUpFarmer?.contactNumber === "string" &&
+      breedingFollowUpFarmer.contactNumber.trim()) ||
+    null;
+
+  const breedingFollowUpAnimalName =
+    (typeof breedingFollowUpAnimal?.name === "string" &&
+      breedingFollowUpAnimal.name.trim()) ||
+    "";
+  const breedingFollowUpAnimalEarTag =
+    (typeof breedingFollowUpAnimal?.earTag === "string" &&
+      breedingFollowUpAnimal.earTag.trim()) ||
+    (typeof breedingFollowUpAnimal?.tag === "string" &&
+      breedingFollowUpAnimal.tag.trim()) ||
+    "";
+  const breedingFollowUpAnimalDisplayName =
+    breedingFollowUpAnimalName && breedingFollowUpAnimalEarTag
+      ? `${breedingFollowUpAnimalName} (${breedingFollowUpAnimalEarTag})`
+      : breedingFollowUpAnimalEarTag
+        ? `Tag ${breedingFollowUpAnimalEarTag}`
+        : breedingFollowUpAnimalName || "Unknown Animal";
+
+  const breedingFollowUpAnimalBreed =
+    (typeof breedingFollowUpAnimal?.breed === "string" &&
+      breedingFollowUpAnimal.breed.trim()) ||
+    "";
+  const breedingFollowUpAnimalSpecies =
+    (typeof breedingFollowUpAnimal?.species === "string" &&
+      breedingFollowUpAnimal.species.trim()) ||
+    "";
+  const breedingFollowUpReproductiveStatus =
+    (typeof breedingFollowUpAnimal?.reproductiveStatus === "string" &&
+      breedingFollowUpAnimal.reproductiveStatus.trim()) ||
+    "";
 
   const completeMutation = useMutation({
     mutationFn: (taskId) =>
@@ -666,6 +734,7 @@ export default function WorkQueue({ embedded = false }) {
       firedDeepLinkIdentifier.current = null;
     } else if (
       deepLinkQuery.isSuccess &&
+      (deepLinkQuery.data || !deepLinkRequestId || handledHealthLinkQuery.isSuccess || handledHealthLinkQuery.isError) &&
       firedDeepLinkIdentifier.current !== currentIdentifier
     ) {
       firedDeepLinkIdentifier.current = currentIdentifier;
@@ -682,7 +751,21 @@ export default function WorkQueue({ embedded = false }) {
           openTask(target);
         }
       } else {
-        toast.error("This work item is unavailable or is not assigned to you.");
+        const handledRequest = handledHealthLinkQuery.data;
+        const assignedHealthRequest = Boolean(
+          handledRequest?.handledBy || handledRequest?.assignedTechnicianId,
+        );
+        if (
+          assignedHealthRequest &&
+          handledRequest?.status === "cancelled" &&
+          handledRequest?.cancellationStatus === "approved"
+        ) {
+          toast.info("This Health request has already been cancelled.");
+        } else if (assignedHealthRequest && handledRequest?.cancellationStatus === "rejected") {
+          toast.info("This cancellation request has already been handled.");
+        } else {
+          toast.error("This work item is unavailable or is not assigned to you.");
+        }
         setSearchParams(
           (prev) => {
             const next = new URLSearchParams(prev);
@@ -698,6 +781,10 @@ export default function WorkQueue({ embedded = false }) {
     hasDeepLink,
     deepLinkQuery.isSuccess,
     deepLinkQuery.data,
+    deepLinkRequestId,
+    handledHealthLinkQuery.isSuccess,
+    handledHealthLinkQuery.isError,
+    handledHealthLinkQuery.data,
     toast,
     setSearchParams,
     selectedTaskWrapper,
@@ -837,6 +924,7 @@ export default function WorkQueue({ embedded = false }) {
               <>
                 <div className="space-y-3" aria-label="My Work items">
                   {tasks.map((task) => {
+                    const lifecycle = getLifecycleTaskPresentation(task);
                     const workflowStatus = normalizeWorkflowStatus(task);
                     const statusPresentation =
                       getWorkflowStatusPresentation(workflowStatus);
@@ -848,7 +936,7 @@ export default function WorkQueue({ embedded = false }) {
                     const taskLabel =
                       serviceType === "health" && healthRequestType
                         ? formatHealthRequestType(healthRequestType)
-                        : task.title || servicePresentation.label;
+                        : lifecycle?.title || task.title || servicePresentation.label;
                     const readiness = getTaskReadiness(task.raw || task);
                     const actionDisabled =
                       !readiness.ready ||
@@ -865,8 +953,13 @@ export default function WorkQueue({ embedded = false }) {
                       date: task.schedule?.date || task.displayDate || null,
                       visitPeriod: task.schedule?.visitPeriod || null,
                     };
-                    const timingLabel =
-                      timing.kind === "scheduled_visit"
+                    const timingLabel = lifecycle
+                      ? lifecycle.detail ||
+                        lifecycle.timing ||
+                        (lifecycle.actionState === "Ready for check"
+                          ? lifecycle.actionState
+                          : null)
+                      : timing.kind === "scheduled_visit"
                         ? formatCanonicalVisitSchedule({
                             date: timing.date,
                             visitPeriod: timing.visitPeriod,
@@ -891,11 +984,13 @@ export default function WorkQueue({ embedded = false }) {
                               <span className="badge badge-sm badge-primary badge-soft">
                                 {taskLabel}
                               </span>
-                              <span
-                                className={`badge badge-sm border ${statusPresentation.badgeClass}`}
-                              >
-                                {statusPresentation.label}
-                              </span>
+                              {(!lifecycle || lifecycle.actionState) && (
+                                <span
+                                  className={`badge badge-sm border ${statusPresentation.badgeClass}`}
+                                >
+                                  {lifecycle?.actionState || statusPresentation.label}
+                                </span>
+                              )}
                               {task.urgent ? (
                                 <span className="badge badge-sm badge-error badge-outline">
                                   Urgent
@@ -980,6 +1075,11 @@ export default function WorkQueue({ embedded = false }) {
                               </div>
                             )}
 
+                            {lifecycle?.context && (
+                              <p className="mt-2 text-xs text-base-content/65">
+                                {lifecycle.context}
+                              </p>
+                            )}
                             {task.summary ? (
                               <div className="mt-2 space-y-2">
                                 {task.summary.match(/(Contact the.*)/i) ? (
@@ -1009,12 +1109,14 @@ export default function WorkQueue({ embedded = false }) {
                           </div>
 
                           <dl className="grid gap-2 text-sm">
-                            <div>
+                            {timingLabel ? <div>
                               <dt className="text-xs font-semibold text-base-content/50">
                                 {timing.kind === "scheduled_visit"
                                   ? "Visit"
                                   : timing.kind === "completed"
                                     ? "Completed"
+                                  : lifecycle
+                                    ? "Timing"
                                     : "Due"}
                               </dt>
                               <dd
@@ -1027,7 +1129,7 @@ export default function WorkQueue({ embedded = false }) {
                                 <CalendarDays size={15} aria-hidden="true" />
                                 {timingLabel}
                               </dd>
-                            </div>
+                            </div> : null}
                             <div>
                               <dt className="text-xs font-semibold text-base-content/50">
                                 Location
@@ -1334,14 +1436,15 @@ export default function WorkQueue({ embedded = false }) {
         title={
           breedingFollowUpStep === "overview"
             ? "Breeding Follow-up"
-            : "Record breeding follow-up"
+            : "Record Breeding Follow-up"
         }
         subtitle={
           breedingFollowUpStep === "overview"
-            ? undefined
+            ? "Review farmer observation and record breeding outcome"
             : "Record the technician's current observation for this AI attempt."
         }
-        size="md"
+        size="xl"
+        icon={<Activity className="text-primary h-5 w-5" />}
         actions={
           breedingFollowUpStep === "overview" ? (
             <>
@@ -1357,7 +1460,7 @@ export default function WorkQueue({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-primary font-semibold"
                 onClick={() => setBreedingFollowUpStep("form")}
               >
                 Record Follow-up
@@ -1374,7 +1477,7 @@ export default function WorkQueue({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-primary font-semibold"
                 disabled={breedingFollowUpMutation.isPending}
                 onClick={() =>
                   breedingFollowUpMutation.mutate({
@@ -1392,9 +1495,9 @@ export default function WorkQueue({ embedded = false }) {
         }
       >
         {breedingFollowUpStep === "overview" ? (
-          <div className="space-y-4">
+          <div className="space-y-4 py-1">
             {breedingFollowUpDetailsQuery.isError ? (
-              <div className="alert alert-error" role="alert">
+              <div className="alert alert-error text-xs rounded-2xl" role="alert">
                 <AlertCircle size={18} aria-hidden="true" />
                 <span>Could not load the breeding record details.</span>
                 <button
@@ -1407,72 +1510,147 @@ export default function WorkQueue({ embedded = false }) {
               </div>
             ) : null}
 
-            {/* Breeding Reference */}
-            <div className="rounded-xl border border-base-300 p-4">
-              <h3 className="font-bold text-primary mb-3">
-                Breeding Reference
-              </h3>
+            {/* Soft Guidance Banner (matching PregnancyLossReviewModal palette) */}
+            <div className="alert alert-info/15 border-info/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+              <Info className="h-4 w-4 shrink-0 text-info mt-0.5" />
               <div>
-                <h4 className="text-lg font-bold text-base-content">
-                  {breedingFollowUpAnimal?.name ||
-                    (breedingFollowUpAnimal?.earTag
-                      ? `Tag ${breedingFollowUpAnimal.earTag}`
-                      : "Unknown Animal")}
-                </h4>
-                <p className="text-sm text-base-content/60">
-                  {[
-                    breedingFollowUpAnimal?.species,
-                    breedingFollowUpAnimal?.breed,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "No breed info"}
+                <p className="font-bold text-base-content">
+                  Day-21 Return-to-Heat Monitoring
                 </p>
-              </div>
-
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-base-content/60">Date Inseminated</span>
-                  <span className="font-medium text-base-content">
-                    {breedingFollowUpInsemination?.inseminationDate
-                      ? formatInseminationDate(
-                          breedingFollowUpInsemination.inseminationDate,
-                        )
-                      : breedingFollowUpUnavailableLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-base-content/60">Attempt</span>
-                  <span className="font-medium text-base-content">
-                    {breedingFollowUpInsemination?.attemptNumber != null
-                      ? `#${breedingFollowUpInsemination.attemptNumber}`
-                      : breedingFollowUpUnavailableLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-base-content/60">Sire</span>
-                  <span className="font-medium text-base-content">
-                    {breedingFollowUpSire || breedingFollowUpUnavailableLabel}
-                  </span>
-                </div>
+                <p className="mt-0.5 leading-relaxed text-base-content/75">
+                  Review the farmer's observation to determine if return-to-heat occurred or if pregnancy monitoring will proceed.
+                </p>
               </div>
             </div>
 
-            {/* Farmer Update */}
-            <div className="rounded-xl border border-base-300 p-4">
-              <div className="flex items-center justify-between gap-2 mb-3">
+            {/* Animal & Farmer Cards Grid (matching PregnancyLossReviewModal) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Breeding Reference */}
+              <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+                  Breeding Reference
+                </span>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-bold text-sm text-base-content">
+                      {breedingFollowUpAnimalDisplayName}
+                    </h4>
+                    <p className="text-xs text-base-content/70 mt-0.5">
+                      {[
+                        breedingFollowUpAnimal?.species,
+                        breedingFollowUpAnimal?.breed,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "No breed info"}
+                    </p>
+                  </div>
+                  {breedingFollowUpReproductiveStatus ? (
+                    <span className="badge badge-success badge-sm font-semibold">
+                      {breedingFollowUpReproductiveStatus}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center text-base-content/70">
+                    <span>Date Inseminated</span>
+                    <span className="font-semibold text-base-content">
+                      {breedingFollowUpInsemination?.inseminationDate
+                        ? formatInseminationDate(
+                            breedingFollowUpInsemination.inseminationDate,
+                          )
+                        : breedingFollowUpUnavailableLabel}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-base-content/70">
+                    <span>Attempt</span>
+                    <span className="font-semibold text-base-content">
+                      {breedingFollowUpInsemination?.attemptNumber != null
+                        ? `#${breedingFollowUpInsemination.attemptNumber}`
+                        : breedingFollowUpUnavailableLabel}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-base-content/70">
+                    <span>Sire</span>
+                    <span className="font-semibold text-base-content">
+                      {breedingFollowUpSire || breedingFollowUpUnavailableLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reporting Farmer */}
+              <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+                  Reporting Farmer
+                </span>
+                <div className="flex items-start gap-3">
+                  {breedingFollowUpFarmer?.imageUrl ? (
+                    <div className="avatar">
+                      <div className="h-10 w-10 rounded-full">
+                        <img
+                          src={breedingFollowUpFarmer.imageUrl}
+                          alt={`${breedingFollowUpFarmerName} profile`}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="avatar avatar-placeholder">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 text-primary">
+                        <span className="text-sm font-semibold">
+                          {breedingFollowUpFarmerName
+                            ? breedingFollowUpFarmerName.charAt(0).toUpperCase()
+                            : "F"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-sm text-base-content truncate">
+                      {breedingFollowUpFarmerName}
+                    </h4>
+                    <p className="text-xs text-base-content/70 mt-0.5 truncate">
+                      {formatFarmerLocation(
+                        breedingFollowUpFarmer,
+                        "Location not provided",
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {breedingFollowUpFarmerPhone ? (
+                  <a
+                    href={`tel:${breedingFollowUpFarmerPhone}`}
+                    className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-3 hover:underline"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {breedingFollowUpFarmerPhone}
+                  </a>
+                ) : (
+                  <p className="text-xs text-base-content/50 mt-3 italic">
+                    No phone number available
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Farmer Observation / Update Section (matching PregnancyLossReviewModal) */}
+            <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-primary text-sm uppercase tracking-wide">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
                     Farmer Update
-                  </h3>
+                  </span>
                   {farmerObservation.hasObservation ? (
-                    <span className="badge badge-sm badge-info badge-soft font-semibold">
+                    <span className="badge badge-info badge-sm font-semibold">
                       Needs review
                     </span>
                   ) : null}
                 </div>
                 {farmerObservation.hasObservation &&
                 farmerObservation.reportedAt ? (
-                  <span className="text-xs text-base-content/60">
+                  <span className="text-[11px] text-base-content/60 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
                     Submitted {formatSubmittedAt(farmerObservation.reportedAt)}
                   </span>
                 ) : null}
@@ -1487,7 +1665,7 @@ export default function WorkQueue({ embedded = false }) {
               ) : farmerObservation.hasObservation ? (
                 <div className="space-y-3">
                   {farmerObservation.reportType ? (
-                    <h4 className="text-base font-bold text-base-content">
+                    <h4 className="text-sm font-bold text-base-content">
                       {getBreedingObservationLabel(
                         farmerObservation.reportType,
                       )}
@@ -1496,10 +1674,10 @@ export default function WorkQueue({ embedded = false }) {
 
                   {farmerObservation.signs.length > 0 ? (
                     <div>
-                      <span className="text-xs font-semibold text-base-content/60 block mb-1">
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
                         Signs observed:
                       </span>
-                      <ul className="list-disc list-inside space-y-1 text-sm text-base-content">
+                      <ul className="list-disc list-inside space-y-1 text-xs text-base-content font-medium">
                         {farmerObservation.signs.map((sign) => (
                           <li key={sign} className="font-medium">
                             {getBreedingObservationSignLabel(sign)}
@@ -1511,10 +1689,10 @@ export default function WorkQueue({ embedded = false }) {
 
                   {farmerObservation.notes ? (
                     <div>
-                      <span className="text-xs font-semibold text-base-content/60 block mb-1">
-                        Notes:
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                        Farmer Notes / Description:
                       </span>
-                      <p className="text-xs text-base-content/80 whitespace-pre-wrap bg-base-200/50 rounded-lg p-2.5">
+                      <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium whitespace-pre-wrap">
                         {farmerObservation.notes}
                       </p>
                     </div>
@@ -1522,10 +1700,10 @@ export default function WorkQueue({ embedded = false }) {
 
                   {farmerObservation.evidencePhotos.length > 0 ? (
                     <div>
-                      <span className="text-xs font-semibold text-base-content/60 block mb-1.5">
-                        Supporting photos:
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1.5">
+                        Supporting Photos ({farmerObservation.evidencePhotos.length})
                       </span>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2.5">
                         {farmerObservation.evidencePhotos.map(
                           (photo, index) => {
                             const url = imagePreviewUrl(photo);
@@ -1533,7 +1711,7 @@ export default function WorkQueue({ embedded = false }) {
                               <button
                                 key={url || index}
                                 type="button"
-                                className="relative h-16 w-16 overflow-hidden rounded-lg border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
+                                className="relative h-20 w-20 rounded-xl overflow-hidden border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
                                 onClick={() => setPreviewImage(photo)}
                                 aria-label={`View supporting photo ${index + 1}`}
                               >
@@ -1552,7 +1730,7 @@ export default function WorkQueue({ embedded = false }) {
                   ) : null}
                 </div>
               ) : (
-                <div className="text-center py-4">
+                <div className="text-center py-6 bg-base-200/30 rounded-xl border border-dashed border-base-300">
                   <MessageSquare
                     className="mx-auto text-base-content/30 mb-2"
                     size={24}
@@ -1560,72 +1738,22 @@ export default function WorkQueue({ embedded = false }) {
                   <h4 className="font-bold text-base-content text-sm">
                     No farmer update received
                   </h4>
-                  <p className="text-xs text-base-content/60 mt-1 max-w-70 mx-auto">
+                  <p className="text-xs text-base-content/60 mt-1 max-w-xs mx-auto">
                     Contact the farmer to ask whether the animal showed signs of
                     returning to heat.
                   </p>
                 </div>
               )}
             </div>
-
-            {/* Farmer Contact */}
-            <div className="rounded-xl border border-base-300 p-4">
-              <h3 className="font-bold text-primary mb-3">Farmer Contact</h3>
-              <div className="flex items-center gap-3">
-                {breedingFollowUpFarmer?.imageUrl ? (
-                  <div className="avatar">
-                    <div className="h-10 w-10 rounded-full">
-                      <img
-                        src={breedingFollowUpFarmer.imageUrl}
-                        alt={`${breedingFollowUpFarmer.name || "Farmer"} profile`}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="avatar avatar-placeholder">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 text-primary">
-                      <span className="text-sm font-semibold">
-                        {breedingFollowUpFarmer?.name
-                          ? breedingFollowUpFarmer.name.charAt(0).toUpperCase()
-                          : "F"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <h4 className="font-bold text-base-content text-sm">
-                    {breedingFollowUpFarmer?.name ||
-                      breedingFollowUp?.farmerName ||
-                      "Unknown Farmer"}
-                  </h4>
-                  <p className="text-xs text-base-content/60">
-                    {breedingFollowUpFarmer?.phoneNumber ||
-                      breedingFollowUpFarmer?.phone ||
-                      "No phone number available"}
-                  </p>
-                </div>
-              </div>
-              <a
-                href={
-                  breedingFollowUpFarmer?.phoneNumber ||
-                  breedingFollowUpFarmer?.phone
-                    ? `tel:${breedingFollowUpFarmer.phoneNumber || breedingFollowUpFarmer.phone}`
-                    : undefined
-                }
-                className={`btn btn-outline btn-primary w-full mt-4 ${!breedingFollowUpFarmer?.phoneNumber && !breedingFollowUpFarmer?.phone ? "btn-disabled" : ""}`}
-              >
-                <Phone size={16} />
-                Call Farmer
-              </a>
-            </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <label className="form-control">
-              <div className="text-sm font-bold text-base-content mb-2">
+          /* Form Step */
+          <div className="space-y-4 py-1">
+            <div className="border border-base-300 rounded-2xl p-4 space-y-4">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                 Follow-up Outcome
-              </div>
-              <div className="grid gap-3">
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() =>
@@ -1634,22 +1762,21 @@ export default function WorkQueue({ embedded = false }) {
                       reportType: "possible_pregnancy",
                     }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "possible_pregnancy"
-                      ? "border-primary bg-primary/5"
+                      ? "border-primary bg-primary/5 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <CheckCircle2 size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <CheckCircle2 size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
                       No heat noticed
                     </h4>
-                    <p className="mt-1 text-xs text-base-content/70">
-                      No heat signs were reported. Pregnancy still requires
-                      professional confirmation.
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
+                      No heat signs were reported. Pregnancy still requires professional confirmation.
                     </p>
                   </div>
                 </button>
@@ -1662,20 +1789,20 @@ export default function WorkQueue({ embedded = false }) {
                       reportType: "return_to_heat",
                     }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "return_to_heat"
-                      ? "border-error bg-error/5"
+                      ? "border-error bg-error/5 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error/10 text-error">
-                    <AlertCircle size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-error/10 text-error">
+                    <AlertCircle size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
                       Returned to heat
                     </h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       Return-to-heat signs were observed or reported.
                     </p>
                   </div>
@@ -1686,18 +1813,20 @@ export default function WorkQueue({ embedded = false }) {
                   onClick={() =>
                     setFollowUpDraft((c) => ({ ...c, reportType: "unsure" }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "unsure"
-                      ? "border-warning bg-warning/5"
+                      ? "border-warning bg-warning/5 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
-                    <HelpCircle size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
+                    <HelpCircle size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">Not sure</h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
+                      Not sure
+                    </h4>
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       Unable to determine whether the animal returned to heat.
                     </p>
                   </div>
@@ -1711,26 +1840,41 @@ export default function WorkQueue({ embedded = false }) {
                       reportType: "unable_to_contact",
                     }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "unable_to_contact"
-                      ? "border-base-content/30 bg-base-200"
+                      ? "border-base-content/30 bg-base-200 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content/60">
-                    <PhoneOff size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-base-300 text-base-content/60">
+                    <PhoneOff size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
                       Unable to contact farmer
                     </h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       No reproductive observation will be recorded.
                     </p>
                   </div>
                 </button>
               </div>
-            </label>
+
+              <div>
+                <label className="label-text text-xs font-semibold text-base-content/80 block mb-1">
+                  Technician Notes (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={followUpDraft.notes}
+                  onChange={(e) =>
+                    setFollowUpDraft((c) => ({ ...c, notes: e.target.value }))
+                  }
+                  placeholder="Enter your observations, examination findings, or follow-up notes..."
+                  className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl"
+                />
+              </div>
+            </div>
           </div>
         )}
       </Modal>

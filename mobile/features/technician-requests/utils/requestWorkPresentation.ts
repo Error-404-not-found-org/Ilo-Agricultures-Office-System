@@ -201,6 +201,13 @@ const formatWorkDate = (value: unknown): string | null => {
   }).format(date);
 };
 
+const manilaDayDifference = (fromKey: string, toKey: string) =>
+  Math.round(
+    (Date.parse(`${toKey}T00:00:00Z`) -
+      Date.parse(`${fromKey}T00:00:00Z`)) /
+      86_400_000,
+  );
+
 const workTypeOf = (item: WorkQueueItem): TechnicianWorkType => {
   const service = normalizeServiceType(item);
   if (service === "ai") return "ai";
@@ -285,6 +292,9 @@ export function normalizeTechnicianWorkItem(
       item.context?.reportType ||
       item.metadata?.reportType,
   );
+  const taskSourceType = normalizedValue(
+    item.sourceType || item.raw?.sourceType,
+  );
   const isPregnancyLossReview = Boolean(
     item.sourceType === "farmer_pregnancy_loss_report" ||
       item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
@@ -364,15 +374,63 @@ export function normalizeTechnicianWorkItem(
   );
   const overdue = needsAttention && timingKind !== "expected_event";
   const dateLabel = formatWorkDate(timingDate);
-  const timingLabel = !dateLabel
+  const daysPast = timingKey && todayKey
+    ? manilaDayDifference(timingKey, todayKey)
+    : 0;
+  const farmerReportTimestamp = text(
+    item.farmerObservation?.reportedAt ||
+      item.raw?.metadata?.reportedAt ||
+      item.raw?.farmerOutcomeReportedAt ||
+      item.metadata?.reportedAt ||
+      (taskSourceType === "farmer_requested_verification" &&
+      farmerReportType === "return_to_heat"
+        ? rawDueDate
+        : null),
+  );
+  const reportKey = philippineDateKey(farmerReportTimestamp);
+  const reportDateLabel = formatWorkDate(farmerReportTimestamp);
+  const reportAge = reportKey && todayKey
+    ? manilaDayDifference(reportKey, todayKey)
+    : null;
+  const reportTimingLabel = !reportDateLabel || reportAge === null
     ? null
-    : timingKind === "scheduled_visit"
-      ? `${dateLabel}${period ? ` · ${period === "morning" ? "Morning" : "Afternoon"}` : ""}`
-      : timingKind === "confirmation_due"
-        ? `Pregnancy confirmation due · ${dateLabel}`
-        : timingKind === "expected_event"
-          ? `${needsAttention ? "Past expected date" : "Expected"} · ${dateLabel}`
-          : `Due · ${dateLabel}`;
+    : reportAge === 0
+      ? "Reported today"
+      : reportAge === 1
+        ? "Reported yesterday"
+        : `Reported ${reportDateLabel}`;
+  const isFarmerReport = Boolean(
+    isPregnancyLossReview ||
+      (workType === "breeding_follow_up" && farmerReportType === "return_to_heat"),
+  );
+  const timingLabel = isFarmerReport
+    ? reportTimingLabel
+    : !dateLabel
+      ? null
+      : timingKind === "scheduled_visit"
+        ? `${workType === "pregnancy_check" ? "Scheduled " : ""}${dateLabel}${period ? ` · ${period === "morning" ? "Morning" : "Afternoon"}` : ""}`
+      : timingKind === "expected_event"
+        ? daysPast > 0
+          ? `Past expected date · ${dateLabel}`
+          : daysPast === 0
+            ? "Expected today"
+            : `Expected ${dateLabel}`
+        : workType === "pregnancy_check"
+          ? daysPast > 0
+            ? `Since ${dateLabel}`
+            : daysPast === 0
+              ? null
+              : `Check from ${dateLabel}`
+          : daysPast > 0
+            ? `Overdue · ${daysPast} ${daysPast === 1 ? "day" : "days"}`
+            : daysPast === 0
+              ? "Due today"
+              : `Due ${dateLabel}`;
+  const contextLabel = isPregnancyLossReview
+    ? "Farmer reported pregnancy loss"
+    : workType === "breeding_follow_up" && farmerReportType === "return_to_heat"
+      ? "Return to heat reported"
+      : null;
 
   const isFutureDated = Boolean(
     unfinished && timingKey && todayKey && timingKey > todayKey,
@@ -451,6 +509,11 @@ export function normalizeTechnicianWorkItem(
     statusLabel:
       isPregnancyLossReview && !["completed", "cancelled"].includes(state)
         ? "Needs review"
+        : workType === "pregnancy_check" && state !== "scheduled" &&
+          !["completed", "cancelled"].includes(state)
+          ? isFutureDated
+            ? "Upcoming"
+            : "Ready for check"
         : workType === "breeding_follow_up" &&
           !["completed", "cancelled"].includes(state)
           ? farmerReportType
@@ -474,6 +537,7 @@ export function normalizeTechnicianWorkItem(
     animalTag: text(animal?.earTag || item.animalTag),
     location: text(farmer?.location || item.location || item.farmLocationLabel),
     timingLabel,
+    contextLabel,
     isReadyToday,
     needsAttention,
     overdue,
@@ -506,6 +570,14 @@ export const normalizeTechnicianWorkItems = (
 ) =>
   (Array.isArray(items) ? items : []).map((item) =>
     normalizeTechnicianWorkItem(item, now),
+  );
+
+export const getDashboardAttentionItems = (items: TechnicianWorkItem[]) =>
+  items.filter(
+    (item) =>
+      item.state !== "completed" &&
+      item.state !== "cancelled" &&
+      (item.isReadyToday || item.needsAttention),
   );
 
 export function summarizeTechnicianWork(

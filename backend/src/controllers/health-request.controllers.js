@@ -35,6 +35,7 @@ import {
   normalizeVisitScheduleDate,
 } from "../domain/visit-scheduling.js";
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
+import { buildFarmerRequestStatusFilter } from "../domain/farmer-request-list-filter.js";
 import {
   assertHealthRequestMutationOwnership,
   buildHealthRequestMutationOwnershipGuard,
@@ -253,11 +254,15 @@ export const createHealthRequest = async (req, res) => {
 // GET /api/health-request/my  — farmer's own requests
 export const getMyHealthRequests = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
+    const { page = 1, limit = 10, status, statusGroup } = req.query;
     const farmerId = req.user._id;
 
     const query = { farmerId, deletedAt: null, farmerDismissedAt: null };
-    if (status && status !== 'all') query.status = status;
+    const statusFilter = buildFarmerRequestStatusFilter("health", {
+      status,
+      statusGroup,
+    });
+    if (statusFilter) query.status = statusFilter;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -279,7 +284,10 @@ export const getMyHealthRequests = async (req, res) => {
     });
   } catch (error) {
     console.error("[getMyHealthRequests ERROR]", error.message);
-    res.status(500).json({ message: "Failed to fetch your requests." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch your requests.",
+      code: error.code,
+    });
   }
 };
 

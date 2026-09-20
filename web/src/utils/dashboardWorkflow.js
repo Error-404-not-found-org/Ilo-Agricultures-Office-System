@@ -17,7 +17,9 @@ export const getDashboardScheduleOverview = (
     dueCount: scheduleItems.filter((item) =>
       ["due", "overdue"].includes(item.timingState),
     ).length,
-    todayWork: scheduleItems.filter((item) => item.timingState === "due"),
+    todayWork: scheduleItems.filter((item) =>
+      ["due", "overdue"].includes(item.timingState),
+    ),
   };
 };
 

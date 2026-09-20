@@ -74,6 +74,47 @@ test("Technician Dashboard uses its authoritative agenda instead of a Work Queue
     /normalizeTechnicianWorkItems\(data\?\.agendaItems\)/,
   );
   assert.doesNotMatch(source, /useTechnicianTasks/);
+  assert.match(source, /getDashboardAttentionItems\(workItems\)/);
+});
+
+test("badge and panel requests retain the same server count across pagination limits", async () => {
+  const requestedLimits: number[] = [];
+  const api = {
+    get: async (_url: string, config: { params: { limit: number } }) => {
+      requestedLimits.push(config.params.limit);
+      return { data: {
+        data: [],
+        pagination: { total: 5, page: 1, limit: config.params.limit, totalPages: 5 },
+        counts: { all: 5, ai: 1, health: 1, pregnancy: 2, calving: 1 },
+      } };
+    },
+  };
+  const badge = await getTechnicianWorkQueue(api as any, { ...filters, limit: 1 });
+  const panel = await getTechnicianWorkQueue(api as any, { ...filters, limit: 20 });
+  assert.deepEqual(requestedLimits, [1, 20]);
+  assert.equal(badge.counts.all, 5);
+  assert.equal(panel.counts.all, 5);
+});
+
+test("Mobile Home offers one View all route to My Work without Calendar or count clutter", () => {
+  const source = readMobileSource(
+    "features/technician-dashboard/components/TechnicianRouteSection.tsx",
+  );
+  assert.match(source, /getDashboardWorkPreview\(workItems\)/);
+  assert.match(source, /View all \(\{total\}\)/);
+  assert.doesNotMatch(source, /Showing \{previewItems\.length\} of \{total\}/);
+  assert.doesNotMatch(source, /Open calendar/);
+  assert.match(source, /section: "myWork"/);
+  assert.match(source, /\(technician\)\/\(tabs\)\/technician\.requests/);
+});
+
+test("My Work card keeps long identifiers from clipping the action-state badge", () => {
+  const source = readMobileSource(
+    "features/technician-requests/components/RequestListCard.tsx",
+  );
+  assert.match(source, /style=\{\{ flex: 1, minWidth: 0/);
+  assert.match(source, /ellipsizeMode="tail"/);
+  assert.match(source, /flexShrink: 0/);
 });
 
 test("Dashboard summary keeps backend totals even when active work exceeds one page", () => {

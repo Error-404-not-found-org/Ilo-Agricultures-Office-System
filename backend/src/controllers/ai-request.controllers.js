@@ -81,6 +81,7 @@ import {
   buildFarmerAIRequest,
   buildFarmerAIRequests,
 } from "../domain/ai-request-presentation.js";
+import { buildFarmerRequestStatusFilter } from "../domain/farmer-request-list-filter.js";
 import {
   getAIRequestPhotos,
   normalizeSubmittedAIRequestPhotos,
@@ -489,11 +490,15 @@ export const createLegacyReInseminationRequest = async (req, res) => {
 // GET /api/ai-request/my
 export const getMyRequests = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
+    const { page = 1, limit = 10, status, statusGroup } = req.query;
     const farmerId = req.user._id;
 
     const query = { farmerId, deletedAt: null, farmerDismissedAt: null };
-    if (status && status !== "all") query.status = status;
+    const statusFilter = buildFarmerRequestStatusFilter("ai", {
+      status,
+      statusGroup,
+    });
+    if (statusFilter) query.status = statusFilter;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -520,7 +525,10 @@ export const getMyRequests = async (req, res) => {
     });
   } catch (error) {
     console.error("[getMyRequests ERROR]", error.message);
-    res.status(500).json({ message: "Failed to fetch your AI requests." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch your AI requests.",
+      code: error.code,
+    });
   }
 };
 

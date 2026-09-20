@@ -82,7 +82,7 @@ describe("technician Schedule presentation", () => {
       NOW,
     );
     expect(item.scheduleDate).toBe("2026-09-03T00:00:00.000Z");
-    expect(item.scheduleLabel).toBe("Pregnancy Check Due");
+    expect(item.scheduleLabel).toBe("Pregnancy Check");
     expect(item.periodLabel).toBeNull();
   });
 
@@ -91,7 +91,7 @@ describe("technician Schedule presentation", () => {
       [task({ taskType: "CD", dueDate: "2026-09-04T00:00:00.000Z" })],
       NOW,
     );
-    expect(item.scheduleLabel).toBe("Calving Due");
+    expect(item.scheduleLabel).toBe("Expected Calving");
     expect(item.scheduleDate).toBe("2026-09-04T00:00:00.000Z");
   });
 

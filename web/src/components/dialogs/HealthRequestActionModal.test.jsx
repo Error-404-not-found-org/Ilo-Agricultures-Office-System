@@ -88,6 +88,63 @@ const renderModal = (
 };
 
 describe("HealthRequestActionModal", () => {
+  it("reviews a pending cancellation without replacing the scheduled lifecycle", async () => {
+    renderModal(ownedRequest({ status: "scheduled", cancellationStatus: "requested", cancellationReason: "Farmer unavailable", cancellationRequestedAt: "2026-09-20T02:15:00.000Z" }));
+    expect(await screen.findByText("Cancellation Requested")).toBeInTheDocument();
+    expect(screen.getByText("Farmer unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/Scheduled Farm Visit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep Request" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve Cancellation" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record Health Assistance" })).toBeNull();
+  });
+
+  it.each([[false, "rejected", "scheduled", "Keep Request"], [true, "approved", "cancelled", "Approve Cancellation"]])("responds to cancellation with approved=%s", async (approved, cancellationStatus, status, action) => {
+    let current = ownedRequest({ status: "scheduled", cancellationStatus: "requested", cancellationReason: "Unavailable" });
+    mocks.get.mockImplementation(() => Promise.resolve({ data: { data: current } }));
+    mocks.patch.mockImplementation(() => { current = { ...current, status, cancellationStatus }; return Promise.resolve({ data: { data: current } }); });
+    const { onClose, onSuccess } = renderModal(current, task, { preserveGetMock: true });
+    fireEvent.click(await screen.findByRole("button", { name: action }));
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(`/health-request/${requestId}/cancel-respond`, { approved }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: action })).toBeNull());
+    if (approved) {
+      await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+      expect(onSuccess).toHaveBeenCalled();
+      expect(mocks.get).toHaveBeenCalledWith(`/health-request/${requestId}`);
+    } else {
+      expect(onClose).not.toHaveBeenCalled();
+      expect(await screen.findByText(/Scheduled Farm Visit/)).toBeInTheDocument();
+    }
+  });
+
+  it("keeps a cancellation failure visible in the modal", async () => {
+    renderModal(ownedRequest({ status: "scheduled", cancellationStatus: "requested" }));
+    mocks.patch.mockRejectedValueOnce({ response: { status: 500, data: { message: "Could not respond" } } });
+    fireEvent.click(await screen.findByRole("button", { name: "Keep Request" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not respond");
+    expect(screen.getByRole("button", { name: "Keep Request" })).toBeEnabled();
+  });
+
+  it("keeps the modal open when approval fails", async () => {
+    const { onClose } = renderModal(ownedRequest({ status: "scheduled", cancellationStatus: "requested" }));
+    mocks.patch.mockRejectedValueOnce({ response: { status: 500, data: { message: "Approval failed" } } });
+    fireEvent.click(await screen.findByRole("button", { name: "Approve Cancellation" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Approval failed");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Approve Cancellation" })).toBeEnabled();
+  });
+
+  it("refreshes the authoritative state after a concurrent response", async () => {
+    let current = ownedRequest({ status: "scheduled", cancellationStatus: "requested" });
+    mocks.get.mockImplementation(() => Promise.resolve({ data: { data: current } }));
+    mocks.patch.mockImplementationOnce(() => {
+      current = { ...current, cancellationStatus: "rejected" };
+      return Promise.reject({ response: { status: 409, data: { message: "Already handled" } } });
+    });
+    renderModal(current, task, { preserveGetMock: true });
+    fireEvent.click(await screen.findByRole("button", { name: "Keep Request" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Already handled");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Keep Request" })).toBeNull());
+  });
   it("retains the active Health request data when closing clears the parent selection", async () => {
     const request = ownedRequest({
       status: "scheduled",

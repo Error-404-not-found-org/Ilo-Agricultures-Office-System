@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  info: vi.fn(),
 }));
 
 vi.mock("../../lib/axios", () => ({
@@ -25,7 +26,7 @@ vi.mock("sonner", () => ({
   toast: {
     success: mocks.success,
     error: mocks.error,
-    info: vi.fn(),
+    info: mocks.info,
   },
 }));
 
@@ -330,6 +331,11 @@ describe("Work Queue owned Health workflow", () => {
       },
     ]);
 
+    expect(await screen.findByText("Pregnancy Check")).toBeTruthy();
+    expect(screen.getByText("Expected Calving")).toBeTruthy();
+    expect(screen.queryByText("Pregnancy Diagnosis")).toBeNull();
+    expect(screen.queryByText("Calving Assistance")).toBeNull();
+
     fireEvent.click(await screen.findByRole("button", { name: "Record AI" }));
     expect(screen.getByRole("dialog", { name: `AI ${ids.ai}` })).toBeTruthy();
 
@@ -624,6 +630,155 @@ describe("My Work Schedule deep links", () => {
     );
     renderWorkQueue(`/technician/requests?section=myWork&${parameter}=${id}`);
   };
+
+  it("reports an accessible cancelled Health request from an old notification", async () => {
+    mocks.error.mockClear();
+    mocks.info.mockClear();
+    mocks.get.mockImplementation((url, config) => {
+      if (url === `/health-request/${ids.health}`) {
+        return Promise.resolve({ data: { data: { _id: ids.health, status: "cancelled", cancellationStatus: "approved", assignedTechnicianId: "technician-1" } } });
+      }
+      return Promise.resolve({ data: config?.params?.requestId === ids.health ? { ...empty, pagination: { ...empty.pagination, limit: 1 } } : empty });
+    });
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("This Health request has already been cancelled."));
+    expect(mocks.error).not.toHaveBeenCalledWith("This work item is unavailable or is not assigned to you.");
+    expect(screen.queryByRole("dialog", { name: "Owned Health request" })).toBeNull();
+    expect(screen.getByTestId("technician-location")).toHaveTextContent("section=myWork");
+    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("requestId="));
+  });
+
+  it("renders canonical lifecycle semantics through the actual My Work card path", async () => {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    renderQueue([
+      {
+        ...baseTask,
+        id: "return-to-heat",
+        taskId: "return-to-heat",
+        workflowType: "BreedingFollowUp",
+        taskType: "BreedingFollowUp",
+        serviceType: "Breeding Follow-up",
+        title: "Breeding Follow-up",
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: `${today}T02:00:00.000Z`,
+        schedule: { date: `${today}T02:00:00.000Z`, visitPeriod: null },
+        timing: { kind: "due", date: `${today}T02:00:00.000Z` },
+        allowedAction: "RECORD_BREEDING_OBSERVATION",
+        actionLabel: "Record Follow-up",
+        summary: "Farmer reported a return to heat for this animal.",
+        raw: {
+          sourceType: "farmer_requested_verification",
+          dueDate: `${today}T02:00:00.000Z`,
+          metadata: { reportType: "return_to_heat" },
+        },
+      },
+      {
+        ...baseTask,
+        id: "pregnancy-check",
+        taskId: "pregnancy-check",
+        workflowType: "PregnancyDiagnosis",
+        taskType: "Other",
+        serviceType: "Pregnancy Diagnosis",
+        title: "Pregnancy Diagnosis",
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: today,
+        schedule: { date: today, visitPeriod: null },
+        timing: { kind: "due", date: today },
+        allowedAction: "RECORD_SERVICE",
+        actionLabel: "Record Pregnancy Check",
+        raw: { taskType: "PD", dueDate: today },
+      },
+      {
+        ...baseTask,
+        id: "expected-calving",
+        taskId: "expected-calving",
+        workflowType: "CalvingAssistance",
+        taskType: "Other",
+        serviceType: "Calving Assistance",
+        title: "Calving Assistance",
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: today,
+        schedule: { date: today, visitPeriod: null },
+        timing: { kind: "due", date: today },
+        allowedAction: "RECORD_SERVICE",
+        actionLabel: "Record Calving",
+        raw: { taskType: "CD", dueDate: today },
+      },
+    ]);
+
+    expect(await screen.findByText("Breeding Follow-up")).toBeTruthy();
+    expect(await screen.findByText("Needs review")).toBeTruthy();
+    expect(screen.getByText("Return to heat reported")).toBeTruthy();
+    expect(screen.getByText("Reported today")).toBeTruthy();
+    expect(screen.getByText("Pregnancy Check")).toBeTruthy();
+    expect(screen.getAllByText("Ready for check").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Record Pregnancy Check" })).toBeTruthy();
+
+    expect(screen.getByText("Expected Calving")).toBeTruthy();
+    expect(screen.getByText("Expected today")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Record Calving" })).toBeTruthy();
+
+    expect(screen.queryByText("Pregnancy Diagnosis")).toBeNull();
+    expect(screen.queryByText("Calving Assistance")).toBeNull();
+    expect(screen.queryByText("Due Today")).toBeNull();
+    expect(screen.getAllByText("Timing")).toHaveLength(3);
+  });
+
+  it("retains the protected unavailable message for an unowned Health request", async () => {
+    mocks.error.mockClear();
+    mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`
+      ? Promise.reject({ response: { status: 403 } })
+      : Promise.resolve({ data: empty }));
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+    expect(screen.queryByRole("dialog", { name: "Owned Health request" })).toBeNull();
+  });
+
+  it("opens an active Health request after its cancellation was rejected without review actions", async () => {
+    mocks.get.mockClear();
+    const target = {
+      ...baseTask,
+      id: ids.health,
+      workflowId: ids.health,
+      workflowType: "Health",
+      type: "health",
+      allowedAction: "VIEW_DETAILS",
+      status: "scheduled",
+      raw: { _id: ids.health, status: "scheduled", cancellationStatus: "rejected" },
+    };
+    renderDeepLink({ parameter: "requestId", id: ids.health, target });
+    expect(await screen.findByRole("dialog", { name: "Owned Health request" })).toHaveAttribute("data-request-id", ids.health);
+    expect(mocks.get).not.toHaveBeenCalledWith(`/health-request/${ids.health}`);
+  });
+
+  it("keeps a nonexistent Health request unavailable", async () => {
+    mocks.error.mockClear();
+    mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`
+      ? Promise.reject({ response: { status: 404 } })
+      : Promise.resolve({ data: empty }));
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+  });
+
+  it("does not identify an unassigned cancelled Health request as the Technician's handled work", async () => {
+    mocks.error.mockClear();
+    mocks.info.mockClear();
+    mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`
+      ? Promise.resolve({ data: { data: { _id: ids.health, status: "cancelled", cancellationStatus: "approved" } } })
+      : Promise.resolve({ data: empty }));
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+    expect(mocks.info).not.toHaveBeenCalledWith("This Health request has already been cancelled.");
+  });
 
   const futureTask = (overrides = {}) => ({
     ...baseTask,

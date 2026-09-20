@@ -203,6 +203,13 @@ export const getScheduleTimingState = (item, now = new Date()) => {
 };
 
 export const getScheduleWorkLabel = (item = {}) => {
+  if (
+    getScheduleEntityKind(item) === "breeding_follow_up" &&
+    (item.sourceType === "farmer_pregnancy_loss_report" ||
+      item.raw?.sourceType === "farmer_pregnancy_loss_report")
+  ) {
+    return "Pregnancy Loss Review";
+  }
   const status = normalizeValue(item?.status || item?.raw?.status);
   const isInProgress =
     (status === "in progress" ||
@@ -216,11 +223,11 @@ export const getScheduleWorkLabel = (item = {}) => {
     case "health":
       return "Scheduled Health Farm Visit";
     case "pregnancy":
-      return "Pregnancy Check Due";
+      return "Pregnancy Check";
     case "breeding_follow_up":
-      return "Breeding Follow-up Due";
+      return "Breeding Follow-up";
     case "calving":
-      return "Calving Due";
+      return "Expected Calving";
     default: {
       const taskType = item.taskType || item.raw?.taskType;
       return taskType
