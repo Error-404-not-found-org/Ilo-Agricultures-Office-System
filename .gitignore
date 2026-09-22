@@ -6,6 +6,7 @@ scripts/
 !backend/scripts/
 backend/scripts/*
 !backend/scripts/audit-duplicate-ear-tags.js
+!backend/scripts/deploy-expected-calving-task-index.js
 !backend/scripts/seed-reproduction-lifecycle.js
 !backend/scripts/seed-postpartum-test-animals.js
 !backend/scripts/cleanup-reproduction-lifecycle.js

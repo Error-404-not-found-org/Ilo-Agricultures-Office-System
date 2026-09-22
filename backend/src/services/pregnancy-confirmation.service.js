@@ -292,6 +292,53 @@ const ensureContinuationTask = async ({
   { upsert: true, returnDocument: "after", session },
 );
 
+export const ensureExpectedCalvingTask = async ({
+  animal,
+  insemination,
+  pregnancy,
+  actor,
+  session,
+}) => {
+  const identity = {
+    taskType: "CD",
+    sourceType: "automatic_expected_calving",
+    "metadata.pregnancyId": pregnancy._id,
+  };
+  const update = {
+    $setOnInsert: {
+      technicianId: actor._id,
+      farmerId: animal.farmerId,
+      animalIds: [animal._id],
+      taskType: "CD",
+      category: "Follow-up",
+      priority: 2,
+      notes: `Expected calving for Animal Tag #${animal.earTag || animal.animalId || "Unknown"}.`,
+      status: "Pending",
+      dueDate: pregnancy.targetCalvingDate,
+      sourceType: "automatic_expected_calving",
+      relatedRecordType: "pregnancy",
+      relatedRecordId: pregnancy._id,
+      metadata: {
+        pregnancyId: pregnancy._id,
+        inseminationId: insemination?._id || null,
+        animalId: animal._id,
+        farmerId: animal.farmerId,
+      },
+    },
+  };
+
+  try {
+    return await Task.findOneAndUpdate(identity, update, {
+      upsert: true,
+      returnDocument: "after",
+      session,
+    });
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    return Task.findOne(identity).session(session);
+  }
+};
+
 export const executePregnancyFinalization = async ({
   animal,
   insemination,
@@ -370,6 +417,14 @@ export const executePregnancyFinalization = async ({
     },
     { session },
   );
+
+  await ensureExpectedCalvingTask({
+    animal,
+    insemination,
+    pregnancy,
+    actor,
+    session,
+  });
 
   await AnimalTimelineEvent.create([{
     animalId: animal._id,

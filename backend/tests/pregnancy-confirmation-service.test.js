@@ -12,6 +12,7 @@ import { Task } from "../src/models/task.model.js";
 import {
   completeInitialConfirmationTask,
   confirmPregnancyDiagnosis,
+  ensureExpectedCalvingTask,
   recordPregnancyContinuationRecheck,
 } from "../src/services/pregnancy-confirmation.service.js";
 import { PREGNANCY_METHOD_CODES } from "../src/domain/pregnancy-confirmation-policy.js";
@@ -24,6 +25,7 @@ const ids = {
   task: "507f1f77bcf86cd799439005",
   continuation: "507f1f77bcf86cd799439006",
   actor: "507f1f77bcf86cd799439007",
+  expectedCalving: "507f1f77bcf86cd799439008",
 };
 const method = (methodCode, overrides = {}) => ({
   methodCode,
@@ -106,6 +108,7 @@ function installDiagnosisStubs({
     pregnancy: existingPregnancy,
     initialTask,
     continuationTasks: [],
+    expectedCalvingTasks: [],
     timelineWrites: 0,
     auditWrites: 0,
   };
@@ -127,6 +130,7 @@ function installDiagnosisStubs({
           Object.assign(insemination, before.insemination);
           Object.assign(initialTask, before.initialTask);
           state.continuationTasks = [];
+          state.expectedCalvingTasks = [];
           state.timelineWrites = 0;
           state.auditWrites = 0;
         }
@@ -164,8 +168,15 @@ function installDiagnosisStubs({
   });
   replace(Task, "findOne", () => query(initialTask));
   replace(Task, "find", () => query([initialTask]));
-  replace(Task, "findOneAndUpdate", async (_filter, update, options) => {
+  replace(Task, "findOneAndUpdate", async (filter, update, options) => {
     assert.ok(options.session);
+    if (filter.sourceType === "automatic_expected_calving") {
+      const created = { _id: ids.expectedCalving, ...update.$setOnInsert };
+      state.expectedCalvingTasks = state.expectedCalvingTasks.length
+        ? state.expectedCalvingTasks
+        : [created];
+      return state.expectedCalvingTasks[0];
+    }
     const created = { _id: ids.continuation, ...update.$setOnInsert };
     state.continuationTasks = state.continuationTasks.length
       ? state.continuationTasks
@@ -287,6 +298,7 @@ test("method-based early diagnosis snapshots policy and creates one continuation
     assert.equal(result.pregnancy.confirmation.stage, "early");
     assert.equal(result.pregnancy.recheckStatus, "pending");
     assert.equal(stubs.state.continuationTasks.length, 1);
+    assert.equal(stubs.state.expectedCalvingTasks.length, 1);
     assert.equal(stubs.state.initialTask.status, "Completed");
     assert.equal(stubs.state.timelineWrites, 1);
     assert.equal(stubs.state.auditWrites, 1);
@@ -294,6 +306,140 @@ test("method-based early diagnosis snapshots policy and creates one continuation
   } finally {
     stubs.restore();
   }
+});
+
+test("Pregnant diagnosis ensures one automatic Expected Calving task from the authoritative Pregnancy", async () => {
+  const stubs = installDiagnosisStubs({ daysPostAI: 60 });
+  try {
+    const result = await confirmPregnancyDiagnosis({
+      animalId: ids.animal,
+      inseminationId: ids.insemination,
+      result: "Pregnant",
+      diagnosisDate: stubs.now,
+      methodCode: "ultrasound",
+      policyVersion: activePolicy.version,
+      taskId: ids.task,
+      actor,
+    });
+
+    assert.ok(result.pregnancy.targetCalvingDate);
+    assert.equal(result.pregnancy.confirmation.confirmedBy, ids.actor);
+    assert.equal(stubs.state.expectedCalvingTasks.length, 1);
+    const [task] = stubs.state.expectedCalvingTasks;
+    assert.equal(task.taskType, "CD");
+    assert.equal(task.sourceType, "automatic_expected_calving");
+    assert.equal(task.technicianId, ids.actor);
+    assert.equal(task.farmerId, ids.farmer);
+    assert.deepEqual(task.animalIds, [ids.animal]);
+    assert.equal(task.relatedRecordType, "pregnancy");
+    assert.equal(task.relatedRecordId, ids.pregnancy);
+    assert.equal(task.dueDate, result.pregnancy.targetCalvingDate);
+    assert.equal(task.metadata.pregnancyId, ids.pregnancy);
+    assert.equal(task.metadata.inseminationId, ids.insemination);
+    assert.equal(task.metadata.animalId, ids.animal);
+    assert.equal(task.metadata.farmerId, ids.farmer);
+  } finally {
+    stubs.restore();
+  }
+});
+
+test("Expected Calving ensure reuses active, Completed, and Cancelled immutable Pregnancy work", async () => {
+  const originalFindOneAndUpdate = Task.findOneAndUpdate;
+  const targetCalvingDate = new Date("2027-04-24T00:00:00.000Z");
+  for (const status of ["Pending", "In Progress", "Completed", "Cancelled"]) {
+    const existing = {
+      _id: ids.expectedCalving,
+      taskType: "CD",
+      sourceType: "automatic_expected_calving",
+      status,
+      relatedRecordType: status === "Completed" ? "calving" : "pregnancy",
+      relatedRecordId: status === "Completed" ? "507f1f77bcf86cd799439099" : ids.pregnancy,
+      metadata: { pregnancyId: ids.pregnancy },
+    };
+    let calls = 0;
+    Task.findOneAndUpdate = (filter, update, options) => {
+      calls += 1;
+      assert.deepEqual(filter, {
+        taskType: "CD",
+        sourceType: "automatic_expected_calving",
+        "metadata.pregnancyId": ids.pregnancy,
+      });
+      assert.equal(update.$setOnInsert.dueDate, targetCalvingDate);
+      assert.equal(options.upsert, true);
+      return Promise.resolve(existing);
+    };
+    try {
+      const task = await ensureExpectedCalvingTask({
+        animal: { _id: ids.animal, farmerId: ids.farmer, earTag: "POLICY-TEST" },
+        insemination: { _id: ids.insemination },
+        pregnancy: { _id: ids.pregnancy, targetCalvingDate },
+        actor,
+        session: {},
+      });
+      assert.equal(task, existing);
+      assert.equal(calls, 1);
+      assert.equal(task.metadata.pregnancyId, ids.pregnancy);
+    } finally {
+      Task.findOneAndUpdate = originalFindOneAndUpdate;
+    }
+  }
+});
+
+test("Expected Calving duplicate-key collision resolves the immutable existing task", async () => {
+  const originalFindOneAndUpdate = Task.findOneAndUpdate;
+  const originalFindOne = Task.findOne;
+  const existing = {
+    _id: ids.expectedCalving,
+    taskType: "CD",
+    sourceType: "automatic_expected_calving",
+    metadata: { pregnancyId: ids.pregnancy },
+  };
+  const duplicate = new Error("duplicate automatic Expected Calving task");
+  duplicate.code = 11000;
+  let resolvedIdentity = null;
+  Task.findOneAndUpdate = async () => { throw duplicate; };
+  Task.findOne = (identity) => {
+    resolvedIdentity = identity;
+    return query(existing);
+  };
+  try {
+    const task = await ensureExpectedCalvingTask({
+      animal: { _id: ids.animal, farmerId: ids.farmer },
+      insemination: { _id: ids.insemination },
+      pregnancy: {
+        _id: ids.pregnancy,
+        targetCalvingDate: new Date("2027-04-24T00:00:00.000Z"),
+      },
+      actor,
+      session: {},
+    });
+    assert.equal(task, existing);
+    assert.deepEqual(resolvedIdentity, {
+      taskType: "CD",
+      sourceType: "automatic_expected_calving",
+      "metadata.pregnancyId": ids.pregnancy,
+    });
+  } finally {
+    Task.findOneAndUpdate = originalFindOneAndUpdate;
+    Task.findOne = originalFindOne;
+  }
+});
+
+test("Task schema uniquely indexes automatic Expected Calving provenance", () => {
+  const index = Task.schema.indexes().find(
+    ([fields, options]) =>
+      fields.taskType === 1 &&
+      fields.sourceType === 1 &&
+      fields["metadata.pregnancyId"] === 1 &&
+      options.name === "uniq_automatic_expected_calving_per_pregnancy",
+  );
+  assert.ok(index);
+  assert.equal(index[1].unique, true);
+  assert.deepEqual(index[1].partialFilterExpression, {
+    taskType: "CD",
+    sourceType: "automatic_expected_calving",
+    "metadata.pregnancyId": { $exists: true },
+  });
 });
 
 test("diagnosis stage and continuation task follow the continuation date, not the method threshold", async () => {
@@ -401,6 +547,7 @@ test("standard diagnosis creates no continuation task and negative diagnosis ret
     assert.equal(result.pregnancy.confirmation.stage, "standard");
     assert.equal(result.pregnancy.recheckStatus, "not_required");
     assert.equal(standard.state.continuationTasks.length, 0);
+    assert.equal(standard.state.expectedCalvingTasks.length, 0);
     assert.equal(standard.state.animal.reproductiveStatus, "Normal");
   } finally {
     standard.restore();

@@ -151,10 +151,13 @@ const installHarness = (overrides = {}) => {
       taskType: "CD",
       status: "Pending",
       technicianId: ids.actor,
-      sourceType: "task_scheduler",
+      sourceType: "automatic_expected_calving",
       relatedRecordType: "pregnancy",
       relatedRecordId: ids.pregnancy,
-      metadata: { inseminationId: ids.insemination },
+      metadata: {
+        pregnancyId: ids.pregnancy,
+        inseminationId: ids.insemination,
+      },
     }),
     inserted: [],
     calvings: [],
@@ -349,6 +352,8 @@ test("Calving: natural birth creates a female calf and all canonical records", a
     assert.equal(state.audits[0].document.metadata.pregnancyId, ids.pregnancy);
     assert.deepEqual(state.audits[0].document.metadata.calfIds, [result.offspring[0]._id]);
     assert.equal(state.taskUpdates[0][1].$set.relatedRecordType, "calving");
+    assert.equal(state.taskUpdates[0][1].$set.metadata, undefined);
+    assert.equal(state.task.metadata.pregnancyId, ids.pregnancy);
   });
 });
 
