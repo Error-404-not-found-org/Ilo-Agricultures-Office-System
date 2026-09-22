@@ -227,6 +227,9 @@ export interface TechnicianWorkItem {
   farmerImageUrl?: string | null;
   animalName: string | null;
   animalTag: string | null;
+  motherId?: string | null;
+  pregnancyId?: string | null;
+  farmerId?: string | null;
   location: string | null;
   timingLabel: string | null;
   contextLabel?: string | null;

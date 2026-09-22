@@ -15,7 +15,6 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Camera, ChevronDown, X } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
@@ -140,6 +139,7 @@ export function AddAnimalScreen() {
     else nextErrors.earTag = getEarTagValidationError(formData.earTag) || undefined;
     if (!formData.species) nextErrors.species = "Select the animal species.";
     if (!formData.breed) nextErrors.breed = "Select the animal breed.";
+    if (!formData.color) nextErrors.color = "Select the animal color.";
     if (!formData.birthDate) nextErrors.birthDate = "Birth date is required.";
 
     setErrors(nextErrors);
@@ -380,6 +380,8 @@ export function AddAnimalScreen() {
                     COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
                   );
                 }}
+                error={errors.color}
+                required
               />
             </View>
             <View style={{ flex: 1 }}>

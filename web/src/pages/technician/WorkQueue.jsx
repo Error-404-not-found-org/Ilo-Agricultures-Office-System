@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useEffectEvent, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
+  CalendarCheck,
   CalendarDays,
   MapPin,
   Search,
@@ -18,6 +19,12 @@ import {
   Clock,
   Info,
   Activity,
+  HeartPulse,
+  Stethoscope,
+  Syringe,
+  Baby,
+  HeartCrack,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
@@ -28,9 +35,7 @@ import AIScheduledVisitModal from "../../components/dialogs/AIScheduledVisitModa
 import HealthRequestActionModal from "../../components/dialogs/HealthRequestActionModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
-import PregnancyLossReviewModal, {
-  formatFarmerLocation,
-} from "../../components/dialogs/PregnancyLossReviewModal";
+import PregnancyLossReviewModal from "../../components/dialogs/PregnancyLossReviewModal";
 import Modal from "../../components/ui/Modal";
 import { getTaskReadiness } from "../../constants/technicianWorkflow";
 import { getTaskPrimaryActionLabel } from "../../utils/taskNavigation";
@@ -44,7 +49,10 @@ import {
   formatHealthRequestType,
 } from "../../utils/requestWorkPresentation";
 import { isFutureSchedule } from "../../utils/technicianSchedulePresentation";
-import { getLifecycleTaskPresentation } from "../../utils/technicianLifecyclePresentation";
+import {
+  getLifecycleTaskPresentation,
+  getTaskSupportingText,
+} from "../../utils/technicianLifecyclePresentation";
 import ImagePreviewModal from "../../components/ui/ImagePreviewModal";
 import { imagePreviewUrl } from "../../components/ui/imagePreviewUrl";
 import {
@@ -135,6 +143,105 @@ const getOfficialRecordIdentity = (task) => {
   return null;
 };
 
+const formatFollowUpLocation = (farmer, fallback = "Location not provided") => {
+  if (!farmer) return fallback;
+  if (typeof farmer === "string") return farmer.trim() || fallback;
+  if (farmer.location) return String(farmer.location).trim();
+  if (farmer.barangay) {
+    return [farmer.barangay, farmer.municipality || farmer.city]
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (farmer.address) {
+    if (typeof farmer.address === "string")
+      return farmer.address.trim() || fallback;
+    if (farmer.address.barangay) {
+      return [
+        farmer.address.barangay,
+        farmer.address.municipality || farmer.address.city,
+      ]
+        .filter(Boolean)
+        .join(", ");
+    }
+  }
+  return fallback;
+};
+
+const getWorkItemTheme = (task, serviceType, lifecycle) => {
+  const isLoss =
+    lifecycle?.title === "Pregnancy Loss Review" ||
+    task.sourceType === "farmer_pregnancy_loss_report" ||
+    task.allowedAction === "REVIEW_PREGNANCY_LOSS";
+  if (isLoss) {
+    return {
+      icon: HeartCrack,
+      iconClass:
+        "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
+      badgeClass:
+        "bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30",
+    };
+  }
+  const isBreedingFollowUp =
+    lifecycle?.title === "Breeding Follow-up" ||
+    task.workflowType === "BreedingFollowUp" ||
+    task.taskType === "BreedingFollowUp" ||
+    task.allowedAction === "RECORD_BREEDING_OBSERVATION";
+  if (isBreedingFollowUp) {
+    return {
+      icon: CalendarCheck,
+      iconClass:
+        "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20",
+      badgeClass:
+        "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30",
+    };
+  }
+  if (
+    serviceType === "pregnancy" ||
+    lifecycle?.title?.toLowerCase().includes("pregnancy")
+  ) {
+    return {
+      icon: HeartPulse,
+      iconClass:
+        "bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20",
+      badgeClass:
+        "bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30",
+    };
+  }
+  if (serviceType === "health") {
+    return {
+      icon: Stethoscope,
+      iconClass:
+        "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+      badgeClass:
+        "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30",
+    };
+  }
+  if (serviceType === "ai") {
+    return {
+      icon: Syringe,
+      iconClass:
+        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+      badgeClass:
+        "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30",
+    };
+  }
+  if (serviceType === "calving") {
+    return {
+      icon: Baby,
+      iconClass:
+        "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20",
+      badgeClass:
+        "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30",
+    };
+  }
+  return {
+    icon: CalendarDays,
+    iconClass: "bg-primary/10 text-primary border border-primary/20",
+    badgeClass:
+      "bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/30",
+  };
+};
+
 export default function WorkQueue({ embedded = false }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -147,11 +254,9 @@ export default function WorkQueue({ embedded = false }) {
     () => searchParams.get("typeFilter") || "all",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
-  const [retainedHealthTask, setRetainedHealthTask] = useState(null);
   const [startHealthServiceOnOpen, setStartHealthServiceOnOpen] =
     useState(false);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
-  const [retainedWorkDetails, setRetainedWorkDetails] = useState(null);
   const [breedingFollowUp, setBreedingFollowUp] = useState(null);
   const [pregnancyLossReviewTask, setPregnancyLossReviewTask] = useState(null);
   const [breedingFollowUpStep, setBreedingFollowUpStep] = useState("overview");
@@ -165,27 +270,10 @@ export default function WorkQueue({ embedded = false }) {
   const [isStartingAI, setIsStartingAI] = useState(false);
   const itemsPerPage = 8;
 
-  useEffect(() => {
-    if (
-      selectedTaskWrapper &&
-      String(selectedTaskWrapper?.workflowType || "").toLowerCase() === "health"
-    ) {
-      setRetainedHealthTask(selectedTaskWrapper);
-    }
-  }, [selectedTaskWrapper]);
-
-  useEffect(() => {
-    if (selectedWorkDetails) {
-      setRetainedWorkDetails(selectedWorkDetails);
-    }
-  }, [selectedWorkDetails]);
-
-  const activeHealthTask =
-    selectedTaskWrapper &&
-    String(selectedTaskWrapper?.workflowType || "").toLowerCase() === "health"
-      ? selectedTaskWrapper
-      : retainedHealthTask;
-  const activeWorkDetails = selectedWorkDetails ?? retainedWorkDetails;
+  const selectedWorkSupportingText = getTaskSupportingText(
+    selectedWorkDetails,
+    "No additional service details recorded.",
+  );
 
   const handleCloseModal = () => {
     setSelectedTaskWrapper(null);
@@ -299,8 +387,16 @@ export default function WorkQueue({ embedded = false }) {
   });
 
   const handledHealthLinkQuery = useQuery({
-    queryKey: ["technician", "health-request", "handled-deep-link", deepLinkRequestId],
-    enabled: Boolean(deepLinkRequestId) && deepLinkQuery.isSuccess && !deepLinkQuery.data,
+    queryKey: [
+      "technician",
+      "health-request",
+      "handled-deep-link",
+      deepLinkRequestId,
+    ],
+    enabled:
+      Boolean(deepLinkRequestId) &&
+      deepLinkQuery.isSuccess &&
+      !deepLinkQuery.data,
     retry: false,
     queryFn: async () => {
       const response = await axiosInstance.get(
@@ -386,14 +482,6 @@ export default function WorkQueue({ embedded = false }) {
         ? `Tag ${breedingFollowUpAnimalEarTag}`
         : breedingFollowUpAnimalName || "Unknown Animal";
 
-  const breedingFollowUpAnimalBreed =
-    (typeof breedingFollowUpAnimal?.breed === "string" &&
-      breedingFollowUpAnimal.breed.trim()) ||
-    "";
-  const breedingFollowUpAnimalSpecies =
-    (typeof breedingFollowUpAnimal?.species === "string" &&
-      breedingFollowUpAnimal.species.trim()) ||
-    "";
   const breedingFollowUpReproductiveStatus =
     (typeof breedingFollowUpAnimal?.reproductiveStatus === "string" &&
       breedingFollowUpAnimal.reproductiveStatus.trim()) ||
@@ -728,13 +816,17 @@ export default function WorkQueue({ embedded = false }) {
 
   const firedDeepLinkIdentifier = useRef(null);
   const currentIdentifier = deepLinkTaskId || deepLinkRequestId;
+  const openDeepLinkedTask = useEffectEvent((target) => openTask(target));
 
   useEffect(() => {
     if (!hasDeepLink) {
       firedDeepLinkIdentifier.current = null;
     } else if (
       deepLinkQuery.isSuccess &&
-      (deepLinkQuery.data || !deepLinkRequestId || handledHealthLinkQuery.isSuccess || handledHealthLinkQuery.isError) &&
+      (deepLinkQuery.data ||
+        !deepLinkRequestId ||
+        handledHealthLinkQuery.isSuccess ||
+        handledHealthLinkQuery.isError) &&
       firedDeepLinkIdentifier.current !== currentIdentifier
     ) {
       firedDeepLinkIdentifier.current = currentIdentifier;
@@ -747,8 +839,7 @@ export default function WorkQueue({ embedded = false }) {
           !pregnancyLossReviewTask &&
           !scheduledAIVisit
         ) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          openTask(target);
+          queueMicrotask(() => openDeepLinkedTask(target));
         }
       } else {
         const handledRequest = handledHealthLinkQuery.data;
@@ -761,10 +852,15 @@ export default function WorkQueue({ embedded = false }) {
           handledRequest?.cancellationStatus === "approved"
         ) {
           toast.info("This Health request has already been cancelled.");
-        } else if (assignedHealthRequest && handledRequest?.cancellationStatus === "rejected") {
+        } else if (
+          assignedHealthRequest &&
+          handledRequest?.cancellationStatus === "rejected"
+        ) {
           toast.info("This cancellation request has already been handled.");
         } else {
-          toast.error("This work item is unavailable or is not assigned to you.");
+          toast.error(
+            "This work item is unavailable or is not assigned to you.",
+          );
         }
         setSearchParams(
           (prev) => {
@@ -785,7 +881,6 @@ export default function WorkQueue({ embedded = false }) {
     handledHealthLinkQuery.isSuccess,
     handledHealthLinkQuery.isError,
     handledHealthLinkQuery.data,
-    toast,
     setSearchParams,
     selectedTaskWrapper,
     selectedWorkDetails,
@@ -925,6 +1020,7 @@ export default function WorkQueue({ embedded = false }) {
                 <div className="space-y-3" aria-label="My Work items">
                   {tasks.map((task) => {
                     const lifecycle = getLifecycleTaskPresentation(task);
+                    const supportingText = getTaskSupportingText(task);
                     const workflowStatus = normalizeWorkflowStatus(task);
                     const statusPresentation =
                       getWorkflowStatusPresentation(workflowStatus);
@@ -933,10 +1029,19 @@ export default function WorkQueue({ embedded = false }) {
                       getServicePresentation(serviceType);
                     const healthRequestType =
                       task.requestType || task.raw?.requestType;
+                    const isLoss =
+                      task.sourceType === "farmer_pregnancy_loss_report" ||
+                      task.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+                      task.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+                      lifecycle?.title === "Pregnancy Loss Review";
                     const taskLabel =
                       serviceType === "health" && healthRequestType
                         ? formatHealthRequestType(healthRequestType)
-                        : lifecycle?.title || task.title || servicePresentation.label;
+                        : isLoss && task.title
+                          ? task.title
+                          : lifecycle?.title ||
+                            task.title ||
+                            servicePresentation.label;
                     const readiness = getTaskReadiness(task.raw || task);
                     const actionDisabled =
                       !readiness.ready ||
@@ -973,163 +1078,177 @@ export default function WorkQueue({ embedded = false }) {
                     const primaryActionLabel = isHealthFarmVisitScheduled
                       ? "Record Health Assistance"
                       : task.actionLabel || getTaskPrimaryActionLabel(task);
+                    const theme = getWorkItemTheme(
+                      task,
+                      serviceType,
+                      lifecycle,
+                    );
+                    const ItemIcon = theme.icon;
                     return (
                       <article
                         key={task.id}
                         className="rounded-box border border-base-300 bg-base-100 p-4 transition-colors hover:border-base-content/25 sm:p-5"
                       >
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(13rem,.8fr)_auto] lg:items-center">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="badge badge-sm badge-primary badge-soft">
+                          {/* Left: Themed Leading Icon + Information */}
+                          <div className="flex items-start gap-3.5 min-w-0">
+                            {/* Themed Icon Container */}
+                            <div
+                              className={`flex size-11 sm:size-12 shrink-0 items-center justify-center rounded-xl ${theme.iconClass}`}
+                              aria-hidden="true"
+                            >
+                              <ItemIcon size={22} />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              {/* Badges Row */}
+                              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                                <span className="badge badge-sm badge-ghost border-base-300 text-xs font-semibold text-base-content/70">
+                                  {servicePresentation.label}
+                                </span>
+                                {(!lifecycle || lifecycle.actionState) && (
+                                  <span
+                                    className={`badge badge-sm font-bold border ${theme.badgeClass}`}
+                                  >
+                                    {lifecycle?.actionState ||
+                                      statusPresentation.label}
+                                  </span>
+                                )}
+                                {task.urgent ? (
+                                  <span className="badge badge-sm badge-error badge-outline font-bold">
+                                    Urgent
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {/* Title / Headline */}
+                              <h3 className="text-sm sm:text-base font-bold text-base-content leading-snug">
                                 {taskLabel}
-                              </span>
-                              {(!lifecycle || lifecycle.actionState) && (
-                                <span
-                                  className={`badge badge-sm border ${statusPresentation.badgeClass}`}
-                                >
-                                  {lifecycle?.actionState || statusPresentation.label}
-                                </span>
+                              </h3>
+
+                              {/* Context note (e.g. Recommended time for pregnancy diagnosis reached) */}
+                              {lifecycle?.context && (
+                                <p className="mt-1 text-xs text-base-content/70 font-medium">
+                                  {lifecycle.context}
+                                </p>
                               )}
-                              {task.urgent ? (
-                                <span className="badge badge-sm badge-error badge-outline">
-                                  Urgent
-                                </span>
+
+                              {/* Farmer and Animal Metadata Row */}
+                              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70">
+                                {/* Farmer name */}
+                                {farmerId ? (
+                                  <button
+                                    type="button"
+                                    className="group/farmer flex items-center gap-1.5 font-semibold text-base-content/90 hover:text-primary transition-colors cursor-pointer"
+                                    onClick={() =>
+                                      navigate(
+                                        `/technician/farmers/${farmerId}`,
+                                      )
+                                    }
+                                  >
+                                    <User
+                                      size={13}
+                                      className="shrink-0 text-base-content/40 group-hover/farmer:text-primary transition-colors"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="truncate">
+                                      {toTitleCase(
+                                        task.farmer?.name ||
+                                          task.farmerName ||
+                                          "Farmer not recorded",
+                                      )}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <span className="flex items-center gap-1.5 font-semibold text-base-content/90">
+                                    <User
+                                      size={13}
+                                      className="shrink-0 text-base-content/40"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="truncate">
+                                      {toTitleCase(
+                                        task.farmer?.name ||
+                                          task.farmerName ||
+                                          "Farmer not recorded",
+                                      )}
+                                    </span>
+                                  </span>
+                                )}
+
+                                {/* Animal info — clickable with paw icon */}
+                                {animalId ? (
+                                  <button
+                                    type="button"
+                                    className="group/animal flex items-center gap-1 text-base-content/75 hover:text-primary transition-colors cursor-pointer"
+                                    onClick={() =>
+                                      navigate(
+                                        `/technician/animals/${animalId}`,
+                                      )
+                                    }
+                                  >
+                                    <PawPrint
+                                      size={12}
+                                      className="shrink-0 text-base-content/40 group-hover/animal:text-primary transition-colors"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="font-mono font-bold">
+                                      Tag{" "}
+                                      {animalReference !== "Not recorded"
+                                        ? animalReference
+                                        : "Unknown"}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-base-content/75">
+                                    <PawPrint
+                                      size={12}
+                                      className="shrink-0 text-base-content/40"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="font-mono font-bold">
+                                      Tag{" "}
+                                      {animalReference !== "Not recorded"
+                                        ? animalReference
+                                        : "Unknown"}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {supportingText ? (
+                                <p className="mt-2 line-clamp-2 text-xs text-base-content/55">
+                                  {formatTaskSummary(supportingText)}
+                                </p>
                               ) : null}
                             </div>
-                            {/* Farmer name — clickable with avatar */}
-                            {farmerId ? (
-                              <button
-                                type="button"
-                                className="group mt-2 flex items-center gap-1.5 text-left"
-                                onClick={() =>
-                                  navigate(`/technician/farmers/${farmerId}`)
-                                }
-                              >
-                                <div className="relative flex cursor-pointer h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-[9px] font-bold uppercase text-primary">
-                                  {task.farmer?.imageUrl && (
-                                    <img
-                                      src={task.farmer.imageUrl}
-                                      alt=""
-                                      className="absolute inset-0 z-10 h-full w-full object-cover"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = "none";
-                                      }}
-                                    />
-                                  )}
-                                  <span className="z-0">
-                                    {(
-                                      task.farmer?.name ||
-                                      task.farmerName ||
-                                      "F"
-                                    ).charAt(0)}
-                                  </span>
-                                </div>
-                                <h3 className="text-sm font-bold cursor-pointer text-base-content transition-colors group-hover:text-primary">
-                                  {toTitleCase(
-                                    task.farmer?.name ||
-                                      task.farmerName ||
-                                      "Farmer not recorded",
-                                  )}
-                                </h3>
-                              </button>
-                            ) : (
-                              <h3 className="mt-2 text-sm font-bold text-base-content">
-                                {toTitleCase(
-                                  task.farmer?.name ||
-                                    task.farmerName ||
-                                    "Farmer not recorded",
-                                )}
-                              </h3>
-                            )}
-
-                            {/* Animal info — clickable with paw icon */}
-                            {animalId ? (
-                              <button
-                                type="button"
-                                className="group mt-1 flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs text-base-content/60"
-                                onClick={() =>
-                                  navigate(`/technician/animals/${animalId}`)
-                                }
-                              >
-                                <PawPrint
-                                  size={11}
-                                  className="shrink-0 text-base-content/40 transition-colors group-hover:text-primary"
-                                  aria-hidden="true"
-                                />
-                                <span className="font-medium text-base-content/75 transition-colors group-hover:text-primary">
-                                  Tag{" "}
-                                  {animalReference !== "Not recorded"
-                                    ? animalReference
-                                    : "Unknown"}
-                                </span>
-                              </button>
-                            ) : (
-                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-base-content/60">
-                                <span className="font-medium text-base-content/75">
-                                  Tag{" "}
-                                  {animalReference !== "Not recorded"
-                                    ? animalReference
-                                    : "Unknown"}
-                                </span>
-                              </div>
-                            )}
-
-                            {lifecycle?.context && (
-                              <p className="mt-2 text-xs text-base-content/65">
-                                {lifecycle.context}
-                              </p>
-                            )}
-                            {task.summary ? (
-                              <div className="mt-2 space-y-2">
-                                {task.summary.match(/(Contact the.*)/i) ? (
-                                  <>
-                                    <p className="line-clamp-2 text-xs text-base-content/55">
-                                      {formatTaskSummary(
-                                        task.summary.split(
-                                          /(Contact the.*)/i,
-                                        )[0],
-                                      )}
-                                    </p>
-                                    <div className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary">
-                                      {
-                                        task.summary.match(
-                                          /(Contact the.*)/i,
-                                        )[0]
-                                      }
-                                    </div>
-                                  </>
-                                ) : (
-                                  <p className="line-clamp-2 text-xs text-base-content/55">
-                                    {formatTaskSummary(task.summary)}
-                                  </p>
-                                )}
-                              </div>
-                            ) : null}
                           </div>
 
+                          {/* Middle: Timing & Location */}
                           <dl className="grid gap-2 text-sm">
-                            {timingLabel ? <div>
-                              <dt className="text-xs font-semibold text-base-content/50">
-                                {timing.kind === "scheduled_visit"
-                                  ? "Visit"
-                                  : timing.kind === "completed"
-                                    ? "Completed"
-                                  : lifecycle
-                                    ? "Timing"
-                                    : "Due"}
-                              </dt>
-                              <dd
-                                className={`mt-0.5 flex items-center gap-2 font-semibold ${
-                                  workflowStatus === "overdue"
-                                    ? "text-error"
-                                    : "text-base-content"
-                                }`}
-                              >
-                                <CalendarDays size={15} aria-hidden="true" />
-                                {timingLabel}
-                              </dd>
-                            </div> : null}
+                            {timingLabel ? (
+                              <div>
+                                <dt className="text-xs font-semibold text-base-content/50">
+                                  {timing.kind === "scheduled_visit"
+                                    ? "Visit"
+                                    : timing.kind === "completed"
+                                      ? "Completed"
+                                      : lifecycle
+                                        ? "Timing"
+                                        : "Due"}
+                                </dt>
+                                <dd
+                                  className={`mt-0.5 flex items-center gap-2 font-semibold ${
+                                    workflowStatus === "overdue"
+                                      ? "text-error"
+                                      : "text-base-content"
+                                  }`}
+                                >
+                                  <CalendarDays size={15} aria-hidden="true" />
+                                  {timingLabel}
+                                </dd>
+                              </div>
+                            ) : null}
                             <div>
                               <dt className="text-xs font-semibold text-base-content/50">
                                 Location
@@ -1141,6 +1260,7 @@ export default function WorkQueue({ embedded = false }) {
                             </div>
                           </dl>
 
+                          {/* Right: Primary CTA Action */}
                           <div className="flex flex-wrap items-center gap-2 lg:max-w-72 lg:justify-end">
                             {task.allowedAction ? (
                               <div
@@ -1155,7 +1275,7 @@ export default function WorkQueue({ embedded = false }) {
                               >
                                 <button
                                   type="button"
-                                  className="btn btn-primary btn-sm"
+                                  className="btn btn-primary btn-sm shadow-xs hover:shadow transition-all"
                                   disabled={actionDisabled}
                                   onClick={() =>
                                     openTask(task, { startHealthService: true })
@@ -1273,7 +1393,7 @@ export default function WorkQueue({ embedded = false }) {
             "health"
         }
         onClose={handleCloseModal}
-          startServiceOnOpen={startHealthServiceOnOpen}
+        startServiceOnOpen={startHealthServiceOnOpen}
         task={
           String(selectedTaskWrapper?.workflowType || "").toLowerCase() ===
           "health"
@@ -1402,31 +1522,32 @@ export default function WorkQueue({ embedded = false }) {
                 </p>
               </div>
             </div>
-            <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
-              <p className="text-xs text-base-content/55">
-                Service information
-              </p>
-              <p className="font-semibold">
-                {formatTaskSummary(selectedWorkDetails.summary) ||
-                  "No additional service details recorded."}
-              </p>
-              {selectedWorkDetails.context?.sireBreed && (
+            {selectedWorkSupportingText && (
+              <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
+                <p className="text-xs text-base-content/55">
+                  Service information
+                </p>
+                <p className="font-semibold">
+                  {formatTaskSummary(selectedWorkSupportingText)}
+                </p>
+                {selectedWorkDetails.context?.sireBreed && (
                 <p className="mt-1 text-base-content/70">
                   Sire: {selectedWorkDetails.context.sireBreed}
                   {selectedWorkDetails.context.sireCode
                     ? ` · ${selectedWorkDetails.context.sireCode}`
                     : ""}
                 </p>
-              )}
-              {selectedWorkDetails.context?.handlingMethod && (
+                )}
+                {selectedWorkDetails.context?.handlingMethod && (
                 <p className="mt-1 text-base-content/70">
                   Handling:{" "}
                   {String(
                     selectedWorkDetails.context.handlingMethod,
                   ).replaceAll("_", " ")}
                 </p>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1497,7 +1618,10 @@ export default function WorkQueue({ embedded = false }) {
         {breedingFollowUpStep === "overview" ? (
           <div className="space-y-4 py-1">
             {breedingFollowUpDetailsQuery.isError ? (
-              <div className="alert alert-error text-xs rounded-2xl" role="alert">
+              <div
+                className="alert alert-error text-xs rounded-2xl"
+                role="alert"
+              >
                 <AlertCircle size={18} aria-hidden="true" />
                 <span>Could not load the breeding record details.</span>
                 <button
@@ -1518,7 +1642,8 @@ export default function WorkQueue({ embedded = false }) {
                   Day-21 Return-to-Heat Monitoring
                 </p>
                 <p className="mt-0.5 leading-relaxed text-base-content/75">
-                  Review the farmer's observation to determine if return-to-heat occurred or if pregnancy monitoring will proceed.
+                  Review the farmer's observation to determine if return-to-heat
+                  occurred or if pregnancy monitoring will proceed.
                 </p>
               </div>
             </div>
@@ -1610,7 +1735,7 @@ export default function WorkQueue({ embedded = false }) {
                       {breedingFollowUpFarmerName}
                     </h4>
                     <p className="text-xs text-base-content/70 mt-0.5 truncate">
-                      {formatFarmerLocation(
+                      {formatFollowUpLocation(
                         breedingFollowUpFarmer,
                         "Location not provided",
                       )}
@@ -1701,7 +1826,8 @@ export default function WorkQueue({ embedded = false }) {
                   {farmerObservation.evidencePhotos.length > 0 ? (
                     <div>
                       <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1.5">
-                        Supporting Photos ({farmerObservation.evidencePhotos.length})
+                        Supporting Photos (
+                        {farmerObservation.evidencePhotos.length})
                       </span>
                       <div className="flex flex-wrap gap-2.5">
                         {farmerObservation.evidencePhotos.map(
@@ -1776,7 +1902,8 @@ export default function WorkQueue({ embedded = false }) {
                       No heat noticed
                     </h4>
                     <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
-                      No heat signs were reported. Pregnancy still requires professional confirmation.
+                      No heat signs were reported. Pregnancy still requires
+                      professional confirmation.
                     </p>
                   </div>
                 </button>

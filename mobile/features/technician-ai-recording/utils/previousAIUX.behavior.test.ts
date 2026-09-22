@@ -60,4 +60,16 @@ describe("Previous AI runtime UX wiring", () => {
     assert.match(activeScreen, /Historical AI:/);
     assert.match(activeScreen, /History only/);
   });
+
+  it("renders recording errors inline inside InseminationReviewModal instead of hidden toast", () => {
+    const screen = readRelative("../screens/RecordAIScreen.tsx");
+    const modal = readRelative("../components/InseminationReviewModal.tsx");
+
+    assert.match(modal, /errorMessage\?:/);
+    assert.match(modal, /errorMessage \? \(/);
+    assert.match(modal, /accessibilityRole="alert"/);
+    assert.match(screen, /setReviewError\(getAIRecordingErrorMessage\(error\)\)/);
+    assert.match(screen, /errorMessage=\{reviewError\}/);
+    assert.doesNotMatch(screen, /toast\.error\(getAIRecordingErrorMessage/);
+  });
 });

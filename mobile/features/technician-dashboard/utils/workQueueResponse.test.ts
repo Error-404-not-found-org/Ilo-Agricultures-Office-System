@@ -11,6 +11,7 @@ import {
 } from "../../technician-requests/utils/requestWorkPresentation.ts";
 import { normalizeTechnicianDashboardStats } from "./dashboardStats.ts";
 import { formatPlannedSchedule } from "./dashboardPresentation.ts";
+import { getCalvingWorkNavigation } from "../../technician-requests/utils/calvingWorkNavigation.ts";
 
 const filters = {
   workState: "active" as const,
@@ -77,6 +78,55 @@ test("Technician Dashboard uses its authoritative agenda instead of a Work Queue
   assert.match(source, /getDashboardAttentionItems\(workItems\)/);
 });
 
+test("Today’s Work reuses canonical Calving navigation with task-details fallback", () => {
+  const source = readMobileSource(
+    "features/technician-dashboard/hooks/useTechnicianDashboardScreen.ts",
+  );
+  const myWork = readMobileSource(
+    "features/technician-requests/components/TechnicianMyWorkPanel.tsx",
+  );
+  const taskDetails = readMobileSource("app/(technician)/task-details.tsx");
+
+  assert.match(source, /getCalvingWorkNavigation\(item\)/);
+  assert.match(myWork, /getCalvingWorkNavigation\(item\)/);
+  assert.match(source, /router\.push\(calvingNavigation as never\)/);
+  assert.match(source, /\(technician\)\/task-details\?id=\$\{taskId\}/);
+  assert.match(taskDetails, /pathname: "\/\(technician\)\/record-calf-drop"/);
+});
+
+test("seeded dashboard Calving agenda retains the context required for direct recording", () => {
+  const item = normalizeTechnicianWorkItems([{
+    id: "task-1",
+    taskId: "task-1",
+    taskType: "CD",
+    workflowType: "Calving",
+    status: "Pending",
+    allowedAction: "RECORD_SERVICE",
+    dueDate: "2026-09-22T00:00:00.000Z",
+    farmer: "Farmer One",
+    farmerContext: { id: "farmer-1", name: "Farmer One" },
+    animal: { id: "animal-1", name: "COW-1", earTag: "COW-1" },
+    context: {
+      pregnancyId: "pregnancy-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+    },
+  } as any], new Date("2026-09-22T08:00:00+08:00"))[0];
+
+  assert.deepEqual(getCalvingWorkNavigation(item), {
+    pathname: "/(technician)/record-calf-drop",
+    params: {
+      taskId: "task-1",
+      motherId: "animal-1",
+      pregnancyId: "pregnancy-1",
+      farmerId: "farmer-1",
+      farmerName: "Farmer One",
+      motherTag: "COW-1",
+      source: "task",
+    },
+  });
+});
+
 test("badge and panel requests retain the same server count across pagination limits", async () => {
   const requestedLimits: number[] = [];
   const api = {
@@ -102,7 +152,7 @@ test("Mobile Home offers one View all route to My Work without Calendar or count
   );
   assert.match(source, /getDashboardWorkPreview\(workItems\)/);
   assert.match(source, /View all \(\{total\}\)/);
-  assert.doesNotMatch(source, /Showing \{previewItems\.length\} of \{total\}/);
+  assert.doesNotMatch(source, /Showing/);
   assert.doesNotMatch(source, /Open calendar/);
   assert.match(source, /section: "myWork"/);
   assert.match(source, /\(technician\)\/\(tabs\)\/technician\.requests/);

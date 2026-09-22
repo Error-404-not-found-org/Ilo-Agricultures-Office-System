@@ -23,14 +23,21 @@ import {
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { getAIRequestErrorMessage } from "../../utils/aiRequestErrors";
-import { extractFarmerNote, formatHeatSignLabel } from "../../utils/aiRequestNote";
+import { getPreviousAIErrorMessage } from "../../utils/previousAIError";
+import {
+  extractFarmerNote,
+  formatHeatSignLabel,
+} from "../../utils/aiRequestNote";
 import Modal from "../ui/Modal";
 import ImagePreviewModal from "../ui/ImagePreviewModal";
 import { imagePreviewUrl } from "../ui/imagePreviewUrl";
 import RegisterFarmerModal from "./RegisterFarmerModal";
 import RegisterLivestockModal from "./RegisterLivestockModal";
 import UserAvatar from "../ui/UserAvatar";
-import { CATTLE_BREEDS, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
+import {
+  CATTLE_BREEDS,
+  BREED_OPTIONS_BY_SPECIES,
+} from "../../constants/breeds";
 
 const pad = (value) => String(value).padStart(2, "0");
 
@@ -77,7 +84,7 @@ const validatePerformedAt = (
   ) {
     return {
       error:
-        "Use the authorized historical-record workflow for an older AI service.",
+        "This AI record is from an earlier date. Please use Add Past Record.",
     };
   }
   return { performedAt, error: null };
@@ -454,10 +461,15 @@ const AIServiceModal = ({
         return;
       }
       setSubmissionError(
-        getAIRequestErrorMessage(
-          error,
-          "The AI service could not be recorded.",
-        ),
+        isPastRecord
+          ? getPreviousAIErrorMessage(
+              error,
+              "The previous AI record could not be saved. Please try again.",
+            )
+          : getAIRequestErrorMessage(
+              error,
+              "The AI service could not be recorded.",
+            ),
       );
       if (capabilities.fetchContext) refetchContext();
     },
@@ -727,8 +739,12 @@ const AIServiceModal = ({
     ...(Array.isArray(taskData?.attachments) ? taskData.attachments : []),
     ...(Array.isArray(taskData?.photos) ? taskData.photos : []),
     requestContext?.imageUrl,
-    ...(Array.isArray(requestContext?.evidencePhotos) ? requestContext.evidencePhotos : []),
-    ...(Array.isArray(requestContext?.attachments) ? requestContext.attachments : []),
+    ...(Array.isArray(requestContext?.evidencePhotos)
+      ? requestContext.evidencePhotos
+      : []),
+    ...(Array.isArray(requestContext?.attachments)
+      ? requestContext.attachments
+      : []),
     ...(Array.isArray(requestContext?.photos) ? requestContext.photos : []),
   ];
   const seenAttachmentUrls = new Set();
@@ -864,8 +880,8 @@ const AIServiceModal = ({
                   Recording method
                 </h3>
                 <p className="mt-1 text-xs text-base-content/60">
-                  Record today&apos;s service or add an AI service that
-                  happened earlier.
+                  Record today&apos;s service or add an AI service that happened
+                  earlier.
                 </p>
               </div>
 
@@ -988,8 +1004,9 @@ const AIServiceModal = ({
                 </div>
               )}
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <fieldset className="fieldset">
+              <div className="grid min-w-0 gap-4 md:grid-cols-2">
+                {" "}
+                <fieldset className="fieldset min-w-0">
                   <legend className="fieldset-legend text-xs font-semibold text-base-content/80">
                     Farmer
                   </legend>
@@ -1094,9 +1111,7 @@ const AIServiceModal = ({
                               <button
                                 type="button"
                                 className="btn btn-sm btn-ghost text-primary w-full"
-                                onMouseDown={(event) =>
-                                  event.preventDefault()
-                                }
+                                onMouseDown={(event) => event.preventDefault()}
                                 onClick={() => refetchFarmers()}
                               >
                                 Try again
@@ -1108,13 +1123,9 @@ const AIServiceModal = ({
                                 key={farmer._id}
                                 type="button"
                                 role="option"
-                                aria-selected={
-                                  selectedFarmerId === farmer._id
-                                }
+                                aria-selected={selectedFarmerId === farmer._id}
                                 className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-base-200"
-                                onMouseDown={(event) =>
-                                  event.preventDefault()
-                                }
+                                onMouseDown={(event) => event.preventDefault()}
                                 onClick={() => selectFarmer(farmer)}
                               >
                                 <UserAvatar
@@ -1156,9 +1167,7 @@ const AIServiceModal = ({
                                   onMouseDown={(event) =>
                                     event.preventDefault()
                                   }
-                                  onClick={() =>
-                                    setIsRegisterFarmerOpen(true)
-                                  }
+                                  onClick={() => setIsRegisterFarmerOpen(true)}
                                 >
                                   <UserPlus size={15} /> Register farmer
                                 </button>
@@ -1170,7 +1179,6 @@ const AIServiceModal = ({
                     </div>
                   )}
                 </fieldset>
-
                 {/* ========================================== */}
                 {/* ANIMAL SELECTION */}
                 {/* ========================================== */}
@@ -1211,7 +1219,7 @@ const AIServiceModal = ({
                         )}
                       </div>
                     ) : (
-                      <div className="relative" ref={animalDropdownRef}>
+                      <div className="relative min-w-0" ref={animalDropdownRef}>
                         <button
                           type="button"
                           disabled={
@@ -1222,7 +1230,7 @@ const AIServiceModal = ({
                           onClick={() =>
                             setIsAnimalDropdownOpen((prev) => !prev)
                           }
-                          className={`input input-bordered w-full rounded-xl flex items-center justify-between gap-2 text-left focus:outline-primary ${
+                          className={`input input-bordered w-full max-w-full min-w-0 overflow-hidden rounded-xl flex items-center justify-between gap-2 text-left focus:outline-primary ${
                             !selectedFarmerId ||
                             isLoadingAnimals ||
                             isAnimalsError
@@ -1231,27 +1239,28 @@ const AIServiceModal = ({
                           }`}
                         >
                           {selectedAnimal ? (
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span className="badge badge-sm font-mono font-bold bg-base-200 text-base-content border border-base-300 shrink-0">
+                            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                              <span className="badge badge-sm max-w-24 truncate font-mono font-bold bg-base-200 text-base-content border border-base-300 shrink-0">
                                 #
                                 {String(selectedAnimal.earTag || "").replace(
                                   /^#/,
                                   "",
                                 )}
                               </span>
-                              <span className="font-semibold text-sm text-base-content truncate">
+
+                              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-base-content">
                                 {selectedAnimal.name
                                   ? `${selectedAnimal.name} · `
                                   : ""}
-                                {selectedAnimal.breed ||
-                                  selectedAnimal.species}
+                                {selectedAnimal.breed || selectedAnimal.species}
                               </span>
-                              <span className="badge badge-xs badge-success badge-soft font-semibold shrink-0">
+
+                              <span className="badge badge-xs badge-success badge-soft shrink-0 font-semibold">
                                 {selectedAnimal.gender || "Female"}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-sm text-base-content/50">
+                            <span className="min-w-0 truncate text-sm text-base-content/50">
                               {isLoadingAnimals
                                 ? "Loading registered animals…"
                                 : selectedFarmerId
@@ -1260,7 +1269,8 @@ const AIServiceModal = ({
                             </span>
                           )}
 
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="ml-auto flex shrink-0 items-center gap-1">
+                            {" "}
                             {Boolean(selectedAnimalId) && (
                               <span
                                 role="button"
@@ -1327,8 +1337,7 @@ const AIServiceModal = ({
 
                             {availableAnimals.map((animal) => {
                               const isSelected =
-                                String(animal._id) ===
-                                String(selectedAnimalId);
+                                String(animal._id) === String(selectedAnimalId);
                               const isMale =
                                 String(animal.gender || "").toLowerCase() ===
                                 "male";
@@ -1527,14 +1536,15 @@ const AIServiceModal = ({
                     <Clock className="h-3 w-3" />
                     Request submitted:{" "}
                     {requestContext?.requestedAt
-                      ? new Date(
-                          requestContext.requestedAt,
-                        ).toLocaleDateString("en-US", {
-                          timeZone: "Asia/Manila",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })
+                      ? new Date(requestContext.requestedAt).toLocaleDateString(
+                          "en-US",
+                          {
+                            timeZone: "Asia/Manila",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          },
+                        )
                       : "Not recorded"}
                   </span>
                 </div>
@@ -1649,9 +1659,7 @@ const AIServiceModal = ({
                     className="flex items-center gap-3 rounded-2xl border border-base-300 bg-base-200/50 p-4 text-xs text-base-content/70 shadow-2xs"
                   >
                     <span className="loading loading-spinner loading-sm text-primary" />
-                    <span>
-                      Checking requests and insemination eligibility…
-                    </span>
+                    <span>Checking requests and insemination eligibility…</span>
                   </div>
                 )}
 
@@ -2013,7 +2021,8 @@ const AIServiceModal = ({
                           })
                         ) : (
                           <div className="p-2.5 text-xs text-base-content/60 italic">
-                            No matching standard breed. &ldquo;{procedure.sireBreed}&rdquo; will be used.
+                            No matching standard breed. &ldquo;
+                            {procedure.sireBreed}&rdquo; will be used.
                           </div>
                         )}
 
@@ -2034,7 +2043,10 @@ const AIServiceModal = ({
                     )}
                   </div>
                   {fieldErrors.sireBreed && (
-                    <p role="alert" className="text-xs text-error font-medium mt-1">
+                    <p
+                      role="alert"
+                      className="text-xs text-error font-medium mt-1"
+                    >
                       {fieldErrors.sireBreed}
                     </p>
                   )}
@@ -2047,7 +2059,10 @@ const AIServiceModal = ({
                   <label
                     className={`input input-bordered w-full rounded-xl text-sm font-medium flex items-center gap-2 focus-within:outline-primary ${fieldErrors.sireCode ? "input-error" : ""}`}
                   >
-                    <BadgeCheck size={16} className="text-base-content/40 shrink-0" />
+                    <BadgeCheck
+                      size={16}
+                      className="text-base-content/40 shrink-0"
+                    />
                     <input
                       aria-label="Sire code"
                       className="grow min-w-0"
@@ -2067,7 +2082,10 @@ const AIServiceModal = ({
                     />
                   </label>
                   {fieldErrors.sireCode && (
-                    <p role="alert" className="text-xs text-error font-medium mt-1">
+                    <p
+                      role="alert"
+                      className="text-xs text-error font-medium mt-1"
+                    >
                       {fieldErrors.sireCode}
                     </p>
                   )}
@@ -2097,7 +2115,10 @@ const AIServiceModal = ({
                     }}
                   />
                   {fieldErrors.inseminationDate && (
-                    <p role="alert" className="text-xs text-error font-medium mt-1">
+                    <p
+                      role="alert"
+                      className="text-xs text-error font-medium mt-1"
+                    >
                       {fieldErrors.inseminationDate}
                     </p>
                   )}
@@ -2167,7 +2188,10 @@ const AIServiceModal = ({
                     }}
                   />
                   {fieldErrors.semenDosesUsed && (
-                    <p role="alert" className="text-xs text-error font-medium mt-1">
+                    <p
+                      role="alert"
+                      className="text-xs text-error font-medium mt-1"
+                    >
                       {fieldErrors.semenDosesUsed}
                     </p>
                   )}

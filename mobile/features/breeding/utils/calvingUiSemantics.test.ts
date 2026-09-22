@@ -768,3 +768,15 @@ test("Calving Readiness: 10. Safeguard 3: Try Again refetches canonical readines
     /refetchAnimalData\(\);[\s\S]*?queryClient\.invalidateQueries\(\{\s*queryKey:\s*breedingKeys\.tracker\(animalId\)\s*\}\);/,
   );
 });
+
+test("technician Record Calving keeps validation but omits developer-facing gestation equations", () => {
+  const techPath = fileURLToPath(
+    new URL("../../../app/(technician)/record-calf-drop.tsx", import.meta.url).href,
+  );
+  const source = readFileSync(techPath, "utf8");
+
+  assert.match(source, /\{false && selectedPregnancy/);
+  assert.match(source, /Expected calving:/);
+  assert.match(source, /validateCalvingForm/);
+  assert.match(source, /readiness\.minimumDays/);
+});

@@ -19,16 +19,15 @@ import {
   X,
   Check,
   AlertCircle,
+  Info,
 } from "lucide-react-native";
 import React, { useState, useEffect, useRef } from "react";
-import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
@@ -47,6 +46,10 @@ import {
   AI_REQUEST_INVALIDATION_KEYS,
   getAIRequestSubmitErrorMessage,
   getAIRequestSubmitState,
+  getAIRequestInlineNotice,
+  getAnimalPickerAdvisory,
+  classifyAnimalSelection,
+  checkAIRequestEligibilityForSubmit,
 } from "@/features/farmer-requests/utils/aiRequestState";
 import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
 import { requestFormStyles } from "@/features/farmer-requests/components/requestFormStyles";
@@ -61,6 +64,7 @@ interface Animal {
   reproductiveStatus?: string;
   gender?: string;
   birthDate?: string | Date;
+  [key: string]: any;
 }
 interface FarmerProfile {
   _id: string;
@@ -314,9 +318,30 @@ export default function RequestAI() {
     serverConflictRequest ? [...aiRequests, serverConflictRequest] : aiRequests,
     selectedAnimal?._id,
   );
+  const selectedAnimalEligibility = selectedAnimal
+    ? getAIEligibility({
+        animal: selectedAnimal,
+        activeRequest,
+      })
+    : null;
+  const isSelectedAnimalIneligible = Boolean(
+    selectedAnimal &&
+      selectedAnimalEligibility &&
+      !selectedAnimalEligibility.isEligible &&
+      !isReInsemination,
+  );
   const submitState = getAIRequestSubmitState({
     hasActiveRequest: Boolean(activeRequest),
     isSubmitting: submitting,
+    isIneligible: isSelectedAnimalIneligible,
+    ineligibleReason: selectedAnimalEligibility?.reason,
+    reproductiveStatus: selectedAnimal?.reproductiveStatus,
+  });
+
+  const inlineNotice = getAIRequestInlineNotice({
+    activeRequest,
+    selectedAnimal,
+    eligibility: selectedAnimalEligibility,
   });
 
   useEffect(() => {
@@ -394,31 +419,41 @@ export default function RequestAI() {
         return;
       }
 
-      if (!selectedAnimal) {
-        showSubmitError("Please select an animal for this request.");
-        return;
-      }
-
-      if (activeRequest) {
-        scrollRef.current?.scrollTo({ y: 500, animated: true });
-        return;
-      }
-
-      if (selectedAnimal.reproductiveStatus === "Pregnant") {
-        setPregnantSubmitModalVisible(true);
-        return;
-      }
-
       const eligibility = getAIEligibility({
         animal: selectedAnimal,
         activeRequest,
       });
-      if (!eligibility.isEligible) {
-        setAgeCheckReason(
-          eligibility.reason ||
-            "This animal is not currently eligible for insemination.",
-        );
-        setAgeModalVisible(true);
+
+      const submitEligibility = checkAIRequestEligibilityForSubmit({
+        selectedAnimal,
+        activeRequest,
+        eligibility,
+      });
+
+      if (!submitEligibility.canSubmit) {
+        if (submitEligibility.blockType === "no_animal") {
+          showSubmitError(
+            submitEligibility.blockReason ||
+              "Please select an animal for this request.",
+          );
+          return;
+        }
+        if (submitEligibility.blockType === "active_request") {
+          scrollRef.current?.scrollTo({ y: 500, animated: true });
+          return;
+        }
+        if (submitEligibility.blockType === "pregnant") {
+          setPregnantSubmitModalVisible(true);
+          return;
+        }
+        if (submitEligibility.blockType === "ineligible") {
+          setAgeCheckReason(
+            submitEligibility.blockReason ||
+              "This animal is not currently eligible for insemination.",
+          );
+          setAgeModalVisible(true);
+          return;
+        }
         return;
       }
 
@@ -730,55 +765,96 @@ export default function RequestAI() {
             />
           </TouchableOpacity>
 
-          {activeRequest && (
+          {inlineNotice && (
             <View
               className="p-4 rounded-2xl mb-5 flex-row gap-3 border"
               style={{
-                backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#fffbeb",
-                borderColor: isDark ? "rgba(245, 158, 11, 0.25)" : "#fde68a",
+                backgroundColor:
+                  inlineNotice.type === "active_request"
+                    ? isDark
+                      ? "rgba(245, 158, 11, 0.1)"
+                      : "#fffbeb"
+                    : inlineNotice.type === "pregnant"
+                      ? isDark
+                        ? "rgba(147, 51, 234, 0.08)"
+                        : "#faf5ff"
+                      : isDark
+                        ? "rgba(245, 158, 11, 0.08)"
+                        : "#fffdfa",
+                borderColor:
+                  inlineNotice.type === "active_request"
+                    ? isDark
+                      ? "rgba(245, 158, 11, 0.25)"
+                      : "#fde68a"
+                    : inlineNotice.type === "pregnant"
+                      ? isDark
+                        ? "rgba(147, 51, 234, 0.2)"
+                        : "#e9d5ff"
+                      : isDark
+                        ? "rgba(245, 158, 11, 0.18)"
+                        : "#fef3c7",
               }}
             >
-              <AlertCircle size={20} color="#d97706" />
+              {inlineNotice.type === "active_request" ? (
+                <AlertCircle size={20} color="#d97706" />
+              ) : inlineNotice.type === "pregnant" ? (
+                <Info size={20} color={isDark ? "#c084fc" : "#9333ea"} />
+              ) : (
+                <Info size={20} color={isDark ? "#fcd34d" : "#b45309"} />
+              )}
               <View className="flex-1">
                 <Text
                   className="font-bold text-sm"
                   style={{ color: colors.textPrimary }}
                 >
-                  Active AI request
+                  {inlineNotice.title}
                 </Text>
                 <Text
-                  className="text-xs mt-1"
+                  className="text-xs mt-1 leading-relaxed"
                   style={{ color: colors.textSecondary }}
                 >
-                  Artificial Insemination ·{" "}
-                  {String(activeRequest.status || "pending")
-                    .replace(/[-_]/g, " ")
-                    .replace(/\b\w/g, (character) => character.toUpperCase())}
-                  {"\n"}Complete or cancel this request before creating another
-                  one.
+                  {inlineNotice.description}
                 </Text>
-                {activeRequest._id && (
+                {inlineNotice.actionLabel && inlineNotice.actionRoute && (
                   <TouchableOpacity
                     onPress={() =>
-                      router.push({
-                        pathname: "/(farmer)/ai-request-detail",
-                        params: { id: String(activeRequest._id) },
-                      })
+                      router.push(inlineNotice.actionRoute as any)
                     }
                     accessibilityRole="button"
-                    accessibilityLabel="View active AI request"
+                    accessibilityLabel={inlineNotice.actionLabel}
                     className="flex-row items-center self-start mt-3 py-1"
                   >
                     <Text
                       className="text-xs font-bold"
-                      style={{ color: "#d97706" }}
+                      style={{
+                        color:
+                          inlineNotice.type === "active_request"
+                            ? "#d97706"
+                            : inlineNotice.type === "pregnant"
+                              ? isDark
+                                ? "#c084fc"
+                                : "#9333ea"
+                              : isDark
+                                ? "#fbbf24"
+                                : "#b45309",
+                      }}
                     >
-                      View existing request
+                      {inlineNotice.actionLabel}
                     </Text>
                     <MaterialCommunityIcons
                       name="arrow-right"
                       size={15}
-                      color="#d97706"
+                      color={
+                        inlineNotice.type === "active_request"
+                          ? "#d97706"
+                          : inlineNotice.type === "pregnant"
+                            ? isDark
+                              ? "#c084fc"
+                              : "#9333ea"
+                            : isDark
+                              ? "#fbbf24"
+                              : "#b45309"
+                      }
                       style={{ marginLeft: 4 }}
                     />
                   </TouchableOpacity>
@@ -1021,7 +1097,7 @@ export default function RequestAI() {
           >
             {submitting ? (
               <ActivityIndicator color="white" size="small" />
-            ) : activeRequest ? (
+            ) : submitState.disabled ? (
               <Text className="text-white font-bold text-base">
                 {submitState.label}
               </Text>
@@ -1117,88 +1193,156 @@ export default function RequestAI() {
               }}
               showsVerticalScrollIndicator={animals.length > 4}
               nestedScrollEnabled
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setSelectedAnimal(item);
+              renderItem={({ item }) => {
+                const itemActiveReq = findActiveAIRequestForAnimal(
+                  serverConflictRequest
+                    ? [...aiRequests, serverConflictRequest]
+                    : aiRequests,
+                  item._id,
+                );
+                const itemEligibility = getAIEligibility({
+                  animal: item,
+                  activeRequest: itemActiveReq,
+                });
+                const isItemIneligible = !itemEligibility.isEligible;
+
+                const handlePressAnimal = () => {
+                  const decision = classifyAnimalSelection(
+                    item,
+                    itemEligibility,
+                  );
+                  if (!decision.canSelectDirectly) {
                     setAnimalModalVisible(false);
-                  }}
-                  className="py-4 px-3 border-b flex-row items-center justify-between"
-                  style={{
-                    borderBottomColor: colors.border,
-                    backgroundColor:
-                      selectedAnimal?._id === item._id
-                        ? isDark
-                          ? "rgba(239, 68, 68, 0.15)"
-                          : "#fef2f2"
-                        : undefined,
-                    borderRadius: selectedAnimal?._id === item._id ? 16 : 0,
-                  }}
-                >
-                  <View className="flex-row items-center gap-3 flex-1">
-                    <View className="flex-1">
-                      <Text
-                        className="text-[15px] font-bold"
-                        style={[
-                          requestFormStyles.modalItemTitle,
-                          { color: colors.textPrimary },
-                        ]}
-                      >
-                        {item.earTag
-                          ? `Ear tag ${item.earTag}`
-                          : `Registry ID ${item.animalId}`}
-                      </Text>
+                    if (decision.modalType === "male") {
+                      setTimeout(() => setMaleModalVisible(true), 250);
+                    } else if (decision.modalType === "age") {
+                      setAgeCheckReason(
+                        decision.reason ||
+                          "This animal has not reached the minimum breeding age yet.",
+                      );
+                      setTimeout(() => setAgeModalVisible(true), 250);
+                    }
+                    return;
+                  }
 
-                      <View className="flex-row items-center gap-2 mt-1">
-                        <Text
-                          className="text-xs"
-                          style={[
-                            requestFormStyles.modalItemMeta,
-                            { color: colors.textMuted },
-                          ]}
-                        >
-                          {item.breed} · {item.species}
-                        </Text>
+                  setSelectedAnimal(item);
+                  setAnimalModalVisible(false);
+                };
 
-                        {item.reproductiveStatus && (
-                          <View
-                            className={`px-2 py-0.5 rounded-full ${
-                              item.reproductiveStatus === "Pregnant"
-                                ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200"
-                                : "bg-gray-100 dark:bg-slate-800"
-                            }`}
+                const isPregnant = item.reproductiveStatus === "Pregnant";
+                const isInseminated = item.reproductiveStatus === "Inseminated";
+
+                return (
+                  <TouchableOpacity
+                    onPress={handlePressAnimal}
+                    className="py-4 px-3 border-b flex-row items-center justify-between"
+                    style={{
+                      borderBottomColor: colors.border,
+                      opacity: isItemIneligible ? 0.8 : 1,
+                      backgroundColor:
+                        selectedAnimal?._id === item._id
+                          ? isDark
+                            ? "rgba(0, 100, 59, 0.15)"
+                            : "#f0fdf4"
+                          : undefined,
+                      borderRadius: selectedAnimal?._id === item._id ? 16 : 0,
+                    }}
+                  >
+                    <View className="flex-row items-center gap-3 flex-1">
+                      <View className="flex-1">
+                        <View className="flex-row items-center justify-between">
+                          <Text
+                            className="text-[15px] font-bold"
+                            style={[
+                              requestFormStyles.modalItemTitle,
+                              { color: colors.textPrimary },
+                            ]}
                           >
+                            {item.earTag
+                              ? `Ear tag ${item.earTag}`
+                              : `Registry ID ${item.animalId}`}
+                          </Text>
+
+                          {isPregnant && (
+                            <View className="px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800/40">
+                              <Text className="text-[10px] font-outfit-bold text-purple-700 dark:text-purple-300">
+                                Pregnant
+                              </Text>
+                            </View>
+                          )}
+
+                          {!isPregnant && isInseminated && (
+                            <View className="px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/30">
+                              <Text className="text-[10px] font-outfit-bold text-amber-800/90 dark:text-amber-300/90">
+                                Inseminated
+                              </Text>
+                            </View>
+                          )}
+
+                          {!isPregnant && !isInseminated && itemActiveReq && (
+                            <View className="px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800/40">
+                              <Text className="text-[10px] font-outfit-bold text-blue-800 dark:text-blue-300">
+                                Request Active
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <View className="flex-row items-center gap-2 mt-1">
+                          <Text
+                            className="text-xs"
+                            style={[
+                              requestFormStyles.modalItemMeta,
+                              { color: colors.textMuted },
+                            ]}
+                          >
+                            {item.breed} · {item.species}
+                          </Text>
+
+                          {!isPregnant && !isInseminated && !itemActiveReq && item.reproductiveStatus && (
+                            <View className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800">
+                              <Text
+                                className="text-[9px] font-outfit-black uppercase"
+                                style={{ color: colors.textMuted }}
+                              >
+                                {item.reproductiveStatus}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {item.earTag && (
+                          <Text
+                            className="text-xs mt-1"
+                            style={{ color: colors.textMuted }}
+                          >
+                            Registry ID: {item.animalId}
+                          </Text>
+                        )}
+
+                        {isItemIneligible && (
+                          <View className="flex-row items-center gap-1.5 mt-1.5">
+                            <Info size={12} color={isDark ? "#fde68a" : "#92400e"} />
                             <Text
-                              className="text-[9px] font-outfit-black uppercase"
-                              style={{
-                                color:
-                                  item.reproductiveStatus === "Pregnant"
-                                    ? "#9333ea"
-                                    : colors.textMuted,
-                              }}
+                              className="text-xs font-medium flex-1"
+                              style={{ color: isDark ? "#fde68a" : "#92400e" }}
                             >
-                              {item.reproductiveStatus}
+                              {getAnimalPickerAdvisory(
+                                itemEligibility,
+                                Boolean(itemActiveReq),
+                              )}
                             </Text>
                           </View>
                         )}
                       </View>
 
-                      {item.earTag && (
-                        <Text
-                          className="text-xs mt-1"
-                          style={{ color: colors.textMuted }}
-                        >
-                          Registry ID: {item.animalId}
-                        </Text>
+                      {selectedAnimal?._id === item._id && (
+                        <Check size={18} color={primaryColor} />
                       )}
                     </View>
-
-                    {selectedAnimal?._id === item._id && (
-                      <Check size={18} color={primaryColor} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              )}
+                  </TouchableOpacity>
+                );
+              }}
             />
           )}
         </View>
@@ -1249,48 +1393,48 @@ export default function RequestAI() {
         visible={maleModalVisible}
         onClose={() => setMaleModalVisible(false)}
         onConfirm={() => setMaleModalVisible(false)}
-        title="Selection Unavailable"
-        message="This animal is Male. Insemination is restricted to female animals only."
-        confirmText="OK"
+        title="Breeding Service Notice"
+        message="This animal is male. Artificial insemination service is dedicated to female breeding animals."
+        confirmText="Understood"
         cancelText={null}
-        isDestructive={true}
-        icon={<AlertCircle size={26} color={colors.error} />}
+        isDestructive={false}
+        icon={<Info size={26} color={primaryColor} />}
       />
 
       <ConfirmationModal
         visible={pregnantModalVisible}
         onClose={() => setPregnantModalVisible(false)}
         onConfirm={() => setPregnantModalVisible(false)}
-        title="Selection Unavailable"
-        message="There is already an active pregnancy registered for this animal."
-        confirmText="OK"
+        title="Active Pregnancy"
+        message="There is already an active pregnancy registered for this animal. Technicians will assist with pregnancy monitoring and calving preparation."
+        confirmText="Understood"
         cancelText={null}
-        isDestructive={true}
-        icon={<AlertCircle size={26} color={colors.error} />}
+        isDestructive={false}
+        icon={<Info size={26} color="#9333ea" />}
       />
 
       <ConfirmationModal
         visible={pregnantSubmitModalVisible}
         onClose={() => setPregnantSubmitModalVisible(false)}
         onConfirm={() => setPregnantSubmitModalVisible(false)}
-        title="Action Blocked"
-        message="There is already an active pregnancy registered for this animal."
-        confirmText="OK"
+        title="Active Pregnancy"
+        message="There is already an active pregnancy registered for this animal. AI service cannot be submitted while pregnant."
+        confirmText="Understood"
         cancelText={null}
-        isDestructive={true}
-        icon={<AlertCircle size={26} color={colors.error} />}
+        isDestructive={false}
+        icon={<Info size={26} color="#9333ea" />}
       />
 
       <ConfirmationModal
         visible={ageModalVisible}
         onClose={() => setAgeModalVisible(false)}
         onConfirm={() => setAgeModalVisible(false)}
-        title="Selection Unavailable"
+        title="Breeding Status Notice"
         message={ageCheckReason}
-        confirmText="OK"
+        confirmText="Understood"
         cancelText={null}
-        isDestructive={true}
-        icon={<AlertCircle size={26} color={colors.error} />}
+        isDestructive={false}
+        icon={<Info size={26} color={primaryColor} />}
       />
     </View>
   );

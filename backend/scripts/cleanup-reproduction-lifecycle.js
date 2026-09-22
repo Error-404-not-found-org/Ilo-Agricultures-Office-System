@@ -11,6 +11,7 @@ import { configureCustomDns } from "../src/config/custom-dns.js";
 import { Animal } from "../src/models/animal.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
+import { PregnancyLossReport } from "../src/models/pregnancy-loss-report.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { HealthRequest } from "../src/models/health-request.model.js";
 import { MedicalRecord } from "../src/models/medical-record.model.js";
@@ -18,12 +19,13 @@ import { Task } from "../src/models/task.model.js";
 import { Notification } from "../src/models/notification.model.js";
 import { AnimalTimelineEvent } from "../src/models/animal-timeline-event.model.js";
 import { AuditLog } from "../src/models/audit-log.model.js";
-import { SCENARIO_NAMES, SEED_PREFIX, assertDevelopmentEnvironment } from "./seed-reproduction-lifecycle.js";
+import { LEGACY_SEED_PREFIX, SCENARIO_NAMES, SEED_PREFIX, assertDevelopmentEnvironment } from "./seed-reproduction-lifecycle.js";
 
 const MODELS = {
   Animal,
   Insemination,
   Pregnancy,
+  PregnancyLossReport,
   Calving,
   HealthRequest,
   MedicalRecord,
@@ -57,8 +59,8 @@ export const validateManifest = (manifest) => {
   if (isFullRun && manifest.scenarioNames.some((value, index) => value !== SCENARIO_NAMES[index])) {
     throw new Error("Manifest scenario list does not match the lifecycle seeder.");
   }
-  if (!Array.isArray(manifest.earTags) || !manifest.earTags.length || manifest.earTags.some((value) => !String(value).startsWith(SEED_PREFIX))) {
-    throw new Error(`Manifest ear tags must all use the ${SEED_PREFIX} prefix.`);
+  if (!Array.isArray(manifest.earTags) || !manifest.earTags.length || manifest.earTags.some((value) => ![SEED_PREFIX, LEGACY_SEED_PREFIX].some((prefix) => String(value).startsWith(prefix)))) {
+    throw new Error(`Manifest ear tags must all use the ${SEED_PREFIX} or legacy ${LEGACY_SEED_PREFIX} prefix.`);
   }
   for (const field of ID_FIELDS) {
     if (!Array.isArray(manifest[field])) throw new Error(`Manifest field must be an array: ${field}`);
@@ -108,8 +110,101 @@ export const buildCleanupOperations = (manifest) => {
   ];
 };
 
-export const cleanupFromManifest = async ({ manifest, models = MODELS, session = null }) => {
+const findIds = async (model, filter, options = {}) => {
+  if (!model?.find) return [];
+  const query = model.find(filter, null, options);
+  const selected = typeof query?.select === "function" ? query.select("_id") : query;
+  const rows = typeof selected?.lean === "function" ? await selected.lean() : await selected;
+  return (rows || []).map((row) => row._id).filter(Boolean);
+};
+
+export const discoverDerivedCleanupIds = async ({ manifest, models = MODELS, session = null }) => {
+  validateManifest(manifest);
+  const options = session ? { session } : {};
+  const seededAnimalIds = ids(manifest.insertedAnimalIds);
+  const Offspring = await findIds(models.Animal, {
+    farmerId: new mongoose.Types.ObjectId(manifest.farmer.id),
+    motherId: { $in: ids(manifest.motherAnimalIds) },
+  }, options);
+  const animalIds = [...seededAnimalIds, ...Offspring];
+  const inseminationIds = ids(manifest.insertedInseminationIds);
+  const pregnancyIds = ids(manifest.insertedPregnancyIds);
+  const healthRequestIds = ids(manifest.insertedHealthRequestIds);
+  const relatedIds = [...animalIds, ...inseminationIds, ...pregnancyIds, ...healthRequestIds];
+  const farmerId = new mongoose.Types.ObjectId(manifest.farmer.id);
+  const participantIds = [farmerId, new mongoose.Types.ObjectId(manifest.technician.id)];
+  const relationshipFilter = {
+    farmerId,
+    $or: [
+      { animalId: { $in: animalIds } },
+      { pregnancyId: { $in: pregnancyIds } },
+      { inseminationId: { $in: inseminationIds } },
+    ],
+  };
+  const PregnancyLossReport = await findIds(models.PregnancyLossReport, relationshipFilter, options);
+  const Calving = await findIds(models.Calving, relationshipFilter, options);
+  const HealthRequest = await findIds(models.HealthRequest, { farmerId, animalId: { $in: animalIds } }, options);
+  const MedicalRecord = await findIds(models.MedicalRecord, {
+    farmerId,
+    $or: [{ animalId: { $in: animalIds } }, { healthRequestId: { $in: HealthRequest } }],
+  }, options);
+  const derivedRelatedIds = [...relatedIds, ...PregnancyLossReport, ...Calving, ...HealthRequest, ...MedicalRecord];
+  const [Task, Notification, AnimalTimelineEvent, AuditLog] = await Promise.all([
+    findIds(models.Task, { farmerId, $or: [
+      { animalIds: { $in: animalIds } },
+      { relatedRecordId: { $in: derivedRelatedIds } },
+      { "metadata.inseminationId": { $in: inseminationIds } },
+      { "metadata.pregnancyId": { $in: pregnancyIds } },
+    ] }, options),
+    findIds(models.Notification, { $and: [
+      { $or: [{ recipientId: { $in: participantIds } }, { senderId: { $in: participantIds } }] },
+      { $or: [
+        { relatedId: { $in: derivedRelatedIds } },
+        { "metadata.animalId": { $in: animalIds } },
+        { "metadata.inseminationId": { $in: inseminationIds } },
+      ] },
+    ] }, options),
+    findIds(models.AnimalTimelineEvent, { $or: [
+      { animalId: { $in: animalIds } },
+      { sourceId: { $in: derivedRelatedIds } },
+    ] }, options),
+    findIds(models.AuditLog, { $or: [
+      { entityId: { $in: derivedRelatedIds } },
+      { "metadata.motherId": { $in: animalIds } },
+    ] }, options),
+  ]);
+  return { Offspring, PregnancyLossReport, Calving, HealthRequest, MedicalRecord, Task, Notification, AnimalTimelineEvent, AuditLog };
+};
+
+export const buildExpandedCleanupOperations = async ({ manifest, models = MODELS, session = null }) => {
   const operations = buildCleanupOperations(manifest);
+  const discovered = await discoverDerivedCleanupIds({ manifest, models, session });
+  const operationByModel = new Map(operations.map((operation) => [operation.model, operation]));
+  for (const [model, discoveredIds] of Object.entries(discovered)) {
+    if (model === "Offspring") {
+      const offspringOperation = operations.find((operation) => operation.name === "offspring");
+      const existing = new Set(offspringOperation.filter._id.$in.map(String));
+      for (const discoveredId of discoveredIds) {
+        if (!existing.has(String(discoveredId))) offspringOperation.filter._id.$in.push(discoveredId);
+      }
+      continue;
+    }
+    if (model === "PregnancyLossReport") {
+      operations.splice(4, 0, { name: "pregnancyLossReports", model, filter: { _id: { $in: discoveredIds } } });
+      continue;
+    }
+    const operation = operationByModel.get(model);
+    if (!operation) continue;
+    const existing = new Set(operation.filter._id.$in.map(String));
+    for (const discoveredId of discoveredIds) {
+      if (!existing.has(String(discoveredId))) operation.filter._id.$in.push(discoveredId);
+    }
+  }
+  return operations;
+};
+
+export const cleanupFromManifest = async ({ manifest, models = MODELS, session = null }) => {
+  const operations = await buildExpandedCleanupOperations({ manifest, models, session });
   const options = session ? { session } : {};
   const results = [];
   for (const operation of operations) {
@@ -151,16 +246,16 @@ export const runCleanupCli = async (argv = process.argv.slice(2)) => {
     throw new Error(`Manifest must be a reproduction-lifecycle-seed JSON file directly under ${backupRoot}.`);
   }
   const manifest = await loadManifest(args.manifestPath);
-  const operations = buildCleanupOperations(manifest);
   console.log(`\nMode: ${args.execute ? "EXECUTE" : "DRY RUN"}`);
   console.log(`Seed batch: ${manifest.seedBatch}`);
-  console.table(operations.map((item) => ({ collection: item.name, ids: item.filter._id.$in.length })));
 
   const connection = await connectDevelopmentDatabase();
   try {
     if (connection.connection.name !== manifest.databaseName) {
       throw new Error(`Manifest database ${manifest.databaseName} does not match connected database ${connection.connection.name}.`);
     }
+    const operations = await buildExpandedCleanupOperations({ manifest });
+    console.table(operations.map((item) => ({ collection: item.name, ids: item.filter._id.$in.length })));
     const counts = [];
     for (const operation of operations) {
       const count = operation.filter._id.$in.length
@@ -181,7 +276,7 @@ export const runCleanupCli = async (argv = process.argv.slice(2)) => {
         await session.withTransaction(async () => { results = await cleanupFromManifest({ manifest, session }); });
       } catch (error) {
         if (!knownTransactionError(error)) throw error;
-        console.warn("Transactions are unavailable; deleting in dependency order using manifest IDs only.");
+        console.warn("Transactions are unavailable; deleting manifest and relationship-scoped derived IDs in dependency order.");
         results = await cleanupFromManifest({ manifest });
       }
     } finally {
@@ -192,7 +287,7 @@ export const runCleanupCli = async (argv = process.argv.slice(2)) => {
     manifest.cleanupResults = results;
     await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
     console.table(results);
-    console.log("Cleanup complete. Only manifest-listed IDs were targeted.");
+    console.log("Cleanup complete. Only manifest-listed and relationship-scoped derived IDs were targeted.");
     return { dryRun: false, results };
   } finally {
     await mongoose.disconnect();

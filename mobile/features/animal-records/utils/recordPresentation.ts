@@ -120,7 +120,9 @@ export const formatAnimalRecord = (
   const animalReference = formatAnimalReference(identity);
   const fullAnimalReference = getFullAnimalReference(identity);
   const kind = String(record.recordKind || record.type || "").toLowerCase();
-  const date = record.recordDate || record.date || record.createdAt;
+  const date = Object.prototype.hasOwnProperty.call(record, "recordDate")
+    ? record.recordDate ?? undefined
+    : record.date ?? undefined;
 
   if (kind === "insemination" || kind === "ai") {
     const number = Number(record.attemptNumber || 1);

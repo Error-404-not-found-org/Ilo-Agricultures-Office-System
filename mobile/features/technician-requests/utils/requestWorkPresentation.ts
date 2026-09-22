@@ -6,6 +6,7 @@ import type {
   WorkQueueItem,
 } from "../types/technicianRequests.types";
 import type { BadgeTone } from "@/components/ui/AppBadge";
+import { isActionableCalvingWork } from "./calvingWorkNavigation.ts";
 
 export type RequestWorkService =
   | "ai"
@@ -203,8 +204,7 @@ const formatWorkDate = (value: unknown): string | null => {
 
 const manilaDayDifference = (fromKey: string, toKey: string) =>
   Math.round(
-    (Date.parse(`${toKey}T00:00:00Z`) -
-      Date.parse(`${fromKey}T00:00:00Z`)) /
+    (Date.parse(`${toKey}T00:00:00Z`) - Date.parse(`${fromKey}T00:00:00Z`)) /
       86_400_000,
   );
 
@@ -297,12 +297,12 @@ export function normalizeTechnicianWorkItem(
   );
   const isPregnancyLossReview = Boolean(
     item.sourceType === "farmer_pregnancy_loss_report" ||
-      item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
-      (item as any).type === "pregnancy_loss_review" ||
-      (item as any).workflowType === "PregnancyLossReview" ||
-      (item as any).allowedAction === "REVIEW_PREGNANCY_LOSS" ||
-      item.farmerObservation?.reportType === "pregnancy_loss" ||
-      farmerReportType === "pregnancy_loss",
+    item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+    (item as any).type === "pregnancy_loss_review" ||
+    (item as any).workflowType === "PregnancyLossReview" ||
+    (item as any).allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+    item.farmerObservation?.reportType === "pregnancy_loss" ||
+    farmerReportType === "pregnancy_loss",
   );
   const handlingMethod = normalizedValue(
     item.handlingMethod || item.raw?.handlingMethod,
@@ -363,20 +363,25 @@ export function normalizeTechnicianWorkItem(
   const unfinished = !["completed", "cancelled"].includes(state);
   const isReadyToday = Boolean(
     unfinished &&
-      (state === "in_progress" || (timingKey && timingKey === todayKey)),
+    (state === "in_progress" || (timingKey && timingKey === todayKey)),
   );
   const needsAttention = Boolean(
     unfinished &&
-      state !== "in_progress" &&
-      timingKey &&
-      todayKey &&
-      timingKey < todayKey,
+    state !== "in_progress" &&
+    timingKey &&
+    todayKey &&
+    timingKey < todayKey,
   );
-  const overdue = needsAttention && timingKind !== "expected_event";
+  const isAutomaticBreedingDeadline =
+    workType === "breeding_follow_up" &&
+    taskSourceType === "automatic_breeding_followup";
+  const overdue = Boolean(
+    needsAttention &&
+      (timingKind === "task_due" || isAutomaticBreedingDeadline),
+  );
   const dateLabel = formatWorkDate(timingDate);
-  const daysPast = timingKey && todayKey
-    ? manilaDayDifference(timingKey, todayKey)
-    : 0;
+  const daysPast =
+    timingKey && todayKey ? manilaDayDifference(timingKey, todayKey) : 0;
   const farmerReportTimestamp = text(
     item.farmerObservation?.reportedAt ||
       item.raw?.metadata?.reportedAt ||
@@ -389,19 +394,20 @@ export function normalizeTechnicianWorkItem(
   );
   const reportKey = philippineDateKey(farmerReportTimestamp);
   const reportDateLabel = formatWorkDate(farmerReportTimestamp);
-  const reportAge = reportKey && todayKey
-    ? manilaDayDifference(reportKey, todayKey)
-    : null;
-  const reportTimingLabel = !reportDateLabel || reportAge === null
-    ? null
-    : reportAge === 0
-      ? "Reported today"
-      : reportAge === 1
-        ? "Reported yesterday"
-        : `Reported ${reportDateLabel}`;
+  const reportAge =
+    reportKey && todayKey ? manilaDayDifference(reportKey, todayKey) : null;
+  const reportTimingLabel =
+    !reportDateLabel || reportAge === null
+      ? null
+      : reportAge === 0
+        ? "Reported today"
+        : reportAge === 1
+          ? "Reported yesterday"
+          : `Reported ${reportDateLabel}`;
   const isFarmerReport = Boolean(
     isPregnancyLossReview ||
-      (workType === "breeding_follow_up" && farmerReportType === "return_to_heat"),
+    (workType === "breeding_follow_up" &&
+      farmerReportType === "return_to_heat"),
   );
   const timingLabel = isFarmerReport
     ? reportTimingLabel
@@ -409,28 +415,32 @@ export function normalizeTechnicianWorkItem(
       ? null
       : timingKind === "scheduled_visit"
         ? `${workType === "pregnancy_check" ? "Scheduled " : ""}${dateLabel}${period ? ` · ${period === "morning" ? "Morning" : "Afternoon"}` : ""}`
-      : timingKind === "expected_event"
-        ? daysPast > 0
-          ? `Past expected date · ${dateLabel}`
-          : daysPast === 0
-            ? "Expected today"
-            : `Expected ${dateLabel}`
-        : workType === "pregnancy_check"
+        : timingKind === "expected_event"
           ? daysPast > 0
-            ? `Since ${dateLabel}`
+            ? `Past expected date · ${dateLabel}`
             : daysPast === 0
-              ? null
-              : `Check from ${dateLabel}`
-          : daysPast > 0
-            ? `Overdue · ${daysPast} ${daysPast === 1 ? "day" : "days"}`
-            : daysPast === 0
-              ? "Due today"
-              : `Due ${dateLabel}`;
+              ? "Expected today"
+              : `Expected ${dateLabel}`
+          : workType === "pregnancy_check"
+            ? daysPast > 0
+              ? `Since ${dateLabel}`
+              : daysPast === 0
+                ? null
+                : `Check from ${dateLabel}`
+            : daysPast > 0
+              ? `Overdue · ${daysPast} ${daysPast === 1 ? "day" : "days"}`
+              : daysPast === 0
+                ? "Due today"
+                : `Due ${dateLabel}`;
   const contextLabel = isPregnancyLossReview
     ? "Farmer reported pregnancy loss"
     : workType === "breeding_follow_up" && farmerReportType === "return_to_heat"
       ? "Return to heat reported"
-      : null;
+      : workType === "pregnancy_check" &&
+          !isPregnancyLossReview &&
+          daysPast >= 0
+        ? "Recommended time for pregnancy diagnosis reached"
+        : null;
 
   const isFutureDated = Boolean(
     unfinished && timingKey && todayKey && timingKey > todayKey,
@@ -448,6 +458,23 @@ export function normalizeTechnicianWorkItem(
         : null;
 
   const readiness = item.pregnancyReadiness || item.raw?.pregnancyReadiness;
+  const farmer = typeof item.farmer === "object"
+    ? item.farmer
+    : typeof item.farmerContext === "object"
+      ? item.farmerContext
+      : null;
+  const animal = typeof item.animal === "object" ? item.animal : null;
+  const taskId = text(item.taskId);
+  const motherId = text(animal?.id || item.context?.animalId);
+  const pregnancyId = text(item.context?.pregnancyId);
+  const farmerId = text(farmer?.id || item.context?.farmerId);
+  const actionableCalving = isActionableCalvingWork({
+    workType,
+    allowedAction: item.allowedAction,
+    taskId,
+    motherId,
+    pregnancyId,
+  });
   const actionLabel =
     state === "completed"
       ? workType === "health"
@@ -455,6 +482,8 @@ export function normalizeTechnicianWorkItem(
           ? "View Record"
           : "View Response"
         : "View Record"
+      : actionableCalving
+        ? "Record Calving"
       : state === "in_progress"
         ? "Continue Service"
         : workType === "health"
@@ -481,49 +510,47 @@ export function normalizeTechnicianWorkItem(
                   ? farmerReportType
                     ? "Review Update"
                     : "Contact Farmer"
-                : workType === "calving"
-                  ? ["START_SERVICE", "RECORD_SERVICE"].includes(
-                      String(item.allowedAction),
-                    )
-                    ? "Record Calving"
-                    : "View Animal"
-                  : item.actionLabel || "View Details";
-
-  const farmer = typeof item.farmer === "object" ? item.farmer : null;
-  const animal = typeof item.animal === "object" ? item.animal : null;
+                  : workType === "calving"
+                    ? "View Animal"
+                    : item.actionLabel || "View Details";
 
   return {
     id: String(item.id || item._id || ""),
     workflowId: text(item.workflowId),
-    taskId: text(item.taskId),
+    taskId,
     workType,
     timingKind,
     state,
     status,
-    title:
-      isPregnancyLossReview
-        ? "Pregnancy Loss Review"
-        : state === "completed" && healthCompletionPresentation
-          ? healthCompletionPresentation.title
-          : titleFor(workType, attemptNumber),
+    title: isPregnancyLossReview
+      ? "Pregnancy Loss Review"
+      : state === "completed" && healthCompletionPresentation
+        ? healthCompletionPresentation.title
+        : titleFor(workType, attemptNumber),
     statusLabel:
       isPregnancyLossReview && !["completed", "cancelled"].includes(state)
         ? "Needs review"
-        : workType === "pregnancy_check" && state !== "scheduled" &&
-          !["completed", "cancelled"].includes(state)
+        : workType === "pregnancy_check" &&
+            state !== "scheduled" &&
+            !["completed", "cancelled"].includes(state)
           ? isFutureDated
             ? "Upcoming"
             : "Ready for check"
-        : workType === "breeding_follow_up" &&
-          !["completed", "cancelled"].includes(state)
-          ? farmerReportType
-            ? "Needs review"
-            : temporalStatusLabel || "Follow-up due"
-          : state === "completed" && healthCompletionPresentation
-            ? healthCompletionPresentation.statusLabel
-            : state === "in_progress"
-              ? "In Progress"
-              : temporalStatusLabel || statusLabelFor(state),
+          : workType === "calving" &&
+              !["completed", "cancelled"].includes(state)
+            ? actionableCalving
+              ? "Record Calving"
+              : statusLabelFor(state)
+          : workType === "breeding_follow_up" &&
+              !["completed", "cancelled"].includes(state)
+            ? farmerReportType
+              ? "Needs review"
+              : temporalStatusLabel || "Follow-up due"
+              : state === "completed" && healthCompletionPresentation
+                ? healthCompletionPresentation.statusLabel
+              : state === "in_progress"
+                ? "In Progress"
+                : temporalStatusLabel || statusLabelFor(state),
     actionLabel,
     scheduledDate,
     visitPeriod: period,
@@ -535,6 +562,9 @@ export function normalizeTechnicianWorkItem(
     farmerImageUrl: item.farmer?.imageUrl || item.farmerImageUrl || null,
     animalName: text(animal?.name),
     animalTag: text(animal?.earTag || item.animalTag),
+    motherId,
+    pregnancyId,
+    farmerId,
     location: text(farmer?.location || item.location || item.farmLocationLabel),
     timingLabel,
     contextLabel,
@@ -634,12 +664,12 @@ export function normalizeWorkflowStatus(
 
   const isPregnancyLossReview = Boolean(
     item.sourceType === "farmer_pregnancy_loss_report" ||
-      item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
-      item.type === "pregnancy_loss_review" ||
-      item.workflowType === "PregnancyLossReview" ||
-      item.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
-      item.farmerObservation?.reportType === "pregnancy_loss" ||
-      item.context?.reportId,
+    item.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+    item.type === "pregnancy_loss_review" ||
+    item.workflowType === "PregnancyLossReview" ||
+    item.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+    item.farmerObservation?.reportType === "pregnancy_loss" ||
+    item.context?.reportId,
   );
   if (isPregnancyLossReview) {
     return "needs_review";
@@ -653,10 +683,10 @@ export function normalizeWorkflowStatus(
     item.serviceType === "Breeding Follow-up";
   const hasFarmerReport = Boolean(
     item.context?.reportType ||
-      item.raw?.metadata?.reportType ||
-      item.metadata?.reportType ||
-      item.raw?.farmerOutcomeReport ||
-      item.farmerOutcomeReport,
+    item.raw?.metadata?.reportType ||
+    item.metadata?.reportType ||
+    item.raw?.farmerOutcomeReport ||
+    item.farmerOutcomeReport,
   );
   if (isBreedingFollowUp && hasFarmerReport) {
     return "needs_review";
@@ -728,14 +758,7 @@ export function normalizeWorkflowStatus(
 
   if (temporalStatus) return temporalStatus;
 
-  if (
-    [
-      "scheduled",
-      "approved",
-      "assigned",
-      "ready_today",
-    ].includes(status)
-  ) {
+  if (["scheduled", "approved", "assigned", "ready_today"].includes(status)) {
     return "scheduled";
   }
   return "open";

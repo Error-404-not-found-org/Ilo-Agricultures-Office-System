@@ -29,10 +29,6 @@ import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
-import {
-  getBreedingObservationLabel,
-  getBreedingObservationSignLabel,
-} from "@/features/breeding/utils/breedingObservationPresentation";
 import { FarmerBreedingObservationCard } from "@/features/breeding/components/FarmerBreedingObservationCard";
 import { FarmerPregnancyReportCard } from "@/features/breeding/components/FarmerPregnancyReportCard";
 import { PregnancyConfirmationWindow } from "@/features/breeding/components/PregnancyConfirmationWindow";
@@ -100,8 +96,6 @@ function PregnancyConfirmationTaskView({
   const animal = task.animalIds?.[0];
   const insemination = task.insemination || task.pregnancy?.inseminationId;
   const pregnancyReadiness = task.pregnancyReadiness;
-  const { isDark } = useTheme();
-
   const farmLocation = task.farmerId?.farmLocation;
   const farmerAddress = Array.isArray(task.farmerId?.address)
     ? task.farmerId.address[0] || {}
@@ -133,16 +127,12 @@ function PregnancyConfirmationTaskView({
     .filter(Boolean)
     .map(humanize)
     .join(" · ");
-  const sire = [insemination?.sireBreed, insemination?.sireCode]
-    .filter(Boolean)
-    .map((value, index) => (index === 0 ? humanize(value) : String(value)))
-    .join(" · ");
-  const technicianName =
-    typeof insemination?.technicianId === "object"
-      ? insemination.technicianId?.name
-      : typeof insemination?.approvedBy === "object"
-        ? insemination.approvedBy?.name
-        : null;
+  const sireBreed = insemination?.sireBreed
+    ? humanize(insemination.sireBreed)
+    : null;
+  const sireCode = insemination?.sireCode
+    ? String(insemination.sireCode)
+    : null;
   const breedingReference = [
     [
       PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.LAST_INSEMINATION,
@@ -152,7 +142,8 @@ function PregnancyConfirmationTaskView({
       PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.ATTEMPT,
       insemination?.attemptNumber ? `#${insemination.attemptNumber}` : null,
     ],
-    [PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.SIRE, sire || null],
+    [PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.SIRE_BREED, sireBreed],
+    [PREGNANCY_DIAGNOSIS_UI.PAGE_1.BREEDING_LABELS.SIRE_CODE, sireCode],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
 
   const hasFarmerObservation = Boolean(
@@ -164,7 +155,7 @@ function PregnancyConfirmationTaskView({
 
   return (
     <View>
-      {/* 1. Animal and Farmer */}
+      {/* 1. Animal & Diagnosis Readiness */}
       <View
         style={[
           styles.pdCard,
@@ -177,7 +168,7 @@ function PregnancyConfirmationTaskView({
             { color: colors.primary, marginBottom: 12 },
           ]}
         >
-          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_ANIMAL_FARMER}
+          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_ANIMAL_READINESS}
         </Text>
 
         {animal ? (
@@ -206,7 +197,57 @@ function PregnancyConfirmationTaskView({
           </Text>
         )}
 
-        <View style={[styles.pdDivider, { backgroundColor: colors.border }]} />
+        {/* Embedded Diagnosis Window */}
+        <PregnancyConfirmationWindow
+          pregnancyReadiness={pregnancyReadiness}
+          aiDate={aiDate}
+          embedded
+        />
+      </View>
+
+      {/* 2. Breeding Reference */}
+      <View
+        style={[
+          styles.pdCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <Text
+          style={[
+            styles.pdSectionTitle,
+            { color: colors.primary, marginBottom: 4 },
+          ]}
+        >
+          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_BREEDING_REFERENCE}
+        </Text>
+        <View>
+          {breedingReference.map(([label, value], index) => (
+            <DetailRow
+              key={label}
+              label={label}
+              value={value}
+              colors={colors}
+              last={index === breedingReference.length - 1}
+            />
+          ))}
+        </View>
+      </View>
+
+      {/* 3. Farmer & Location */}
+      <View
+        style={[
+          styles.pdCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <Text
+          style={[
+            styles.pdSectionTitle,
+            { color: colors.primary, marginBottom: 12 },
+          ]}
+        >
+          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_FARMER_LOCATION}
+        </Text>
 
         <View
           style={{
@@ -278,47 +319,12 @@ function PregnancyConfirmationTaskView({
               />
             ) : null}
             {structuredFarmAddress ? (
-              <View style={styles.pdContactRow}>
-                <MapPinHouse
-                  size={17}
-                  color={colors.textSecondary}
-                  style={{ marginTop: 2 }}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[styles.pdContextLabel, { color: colors.textMuted }]}
-                  >
-                    Farm Location
-                  </Text>
-                  <Text
-                    style={[
-                      styles.pdContactValue,
-                      { color: colors.textPrimary },
-                    ]}
-                  >
-                    {structuredFarmAddress}
-                  </Text>
-                  {destinationQuery ? (
-                    <TouchableOpacity
-                      accessibilityRole="link"
-                      accessibilityLabel="Get directions to farm"
-                      style={{ marginTop: 7, alignSelf: "flex-start" }}
-                      onPress={() => {
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
-                        Linking.openURL(url).catch((error) =>
-                          console.error("Failed to open maps", error),
-                        );
-                      }}
-                    >
-                      <Text
-                        style={[styles.pdDirections, { color: colors.primary }]}
-                      >
-                        Get directions
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              </View>
+              <PDContactRow
+                icon={MapPinHouse}
+                label="Farm Location"
+                value={structuredFarmAddress}
+                colors={colors}
+              />
             ) : null}
           </View>
         ) : (
@@ -332,40 +338,6 @@ function PregnancyConfirmationTaskView({
           </View>
         )}
       </View>
-
-      {/* 2. Breeding Reference */}
-      <View
-        style={[
-          styles.pdCard,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
-        <Text
-          style={[
-            styles.pdSectionTitle,
-            { color: colors.primary, marginBottom: 4 },
-          ]}
-        >
-          {PREGNANCY_DIAGNOSIS_UI.PAGE_1.SECTION_BREEDING_REFERENCE}
-        </Text>
-        <View>
-          {breedingReference.map(([label, value], index) => (
-            <DetailRow
-              key={label}
-              label={label}
-              value={value}
-              colors={colors}
-              last={index === breedingReference.length - 1}
-            />
-          ))}
-        </View>
-      </View>
-
-      {/* 3. Pregnancy Diagnosis Window */}
-      <PregnancyConfirmationWindow
-        pregnancyReadiness={pregnancyReadiness}
-        aiDate={aiDate}
-      />
 
       {/* 4. Farmer Update */}
       <FarmerPregnancyReportCard insemination={insemination} />
@@ -1515,6 +1487,7 @@ const styles = StyleSheet.create({
   pdSectionTitle: {
     fontFamily: "Outfit_700Bold",
     fontSize: 13,
+    letterSpacing: 0.5,
   },
   pdAnimalTag: {
     fontFamily: "Outfit_800ExtraBold",

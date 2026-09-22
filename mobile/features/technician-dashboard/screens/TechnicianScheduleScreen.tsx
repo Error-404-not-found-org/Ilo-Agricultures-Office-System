@@ -40,11 +40,14 @@ import {
   deduplicateCalendarWorkItems,
   getCalendarAnimalIdentity,
   getCalendarActionLabel,
+  getCalendarAccessibleActionLabel,
+  getCalendarPresentation,
   getCalendarVisitDate,
   getCalendarVisitPeriodLabel,
   getCalendarVisitTarget,
   getCalendarWorkCounts,
   getCalendarWorkKind,
+  isCalendarAttentionItem,
   isCalendarCancellationRequested,
 } from "@/features/technician-dashboard/utils/calendarPresentation";
 
@@ -57,47 +60,10 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const itemDate = getCalendarVisitDate;
 
 const isUrgentVisit = (item: AgendaItem) =>
-  item.overdue === true ||
+  (getCalendarPresentation(item).dateKind === "deadline" && item.overdue === true) ||
   isCalendarCancellationRequested(item) ||
   item.urgency === "urgent" ||
   item.raw?.urgency === "urgent";
-
-const serviceName = (item: AgendaItem) => {
-  if (item.type === "insemination" || item.type === "ai") return "AI Service";
-  if (item.type === "health") return "Health Assistance";
-  const taskType = String(item.taskType || item.raw?.taskType || "")
-    .trim()
-    .toLowerCase();
-  if (taskType === "pd" || taskType === "pregnancy") {
-    return "Pregnancy Diagnosis";
-  }
-  if (taskType === "breedingfollowup" || taskType === "breeding_follow_up") {
-    return "Breeding Follow-up";
-  }
-  if (taskType === "cd" || taskType === "calving") return "Calving";
-  return item.taskType || item.serviceType || "Farm Visit";
-};
-
-const statusName = (item: AgendaItem) => {
-  if (item.overdue) return "Overdue";
-  if (item.type === "task") {
-    const normalizedStatus = String(item.displayStatus || item.status || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[_-]/g, " ");
-    if (normalizedStatus === "in progress") return "In Progress";
-    const dueAt = new Date(
-      item.displayDate || item.dueDate || item.raw?.dueDate || "",
-    );
-    if (!Number.isNaN(dueAt.getTime())) {
-      return dueAt.getTime() > Date.now() ? "Upcoming" : "Due";
-    }
-  }
-  const value = String(item.displayStatus || item.status || "Scheduled")
-    .replace(/_/g, " ")
-    .replace(/-/g, " ");
-  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
-};
 
 export default function TechnicianScheduleScreen({
   embeddedInTab = false,
@@ -147,7 +113,7 @@ export default function TechnicianScheduleScreen({
       .filter((item) => {
         const date = itemDate(item);
         if (date && isSameDay(date, selectedDate)) return true;
-        return todaySelected && item.overdue === true;
+        return todaySelected && isCalendarAttentionItem(item);
       })
       .sort((a, b) => {
         const aDate = itemDate(a)?.getTime() || 0;
@@ -159,7 +125,7 @@ export default function TechnicianScheduleScreen({
   const scheduledVisits = selectedScheduleItems.filter(
     (item) => getCalendarWorkKind(item) === "visit",
   );
-  const dueWork = selectedScheduleItems.filter(
+  const datedWork = selectedScheduleItems.filter(
     (item) => getCalendarWorkKind(item) === "task",
   );
   const workCounts = getCalendarWorkCounts(selectedScheduleItems);
@@ -250,7 +216,7 @@ export default function TechnicianScheduleScreen({
                   key={day.toISOString()}
                   onPress={() => setSelectedDate(day)}
                   accessibilityRole="button"
-                  accessibilityLabel={format(day, "EEEE, MMMM d")}
+                  accessibilityLabel={`${format(day, "EEEE, MMMM d")}${workOnDay.length ? `, ${workOnDay.length} ${workOnDay.length === 1 ? "work item" : "work items"}` : ""}`}
                   accessibilityState={{ selected }}
                   style={styles.dateCell}
                 >
@@ -348,8 +314,8 @@ export default function TechnicianScheduleScreen({
           />
           <SummaryItem
             icon={Clock3}
-            value={workCounts.dueWork}
-            label="Due Work"
+            value={workCounts.datedWork}
+            label="Dated Work"
             color={colors.primary}
             textColor={colors.textPrimary}
           />
@@ -411,12 +377,12 @@ export default function TechnicianScheduleScreen({
           ListFooterComponent={
             <>
               <ScheduleSectionHeading
-                title="Due Work"
-                count={dueWork.length}
+                title="Dated work"
+                count={datedWork.length}
                 colors={colors}
               />
-              {dueWork.length > 0 ? (
-                dueWork.map((item) => (
+              {datedWork.length > 0 ? (
+                datedWork.map((item) => (
                   <ScheduleItemCard
                     key={String(item.id)}
                     item={item}
@@ -429,8 +395,8 @@ export default function TechnicianScheduleScreen({
                 ))
               ) : (
                 <EmptyScheduleSection
-                  title="No due work"
-                  message="Dated follow-ups and other assigned tasks will appear here."
+                  title="No dated work"
+                  message="Follow-ups, reports, expected events, and deadlines will appear here."
                   colors={colors}
                   isDark={isDark}
                 />
@@ -510,6 +476,7 @@ function EmptyScheduleSection({ title, message, colors, isDark }: any) {
 
 function ScheduleItemCard({ item, colors, isDark, onPress }: any) {
   const date = itemDate(item);
+  const presentation = getCalendarPresentation(item);
   const urgent = isUrgentVisit(item);
   const isTask = getCalendarWorkKind(item) === "task";
   const animal = getCalendarAnimalIdentity(item);
@@ -543,7 +510,7 @@ function ScheduleItemCard({ item, colors, isDark, onPress }: any) {
             color={urgent ? colors.warning : colors.primary}
           />
           <Text style={[styles.visitTime, { color: colors.textPrimary }]}>
-            {date ? format(date, "MMM d, yyyy") : "Date not set"}
+            {presentation.timingLabel || (date ? format(date, "MMM d, yyyy") : "Date not set")}
           </Text>
         </View>
         <View
@@ -566,13 +533,13 @@ function ScheduleItemCard({ item, colors, isDark, onPress }: any) {
               { color: urgent ? colors.warning : colors.primary },
             ]}
           >
-            {statusName(item)}
+            {presentation.statusLabel}
           </Text>
         </View>
       </View>
 
       <Text style={[styles.visitTitle, { color: colors.textPrimary }]}>
-        {serviceName(item)}
+        {presentation.title}
       </Text>
       {!isTask ? (
         <Metadata
@@ -588,7 +555,7 @@ function ScheduleItemCard({ item, colors, isDark, onPress }: any) {
       <TouchableOpacity
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`View ${serviceName(item)} ${isTask ? "task" : "visit"}`}
+        accessibilityLabel={getCalendarAccessibleActionLabel(item)}
         style={[styles.viewButton, { borderColor: colors.primary }]}
       >
         <Text style={[styles.viewButtonText, { color: colors.primary }]}>

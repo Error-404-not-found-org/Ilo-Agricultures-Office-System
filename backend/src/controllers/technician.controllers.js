@@ -584,6 +584,54 @@ export const getTechnicianDashboardData = async (req, res) => {
     const pendingRequests = [];
     const agendaItems = [];
 
+    const taskDateContextIds = scheduledTasks.reduce(
+      (result, taskDoc) => {
+        const relatedId =
+          taskDoc.metadata?.inseminationId ||
+          (taskDoc.relatedRecordType === "insemination"
+            ? taskDoc.relatedRecordId
+            : null);
+        const pregnancyId =
+          taskDoc.metadata?.pregnancyId ||
+          (taskDoc.relatedRecordType === "pregnancy"
+            ? taskDoc.relatedRecordId
+            : null);
+        if (relatedId) result.inseminationIds.add(String(relatedId));
+        if (pregnancyId) result.pregnancyIds.add(String(pregnancyId));
+        return result;
+      },
+      { inseminationIds: new Set(), pregnancyIds: new Set() },
+    );
+    const [reportInseminations, schedulePregnancies] = await Promise.all([
+      taskDateContextIds.inseminationIds.size
+        ? Insemination.find({
+            _id: { $in: [...taskDateContextIds.inseminationIds] },
+          })
+            .select("farmerOutcomeReportedAt")
+            .lean()
+        : [],
+      taskDateContextIds.pregnancyIds.size
+        ? Pregnancy.find({
+            _id: { $in: [...taskDateContextIds.pregnancyIds] },
+            deletedAt: null,
+          })
+            .select("targetCalvingDate expectedCalvingDate")
+            .lean()
+        : [],
+    ]);
+    const reportTimeByInseminationId = new Map(
+      reportInseminations.map((record) => [
+        String(record._id),
+        record.farmerOutcomeReportedAt || null,
+      ]),
+    );
+    const expectedCalvingByPregnancyId = new Map(
+      schedulePregnancies.map((record) => [
+        String(record._id),
+        record.targetCalvingDate || record.expectedCalvingDate || null,
+      ]),
+    );
+
     // Process Inseminations
     inseminations.forEach((ins) => {
       const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
@@ -647,6 +695,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         sentTime: formatTime(ins.createdAt),
         createdAt: ins.createdAt,
         raw: ins,
+        dateKind: "scheduled_visit",
+        scheduledAt: ins.scheduledDate || null,
       };
 
       const assignedToMeAI =
@@ -780,6 +830,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         sentTime: formatTime(healthRequest.createdAt),
         createdAt: healthRequest.createdAt,
         raw: healthRequest,
+        dateKind: "scheduled_visit",
+        scheduledAt: healthRequest.scheduledDate || null,
       };
 
       const assignedToMeHealth =
@@ -878,9 +930,65 @@ export const getTechnicianDashboardData = async (req, res) => {
         return null;
       };
 
+      const sourceType = taskDoc.sourceType || "manual";
+      const metadata = taskDoc.metadata || {};
+      const normalizedTaskType = String(taskDoc.taskType || "").toLowerCase();
+      const isReturnToHeatReport =
+        sourceType === "farmer_requested_verification" &&
+        metadata.reportType === "return_to_heat";
+      const isPregnancyLossReport =
+        sourceType === "farmer_pregnancy_loss_report";
+      const linkedInseminationId =
+        metadata.inseminationId ||
+        (taskDoc.relatedRecordType === "insemination"
+          ? taskDoc.relatedRecordId
+          : null);
+      const linkedPregnancyId =
+        metadata.pregnancyId ||
+        (taskDoc.relatedRecordType === "pregnancy"
+          ? taskDoc.relatedRecordId
+          : null);
+      const reportedAt = isPregnancyLossReport
+        ? metadata.reportedAt || null
+        : isReturnToHeatReport && linkedInseminationId
+          ? reportTimeByInseminationId.get(String(linkedInseminationId)) || null
+          : null;
+      const expectedAt = ["cd", "calving"].includes(normalizedTaskType)
+        ? expectedCalvingByPregnancyId.get(String(linkedPregnancyId)) || null
+        : null;
+      const isScheduledVisit =
+        Boolean(metadata.visitPeriod) ||
+        (["client_profile", "task_scheduler"].includes(sourceType) &&
+          !["pd", "cd", "calving", "breedingfollowup"].includes(
+            normalizedTaskType,
+          ));
+      const dateKind =
+        isPregnancyLossReport || isReturnToHeatReport
+          ? "farmer_report"
+          : isScheduledVisit
+            ? "scheduled_visit"
+            : normalizedTaskType === "pd"
+              ? "readiness"
+              : ["cd", "calving"].includes(normalizedTaskType)
+                ? "expected_event"
+                : normalizedTaskType === "breedingfollowup" &&
+                    sourceType === "automatic_breeding_followup"
+                  ? "deadline"
+                  : "deadline";
+
       const item = {
         id: taskDoc._id,
         taskId: taskDoc._id,
+        workflowType: ["cd", "calving"].includes(normalizedTaskType)
+          ? "Calving"
+          : normalizedTaskType === "pd"
+            ? "PD"
+            : "StandaloneTask",
+        allowedAction:
+          ["cd", "calving", "pd"].includes(normalizedTaskType) &&
+          ["Pending", "In Progress"].includes(taskDoc.status)
+            ? "RECORD_SERVICE"
+            : null,
         dueDate: taskDoc.dueDate || null,
         type: "task",
         taskType: taskDoc.taskType || "Other",
@@ -890,6 +998,12 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         visitPeriod: taskDoc.metadata?.visitPeriod || null,
         farmer: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerContext: taskDoc.farmerId
+          ? {
+              id: String(taskDoc.farmerId?._id || taskDoc.farmerId),
+              name: taskDoc.farmerId?.name || "Unknown Farmer",
+            }
+          : null,
         farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
         farmerPhone:
           taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
@@ -908,14 +1022,42 @@ export const getTechnicianDashboardData = async (req, res) => {
         navigationTarget: getFarmLocationTarget(taskDoc.farmerId),
         farmLocation: taskDoc.farmerId?.farmLocation || null,
         animalId: firstAnimal || null,
+        animal: firstAnimal
+          ? {
+              id: String(firstAnimal?._id || firstAnimal),
+              name: firstAnimal?.animalId || firstAnimal?.earTag || "Unknown",
+              earTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
+            }
+          : null,
         animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
         preferredTime: formatTime(itemDisplayDate),
         task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
         urgent:
           taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
         overdue: isOverdue,
+        dateKind,
+        ...(dateKind === "scheduled_visit"
+          ? { scheduledAt: taskDoc.dueDate || null }
+          : {}),
+        ...(dateKind === "readiness"
+          ? { readyFrom: taskDoc.dueDate || null }
+          : {}),
+        ...(dateKind === "expected_event" ? { expectedAt } : {}),
+        ...(dateKind === "farmer_report" ? { reportedAt } : {}),
+        ...(dateKind === "deadline" ? { dueAt: taskDoc.dueDate || null } : {}),
         sentTime: formatTime(taskDoc.createdAt),
         raw: taskDoc,
+        context: {
+          pregnancyId: linkedPregnancyId
+            ? String(linkedPregnancyId?._id || linkedPregnancyId)
+            : null,
+          animalId: firstAnimal
+            ? String(firstAnimal?._id || firstAnimal)
+            : null,
+          farmerId: taskDoc.farmerId
+            ? String(taskDoc.farmerId?._id || taskDoc.farmerId)
+            : null,
+        },
       };
 
       const isDateToday = (d) => {
@@ -1444,7 +1586,7 @@ export const walkInInsemination = async (req, res) => {
       return res.status(400).json({
         code: "HISTORICAL_AI_WORKFLOW_REQUIRED",
         message:
-          "The Record AI form is for a current field service. Older AI records require an authorized historical-record workflow.",
+          "This AI record is from an earlier date. Please use Add Past Record.",
       });
     }
 
@@ -1474,10 +1616,7 @@ export const walkInInsemination = async (req, res) => {
           },
         });
       } catch (inngestErr) {
-        console.error(
-          "[walkInInsemination INNGEST ERROR]",
-          inngestErr.message,
-        );
+        console.error("[walkInInsemination INNGEST ERROR]", inngestErr.message);
       }
     }
 
@@ -1805,9 +1944,10 @@ export const registerFarmer = async (req, res) => {
 
     const resolution = await resolveOrCreateAssistedFarmer({
       email,
-      phoneNumber: typeof phoneNumber === "string" && phoneNumber.trim()
-        ? phoneNumber
-        : undefined,
+      phoneNumber:
+        typeof phoneNumber === "string" && phoneNumber.trim()
+          ? phoneNumber
+          : undefined,
       name: `${firstName} ${lastName}`.trim(),
       address: {
         street: address?.street || "",
@@ -3506,10 +3646,7 @@ export const getTechnicianRequests = async (req, res) => {
         : type === "breeding_verification"
           ? { taskType: "PD" }
           : {
-              $or: [
-                { taskType: "PD" },
-                pregnancyLossTaskFilter,
-              ],
+              $or: [{ taskType: "PD" }, pregnancyLossTaskFilter],
             };
     const taskAndFilters = [];
     const technician = req.user.role === "technician" ? req.user : null;
@@ -3559,7 +3696,15 @@ export const getTechnicianRequests = async (req, res) => {
       taskAndFilters.push({
         $or: [
           // Manual or farmer-requested: show immediately
-          { sourceType: { $in: ["manual", "farmer_requested_verification", "farmer_pregnancy_loss_report"] } },
+          {
+            sourceType: {
+              $in: [
+                "manual",
+                "farmer_requested_verification",
+                "farmer_pregnancy_loss_report",
+              ],
+            },
+          },
           // Automatic follow-ups: only show when dueDate has arrived
           { sourceType: "automatic_pd_followup", dueDate: { $lte: now } },
           // Legacy tasks (no sourceType): show immediately
@@ -3815,12 +3960,10 @@ export const getTechnicianRequests = async (req, res) => {
     const fetchHealth = type === "all" || type === "health" || !type;
     const fetchPregnancyChecks =
       includeOperationalTasks !== "false" &&
-      (
-        type === "all" ||
+      (type === "all" ||
         type === "breeding_verification" ||
         type === "pregnancy_loss_review" ||
-        !type
-      );
+        !type);
     const sortByVal = sortBy || "newest";
     const boundedMerge = sortByVal !== "distance";
     const candidateLimit = skip + limit;
@@ -4482,32 +4625,32 @@ export const getTechnicianRequests = async (req, res) => {
             }
           : linkedObservation
             ? {
-              reportType: linkedObservation.farmerOutcomeReport || null,
-              reportedAt: linkedObservation.farmerOutcomeReportedAt || null,
-              signs: Array.isArray(linkedObservation.farmerObservationSigns)
-                ? linkedObservation.farmerObservationSigns
-                : [],
-              notes: linkedObservation.farmerObservationNotes || "",
-              evidencePhotos: Array.isArray(linkedObservation.evidencePhotos)
-                ? linkedObservation.evidencePhotos.filter(Boolean)
-                : [],
-              verificationRequested: Boolean(
-                linkedObservation.verificationRequested,
-              ),
-              verificationStatus:
-                linkedObservation.verificationStatus || "not_requested",
-            }
-          : task.sourceType === "farmer_requested_verification"
-            ? {
-                reportType: task.metadata?.reportType || null,
-                reportedAt: null,
-                signs: [],
-                notes: "",
-                evidencePhotos: [],
-                verificationRequested: true,
-                verificationStatus: "pending",
+                reportType: linkedObservation.farmerOutcomeReport || null,
+                reportedAt: linkedObservation.farmerOutcomeReportedAt || null,
+                signs: Array.isArray(linkedObservation.farmerObservationSigns)
+                  ? linkedObservation.farmerObservationSigns
+                  : [],
+                notes: linkedObservation.farmerObservationNotes || "",
+                evidencePhotos: Array.isArray(linkedObservation.evidencePhotos)
+                  ? linkedObservation.evidencePhotos.filter(Boolean)
+                  : [],
+                verificationRequested: Boolean(
+                  linkedObservation.verificationRequested,
+                ),
+                verificationStatus:
+                  linkedObservation.verificationStatus || "not_requested",
               }
-            : null,
+            : task.sourceType === "farmer_requested_verification"
+              ? {
+                  reportType: task.metadata?.reportType || null,
+                  reportedAt: null,
+                  signs: [],
+                  notes: "",
+                  evidencePhotos: [],
+                  verificationRequested: true,
+                  verificationStatus: "pending",
+                }
+              : null,
         raw: task,
       };
     });
@@ -5776,9 +5919,9 @@ export const getWorkQueue = async (req, res) => {
             ? "Pregnancy Loss Review"
             : wType === "BreedingFollowUp"
               ? "Breeding Follow-up"
-            : wType === "Calving"
-              ? "Calving Assistance"
-              : taskDoc.taskType || "Task";
+              : wType === "Calving"
+                ? "Calving Assistance"
+                : taskDoc.taskType || "Task";
 
       const item = {
         id: taskId,

@@ -137,7 +137,7 @@ export function TechnicianRouteSection({
       <SectionHeader
         title="Today's work"
         rightAction={
-          !loading && hasMoreWork ? (
+          !loading && total > 0 ? (
             <TouchableOpacity
               onPress={() =>
                 router.push({
@@ -183,15 +183,45 @@ export function TechnicianRouteSection({
           />
         </View>
       ) : (
-        previewItems.map((item, index) => {
-          return (
-            <VisitRow
-              key={`${item.workType}-${item.id || index}`}
-              item={item}
-              onPress={() => handleAction(item)}
-            />
-          );
-        })
+        <>
+          {previewItems.map((item, index) => {
+            return (
+              <VisitRow
+                key={`${item.workType}-${item.id || index}`}
+                item={item}
+                onPress={() => handleAction(item)}
+              />
+            );
+          })}
+
+          {hasMoreWork ? (
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(technician)/(tabs)/technician.requests",
+                  params: { section: "myWork" },
+                } as any)
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`View all ${total} work items in My Work`}
+              hitSlop={4}
+              style={{
+                paddingVertical: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: 4,
+                marginBottom: 4,
+              }}
+            >
+              <AppText
+                textRole="bodyStrong"
+                style={{ color: colors.primary }}
+              >
+                View all ({total})
+              </AppText>
+            </TouchableOpacity>
+          ) : null}
+        </>
       )}
     </View>
   );

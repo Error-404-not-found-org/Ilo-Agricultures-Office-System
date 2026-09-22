@@ -286,10 +286,79 @@ test("lifecycle task timing separates reports, readiness, deadlines, and expecte
   assert.equal(task("CD", "2026-09-20").timingLabel, "Expected today");
   assert.equal(task("CD", "2026-09-15").timingLabel, "Past expected date · Sep 15, 2026");
   assert.equal(task("CD", "2026-09-24").timingLabel, "Expected Sep 24, 2026");
-  assert.equal(
-    task("CD", "2026-09-20", { allowedAction: "RECORD_SERVICE" }).actionLabel,
-    "Record Calving",
-  );
+  const actionableToday = task("CD", "2026-09-20", {
+    taskId: "calving-today",
+    allowedAction: "RECORD_SERVICE",
+    animal: { id: "animal-1", earTag: "COW-1" },
+    context: { pregnancyId: "pregnancy-1" },
+  });
+  assert.equal(actionableToday.statusLabel, "Record Calving");
+  assert.equal(actionableToday.actionLabel, "Record Calving");
+  assert.equal(actionableToday.timingLabel, "Expected today");
+
+  const actionablePast = task("CD", "2026-09-15", {
+    taskId: "calving-past",
+    allowedAction: "RECORD_SERVICE",
+    animal: { id: "animal-1", earTag: "COW-1" },
+    context: { pregnancyId: "pregnancy-1" },
+  });
+  assert.equal(actionablePast.statusLabel, "Record Calving");
+  assert.equal(actionablePast.actionLabel, "Record Calving");
+  assert.equal(actionablePast.timingLabel, "Past expected date · Sep 15, 2026");
+  assert.doesNotMatch(`${actionablePast.statusLabel} ${actionablePast.timingLabel}`, /overdue/i);
+
+  const incomplete = task("CD", "2026-09-20", {
+    taskId: "calving-incomplete",
+    allowedAction: "RECORD_SERVICE",
+  });
+  assert.equal(incomplete.statusLabel, "Monitoring");
+  assert.equal(incomplete.actionLabel, "View Animal");
+});
+
+test("Continue Tracking historical PD stays actionable readiness work instead of overdue", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "continue-tracking-pd",
+    taskId: "continue-tracking-pd",
+    type: "task",
+    workflowType: "PD",
+    taskType: "PD",
+    sourceType: "automatic_pd_followup",
+    status: "Pending",
+    dueDate: "2026-05-01T08:00:00.000Z",
+    raw: {
+      taskType: "PD",
+      sourceType: "automatic_pd_followup",
+      dueDate: "2026-05-01T08:00:00.000Z",
+      relatedRecordType: "insemination",
+      relatedRecordId: "historical-ai",
+      metadata: {
+        workflowStage: "initial_confirmation",
+        inseminationId: "historical-ai",
+        previousRecordEntry: true,
+      },
+    },
+  } as any, new Date("2026-09-21T04:00:00.000Z"));
+
+  assert.equal(item.title, "Pregnancy Check");
+  assert.equal(item.state, "needs_confirmation");
+  assert.equal(item.actionLabel, "Record Pregnancy Check");
+  assert.equal(item.statusLabel, "Ready for check");
+  assert.equal(item.timingLabel, "Since May 1, 2026");
+  assert.equal(item.overdue, false);
+  assert.doesNotMatch(`${item.statusLabel} ${item.timingLabel}`, /\b(?:due|overdue)\b/i);
+});
+
+test("automatic Breeding Follow-up remains a true overdue deadline", () => {
+  const item = normalizeTechnicianWorkItem({
+    id: "automatic-follow-up",
+    type: "task",
+    taskType: "BreedingFollowUp",
+    sourceType: "automatic_breeding_followup",
+    status: "Pending",
+    dueDate: "2026-09-18T00:00:00.000Z",
+  } as any, new Date("2026-09-20T04:00:00.000Z"));
+  assert.equal(item.overdue, true);
+  assert.equal(item.statusLabel, "Overdue");
 });
 
 test("scheduled Pregnancy Check uses appointment timing over readiness wording", () => {

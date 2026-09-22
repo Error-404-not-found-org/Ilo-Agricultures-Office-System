@@ -40,6 +40,7 @@ import {
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
 import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
+import { differenceInManilaCalendarDays } from "../domain/service-date-time.js";
 import { evaluateTechnicianDispatchReadiness } from "../domain/geographic/eligibilityEvaluator.js";
 import {
   canonicalizeMunicipality,
@@ -2335,9 +2336,9 @@ export const getBreedingMilestones = async (req, res) => {
       if (calvedPregIds.includes(p._id.toString())) return;
 
       if (p.targetCalvingDate) {
-        const daysLeft = Math.ceil(
-          (new Date(p.targetCalvingDate).getTime() - now.getTime()) /
-            (1000 * 3600 * 24),
+        const daysLeft = differenceInManilaCalendarDays(
+          p.targetCalvingDate,
+          now,
         );
         // Show Calving alerts only within 45 days of target date, or if overdue by up to 30 days
         if (daysLeft >= -30 && daysLeft <= 45) {

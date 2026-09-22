@@ -40,7 +40,12 @@ const getAccessibleAnimal = async (id, user) => {
 
 const parseRecordDate = (value, fieldName) => {
   if (!value) return null;
-  const date = new Date(value);
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+  const date = new Date(
+    dateOnly
+      ? `${value}${fieldName.toLowerCase().startsWith("to") ? "T23:59:59.999+08:00" : "T00:00:00.000+08:00"}`
+      : value,
+  );
   if (Number.isNaN(date.getTime())) {
     throw new AppError(`Invalid ${fieldName}.`, {
       status: 400,
@@ -81,6 +86,96 @@ const executeOfficialRecordQuery = async (query, sort, windowLimit) => {
     boundedQuery = boundedQuery.limit(windowLimit);
   }
   return boundedQuery.lean();
+};
+
+const OFFICIAL_RECORD_CSV_HEADERS = [
+  "Record Type",
+  "Service Date",
+  "Farmer",
+  "Animal",
+  "Ear Tag",
+  "Species",
+  "Breed",
+  "Technician",
+  "Service Details",
+  "Outcome",
+];
+
+const csvCell = (value) => {
+  const normalized = value === null || value === undefined ? "" : String(value);
+  return `"${normalized.replace(/\r?\n|\r/g, " ").replace(/"/g, '""')}"`;
+};
+
+const formatCsvDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+  }).format(date);
+};
+
+const formatPregnancyDiagnosticMethod = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "rectal_palpation") return "Manual Palpation";
+  if (normalized === "clinical_examination") return "Visual Assessment";
+  if (normalized === "other_approved") return "Other";
+  return normalized
+    ? normalized.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "";
+};
+
+const formatRecordCsvRow = (record) => {
+  const source = record.source || {};
+  const animal = record.animalId || {};
+  const farmer = record.farmerId || {};
+  const technician = record.technicianId || {};
+  const recordType =
+    record.category === "AI"
+      ? "Insemination"
+      : record.category === "Health"
+        ? "Health"
+        : record.category || record.recordKind;
+  const details =
+    record.recordKind === "insemination"
+      ? [source.sireBreed, source.sireCode, source.attemptNumber ? `Attempt ${source.attemptNumber}` : null]
+      : record.recordKind === "medical_record"
+        ? [
+            source.type,
+            source.details?.serviceType,
+            source.details?.diagnosis,
+            source.details?.treatment,
+            source.details?.medicineName,
+          ]
+        : record.recordKind === "pregnancy"
+          ? [formatPregnancyDiagnosticMethod(source.confirmation?.methodCode), source.pregnancyDiagnosis?.result]
+          : record.recordKind === "calving"
+            ? [
+                source.outcome,
+                source.calvingEase,
+                source.numberOfCalves ?? source.calves?.length,
+              ]
+            : [];
+
+  const outcome =
+    record.recordKind === "medical_record"
+      ? [source.details?.diagnosis, source.details?.treatment]
+          .filter((value) => value !== null && value !== undefined && value !== "")
+          .join("; ")
+      : source.outcome || record.summary;
+
+  return [
+    recordType,
+    formatCsvDate(record.recordDate),
+    farmer.name,
+    animal.animalId,
+    animal.earTag,
+    animal.species,
+    animal.breed,
+    technician.name || record.technicianDisplayName,
+    details.filter((value) => value !== null && value !== undefined && value !== "").join("; "),
+    outcome,
+  ];
 };
 
 const OFFICIAL_RECORD_KINDS = new Set([
@@ -405,13 +500,13 @@ const officialRecordDetail = ({ recordKind, record, animal, viewerRole }) => {
       title: "Pregnancy Diagnosis",
       description:
         record.pregnancyDiagnosis?.result || "Pregnancy diagnosis recorded",
-      date: record.pregnancyDiagnosis?.date || record.createdAt,
+      date: record.pregnancyDiagnosis?.date ?? null,
       dateLabel: "Pregnancy diagnosis performed on",
       datePrecision: "date",
       attachments: [],
       technician: personSummary(technician),
       details: {
-        serviceDate: record.pregnancyDiagnosis?.date,
+        serviceDate: record.pregnancyDiagnosis?.date ?? null,
         serviceDateLabel: "Pregnancy diagnosis performed on",
         entryDate: record.createdAt,
         entryDateLabel: "Recorded in BreedSmart at",
@@ -694,6 +789,297 @@ export const getOfficialRecordDetail = async (req, res) => {
   }
 };
 
+const getOfficialRecordContext = (req) => {
+  const pageInfo = getPagination(req.query, {
+    defaultLimit: 25,
+    maxLimit: 100,
+  });
+  const requestedFarmerId = req.query.farmerId;
+  const animalId = req.query.animalId;
+  const requestedType = String(req.query.type || "All")
+    .trim()
+    .toLowerCase();
+  const search = String(req.query.search || "")
+    .trim()
+    .toLowerCase();
+  const fromDate = parseRecordDate(req.query.fromDate, "from date");
+  const toDate = parseRecordDate(req.query.toDate, "to date");
+  if (fromDate && toDate && fromDate > toDate) {
+    throw new AppError("From date cannot be later than to date.", {
+      status: 400,
+      code: "RECORD_DATE_RANGE_INVALID",
+    });
+  }
+
+  const farmerId = req.user.role === "farmer" ? req.user._id : requestedFarmerId;
+  const scope = {
+    ...(farmerId ? { farmerId } : {}),
+    ...(animalId ? { animalId } : {}),
+  };
+  const dateRange = {
+    ...(fromDate ? { $gte: fromDate } : {}),
+    ...(toDate ? { $lte: toDate } : {}),
+  };
+  const hasDateRange = Object.keys(dateRange).length > 0;
+  const technicianId = req.user.role === "technician" ? req.user._id : null;
+  const includeAI = ["all", "ai", "insemination", "breeding"].includes(requestedType);
+  const includePregnancy = ["all", "pregnancy", "pd"].includes(requestedType);
+  const includeCalving = ["all", "calving"].includes(requestedType);
+  const includeHealth = ["all", "health", "medical"].includes(requestedType);
+
+  return {
+    pageInfo,
+    requestedType,
+    search,
+    fromDate,
+    toDate,
+    scope,
+    dateRange,
+    hasDateRange,
+    technicianId,
+    includeAI,
+    includePregnancy,
+    includeCalving,
+    includeHealth,
+    inseminationFilter: {
+      ...scope,
+      status: "done",
+      deletedAt: null,
+      ...(technicianId
+        ? buildAIRequestMutationOwnershipGuard({ technicianId })
+        : {}),
+      ...(hasDateRange ? { inseminationDate: dateRange } : {}),
+    },
+    pregnancyFilter: {
+      ...scope,
+      deletedAt: null,
+      ...(technicianId ? { "confirmation.confirmedBy": technicianId } : {}),
+      ...(hasDateRange ? { "pregnancyDiagnosis.date": dateRange } : {}),
+    },
+    calvingFilter: {
+      ...scope,
+      deletedAt: null,
+      ...(technicianId ? { technicianId } : {}),
+      ...(hasDateRange ? { date: dateRange } : {}),
+    },
+    medicalRecordFilter: {
+      ...scope,
+      ...(technicianId ? { technicianId } : {}),
+      ...(hasDateRange ? { date: dateRange } : {}),
+      type: { $ne: "General Note" },
+    },
+  };
+};
+
+const loadOfficialRecords = async (
+  req,
+  { includeCounts = true, windowLimit = undefined } = {},
+) => {
+  const context = getOfficialRecordContext(req);
+  const {
+    pageInfo,
+    search,
+    includeAI,
+    includePregnancy,
+    includeCalving,
+    includeHealth,
+    inseminationFilter,
+    pregnancyFilter,
+    calvingFilter,
+    medicalRecordFilter,
+  } = context;
+  const queryWindowLimit =
+    windowLimit === undefined
+      ? search
+        ? null
+        : pageInfo.skip + pageInfo.limit
+      : windowLimit;
+
+  const [
+    inseminations,
+    pregnancies,
+    calvings,
+    medicalRecords,
+    inseminationCount,
+    pregnancyCount,
+    calvingCount,
+    medicalRecordCount,
+  ] = await Promise.all([
+    includeAI
+      ? executeOfficialRecordQuery(
+          Insemination.find(inseminationFilter)
+            .populate(
+              "animalId",
+              "animalId earTag brand color breed species imageUrl reproductiveStatus",
+            )
+            .populate("farmerId", "name phoneNumber address imageUrl")
+            .populate("technicianId approvedBy", "name role"),
+          { inseminationDate: -1, createdAt: -1 },
+          queryWindowLimit,
+        )
+      : [],
+    includePregnancy
+      ? executeOfficialRecordQuery(
+          Pregnancy.find(pregnancyFilter)
+            .populate(
+              "animalId",
+              "animalId earTag brand color breed species imageUrl reproductiveStatus",
+            )
+            .populate("farmerId", "name phoneNumber address imageUrl")
+            .populate("inseminationId", "attemptNumber sireBreed sireCode")
+            .populate("confirmation.confirmedBy", "name role"),
+          { "pregnancyDiagnosis.date": -1, createdAt: -1 },
+          queryWindowLimit,
+        )
+      : [],
+    includeCalving
+      ? executeOfficialRecordQuery(
+          Calving.find(calvingFilter)
+            .populate(
+              "animalId",
+              "animalId earTag brand color breed species imageUrl reproductiveStatus",
+            )
+            .populate("farmerId", "name phoneNumber address imageUrl")
+            .populate("technicianId", "name role"),
+          { date: -1, createdAt: -1 },
+          queryWindowLimit,
+        )
+      : [],
+    includeHealth
+      ? executeOfficialRecordQuery(
+          MedicalRecord.find(medicalRecordFilter)
+            .populate(
+              "animalId",
+              "animalId earTag brand color breed species imageUrl reproductiveStatus",
+            )
+            .populate("farmerId", "name phoneNumber address imageUrl")
+            .populate("technicianId", "name role")
+            .populate(
+              "healthRequestId",
+              "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+            ),
+          { date: -1, createdAt: -1 },
+          queryWindowLimit,
+        )
+      : [],
+    includeCounts && !search && includeAI
+      ? Insemination.countDocuments(inseminationFilter)
+      : 0,
+    includeCounts && !search && includePregnancy
+      ? Pregnancy.countDocuments(pregnancyFilter)
+      : 0,
+    includeCounts && !search && includeCalving
+      ? Calving.countDocuments(calvingFilter)
+      : 0,
+    includeCounts && !search && includeHealth
+      ? MedicalRecord.countDocuments(medicalRecordFilter)
+      : 0,
+  ]);
+
+  const records = [
+    ...inseminations.map((item) => ({
+      id: item._id,
+      recordKind: "insemination",
+      category: "AI",
+      recordDate: item.inseminationDate ?? null,
+      enteredAt: item.createdAt,
+      title: "Artificial Insemination",
+      summary: item.outcome || "Artificial insemination completed",
+      status: "completed",
+      farmerId: item.farmerId,
+      animalId: item.animalId,
+      ...(req.user.role === "farmer"
+        ? { technicianDisplayName: buildFarmerAIRequest(item).technicianDisplayName }
+        : { technicianId: item.technicianId || item.approvedBy }),
+      source: req.user.role === "farmer" ? buildFarmerAIRequest(item) : item,
+    })),
+    ...pregnancies.map((item) => ({
+      id: item._id,
+      recordKind: "pregnancy",
+      category: "Pregnancy",
+      recordDate: item.pregnancyDiagnosis?.date ?? null,
+      enteredAt: item.createdAt,
+      title: "Pregnancy Diagnosis",
+      summary: item.pregnancyDiagnosis?.result || "Pregnancy diagnosis recorded",
+      status: "completed",
+      farmerId: item.farmerId,
+      animalId: item.animalId,
+      technicianId: item.confirmation?.confirmedBy || item.technicianId,
+      source: item,
+    })),
+    ...calvings.map((item) => ({
+      id: item._id,
+      recordKind: "calving",
+      category: "Calving",
+      recordDate: item.date ?? null,
+      enteredAt: item.createdAt,
+      title: "Calving Record",
+      summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
+      status: "completed",
+      farmerId: item.farmerId,
+      animalId: item.animalId,
+      technicianId: item.technicianId,
+      source: item,
+    })),
+    ...medicalRecords.map((item) => {
+      const visibleNote = normalizeHealthRecordNote(item.note);
+      const farmerSafeSource =
+        req.user.role === "farmer"
+          ? { ...item, note: undefined, technicianNote: undefined }
+          : { ...item, note: visibleNote };
+      return {
+        id: item._id,
+        recordKind: "medical_record",
+        category: "Health",
+        recordDate: item.date ?? null,
+        enteredAt: item.createdAt,
+        title: "Health record",
+        summary:
+          item.details?.diagnosis ||
+          item.details?.treatment ||
+          (req.user.role === "farmer" ? null : visibleNote) ||
+          "Health record completed",
+        status: "completed",
+        farmerId: item.farmerId,
+        animalId: item.animalId,
+        technicianId: item.technicianId,
+        source: farmerSafeSource,
+      };
+    }),
+  ]
+    .filter((record) => recordMatchesSearch(record, search))
+    .sort(
+      (a, b) =>
+        new Date(b.recordDate || b.enteredAt || 0) -
+        new Date(a.recordDate || a.enteredAt || 0),
+    );
+
+  const summary = search
+    ? {
+        insemination: records.filter((record) => record.recordKind === "insemination").length,
+        health: records.filter((record) => record.recordKind === "medical_record").length,
+        pregnancy: records.filter((record) => record.recordKind === "pregnancy").length,
+        calving: records.filter((record) => record.recordKind === "calving").length,
+      }
+    : {
+        insemination: inseminationCount,
+        health: medicalRecordCount,
+        pregnancy: pregnancyCount,
+        calving: calvingCount,
+      };
+  summary.all =
+    summary.insemination + summary.health + summary.pregnancy + summary.calving;
+
+  return {
+    ...context,
+    records,
+    data: records.slice(pageInfo.skip, pageInfo.skip + pageInfo.limit),
+    total: summary.all,
+    totalPages: Math.max(1, Math.ceil(summary.all / pageInfo.limit)),
+    summary,
+  };
+};
+
 export const getOfficialRecords = async (req, res) => {
   try {
     const allowedRoles = ["farmer", "technician", "admin"];
@@ -704,400 +1090,65 @@ export const getOfficialRecords = async (req, res) => {
       });
     }
 
-    const pageInfo = getPagination(req.query, {
-      defaultLimit: 25,
-      maxLimit: 100,
-    });
-    const requestedFarmerId = req.query.farmerId;
-    const animalId = req.query.animalId;
-    const requestedType = String(req.query.type || "All")
-      .trim()
-      .toLowerCase();
-    const search = String(req.query.search || "")
-      .trim()
-      .toLowerCase();
-    const fromDate = parseRecordDate(req.query.fromDate, "from date");
-    const toDate = parseRecordDate(req.query.toDate, "to date");
-    if (fromDate && toDate && fromDate > toDate) {
-      throw new AppError("From date cannot be later than to date.", {
-        status: 400,
-        code: "RECORD_DATE_RANGE_INVALID",
-      });
-    }
-
-    const farmerId =
-      req.user.role === "farmer" ? req.user._id : requestedFarmerId;
-    const scope = {
-      ...(farmerId ? { farmerId } : {}),
-      ...(animalId ? { animalId } : {}),
-    };
-    const dateRange = {
-      ...(fromDate ? { $gte: fromDate } : {}),
-      ...(toDate ? { $lte: toDate } : {}),
-    };
-    const hasDateRange = Object.keys(dateRange).length > 0;
-
-    const includeAI = ["all", "ai", "insemination", "breeding"].includes(
-      requestedType,
-    );
-    const includePregnancy = ["all", "pregnancy", "pd"].includes(requestedType);
-    const includeCalving = ["all", "calving"].includes(requestedType);
-    const includeHealth = ["all", "health", "medical"].includes(requestedType);
-    const includeNotes = ["all", "note", "notes", "general note"].includes(
-      requestedType,
-    );
-    const windowLimit = search ? null : pageInfo.skip + pageInfo.limit;
-    const technicianId =
-      req.user.role === "technician" ? req.user._id : null;
-    const includeClosedRequests = Boolean(technicianId);
-    const inseminationFilter = {
-      ...scope,
-      status: "done",
-      deletedAt: null,
-      ...(technicianId
-        ? buildAIRequestMutationOwnershipGuard({ technicianId })
-        : {}),
-      ...(hasDateRange ? { inseminationDate: dateRange } : {}),
-    };
-    const pregnancyFilter = {
-      ...scope,
-      deletedAt: null,
-      ...(technicianId
-        ? { "confirmation.confirmedBy": technicianId }
-        : {}),
-      ...(hasDateRange ? { "pregnancyDiagnosis.date": dateRange } : {}),
-    };
-    const calvingFilter = {
-      ...scope,
-      deletedAt: null,
-      ...(technicianId ? { technicianId } : {}),
-      ...(hasDateRange ? { date: dateRange } : {}),
-    };
-    const medicalRecordFilter = {
-      ...scope,
-      ...(technicianId ? { technicianId } : {}),
-      ...(hasDateRange ? { date: dateRange } : {}),
-      ...(!includeHealth && includeNotes
-        ? { type: "General Note" }
-        : includeHealth && !includeNotes
-          ? { type: { $ne: "General Note" } }
-          : {}),
-    };
-    const cancelledInseminationFilter = {
-      ...scope,
-      status: { $in: [AI_STATUS.CANCELLED, AI_STATUS.REJECTED] },
-      deletedAt: null,
-      ...buildAIRequestMutationOwnershipGuard({ technicianId }),
-      ...(hasDateRange
-        ? {
-            $or: [
-              { cancellationRespondedAt: dateRange },
-              { updatedAt: dateRange },
-            ],
-          }
-        : {}),
-    };
-    const healthOwnership = buildHealthRequestMutationOwnershipGuard({
-      technicianId,
-    });
-    const closedHealthRequestFilter = {
-      ...scope,
-      deletedAt: null,
-      $and: [
-        ...(healthOwnership.$and || []),
-        {
-          $or: [
-            {
-              status: "resolved",
-              handlingMethod: { $in: ["advice", "office_pickup"] },
-            },
-            { status: { $in: ["cancelled", "rejected"] } },
-          ],
-        },
-        ...(hasDateRange
-          ? [{
-              $or: [
-                { resolvedAt: dateRange },
-                { cancellationRespondedAt: dateRange },
-                { updatedAt: dateRange },
-              ],
-            }]
-          : []),
-      ],
-    };
-
-    const [
-      inseminations,
-      pregnancies,
-      calvings,
-      medicalRecords,
-      cancelledInseminations,
-      closedHealthRequests,
-      inseminationCount,
-      pregnancyCount,
-      calvingCount,
-      medicalRecordCount,
-      cancelledInseminationCount,
-      closedHealthRequestCount,
-    ] =
-      await Promise.all([
-        includeAI
-          ? executeOfficialRecordQuery(
-              Insemination.find(inseminationFilter)
-              .populate(
-                "animalId",
-                "animalId earTag brand color breed species imageUrl reproductiveStatus",
-              )
-              .populate("farmerId", "name phoneNumber address imageUrl")
-              .populate("technicianId approvedBy", "name role"),
-              { inseminationDate: -1, createdAt: -1 },
-              windowLimit,
-            )
-          : [],
-        includePregnancy
-          ? executeOfficialRecordQuery(
-              Pregnancy.find(pregnancyFilter)
-              .populate(
-                "animalId",
-                "animalId earTag brand color breed species imageUrl reproductiveStatus",
-              )
-              .populate("farmerId", "name phoneNumber address imageUrl")
-              .populate("inseminationId", "attemptNumber sireBreed sireCode")
-              .populate("confirmation.confirmedBy", "name role"),
-              { "pregnancyDiagnosis.date": -1, createdAt: -1 },
-              windowLimit,
-            )
-          : [],
-        includeCalving
-          ? executeOfficialRecordQuery(
-              Calving.find(calvingFilter)
-              .populate(
-                "animalId",
-                "animalId earTag brand color breed species imageUrl reproductiveStatus",
-              )
-              .populate("farmerId", "name phoneNumber address imageUrl")
-              .populate("technicianId", "name role"),
-              { date: -1, createdAt: -1 },
-              windowLimit,
-            )
-          : [],
-        includeHealth || includeNotes
-          ? executeOfficialRecordQuery(
-              MedicalRecord.find(medicalRecordFilter)
-              .populate(
-                "animalId",
-                "animalId earTag brand color breed species imageUrl reproductiveStatus",
-              )
-              .populate("farmerId", "name phoneNumber address imageUrl")
-              .populate("technicianId", "name role")
-              .populate(
-                "healthRequestId",
-                "requestType requestDetails symptoms urgency farmerNotes advice followUpDate resolutionNotes",
-              ),
-              { date: -1, createdAt: -1 },
-              windowLimit,
-            )
-          : [],
-        includeClosedRequests && includeAI
-          ? executeOfficialRecordQuery(
-              Insemination.find(cancelledInseminationFilter)
-                .populate(
-                  "animalId",
-                  "animalId earTag brand color breed species imageUrl reproductiveStatus",
-                )
-                .populate("farmerId", "name phoneNumber address imageUrl")
-                .populate("technicianId approvedBy", "name role"),
-              { cancellationRespondedAt: -1, updatedAt: -1 },
-              windowLimit,
-            )
-          : [],
-        includeClosedRequests && includeHealth
-          ? executeOfficialRecordQuery(
-              HealthRequest.find(closedHealthRequestFilter)
-                .populate(
-                  "animalId",
-                  "animalId earTag brand color breed species imageUrl reproductiveStatus",
-                )
-                .populate("farmerId", "name phoneNumber address imageUrl")
-                .populate("handledBy assignedTechnicianId", "name role"),
-              { resolvedAt: -1, cancellationRespondedAt: -1, updatedAt: -1 },
-              windowLimit,
-            )
-          : [],
-        !search && includeAI
-          ? Insemination.countDocuments(inseminationFilter)
-          : 0,
-        !search && includePregnancy
-          ? Pregnancy.countDocuments(pregnancyFilter)
-          : 0,
-        !search && includeCalving ? Calving.countDocuments(calvingFilter) : 0,
-        !search && (includeHealth || includeNotes)
-          ? MedicalRecord.countDocuments(medicalRecordFilter)
-          : 0,
-        !search && includeClosedRequests && includeAI
-          ? Insemination.countDocuments(cancelledInseminationFilter)
-          : 0,
-        !search && includeClosedRequests && includeHealth
-          ? HealthRequest.countDocuments(closedHealthRequestFilter)
-          : 0,
-      ]);
-
-    const records = [
-      ...inseminations.map((item) => ({
-        id: item._id,
-        recordKind: "insemination",
-        category: "AI",
-        recordDate: item.inseminationDate,
-        enteredAt: item.createdAt,
-        title: "Artificial Insemination",
-        summary: item.outcome || "Artificial insemination completed",
-        status: "completed",
-        farmerId: item.farmerId,
-        animalId: item.animalId,
-        ...(req.user.role === "farmer"
-          ? { technicianDisplayName: buildFarmerAIRequest(item).technicianDisplayName }
-          : { technicianId: item.technicianId || item.approvedBy }),
-        source:
-          req.user.role === "farmer"
-            ? buildFarmerAIRequest(item)
-            : item,
-      })),
-      ...pregnancies.map((item) => ({
-        id: item._id,
-        recordKind: "pregnancy",
-        category: "Pregnancy",
-        recordDate: item.pregnancyDiagnosis?.date || item.createdAt,
-        enteredAt: item.createdAt,
-        title: "Pregnancy Diagnosis",
-        summary:
-          item.pregnancyDiagnosis?.result || "Pregnancy diagnosis recorded",
-        status: "completed",
-        farmerId: item.farmerId,
-        animalId: item.animalId,
-        technicianId: item.confirmation?.confirmedBy || item.technicianId,
-        source: item,
-      })),
-      ...calvings.map((item) => ({
-        id: item._id,
-        recordKind: "calving",
-        category: "Calving",
-        recordDate: item.date || item.createdAt,
-        enteredAt: item.createdAt,
-        title: "Calving Record",
-        summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
-        status: "completed",
-        farmerId: item.farmerId,
-        animalId: item.animalId,
-        technicianId: item.technicianId,
-        source: item,
-      })),
-      ...medicalRecords.map((item) => {
-        const isGeneralNote = item.type === "General Note";
-        const visibleNote = isGeneralNote
-          ? item.note
-          : normalizeHealthRecordNote(item.note);
-        const farmerSafeSource =
-          req.user.role === "farmer"
-            ? { ...item, note: undefined, technicianNote: undefined }
-            : { ...item, note: visibleNote };
-        return {
-          id: item._id,
-          recordKind: "medical_record",
-          category: isGeneralNote ? "General Note" : "Health",
-          recordDate: item.date || item.createdAt,
-          enteredAt: item.createdAt,
-          title: isGeneralNote ? "General Note" : "Health record",
-          summary:
-            item.details?.diagnosis ||
-            item.details?.treatment ||
-            (req.user.role === "farmer" ? null : visibleNote) ||
-            (isGeneralNote ? "General animal note" : "Health record completed"),
-          status: "completed",
-          farmerId: item.farmerId,
-          animalId: item.animalId,
-          technicianId: item.technicianId,
-          source: farmerSafeSource,
-        };
-      }),
-      ...cancelledInseminations.map((item) => ({
-        id: item._id,
-        recordKind: "ai_request",
-        category: "AI",
-        recordDate:
-          item.cancellationRespondedAt || item.updatedAt || item.createdAt,
-        enteredAt: item.createdAt,
-        title: "AI Request",
-        summary:
-          item.cancellationResponseReason ||
-          item.cancellationReason ||
-          "Artificial insemination request closed",
-        status: item.status,
-        farmerId: item.farmerId,
-        animalId: item.animalId,
-        technicianId: item.technicianId || item.approvedBy,
-        source: item,
-      })),
-      ...closedHealthRequests.map((item) => {
-        const isAdvice = item.handlingMethod === "advice";
-        const isPickup = item.handlingMethod === "office_pickup";
-        const isCancelled = ["cancelled", "rejected"].includes(item.status);
-        return {
-          id: item._id,
-          recordKind: "health_request",
-          category: "Health",
-          recordDate: isCancelled
-            ? item.cancellationRespondedAt || item.updatedAt || item.createdAt
-            : item.resolvedAt || item.updatedAt || item.createdAt,
-          enteredAt: item.createdAt,
-          title: isAdvice
-            ? "Health Advice"
-            : isPickup
-              ? "Office Pickup"
-              : "Cancelled Request",
-          summary: isAdvice
-            ? item.advice || "Technician advice sent"
-            : isPickup
-              ? item.technicianResponse?.pickup?.instructions ||
-                item.advice ||
-                "Pickup information sent"
-              : item.cancellationResponseReason ||
-                item.cancellationReason ||
-                "Health request closed",
-          status: item.status,
-          farmerId: item.farmerId,
-          animalId: item.animalId,
-          technicianId: item.handledBy || item.assignedTechnicianId,
-          source: item,
-        };
-      }),
-    ]
-      .filter((record) => recordMatchesSearch(record, search))
-      .sort(
-        (a, b) =>
-          new Date(b.recordDate || b.enteredAt || 0) -
-          new Date(a.recordDate || a.enteredAt || 0),
-      );
-
-    if (search) {
-      return sendList(res, paginateArray(records, pageInfo));
-    }
-
-    return sendList(res, {
-      data: records.slice(pageInfo.skip, pageInfo.skip + pageInfo.limit),
-      page: pageInfo.page,
-      limit: pageInfo.limit,
-      total:
-        inseminationCount +
-        pregnancyCount +
-        calvingCount +
-        medicalRecordCount +
-        cancelledInseminationCount +
-        closedHealthRequestCount,
+    const result = await loadOfficialRecords(req);
+    return res.status(200).json({
+      data: result.data,
+      page: result.pageInfo.page,
+      limit: result.pageInfo.limit,
+      total: result.total,
+      totalPages: result.totalPages,
+      summary: result.summary,
     });
   } catch (error) {
     return res.status(error.status || 500).json({
       message: error.message || "Failed to load official records.",
       code: error.code || "OFFICIAL_RECORDS_FETCH_FAILED",
+    });
+  }
+};
+
+const getExportFileName = (query) => {
+  const typeLabel = {
+    all: "Technician-Records",
+    ai: "Insemination-Records",
+    insemination: "Insemination-Records",
+    health: "Health-Records",
+    medical: "Health-Records",
+    pregnancy: "Pregnancy-Records",
+    calving: "Calving-Records",
+  }[String(query.type || "all").toLowerCase()] || "Technician-Records";
+  const from = formatCsvDate(query.fromDate);
+  const to = formatCsvDate(query.toDate);
+  const range = from && to && from === to ? from : from && to ? `${from}-to-${to}` : from || to || "all-dates";
+  return `BreedSmart-${typeLabel}-${range}.csv`;
+};
+
+export const exportOfficialRecordsCsv = async (req, res) => {
+  try {
+    if (req.user.role !== "technician") {
+      throw new AppError("Only technicians can export their official records.", {
+        status: 403,
+        code: "OFFICIAL_RECORDS_EXPORT_FORBIDDEN",
+      });
+    }
+
+    const result = await loadOfficialRecords(req, {
+      includeCounts: false,
+      windowLimit: null,
+    });
+    const lines = [
+      OFFICIAL_RECORD_CSV_HEADERS.map(csvCell).join(","),
+      ...result.records.map((record) => formatRecordCsvRow(record).map(csvCell).join(",")),
+    ];
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${getExportFileName(req.query)}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.status(200).send(lines.join("\r\n"));
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to export official records.",
+      code: error.code || "OFFICIAL_RECORDS_EXPORT_FAILED",
     });
   }
 };
@@ -1192,9 +1243,16 @@ export const getAnimalHealthHistory = async (req, res) => {
         ...medicalRecords.map((item) => ({
           ...item,
           recordKind: "medical_record",
-          recordDate: item.date || item.createdAt,
+          recordDate: item.date ?? null,
         })),
-      ].sort((a, b) => new Date(b.recordDate) - new Date(a.recordDate));
+      ].sort((a, b) => {
+        if (a.recordDate && b.recordDate) {
+          return new Date(b.recordDate) - new Date(a.recordDate);
+        }
+        if (a.recordDate) return -1;
+        if (b.recordDate) return 1;
+        return String(a._id).localeCompare(String(b._id));
+      });
 
       const paginated = paginateArray(combined, pageInfo);
       return sendList(res, paginated);
@@ -1288,28 +1346,27 @@ export const getAnimalRecords = async (req, res) => {
         const presented =
           req.user.role === "farmer" ? buildFarmerAIRequest(item) : item;
         return {
-        ...presented,
-        recordKind: "insemination",
-        recordDate:
-          item.inseminationDate || item.scheduledDate || item.createdAt,
-        title: "A.I. Insemination",
-        summary: item.outcome || item.status || "AI service record",
-        previousAttemptReference: item.previousAttemptId?.attemptNumber || null,
-        nextAttemptReference:
-          nextAttemptByPreviousId.get(String(item._id)) || null,
+          ...presented,
+          recordKind: "insemination",
+          recordDate: item.inseminationDate ?? null,
+          title: "A.I. Insemination",
+          summary: item.outcome || item.status || "AI service record",
+          previousAttemptReference: item.previousAttemptId?.attemptNumber || null,
+          nextAttemptReference:
+            nextAttemptByPreviousId.get(String(item._id)) || null,
         };
       }),
       ...pregnancies.map((item) => ({
         ...item,
         recordKind: "pregnancy",
-        recordDate: item.pregnancyDiagnosis?.date || item.createdAt,
+        recordDate: item.pregnancyDiagnosis?.date ?? null,
         title: "Pregnancy Check",
         summary: item.pregnancyDiagnosis?.result || "Pregnancy check record",
       })),
       ...calvings.map((item) => ({
         ...item,
         recordKind: "calving",
-        recordDate: item.date || item.createdAt,
+        recordDate: item.date ?? null,
         title: "Calving / Offspring",
         summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
       })),
@@ -1324,7 +1381,7 @@ export const getAnimalRecords = async (req, res) => {
             ? { note: undefined, technicianNote: undefined }
             : { note: visibleNote }),
           recordKind: "medical_record",
-          recordDate: item.date || item.createdAt,
+          recordDate: item.date ?? null,
           title: item.type || "Medical Record",
           summary:
             item.details?.diagnosis ||
@@ -1371,8 +1428,8 @@ export const getAnimalRecords = async (req, res) => {
       })
       .sort(
         (a, b) =>
-          new Date(b.recordDate || b.createdAt) -
-          new Date(a.recordDate || a.createdAt),
+          (b.recordDate ? new Date(b.recordDate).getTime() : 0) -
+          (a.recordDate ? new Date(a.recordDate).getTime() : 0),
       );
 
     sendList(res, paginateArray(filtered, pageInfo));

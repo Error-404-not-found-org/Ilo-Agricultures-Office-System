@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   formatRecordStatus,
+  formatDiagnosticMethod,
   getAIResultPresentation,
   getAllRecordsResultPresentation,
   getCalvingResultPresentation,
   getHealthResultPresentation,
   getPregnancyResultPresentation,
-  humanizeToken,
 } from "./officialRecordPresentation";
 
 describe("officialRecordPresentation", () => {
+  it("formats the canonical Pregnancy diagnostic method and preserves a true missing value", () => {
+    expect(formatDiagnosticMethod("clinical_examination")).toBe("Visual Assessment");
+    expect(formatDiagnosticMethod(undefined)).toBe("Not recorded");
+  });
+
   describe("formatRecordStatus", () => {
     it("capitalizes completed and resolved statuses", () => {
       expect(formatRecordStatus("completed")).toBe("Completed");

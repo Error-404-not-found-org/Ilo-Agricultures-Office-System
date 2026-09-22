@@ -26,6 +26,13 @@ const reportTiming = (value, now) => {
   return `Reported ${formatScheduleDate(value, { month: "short" })}`;
 };
 
+export const getTaskSupportingText = (item = {}, fallback = null) => {
+  const task = item || {};
+  const sourceType = task.sourceType || task.raw?.sourceType;
+  if (sourceType === "automatic_pd_followup") return null;
+  return task.summary || fallback;
+};
+
 export const getLifecycleTaskPresentation = (item = {}, now = new Date()) => {
   const raw = item.raw || {};
   const identities = [
@@ -71,12 +78,6 @@ export const getLifecycleTaskPresentation = (item = {}, now = new Date()) => {
       : isPregnancy
         ? "Pregnancy Check"
         : "Expected Calving";
-  const context = isLoss
-    ? "Farmer reported pregnancy loss"
-    : isReturnToHeatReport
-      ? "Return to heat reported"
-      : null;
-
   const appointmentDate =
     item.schedule?.date || item.scheduledDate || raw.scheduledDate;
   const visitPeriod = normalize(
@@ -96,6 +97,14 @@ export const getLifecycleTaskPresentation = (item = {}, now = new Date()) => {
   const formattedMilestone = milestoneDate
     ? formatScheduleDate(milestoneDate, { month: "short" })
     : null;
+
+  const context = isLoss
+    ? "Farmer reported pregnancy loss"
+    : isReturnToHeatReport
+      ? "Return to heat reported"
+      : isPregnancy && !isFollowUp && !isLoss && (daysPast === null || daysPast >= 0)
+        ? "Recommended time for pregnancy diagnosis reached"
+        : null;
 
   const authoritativeReportTime = isLoss
     ? raw.metadata?.reportedAt ||

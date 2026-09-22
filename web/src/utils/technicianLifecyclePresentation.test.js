@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getLifecycleTaskPresentation } from "./technicianLifecyclePresentation";
+import {
+  getLifecycleTaskPresentation,
+  getTaskSupportingText,
+} from "./technicianLifecyclePresentation";
 
 const now = new Date("2026-09-20T04:00:00.000Z");
 const task = (taskType, dueDate, extra = {}) => ({
@@ -11,6 +14,48 @@ const task = (taskType, dueDate, extra = {}) => ({
 });
 
 describe("Technician lifecycle task presentation", () => {
+  describe("supporting text", () => {
+    it("suppresses only canonical automatic Pregnancy Check summaries", () => {
+      expect(
+        getTaskSupportingText({
+          sourceType: "automatic_pd_followup",
+          summary:
+            "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.",
+        }),
+      ).toBeNull();
+    });
+
+    it("preserves genuine instructions and wording that merely resembles generated text", () => {
+      expect(
+        getTaskSupportingText({
+          sourceType: "manual_task",
+          summary: "Bring the portable ultrasound and contact the farmer first.",
+        }),
+      ).toBe("Bring the portable ultrasound and contact the farmer first.");
+      expect(
+        getTaskSupportingText({
+          sourceType: "manual_task",
+          summary:
+            "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.",
+        }),
+      ).toBe(
+        "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.",
+      );
+    });
+
+    it("supports existing detail-view fallback text without exposing automatic PD notes", () => {
+      expect(getTaskSupportingText({}, "No additional service details recorded.")).toBe(
+        "No additional service details recorded.",
+      );
+      expect(
+        getTaskSupportingText(
+          { raw: { sourceType: "automatic_pd_followup" }, summary: "Stored note" },
+          "No additional service details recorded.",
+        ),
+      ).toBeNull();
+    });
+  });
+
   it("uses the report event time for return-to-heat work and never updatedAt", () => {
     expect(getLifecycleTaskPresentation(task("BreedingFollowUp", "2026-09-20", {
       sourceType: "farmer_requested_verification",
@@ -51,6 +96,21 @@ describe("Technician lifecycle task presentation", () => {
       title: "Pregnancy Loss Review", actionState: "Needs review",
       context: "Farmer reported pregnancy loss", detail: "Reported today",
     });
+  });
+
+  it("keeps Continue Tracking historical PD in readiness semantics", () => {
+    const presentation = getLifecycleTaskPresentation(task("PD", "2026-05-01T08:00:00.000Z", {
+      sourceType: "automatic_pd_followup",
+      raw: {
+        taskType: "PD",
+        sourceType: "automatic_pd_followup",
+        relatedRecordType: "insemination",
+        relatedRecordId: "historical-ai",
+        metadata: { workflowStage: "initial_confirmation", inseminationId: "historical-ai", previousRecordEntry: true },
+      },
+    }), new Date("2026-09-21T04:00:00.000Z"));
+    expect(presentation).toMatchObject({ title: "Pregnancy Check", actionState: "Ready for check", detail: "Since May 1, 2026" });
+    expect(JSON.stringify(presentation)).not.toMatch(/\b(?:due|overdue)\b/i);
   });
 
   it("uses readiness for future milestones and appointment timing when scheduled", () => {

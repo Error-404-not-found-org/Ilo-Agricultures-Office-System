@@ -18,9 +18,22 @@ export const humanizeToken = (value) => {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
+export const formatDiagnosticMethod = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["palpation", "rectal_palpation"].includes(normalized)) {
+    return "Manual Palpation";
+  }
+  if (["visual_observation", "clinical_examination"].includes(normalized)) {
+    return "Visual Assessment";
+  }
+  if (normalized === "farmer_interview") return "Farmer Interview";
+  if (["other", "other_approved"].includes(normalized)) return "Other";
+  return humanizeToken(value) || "Not recorded";
+};
+
 const isPlaceholderText = (val) =>
   !val ||
-  /^(none|no specific diagnosis logged\.?|no treatment logged\.?|n\/a|\-)$/i.test(
+  /^(none|no specific diagnosis logged\.?|no treatment logged\.?|n\/a|-)$/i.test(
     String(val).trim(),
   );
 

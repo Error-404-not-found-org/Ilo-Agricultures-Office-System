@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
@@ -39,25 +39,7 @@ const KIND_BADGES = {
   task: "badge-neutral",
 };
 
-const TIMING_BADGES = {
-  overdue: "badge-error",
-  due: "badge-warning",
-  upcoming: "badge-ghost",
-};
-
-const titleCase = (value) =>
-  String(value || "")
-    .replaceAll("_", " ")
-    .replaceAll("-", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const cleanTaskTitle = (title, timingState) => {
-  let clean = String(title || "Work details");
-  if (timingState !== "overdue" && timingState !== "due") {
-    clean = clean.replace(/\s+Due$/i, "");
-  }
-  return clean;
-};
+const cleanTaskTitle = (title) => String(title || "Work details");
 
 const getSubtitle = (kind) => {
   if (kind === "pregnancy" || kind === "breeding_follow_up") {
@@ -66,12 +48,14 @@ const getSubtitle = (kind) => {
   return "Upcoming work details";
 };
 
-const getDateLabel = (kind) => {
-  if (kind === "pregnancy") return "Pregnancy check date";
-  if (kind === "calving") return "Expected calving date";
-  if (kind === "ai" || kind === "health") return "Scheduled visit";
-  return "Due date";
-};
+const semanticBadge = (item) =>
+  item.dateKind === "deadline" && item.statusLabel === "Overdue"
+    ? "badge-error"
+    : item.dateKind === "deadline" && item.statusLabel === "Due today"
+      ? "badge-warning"
+      : item.statusLabel === "Needs review"
+        ? "badge-info"
+        : "badge-ghost";
 
 const formatPurpose = (item) => {
   let purpose = item.raw?.notes || item.raw?.description || item.scheduleLabel;
@@ -134,7 +118,6 @@ function ScheduleWorkList({
       {items.map((item) => {
         const animal = animalReferenceOf(item);
         const location = locationOf(item);
-        const timingLabel = titleCase(item.timingState);
         const navigation = item.navigationTarget;
 
         return (
@@ -164,10 +147,10 @@ function ScheduleWorkList({
                   <span
                     className={
                       "badge badge-xs " +
-                      (TIMING_BADGES[item.timingState] || "badge-ghost")
+                      semanticBadge(item)
                     }
                   >
-                    {timingLabel}
+                    {item.statusLabel}
                   </span>
                 )}
               </div>
@@ -188,13 +171,8 @@ function ScheduleWorkList({
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <span className="text-xs font-medium text-base-content">
-                  {formatScheduleDate(item.scheduleDate)}
+                  {item.timingLabel || formatScheduleDate(item.scheduleDate)}
                 </span>
-                {item.periodLabel ? (
-                  <span className="text-xs text-base-content/55">
-                    · {item.periodLabel}
-                  </span>
-                ) : null}
               </div>
               {navigation ? (
                 <button
@@ -276,37 +254,34 @@ export default function TechnicianSchedule() {
     (item) => !["ai", "health"].includes(getScheduleEntityKind(item)),
   );
   const overdueItems = scheduleItems.filter(
-    (item) => item.timingState === "overdue",
+    (item) => item.dateKind === "deadline" && item.statusLabel === "Overdue",
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const [previewItem, setPreviewItem] = useState(null);
+  const [selectedPreviewItem, setSelectedPreviewItem] = useState(null);
 
   const previewTaskId = searchParams.get("previewTaskId");
   const previewRequestId = searchParams.get("previewRequestId");
 
-  useEffect(() => {
+  const linkedPreviewItem = useMemo(() => {
     if (previewTaskId) {
-      const matched = scheduleItems.find(
+      return scheduleItems.find(
         (item) => String(item.taskId || item.id || item._id) === previewTaskId,
       );
-      if (matched) {
-        setPreviewItem(matched);
-      }
-    } else if (previewRequestId) {
-      const matched = scheduleItems.find(
+    }
+    if (previewRequestId) {
+      return scheduleItems.find(
         (item) =>
           String(item.workflowId || item.requestId || item.id || item._id) ===
           previewRequestId,
       );
-      if (matched) {
-        setPreviewItem(matched);
-      }
     }
+    return null;
   }, [previewTaskId, previewRequestId, scheduleItems]);
+  const previewItem = selectedPreviewItem || linkedPreviewItem;
 
   const closePreview = () => {
-    setPreviewItem(null);
+    setSelectedPreviewItem(null);
     if (previewTaskId || previewRequestId) {
       setSearchParams(
         (prev) => {
@@ -326,7 +301,7 @@ export default function TechnicianSchedule() {
       target?.isUpcoming ||
       item?.timingState === "upcoming"
     ) {
-      setPreviewItem(item);
+      setSelectedPreviewItem(item);
       return;
     }
     navigate(target.path + target.search);
@@ -587,7 +562,7 @@ export default function TechnicianSchedule() {
                   <div>
                     <div className="mb-2 flex items-center justify-between px-1">
                       <h3 className="text-sm font-bold text-base-content">
-                        Due Work
+                        Dated work
                       </h3>
                       <span className="text-xs font-medium text-base-content/55">
                         {selectedDayDueWork.length}
@@ -595,8 +570,8 @@ export default function TechnicianSchedule() {
                     </div>
                     <ScheduleWorkList
                       items={selectedDayDueWork}
-                      emptyMessage="No due work for this day."
-                      emptyHint="Dated follow-ups and other assigned tasks will appear here."
+                      emptyMessage="No dated work for this day."
+                      emptyHint="Follow-ups, reports, expected events, and deadlines will appear here."
                       onOpen={openWork}
                     />
                   </div>
@@ -646,10 +621,7 @@ export default function TechnicianSchedule() {
         title={
           previewItem
             ? cleanTaskTitle(
-                previewItem.scheduleLabel ||
-                  previewItem.taskType ||
-                  previewItem.serviceType,
-                previewItem.timingState,
+                previewItem.scheduleLabel || previewItem.taskType || previewItem.serviceType,
               )
             : "Work details"
         }
@@ -691,21 +663,15 @@ export default function TechnicianSchedule() {
             {/* Status Banner */}
             <div
               role="status"
-              className={`alert ${previewItem.timingState === "overdue" ? "alert-error" : previewItem.timingState === "due" ? "alert-warning" : "alert-info"} alert-soft py-3`}
+              className={`alert ${previewItem.dateKind === "deadline" && previewItem.statusLabel === "Overdue" ? "alert-error" : previewItem.dateKind === "deadline" ? "alert-warning" : "alert-info"} alert-soft py-3`}
             >
               <Clock3 className="size-5 shrink-0" aria-hidden="true" />
               <div className="flex flex-col">
                 <span className="font-medium">
-                  {previewItem.timingState === "overdue"
-                    ? `Overdue - Scheduled for ${formatScheduleDate(previewItem.scheduleDate)}`
-                    : previewItem.timingState === "due"
-                      ? `Due today - ${formatScheduleDate(previewItem.scheduleDate)}`
-                      : `Scheduled for ${formatScheduleDate(previewItem.scheduleDate)}`}
+                  {previewItem.timingLabel || previewItem.statusLabel}
                 </span>
                 <span className="text-xs opacity-80 mt-0.5">
-                  {previewItem.timingState === "upcoming"
-                    ? "Recording becomes available when due."
-                    : "Please complete this work as soon as possible."}
+                  {previewItem.statusLabel}
                 </span>
               </div>
             </div>
@@ -774,7 +740,7 @@ export default function TechnicianSchedule() {
               <div className="rounded-lg bg-base-200/50 p-3.5 border border-base-300/50">
                 <div className="flex items-center gap-2 text-xs font-medium text-base-content/50 mb-1.5">
                   <Calendar size={14} />
-                  {getDateLabel(previewItem.scheduleKind)}
+                  {previewItem.dateLabel}
                 </div>
                 <p className="font-semibold text-base-content">
                   {formatScheduleDate(previewItem.scheduleDate)}
@@ -793,16 +759,10 @@ export default function TechnicianSchedule() {
                 <div>
                   <span
                     className={`badge font-semibold ${
-                      previewItem.timingState === "overdue"
-                        ? "badge-error"
-                        : previewItem.timingState === "due"
-                          ? "badge-warning"
-                          : "badge-neutral"
+                      semanticBadge(previewItem)
                     }`}
                   >
-                    {previewItem.timingState === "upcoming"
-                      ? "Scheduled"
-                      : titleCase(previewItem.timingState)}
+                    {previewItem.statusLabel}
                   </span>
                 </div>
               </div>

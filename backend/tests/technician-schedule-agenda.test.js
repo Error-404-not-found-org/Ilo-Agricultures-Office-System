@@ -87,8 +87,9 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
   Pregnancy.countDocuments = () => Promise.resolve(0);
   Task.countDocuments = () => Promise.resolve(0);
 
-  await t.test("Schedule agenda includes future PD and Calving Tasks by dueDate", async () => {
+  await t.test("Schedule agenda exposes canonical PD readiness and expected-calving dates", async () => {
     const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const pregnancyId = "507f1f77bcf86cd799439120";
     let capturedTaskQuery;
     Task.find = (query) => {
       capturedTaskQuery = query;
@@ -110,9 +111,12 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
           technicianId: "tech-a",
           farmerId: farmer,
           animalIds: [],
+          metadata: { pregnancyId },
         },
       ]);
     };
+    Pregnancy.find = () =>
+      queryResult([{ _id: pregnancyId, targetCalvingDate: future }]);
     Insemination.find = () => queryResult([]);
     HealthRequest.find = () => queryResult([]);
 
@@ -141,6 +145,10 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
       new Date(res.body.agendaItems[0].dueDate).getTime(),
       future.getTime(),
     );
+    assert.equal(res.body.agendaItems[0].dateKind, "readiness");
+    assert.equal(new Date(res.body.agendaItems[0].readyFrom).getTime(), future.getTime());
+    assert.equal(res.body.agendaItems[1].dateKind, "expected_event");
+    assert.equal(new Date(res.body.agendaItems[1].expectedAt).getTime(), future.getTime());
   });
 
   await t.test("Dashboard fullAgenda keeps pending future PD due gating", async () => {
@@ -328,10 +336,31 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
     );
 
     assert.equal(res.body.agendaItems[0].id, "ai-scheduled");
+    assert.equal(res.body.agendaItems[0].dateKind, "scheduled_visit");
     assert.equal(res.body.agendaItems[0].visitPeriod, "morning");
     assert.equal(
       new Date(res.body.agendaItems[0].scheduledDate).getTime(),
       scheduledDate.getTime(),
     );
+  });
+
+  await t.test("Schedule classifies farmer reports and the true breeding deadline", async () => {
+    const reportTime = new Date("2026-09-20T02:00:00.000Z");
+    const dueDate = new Date("2026-09-18T00:00:00.000Z");
+    Task.find = () => queryResult([
+      { _id: "return-report", taskType: "BreedingFollowUp", sourceType: "farmer_requested_verification", status: "Pending", dueDate, technicianId: "tech-a", farmerId: farmer, animalIds: [], relatedRecordType: "insemination", relatedRecordId: "ai-report", metadata: { reportType: "return_to_heat" } },
+      { _id: "loss-report", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", status: "Pending", dueDate, technicianId: "tech-a", farmerId: farmer, animalIds: [], metadata: { reportedAt: reportTime } },
+      { _id: "deadline", taskType: "BreedingFollowUp", sourceType: "automatic_breeding_followup", status: "Pending", dueDate, technicianId: "tech-a", farmerId: farmer, animalIds: [], metadata: {} },
+    ]);
+    Insemination.find = (query) => query?._id ? queryResult([{ _id: "ai-report", farmerOutcomeReportedAt: reportTime }]) : queryResult([]);
+    HealthRequest.find = () => queryResult([]);
+    const res = response();
+    await getTechnicianDashboardData({ user: { _id: "tech-a", role: "technician" }, query: { fullAgenda: "true", includeFutureDateBoundTasks: "true" } }, res);
+    const byId = new Map(res.body.agendaItems.map((item) => [item.id, item]));
+    assert.equal(byId.get("return-report").dateKind, "farmer_report");
+    assert.equal(new Date(byId.get("return-report").reportedAt).getTime(), reportTime.getTime());
+    assert.equal(byId.get("loss-report").dateKind, "farmer_report");
+    assert.equal(byId.get("deadline").dateKind, "deadline");
+    assert.equal(new Date(byId.get("deadline").dueAt).getTime(), dueDate.getTime());
   });
 });

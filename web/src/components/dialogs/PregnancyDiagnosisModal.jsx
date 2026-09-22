@@ -434,10 +434,7 @@ const PregnancyDiagnosisModal = ({
     if (!result) {
       nextErrors.result = "Please select a diagnosis outcome.";
     }
-    if (
-      isInitialDiagnosis &&
-      !diagnosticMethod
-    ) {
+    if (isInitialDiagnosis && !diagnosticMethod) {
       nextErrors.diagnosticMethod = "Please select an examination method.";
     }
     const officialDiagnosis = isVerificationTask
@@ -463,7 +460,7 @@ const PregnancyDiagnosisModal = ({
         new Date(selectedInsemination.inseminationDate).setUTCHours(0, 0, 0, 0)
     ) {
       nextErrors.diagnosisDate =
-        "Examination date cannot be earlier than the breeding service date.";
+        "Examination date cannot be earlier than the last insemination date.";
     }
     if (["follow_up_required", "needs_recheck"].includes(result)) {
       const followUpTimestamp = new Date(followUpDate).getTime();
@@ -738,7 +735,10 @@ const PregnancyDiagnosisModal = ({
                     </div>
                   )}
                   {fieldErrors.farmer && (
-                    <p role="alert" className="text-xs text-error font-medium mt-1">
+                    <p
+                      role="alert"
+                      className="text-xs text-error font-medium mt-1"
+                    >
                       {fieldErrors.farmer}
                     </p>
                   )}
@@ -798,7 +798,10 @@ const PregnancyDiagnosisModal = ({
                     </select>
                   )}
                   {fieldErrors.animal && (
-                    <p role="alert" className="text-xs text-error font-medium mt-1">
+                    <p
+                      role="alert"
+                      className="text-xs text-error font-medium mt-1"
+                    >
                       {fieldErrors.animal}
                     </p>
                   )}
@@ -841,7 +844,10 @@ const PregnancyDiagnosisModal = ({
                       ))}
                     </select>
                     {fieldErrors.insemination && (
-                      <p role="alert" className="text-xs text-error font-medium mt-1">
+                      <p
+                        role="alert"
+                        className="text-xs text-error font-medium mt-1"
+                      >
                         {fieldErrors.insemination}
                       </p>
                     )}
@@ -918,10 +924,10 @@ const PregnancyDiagnosisModal = ({
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                       Breeding Service Details
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <div className="bg-base-100 border border-base-200 rounded-xl p-3">
                         <span className="text-[10px] font-semibold uppercase text-base-content/60 block">
-                          Service Date
+                          Last Insemination
                         </span>
                         <span className="text-xs font-bold text-base-content">
                           {formatDate(selectedInsemination.inseminationDate)}
@@ -932,21 +938,24 @@ const PregnancyDiagnosisModal = ({
                           Attempt
                         </span>
                         <span className="text-xs font-bold text-base-content">
-                          #{selectedInsemination.attemptNumber ?? "Not recorded"}
+                          #
+                          {selectedInsemination.attemptNumber ?? "Not recorded"}
                         </span>
                       </div>
                       <div className="bg-base-100 border border-base-200 rounded-xl p-3">
                         <span className="text-[10px] font-semibold uppercase text-base-content/60 block">
-                          Sire
+                          Sire Breed
                         </span>
                         <span className="text-xs font-bold text-base-content truncate block">
-                          {selectedInsemination.sireCode ||
-                            selectedInsemination.sireBreed ||
-                            "Not recorded"}
-                          {selectedInsemination.sireCode &&
-                          selectedInsemination.sireBreed
-                            ? ` · ${selectedInsemination.sireBreed}`
-                            : ""}
+                          {selectedInsemination.sireBreed || "Not recorded"}
+                        </span>
+                      </div>
+                      <div className="bg-base-100 border border-base-200 rounded-xl p-3">
+                        <span className="text-[10px] font-semibold uppercase text-base-content/60 block">
+                          Sire Code
+                        </span>
+                        <span className="text-xs font-bold text-base-content truncate block">
+                          {selectedInsemination.sireCode || "Not recorded"}
                         </span>
                       </div>
                     </div>
@@ -1003,7 +1012,12 @@ const PregnancyDiagnosisModal = ({
                             0 && (
                             <div>
                               <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1.5">
-                                Supporting photos ({selectedInsemination.farmerPregnancyPhotos.length})
+                                Supporting photos (
+                                {
+                                  selectedInsemination.farmerPregnancyPhotos
+                                    .length
+                                }
+                                )
                               </span>
                               <div className="flex flex-wrap gap-2.5">
                                 {selectedInsemination.farmerPregnancyPhotos.map(
@@ -1086,8 +1100,7 @@ const PregnancyDiagnosisModal = ({
                                 ? new Date(checkDateStr)
                                 : null;
                               const isValidDate =
-                                checkDate &&
-                                !Number.isNaN(checkDate.getTime());
+                                checkDate && !Number.isNaN(checkDate.getTime());
                               return isValidDate
                                 ? `Available from ${formatDate(checkDate)}`
                                 : readiness?.reason || "Not yet available";
@@ -1479,8 +1492,7 @@ const PregnancyDiagnosisModal = ({
 
                       {((isContinuationFlow &&
                         result === "follow_up_required") ||
-                        (isVerificationTask &&
-                          result === "needs_recheck")) && (
+                        (isVerificationTask && result === "needs_recheck")) && (
                         <div>
                           <label
                             className="label-text text-xs font-semibold text-base-content/80 block mb-1"
@@ -1522,7 +1534,7 @@ const PregnancyDiagnosisModal = ({
                         className="label-text text-xs font-semibold text-base-content/80 block mb-1"
                         htmlFor="pregnancy-findings"
                       >
-                        Clinical Notes
+                        Technician Notes
                       </label>
                       <textarea
                         id="pregnancy-findings"

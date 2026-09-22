@@ -3,6 +3,7 @@ import {
   getBreedProfile,
 } from "../utils/cattleCore.js";
 import { AppError } from "../utils/app-error.js";
+import { toManilaCalendarDay } from "./service-date-time.js";
 
 export const PREVIOUS_AI_ENTRY_MODE = Object.freeze({
   HISTORY_ONLY: "history_only",
@@ -100,7 +101,7 @@ export const assertPreviousAICanContinueTracking = ({
     trackingEndDate.getUTCDate() + avgGestationDays,
   );
 
-  if (new Date(now).getTime() > trackingEndDate.getTime()) {
+  if (toManilaCalendarDay(now) > toManilaCalendarDay(trackingEndDate)) {
     throw new AppError(
       "This AI date is beyond the current reproductive tracking window. Save it as History Only instead.",
       {

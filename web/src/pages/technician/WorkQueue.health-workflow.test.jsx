@@ -733,6 +733,94 @@ describe("My Work Schedule deep links", () => {
     expect(screen.getAllByText("Timing")).toHaveLength(3);
   });
 
+  it("suppresses automatic Pregnancy Check supporting text by source type only", async () => {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const generatedSummary =
+      "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.";
+    const genuineInstruction =
+      "Bring the portable ultrasound and review the animal history.";
+
+    renderQueue([
+      {
+        ...baseTask,
+        id: ids.pregnancyTask,
+        taskId: ids.pregnancyTask,
+        workflowType: "PD",
+        taskType: "PD",
+        serviceType: "Pregnancy Diagnosis",
+        title: "Pregnancy Diagnosis",
+        sourceType: "automatic_pd_followup",
+        summary: generatedSummary,
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: today,
+        schedule: { date: today, visitPeriod: null },
+        timing: { kind: "due", date: today },
+        allowedAction: "RECORD_SERVICE",
+        actionLabel: "Record Pregnancy Check",
+        raw: {
+          taskType: "PD",
+          sourceType: "automatic_pd_followup",
+          dueDate: today,
+          metadata: { workflowStage: "initial_confirmation" },
+        },
+      },
+      {
+        ...baseTask,
+        id: "manual-instruction",
+        taskId: "manual-instruction",
+        workflowType: "Other",
+        taskType: "Other",
+        serviceType: "Other",
+        sourceType: "manual_task",
+        summary: genuineInstruction,
+        allowedAction: "VIEW_DETAILS",
+        actionLabel: "View Details",
+        raw: { taskType: "Other", sourceType: "manual_task" },
+      },
+    ]);
+
+    expect(await screen.findByText("Pregnancy Check")).toBeTruthy();
+    expect(screen.getAllByText("Ready for check").length).toBeGreaterThan(0);
+    expect(screen.queryByText(generatedSummary)).toBeNull();
+    expect(screen.getByText(genuineInstruction)).toBeTruthy();
+  });
+
+  it("uses the same semantic suppression in the My Work detail drawer", async () => {
+    const generatedSummary =
+      "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.";
+    renderQueue([
+      {
+        ...baseTask,
+        id: ids.pregnancyTask,
+        taskId: ids.pregnancyTask,
+        workflowType: "PD",
+        taskType: "PD",
+        serviceType: "Pregnancy Diagnosis",
+        sourceType: "automatic_pd_followup",
+        summary: generatedSummary,
+        allowedAction: "VIEW_DETAILS",
+        actionLabel: "View Details",
+        raw: {
+          taskType: "PD",
+          sourceType: "automatic_pd_followup",
+          dueDate: baseTask.displayDate,
+        },
+      },
+    ]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View Details" }));
+
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText(generatedSummary)).toBeNull();
+    expect(screen.queryByText("Service information")).toBeNull();
+  });
+
   it("retains the protected unavailable message for an unowned Health request", async () => {
     mocks.error.mockClear();
     mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`

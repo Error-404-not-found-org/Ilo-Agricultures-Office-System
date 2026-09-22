@@ -64,6 +64,7 @@ const installHarness = () => {
     inseminationUpdates: [],
     audits: [],
     newerAI: null,
+    activePregnancy: null,
     newerPregnancy: null,
     newerCalving: null,
   };
@@ -96,7 +97,7 @@ const installHarness = () => {
     return { matchedCount: record ? 1 : 0 };
   };
   Pregnancy.findOne = (filter) =>
-    query(filter?.$or ? state.newerPregnancy : null);
+    query(filter?.$or ? state.newerPregnancy : state.activePregnancy);
   Calving.findOne = () => query(state.newerCalving);
   Task.find = () => query([]);
   Task.findOneAndUpdate = async (_filter, update) => {
@@ -248,6 +249,25 @@ test("continue-tracking uses actual AI date and skips passed heat-return work", 
       "2026-06-20T08:00:00.000Z",
     );
     assert.deepEqual(harness.state.tasks.map((task) => task.taskType), ["PD"]);
+    assert.equal(harness.state.tasks[0].sourceType, "automatic_pd_followup");
+    assert.equal(harness.state.tasks[0].status, "Pending");
+    assert.equal(
+      harness.state.tasks[0].metadata.workflowStage,
+      "initial_confirmation",
+    );
+    assert.equal(harness.state.tasks[0].metadata.previousRecordEntry, true);
+    assert.equal(
+      String(harness.state.tasks[0].metadata.inseminationId),
+      String(result.insemination._id),
+    );
+    assert.equal(
+      String(harness.state.tasks[0].relatedRecordId),
+      String(result.insemination._id),
+    );
+    assert.equal(
+      harness.state.tasks[0].dueDate.toISOString(),
+      "2026-08-19T08:00:00.000Z",
+    );
     assert.equal(
       String(result.insemination.verificationTaskId),
       String(harness.state.tasks[0]._id),
@@ -334,6 +354,27 @@ for (const [label, stateKey] of [
     }
   });
 }
+
+test("continue-tracking reports an active pregnancy as a distinct conflict", async () => {
+  const harness = installHarness();
+  try {
+    harness.state.activePregnancy = { _id: "pregnancy-active" };
+
+    await assert.rejects(
+      invoke({
+        entryMode: "continue_tracking",
+        inseminationDate: "2026-06-20T08:00:00.000Z",
+        now: new Date("2026-08-20T08:00:00.000Z"),
+      }),
+      (error) => error.code === "PREVIOUS_AI_TRACKING_ACTIVE_PREGNANCY",
+    );
+    assert.equal(harness.state.created.length, 0);
+    assert.equal(harness.state.animalUpdates.length, 0);
+    assert.equal(harness.state.tasks.length, 0);
+  } finally {
+    harness.uninstall();
+  }
+});
 for (const entryMode of ["history_only", "continue_tracking"]) {
   test(`${entryMode} rejects an AI before minimum breeding age`, async () => {
     const harness = installHarness();

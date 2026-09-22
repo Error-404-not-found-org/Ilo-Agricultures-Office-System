@@ -17,7 +17,6 @@ import {
   Plus,
   Syringe,
   Stethoscope,
-  MessageSquare,
   X,
   Info,
   Sparkles,
@@ -28,7 +27,7 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { useFarmerDashboardQueries } from "../hooks/useFarmerDashboard";
 import { useFarmerDashboardMutations } from "../hooks/useFarmerDashboardMutations";
@@ -67,16 +66,21 @@ export function FarmerHomeScreen() {
     profileQuery,
     unreadCountQuery,
     upcomingVisitsQuery,
-    pendingOutcomesQuery,
     milestonesQuery,
     myAnimalsQuery,
     activityFeedQuery,
   } = useFarmerDashboardQueries();
+  const refetchMilestones = milestonesQuery.refetch;
 
-  const { outcomeMutation, cancelMutation } = useFarmerDashboardMutations();
+  useFocusEffect(
+    React.useCallback(() => {
+      void refetchMilestones();
+    }, [refetchMilestones]),
+  );
+
+  const { cancelMutation } = useFarmerDashboardMutations();
 
   const [showRequestHub, setShowRequestHub] = React.useState(false);
-  const [showAllOutcomes, setShowAllOutcomes] = React.useState(false);
   const [modalVisible, setModalVisible] = React.useState(false);
   const [cancelInfo, setCancelInfo] = React.useState<{
     id: string;
@@ -84,9 +88,7 @@ export function FarmerHomeScreen() {
     animalTag: string;
   } | null>(null);
   const [cancellationReason, setCancellationReason] = React.useState("");
-  const [selectedActivity, setSelectedActivity] = React.useState<any | null>(
-    null,
-  );
+  const [selectedActivity] = React.useState<any | null>(null);
   const [isModalVisible, setIsModalVisible] = React.useState(false);
   const [statusBarOnHero, setStatusBarOnHero] = React.useState(true);
   const [heroHeaderHeight, setHeroHeaderHeight] = React.useState(260);
@@ -95,13 +97,13 @@ export function FarmerHomeScreen() {
   );
 
   const [congratsModalVisible, setCongratsModalVisible] = React.useState(false);
-  const [congratsInfo, setCongratsInfo] = React.useState<{
+  const [congratsInfo] = React.useState<{
     animalName: string;
     expectedCalvingDate: string;
   } | null>(null);
   const [reInseminateModalVisible, setReInseminateModalVisible] =
     React.useState(false);
-  const [reInseminateInfo, setReInseminateInfo] = React.useState<{
+  const [reInseminateInfo] = React.useState<{
     requestId: string;
     animalId: string;
     animalName: string;
@@ -167,7 +169,6 @@ export function FarmerHomeScreen() {
 
   const { data: upcomingVisits } = upcomingVisitsQuery;
 
-  const { data: pendingOutcomes } = pendingOutcomesQuery;
   const { data: milestones } = milestonesQuery;
   const { data: myAnimalsCollection } = myAnimalsQuery;
   const myAnimals = myAnimalsCollection?.items;
@@ -667,9 +668,6 @@ export function FarmerHomeScreen() {
                     ? visit.outcome
                     : undefined;
 
-                const canCancel =
-                  normalizedStatus === "scheduled" &&
-                  visit.cancellationStatus !== "requested";
                 const visitPeriod = formatVisitPeriod(visit.visitPeriod);
                 const visitSchedule = formatVisitSchedule(
                   visit.scheduledDate,

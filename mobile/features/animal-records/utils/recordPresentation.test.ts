@@ -50,3 +50,44 @@ test("formatAnimalRecord formats normal calving vs pregnancy loss record truthfu
   assert.ok(lossFormatted.details.includes("Pregnancy loss confirmed after examination"));
   assert.doesNotMatch(JSON.stringify(lossFormatted), /"abortion"/i);
 });
+
+test("formatAnimalRecord never promotes createdAt to a clinical date", () => {
+  const enteredAt = "2026-09-22T08:00:00.000Z";
+  const formatted = formatAnimalRecord(
+    {
+      recordKind: "medical_record",
+      recordDate: null,
+      date: null,
+      createdAt: enteredAt,
+      type: "Treatment",
+    },
+    { earTag: "COW-01" },
+  );
+
+  assert.equal(formatted.date, undefined);
+  assert.notEqual(formatted.date, enteredAt);
+});
+
+test("formatAnimalRecord prefers normalized recordDate and supports raw clinical date", () => {
+  const normalizedDate = "2026-09-10T08:00:00.000Z";
+  const rawDate = "2026-09-09T08:00:00.000Z";
+
+  assert.equal(
+    formatAnimalRecord(
+      {
+        recordKind: "medical_record",
+        recordDate: normalizedDate,
+        date: rawDate,
+      },
+      { earTag: "COW-01" },
+    ).date,
+    normalizedDate,
+  );
+  assert.equal(
+    formatAnimalRecord(
+      { recordKind: "medical_record", date: rawDate },
+      { earTag: "COW-01" },
+    ).date,
+    rawDate,
+  );
+});

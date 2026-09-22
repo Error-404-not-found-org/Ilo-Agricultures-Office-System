@@ -86,10 +86,22 @@ export const buildPreviousInseminationPayload = (
   entryMode: PreviousAIEntryMode,
 ): PreviousInseminationPayload => ({ ...payload, entryMode });
 
-export const getPreviousAIErrorMessage = (error: any) =>
-  String(
-    error?.response?.data?.message ||
+const PREVIOUS_AI_ERROR_MESSAGES: Record<string, string> = {
+  PREVIOUS_AI_TRACKING_WINDOW_CLOSED:
+    "This insemination date is outside the active tracking window. Save it as History Only instead.",
+  PREVIOUS_AI_TRACKING_SUPERSEDED:
+    "A newer reproductive event already defines the current cycle. Save this AI as History Only instead.",
+  PREVIOUS_AI_TRACKING_ACTIVE_PREGNANCY:
+    "This animal already has an active pregnancy defining its current cycle. Save this AI as History Only instead.",
+};
+
+export const getPreviousAIErrorMessage = (error: any) => {
+  const code = String(error?.response?.data?.code || "");
+  return String(
+    PREVIOUS_AI_ERROR_MESSAGES[code] ||
+      error?.response?.data?.message ||
       error?.response?.data?.error ||
       error?.message ||
       "The previous AI record could not be saved. Please try again.",
   );
+};

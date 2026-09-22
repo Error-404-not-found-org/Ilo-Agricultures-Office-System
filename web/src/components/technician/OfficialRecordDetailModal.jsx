@@ -14,6 +14,7 @@ import Modal from "../ui/Modal";
 import ImagePreviewModal from "../ui/ImagePreviewModal";
 import { formatFarmerLocation } from "../dialogs/PregnancyLossReviewModal";
 import { formatHealthRequestType } from "../../utils/requestWorkPresentation";
+import { formatDiagnosticMethod } from "../../utils/officialRecordPresentation";
 import {
   downloadRecordAttachment,
   normalizeRecordAttachments,
@@ -50,19 +51,6 @@ const humanize = (value) =>
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const formatDiagnosticMethod = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["palpation", "rectal_palpation"].includes(normalized)) {
-    return "Manual Palpation";
-  }
-  if (["visual_observation", "clinical_examination"].includes(normalized)) {
-    return "Visual Assessment";
-  }
-  if (normalized === "farmer_interview") return "Farmer Interview";
-  if (["other", "other_approved"].includes(normalized)) return "Other";
-  return humanize(value);
-};
 
 const Value = ({ label, children, className = "" }) => (
   <div className={`bg-base-100 border border-base-200 rounded-xl p-3 ${className}`}>

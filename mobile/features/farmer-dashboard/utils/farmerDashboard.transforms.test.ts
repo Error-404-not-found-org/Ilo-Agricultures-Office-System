@@ -125,6 +125,28 @@ test("pregnancy-check milestones do not become Farmer Home actions", () => {
   assert.deepEqual(attention, []);
 });
 
+test("expected-calving labels preserve backend Manila calendar-day differences", () => {
+  const makeCalving = (daysLeft: number) => ({
+    type: "calving",
+    animal: { _id: `animal-${daysLeft}`, earTag: `COW-${daysLeft}` },
+    date: "2026-09-22T19:14:00.000Z",
+    daysLeft,
+  });
+
+  assert.equal(
+    selectNeedsAttention([makeCalving(0)])[0]?.displayTitle,
+    "Expected Calving Today",
+  );
+  assert.match(
+    selectNeedsAttention([makeCalving(1)])[0]?.displaySubtitle || "",
+    /Expected in 1 day$/,
+  );
+  assert.equal(
+    selectNeedsAttention([makeCalving(-1)])[0]?.displayTitle,
+    "Past Expected Calving Date",
+  );
+});
+
 test("Animal Details exposes the direct report action and submitted state", () => {
   const source = readFileSync(
     fileURLToPath(

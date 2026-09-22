@@ -1,11 +1,19 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Eye, FileText, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  FileText,
+  Search,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
+import { sanitizeFileName } from "../../lib/reportExport";
 import Topbar from "../../components/layout/Topbar";
 import OfficialRecordDetailModal from "../../components/technician/OfficialRecordDetailModal";
-import RecordActionsMenu from "../../components/technician/RecordActionsMenu";
 import UserAvatar from "../../components/ui/UserAvatar";
 import {
   formatRecordStatus,
@@ -13,17 +21,52 @@ import {
   getHealthResultPresentation,
   getAIResultPresentation,
   getPregnancyResultPresentation,
+  formatDiagnosticMethod,
 } from "../../utils/officialRecordPresentation";
+import {
+  getCurrentManilaMonth,
+  getMonthBounds,
+  isMonthValue,
+  RECORDS_DATE_PRESETS,
+  resolveRecordsDateFilter,
+} from "../../utils/recordsDateFilter";
 
 const PAGE_SIZE = 10;
 
 const RECORD_FILTERS = [
-  { value: "all", label: "All records" },
+  { value: "all", label: "All service types" },
   { value: "insemination", label: "Insemination" },
   { value: "health", label: "Health" },
   { value: "pregnancy", label: "Pregnancy" },
   { value: "calving", label: "Calving" },
 ];
+
+const formatMonthLabel = (monthValue) => {
+  if (!isMonthValue(monthValue)) return "All dates";
+  const [year, month] = monthValue.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+};
+
+const formatDateOnlyLabel = (value) => {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00+08:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(date);
+};
+
+const getRecordTypeLabel = (value) =>
+  value === "all"
+    ? "All service types"
+    : RECORD_FILTERS.find((filter) => filter.value === value)?.label || "All service types";
 
 const formatDate = (value) => {
   if (!value) return "Not recorded";
@@ -86,7 +129,7 @@ const getHealthFields = (record) => ({
 const getPregnancyFields = (record) => ({
   date: record.source?.pregnancyDiagnosis?.date || record.recordDate,
   result: record.source?.pregnancyDiagnosis?.result,
-  method: record.source?.pregnancyDiagnosis?.checkMethod,
+  method: record.source?.confirmation?.methodCode,
 });
 
 const getCalvingFields = (record) => ({
@@ -455,7 +498,7 @@ const COLUMNS_BY_TYPE = {
         const fields = getPregnancyFields(record);
         return (
           <span className="block truncate text-base-content/65">
-            {fields.method || "Not recorded"}
+            {formatDiagnosticMethod(fields.method)}
           </span>
         );
       },
@@ -545,14 +588,6 @@ const ACTION_COLUMN = {
   className: "w-36 p-3.5 pr-6 text-right",
   renderCell: (record, context) => {
     const actionLabel = getRecordActionLabel(record);
-    const actions = [
-      {
-        id: "view-record",
-        label: actionLabel,
-        icon: Eye,
-        onClick: () => context.openRecord(record),
-      },
-    ];
 
     return (
       <div
@@ -564,13 +599,9 @@ const ACTION_COLUMN = {
           className="btn btn-primary btn-sm rounded-xl hover:bg-primary/90 hover:border-none"
           onClick={() => context.openRecord(record)}
         >
+          <Eye size={14} aria-hidden="true" />
           {actionLabel}
         </button>
-        <RecordActionsMenu
-          id={record.id}
-          actions={actions}
-          ariaLabel={`More actions for ${getAnimalTag(record)} record`}
-        />
       </div>
     );
   },
@@ -581,9 +612,25 @@ export default function TechnicianRecords() {
   const [searchInput, setSearchInput] = useState(
     searchParams.get("search") || "",
   );
+  const [isDownloading, setIsDownloading] = useState(false);
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const type = searchParams.get("type") || "all";
   const search = searchParams.get("search") || "";
+  const dateFilter = resolveRecordsDateFilter(searchParams);
+  const { preset: datePreset, month, fromDate, toDate } = dateFilter;
+  const periodLabel = datePreset === "all"
+    ? "All time"
+    : datePreset === "custom"
+    ? `${formatDateOnlyLabel(fromDate)} – ${formatDateOnlyLabel(toDate)}`
+    : datePreset === "select-month"
+      ? formatMonthLabel(month)
+      : datePreset === "last-30-days"
+        ? `${formatDateOnlyLabel(fromDate)} – ${formatDateOnlyLabel(toDate)}`
+        : formatMonthLabel(fromDate.slice(0, 7));
+  const hasExplicitPeriod = datePreset !== "all";
+  const hasActiveFilters = Boolean(
+    type !== "all" || search || hasExplicitPeriod,
+  );
   const selectedRecord = useMemo(() => {
     const animalId = searchParams.get("animalId");
     const recordKind = searchParams.get("recordKind");
@@ -594,7 +641,15 @@ export default function TechnicianRecords() {
   }, [searchParams]);
 
   const recordsQuery = useQuery({
-    queryKey: ["technician", "official-records", page, type, search],
+    queryKey: [
+      "technician",
+      "official-records",
+      page,
+      type,
+      search,
+      fromDate,
+      toDate,
+    ],
     queryFn: async () => {
       const response = await axiosInstance.get("/animals/records", {
         params: {
@@ -602,6 +657,8 @@ export default function TechnicianRecords() {
           limit: PAGE_SIZE,
           ...(type !== "all" ? { type } : {}),
           ...(search ? { search } : {}),
+          ...(fromDate ? { fromDate } : {}),
+          ...(toDate ? { toDate } : {}),
         },
       });
       return response.data || {};
@@ -611,6 +668,13 @@ export default function TechnicianRecords() {
 
   const records = recordsQuery.data?.data || [];
   const total = recordsQuery.data?.total ?? records.length;
+  const summary = recordsQuery.data?.summary || {
+    all: total,
+    insemination: type === "all" || type === "insemination" ? total : 0,
+    health: type === "health" ? total : 0,
+    pregnancy: type === "pregnancy" ? total : 0,
+    calving: type === "calving" ? total : 0,
+  };
   const totalPages = Math.max(
     1,
     recordsQuery.data?.totalPages || Math.ceil(total / PAGE_SIZE),
@@ -641,6 +705,68 @@ export default function TechnicianRecords() {
   const closeRecord = () =>
     updateParams({ animalId: null, recordKind: null, recordId: null });
 
+  const clearFilters = () => {
+    setSearchInput("");
+    updateParams({
+      page: null,
+      type: null,
+      search: null,
+      month: null,
+      datePreset: null,
+      fromDate: null,
+      toDate: null,
+    });
+  };
+
+  const handleDownloadReport = async () => {
+    setIsDownloading(true);
+    try {
+      const response = await axiosInstance.get("/animals/records/export", {
+        params: {
+          ...(type !== "all" ? { type } : {}),
+          ...(search ? { search } : {}),
+          ...(fromDate ? { fromDate } : {}),
+          ...(toDate ? { toDate } : {}),
+        },
+        responseType: "blob",
+      });
+      const disposition = response.headers?.["content-disposition"] || "";
+      const fileName =
+        disposition.match(/filename="?([^";]+)"?/i)?.[1] ||
+        `BreedSmart-${type === "all" ? "Technician-Records" : `${getRecordTypeLabel(type).replace(/\s+/g, "-")}-Records`}-${fromDate?.slice(0, 10) || "all-dates"}.csv`;
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = sanitizeFileName(fileName).replace(/\.csv$/i, "") + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Unable to download the records report. Please try again.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const metrics = [
+    { value: "all", label: "All Records", count: summary.all, borderClass: "border-l-primary" },
+    { value: "insemination", label: "Insemination", count: summary.insemination, borderClass: "border-l-secondary" },
+    { value: "health", label: "Health", count: summary.health, borderClass: "border-l-success" },
+    { value: "pregnancy", label: "Pregnancy", count: summary.pregnancy, borderClass: "border-l-warning" },
+    { value: "calving", label: "Calving", count: summary.calving, borderClass: "border-l-info" },
+  ];
+  const selectedTypeLabel = getRecordTypeLabel(type);
+  const emptyTitle = search
+    ? "No completed records match your search."
+    : type !== "all"
+      ? `No ${selectedTypeLabel} records found for ${periodLabel}.`
+      : datePreset === "this-month"
+        ? "No records found this month."
+      : hasExplicitPeriod
+        ? `No records found for ${periodLabel}.`
+        : "No completed records yet.";
+
   const activeColumns = [
     ...(COLUMNS_BY_TYPE[type] || COLUMNS_BY_TYPE.all),
     ACTION_COLUMN,
@@ -651,12 +777,33 @@ export default function TechnicianRecords() {
     <div className="flex min-h-screen flex-1 flex-col overflow-y-auto bg-base-200 text-base-content">
       <Topbar
         title="Records"
-        subtitle="Finished services, responses, and closed requests"
+        subtitle="Official completed service records"
       />
       <main className="flex-1 space-y-5 p-4 md:p-6">
+        <section
+          className="grid grid-cols-2 gap-3 md:grid-cols-5"
+          aria-label="Official record metrics"
+        >
+          {metrics.map((metric) => (
+            <div
+              key={metric.value}
+              className={`card card-border border-l-4 bg-base-100 text-left shadow-sm ${metric.borderClass}`}
+            >
+              <span className="card-body gap-1 p-4">
+                <span className="text-xs font-bold uppercase tracking-wide text-base-content/55">
+                  {metric.label}
+                </span>
+                <span className="text-2xl font-black text-base-content">
+                  {recordsQuery.isLoading ? "—" : metric.count}
+                </span>
+              </span>
+            </div>
+          ))}
+        </section>
+
         <section className="card card-border bg-base-100 shadow-sm">
           <div className="card-body gap-4 p-4 md:p-5">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-col gap-4">
               <form
                 className="input w-full xl:max-w-md"
                 onSubmit={(event) => {
@@ -669,17 +816,93 @@ export default function TechnicianRecords() {
                   type="search"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Search animal, farmer, service, or technician"
+                  placeholder="Search animal, farmer, or record ID"
                   aria-label="Search finished activity"
                 />
               </form>
-              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="form-control w-full sm:w-48">
+                  <span className="label-text mb-1 text-xs font-bold text-base-content/60">
+                    Date
+                  </span>
+                  <select
+                    className="select select-bordered w-full"
+                    aria-label="Date"
+                    value={datePreset}
+                    onChange={(event) => {
+                      const nextPreset = event.target.value;
+                      const currentMonth = getCurrentManilaMonth();
+                      const bounds = getMonthBounds(currentMonth);
+                      updateParams({
+                        datePreset: RECORDS_DATE_PRESETS.has(nextPreset) ? nextPreset : null,
+                        month: nextPreset === "select-month" ? currentMonth : null,
+                        fromDate: nextPreset === "custom" ? bounds.fromDate : null,
+                        toDate: nextPreset === "custom" ? bounds.toDate : null,
+                        page: 1,
+                      });
+                    }}
+                  >
+                    <option value="all">All time</option>
+                    <option value="this-month">This month</option>
+                    <option value="last-month">Last month</option>
+                    <option value="last-30-days">Last 30 days</option>
+                    <option value="select-month">Select month</option>
+                    <option value="custom">Custom range</option>
+                  </select>
+                </label>
+                {datePreset === "select-month" && (
+                  <label className="form-control w-full sm:w-48">
+                    <span className="label-text mb-1 text-xs font-bold text-base-content/60">
+                      Month
+                    </span>
+                    <input
+                      type="month"
+                      className="input input-bordered w-full"
+                      aria-label="Month"
+                      value={month}
+                      onChange={(event) =>
+                        updateParams({ month: event.target.value, page: 1 })
+                      }
+                    />
+                  </label>
+                )}
+                {datePreset === "custom" && (
+                  <>
+                    <label className="form-control w-full sm:w-40">
+                      <span className="label-text mb-1 text-xs font-bold text-base-content/60">
+                        From
+                      </span>
+                      <input
+                        type="date"
+                        className="input input-bordered w-full"
+                        aria-label="From"
+                        value={fromDate}
+                        onChange={(event) => updateParams({ fromDate: event.target.value, page: 1 })}
+                      />
+                    </label>
+                    <label className="form-control w-full sm:w-40">
+                      <span className="label-text mb-1 text-xs font-bold text-base-content/60">
+                        To
+                      </span>
+                      <input
+                        type="date"
+                        className="input input-bordered w-full"
+                        aria-label="To"
+                        value={toDate}
+                        onChange={(event) => updateParams({ toDate: event.target.value, page: 1 })}
+                      />
+                    </label>
+                  </>
+                )}
                 <select
                   className="select select-bordered w-full sm:w-48"
                   aria-label="Filter records by type"
                   value={type}
                   onChange={(event) =>
-                    updateParams({ type: event.target.value, page: 1 })
+                    updateParams({
+                      type: event.target.value,
+                      page: 1,
+                    })
                   }
                 >
                   {RECORD_FILTERS.map((filter) => (
@@ -688,12 +911,23 @@ export default function TechnicianRecords() {
                     </option>
                   ))}
                 </select>
-                <span className="text-sm text-base-content/60">
-                  {recordsQuery.isFetching && !recordsQuery.isLoading
-                    ? "Updating..."
-                    : `${total} ${total === 1 ? "saved activity" : "saved activities"}`}
-                </span>
+                <button
+                  type="button"
+                  className="btn btn-outline gap-2"
+                  disabled={isDownloading}
+                  onClick={handleDownloadReport}
+                >
+                  <Download size={15} aria-hidden="true" />
+                  {isDownloading ? "Preparing..." : "Download report"}
+                </button>
               </div>
+              {hasActiveFilters && (
+                <div className="flex justify-end">
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto rounded-box border border-base-300">
@@ -733,11 +967,15 @@ export default function TechnicianRecords() {
                   ) : recordsQuery.isError ? (
                     <tr>
                       <td colSpan={colSpanCount} className="p-6">
-                        <div
-                          role="alert"
-                          className="alert alert-error alert-soft"
-                        >
-                          Records could not be loaded. Please try again.
+                        <div role="alert" className="alert alert-error alert-soft flex-wrap justify-between gap-3">
+                          <span>Unable to load records.</span>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => recordsQuery.refetch()}
+                          >
+                            Retry
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -752,10 +990,10 @@ export default function TechnicianRecords() {
                           className="mx-auto mb-3 text-base-content/35"
                         />
                         <p className="font-bold text-base-content">
-                          No finished activity found
+                          {emptyTitle}
                         </p>
                         <p className="mt-1 font-medium">
-                          Completed services, responses, and closed requests will appear here.
+                          Official completed service records will appear here.
                         </p>
                       </td>
                     </tr>

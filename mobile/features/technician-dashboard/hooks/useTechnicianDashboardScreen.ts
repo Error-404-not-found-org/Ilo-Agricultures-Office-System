@@ -10,6 +10,7 @@ import {
   getDashboardAttentionItems,
   normalizeTechnicianWorkItems,
 } from "@/features/technician-requests/utils/requestWorkPresentation";
+import { getCalvingWorkNavigation } from "@/features/technician-requests/utils/calvingWorkNavigation";
 import { normalizeTechnicianDashboardStats } from "../utils/dashboardStats";
 import {
   AVAILABILITY_HELPER_FEEDBACK_COPY,
@@ -195,6 +196,12 @@ export function useTechnicianDashboardScreen() {
   };
 
   const openItemDetails = (item: any) => {
+    const calvingNavigation = getCalvingWorkNavigation(item);
+    if (calvingNavigation) {
+      router.push(calvingNavigation as never);
+      return;
+    }
+
     if (
       item.workType === "pregnancy_check" ||
       item.workType === "calving" ||

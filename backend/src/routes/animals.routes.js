@@ -18,6 +18,7 @@ import {
   getAnimalHealthHistory,
   getAnimalRecords,
   getOfficialRecords,
+  exportOfficialRecordsCsv,
   getOfficialRecordDetail,
   getAnimalReproductionEligibility,
   getAnimalTimeline,
@@ -43,6 +44,7 @@ router.get(
 router.get("/farmer/:farmerId", protectedRoute, requireRole(["technician", "admin"]), getAnimalsByFarmer);
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/records", protectedRoute, getOfficialRecords);
+router.get("/records/export", protectedRoute, exportOfficialRecordsCsv);
 router.get("/archived", protectedRoute, getArchivedAnimals);
 router.get(
   "/:id/records/:recordKind/:recordId",

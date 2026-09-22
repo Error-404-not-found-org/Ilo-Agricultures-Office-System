@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  ActivityIndicator,
   Modal,
   FlatList,
   KeyboardAvoidingView,
@@ -24,6 +23,7 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { calculateTargetCalvingDate } from "@/lib/cattleCore";
 import {
   getPregnancyCheckReadiness,
@@ -434,10 +434,13 @@ export default function PregnancyCheckScreen() {
                 Breeding Attempt Reference
               </Text>
               {loadingHistory ? (
-                <ActivityIndicator
-                  color={isDark ? "#34d399" : "#00643B"}
-                  style={{ marginVertical: 16 }}
-                />
+                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[14px] p-4 flex-row items-center gap-3">
+                  <Skeleton shape="circle" height={40} />
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Skeleton width="60%" height={16} radius={4} />
+                    <Skeleton width="40%" height={12} radius={4} />
+                  </View>
+                </View>
               ) : validInseminations.length > 0 ? (
                 <TouchableOpacity
                   onPress={() => setShowInsemModal(true)}

@@ -61,7 +61,7 @@ export const buildPostpartumTestAnimals = ({ farmerId, now = new Date() }) => {
       ...shared,
       _id: new mongoose.Types.ObjectId(),
       animalId: `DEV-${POSTPARTUM_TEST_IDENTIFIERS.RECOVERING}`,
-      earTag: "DEV-PP-RECOVERING",
+      earTag: "OT-PP-01",
       lastCalvingDate: addDays(now, -10),
       activityLogs: [{
         event: "Development Seed",
@@ -73,7 +73,7 @@ export const buildPostpartumTestAnimals = ({ farmerId, now = new Date() }) => {
       ...shared,
       _id: new mongoose.Types.ObjectId(),
       animalId: `DEV-${POSTPARTUM_TEST_IDENTIFIERS.RECOVERY_COMPLETE}`,
-      earTag: "DEV-PP-RECOVERY-COMPLETE",
+      earTag: "OT-PP-02",
       lastCalvingDate: addDays(now, -(voluntaryWaitingPeriodDays + 5)),
       activityLogs: [{
         event: "Development Seed",
