@@ -2196,7 +2196,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
               <Button
                 variant="outline"
                 onPress={() =>
-                  router.push("/(farmer)/report-sickness" as never)
+                  router.push({
+                    pathname: "/(farmer)/report-sickness",
+                    params: { animalId: animal._id },
+                  } as never)
                 }
                 style={{ flex: 1, borderRadius: 14, minHeight: 46 }}
               >
