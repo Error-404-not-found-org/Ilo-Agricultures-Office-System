@@ -133,7 +133,7 @@ describe("previous AI contract", () => {
       getPreviousAIErrorMessage({
         response: { data: { code: "PREVIOUS_AI_TRACKING_SUPERSEDED" } },
       }),
-      "A newer reproductive event already defines the current cycle. Save this AI as History Only instead.",
+      "A more recent breeding record already exists for this animal. Please select 'Add to history only' instead.",
     );
   });
 
