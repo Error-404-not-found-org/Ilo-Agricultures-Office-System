@@ -60,16 +60,16 @@ test("only Clerk's banned-user code enters suspended access", () => {
 });
 
 test("development diagnostic reports structured Clerk fields without account identifiers", () => {
-  const error = Object.assign(new Error("User mariocabanig00@gmail.com banned"), {
+  const error = Object.assign(new Error("User farmer.test@example.com banned"), {
     name: "ClerkAPIResponseError",
     status: 403,
-    errors: [{ code: "user_banned", message: "User mariocabanig00@gmail.com banned", longMessage: "Contact mariocabanig00@gmail.com", meta: { token: "secret" } }],
+    errors: [{ code: "user_banned", message: "User farmer.test@example.com banned", longMessage: "Contact farmer.test@example.com", meta: { token: "secret" } }],
   });
   const result = getSafeClerkErrorDiagnostic(error);
   assert.equal(result.name, "ClerkAPIResponseError");
   assert.equal(result.status, 403);
   assert.equal(result.errors[0]?.code, "user_banned");
-  assert.equal(JSON.stringify(result).includes("mariocabanig00@gmail.com"), false);
+  assert.equal(JSON.stringify(result).includes("farmer.test@example.com"), false);
   assert.equal(JSON.stringify(result).includes("secret"), false);
 });
 
@@ -77,12 +77,12 @@ test("development diagnostic shows nested response codes without logging respons
   const result = getSafeClerkErrorDiagnostic({
     response: {
       status: 403,
-      data: { errors: [{ code: "user_banned", message: "User mariocabanig00@gmail.com banned" }], token: "secret" },
+      data: { errors: [{ code: "user_banned", message: "User farmer.test@example.com banned" }], token: "secret" },
     },
   });
   assert.equal(result.responseStatus, 403);
   assert.equal(result.responseErrors[0]?.code, "user_banned");
-  assert.equal(JSON.stringify(result).includes("mariocabanig00@gmail.com"), false);
+  assert.equal(JSON.stringify(result).includes("farmer.test@example.com"), false);
   assert.equal(JSON.stringify(result).includes("secret"), false);
 });
 
