@@ -98,6 +98,20 @@ describe("Landing staff role resolution", () => {
   const markStaffSignIn = () =>
     window.sessionStorage.setItem(STAFF_SIGN_IN_INTENT_KEY, "true");
 
+  it("keeps suspended staff on a blocked screen with sign out as the only action", async () => {
+    markStaffSignIn();
+    axiosInstance.post.mockRejectedValue({ response: { status: 403, data: { code: "ACCOUNT_SUSPENDED", retryable: false } } });
+
+    renderLanding();
+
+    expect(await screen.findByRole("heading", { name: "Account suspended" })).toBeInTheDocument();
+    expect(screen.getByText(/Municipal Agriculture Office/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try Again" })).not.toBeInTheDocument();
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
   it("signs a Farmer out after landing Staff Sign In and shows the Staff-only message", async () => {
     useUser.mockReturnValue({
       isLoaded: true,

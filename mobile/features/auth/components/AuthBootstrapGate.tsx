@@ -2,8 +2,8 @@ import { useAuth } from "@clerk/clerk-expo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useRootNavigationState, useSegments } from "expo-router";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ActivityIndicator, AppState, Text, TouchableOpacity, View } from "react-native";
 import type { AxiosInstance } from "axios";
 
 import {
@@ -16,7 +16,13 @@ import {
   useBootstrapUser,
 } from "@/features/auth/hooks/useBootstrapUser";
 import { getBootstrapErrorPresentation } from "@/features/auth/utils/bootstrapError";
+import { getBootstrapGateState } from "@/features/auth/utils/bootstrapGateState";
 import { signOutWithPushCleanup } from "@/lib/notifications";
+import {
+  getSuspendedAccount,
+  signOutFromSuspendedAccount,
+  subscribeSuspendedAccount,
+} from "@/features/auth/utils/suspendedAccount";
 
 interface AuthBootstrapGateProps {
   api: AxiosInstance;
@@ -51,6 +57,53 @@ export function AuthBootstrapGate({
     retryBootstrap,
   } = useBootstrapUser({ api, isSignedIn, userId });
   const [establishedOwnerId, setEstablishedOwnerId] = useState<string>();
+  const [signOutError, setSignOutError] = useState(false);
+  const isSuspended = useSyncExternalStore(
+    subscribeSuspendedAccount,
+    getSuspendedAccount,
+    getSuspendedAccount,
+  );
+  const appState = useRef(AppState.currentState);
+  const normalizedBootstrapError = bootstrapError
+    ? (bootstrapError as any)?.apiError || getApiErrorDetails(bootstrapError)
+    : undefined;
+  const gateState = getBootstrapGateState({
+    isSignedIn,
+    dbUserId: dbUser?._id,
+    establishedOwnerId,
+    isBootstrapLoading,
+    hasBootstrapError: Boolean(bootstrapError),
+    isTransientBootstrapError: normalizedBootstrapError
+      ? getBootstrapErrorPresentation(normalizedBootstrapError).primaryAction === "retry"
+      : false,
+    isSuspended,
+  });
+
+  useEffect(() => {
+    if (__DEV__ && isSuspended) console.info("[Auth diagnostic] Blocked account gate active", { isSignedIn });
+  }, [isSignedIn, isSuspended]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && appState.current !== "active" && isSignedIn && userId && !isSuspended) {
+        void retryBootstrap();
+      }
+      appState.current = nextState;
+    });
+    return () => subscription.remove();
+  }, [isSignedIn, isSuspended, retryBootstrap, userId]);
+
+  const handleSignOut = async () => {
+    try {
+      setSignOutError(false);
+      await signOutFromSuspendedAccount(
+        isSignedIn ? () => signOutWithPushCleanup(api, signOut) : async () => {},
+      );
+      router.replace("/(auth)");
+    } catch {
+      setSignOutError(true);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +140,7 @@ export function AuthBootstrapGate({
 
   useEffect(() => {
     if (!navigationState?.key) return;
+    if (isSuspended) return;
 
     const routeSegments = segments as string[];
     const inAuthGroup = routeSegments[0] === "(auth)";
@@ -97,7 +151,7 @@ export function AuthBootstrapGate({
     const isActuallySignedIn = isSignedIn && Boolean(userId);
 
     if (isActuallySignedIn) {
-      if (isBootstrapLoading || bootstrapError) return;
+      if (gateState !== "authenticated") return;
 
       if (dbUser) {
         if (!dbUser.isVerified) {
@@ -128,19 +182,45 @@ export function AuthBootstrapGate({
   }, [
     bootstrapError,
     dbUser,
-    isBootstrapLoading,
+    gateState,
     isLoaded,
     isSignedIn,
+    isSuspended,
     navigationState?.key,
     segments,
     userId,
   ]);
 
-  if (
-    isSignedIn &&
-    !bootstrapError &&
-    (isBootstrapLoading || !dbUser || establishedOwnerId !== dbUser._id)
-  ) {
+  if (gateState === "suspended") {
+    return (
+      <View
+        accessibilityRole="alert"
+        style={{ flex: 1, backgroundColor: colors.background, alignItems: "center", justifyContent: "center", padding: 24 }}
+      >
+        <MaterialCommunityIcons name="account-lock-outline" size={48} color="#b45309" />
+        <Text style={{ marginTop: 16, fontSize: 22, fontFamily: "Outfit_700Bold", textAlign: "center", color: isDark ? "#f8fafc" : "#1e293b" }}>
+          Account suspended
+        </Text>
+        <Text style={{ marginTop: 12, fontFamily: "Outfit_400Regular", textAlign: "center", color: isDark ? "#cbd5e1" : "#475569" }}>
+          Your BreedSmart account has been suspended. Please contact the Municipal Agriculture Office for assistance.
+        </Text>
+        {signOutError ? (
+          <Text style={{ marginTop: 12, textAlign: "center", color: "#b91c1c" }}>
+            Could not sign out. Please try again.
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => void handleSignOut()}
+          style={{ marginTop: 24, backgroundColor: "#00643B", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+        >
+          <Text style={{ color: "white", fontFamily: "Outfit_600SemiBold" }}>Sign out</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (gateState === "initial-loading") {
     return (
       <View
         style={{
@@ -164,12 +244,9 @@ export function AuthBootstrapGate({
     );
   }
 
-  if (isSignedIn && bootstrapError) {
-    const normalizedError =
-      (bootstrapError as any)?.apiError ||
-      getApiErrorDetails(bootstrapError);
+  if (gateState === "error") {
     const errorPresentation =
-      getBootstrapErrorPresentation(normalizedError);
+      getBootstrapErrorPresentation(normalizedBootstrapError!);
     const shouldRetry = errorPresentation.primaryAction === "retry";
 
     return (
@@ -249,5 +326,6 @@ export function AuthBootstrapGate({
     );
   }
 
+  // Foreground revalidation leaves the existing navigator and form state untouched.
   return children;
 }

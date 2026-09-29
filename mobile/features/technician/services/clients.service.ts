@@ -1,4 +1,4 @@
-import { AxiosInstance } from "axios";
+import type { AxiosInstance } from "axios";
 
 export interface UpdateFarmerPayload {
   name: string;
@@ -32,6 +32,11 @@ export const getAssignedFarmers = async (api: AxiosInstance) => {
 export const getFarmerDetail = async (api: AxiosInstance, farmerId: string) => {
   const response = await api.get(`/user/${farmerId}`);
   return response.data || {};
+};
+
+export const archiveFarmerProfile = async (api: AxiosInstance, farmerId: string) => {
+  const response = await api.patch(`/user/${farmerId}/technician-archive`);
+  return response.data;
 };
 
 export const updateFarmerProfile = async (

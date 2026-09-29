@@ -33,12 +33,13 @@ export const useBootstrapUser = ({
     },
     enabled: Boolean(isSignedIn && userId),
     retry: false,
+    refetchOnMount: "always",
   });
 
   return {
     dbUser: query.data?.user,
     bootstrapError: query.error,
-    isBootstrapLoading: query.isLoading,
+    isBootstrapLoading: query.isLoading || query.isFetching || !query.isFetchedAfterMount,
     retryBootstrap: query.refetch,
   };
 };

@@ -134,7 +134,7 @@ export function getAccountStatePresentation(user?: DispatchUser | null) {
     return { label: "Suspended", tone: "danger" } as const;
   }
   if (user.status === "on-leave") return { label: "On leave", tone: "warning" } as const;
-  if (!user.isVerified) return { label: "Verification pending", tone: "warning" } as const;
+  if (!user.isVerified) return { label: "Not connected", tone: "warning" } as const;
   return { label: "Active", tone: "success" } as const;
 }
 

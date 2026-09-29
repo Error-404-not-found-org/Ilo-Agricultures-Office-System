@@ -23,7 +23,7 @@ import {
 import axiosInstance from "../lib/axios";
 import { APP_DEEP_LINK_URL, APP_DOWNLOAD_URL } from "../config/appDistribution";
 import { resolveTechnicianWelcomeAccess } from "../config/onboardingBridge";
-import { getStaffAccessNavigationState } from "../config/staffAccess";
+import { classifyStaffBootstrapFailure, getStaffAccessNavigationState } from "../config/staffAccess";
 
 const hasClerkInvitationTicket = (search) =>
   Boolean(new URLSearchParams(search).get("__clerk_ticket"));
@@ -38,6 +38,8 @@ export default function TechnicianWelcome() {
   const hasInvitationTicket = hasClerkInvitationTicket(location.search);
   const displayState = !isLoaded
     ? "loading"
+    : accessState === "suspended"
+      ? "suspended"
     : accessState === "rejecting"
       ? "rejecting"
     : !isSignedIn
@@ -93,8 +95,13 @@ export default function TechnicianWelcome() {
         }
 
         await rejectStaffAccess(role);
-      } catch {
+      } catch (error) {
         if (cancelled) return;
+        const failure = classifyStaffBootstrapFailure(error);
+        if (failure.kind === "suspended") {
+          setAccessState("suspended");
+          return;
+        }
         await rejectStaffAccess();
       }
     };
@@ -104,6 +111,20 @@ export default function TechnicianWelcome() {
       cancelled = true;
     };
   }, [getToken, isLoaded, isSignedIn, navigate, signOut]);
+
+  if (displayState === "suspended") {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title="Account suspended"
+        description="Your BreedSmart account has been suspended. Please contact the Municipal Agriculture Office for assistance."
+      >
+        <button type="button" className="btn btn-block" onClick={() => void signOut(() => navigate("/", { replace: true }))}>
+          Sign out
+        </button>
+      </AuthShell>
+    );
+  }
 
   if (displayState === "signed-out") {
     return (

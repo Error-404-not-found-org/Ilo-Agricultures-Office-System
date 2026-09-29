@@ -78,6 +78,15 @@ describe("TechnicianWelcome", () => {
     useClerk.mockReturnValue({ signOut: mocks.signOut });
   });
 
+  it("keeps a suspended Technician on the blocked screen until sign out", async () => {
+    axiosInstance.post.mockRejectedValue({ response: { status: 403, data: { code: "ACCOUNT_SUSPENDED", retryable: false } } });
+    renderWelcome();
+    expect(await screen.findByRole("heading", { name: "Account suspended" })).toBeInTheDocument();
+    expect(screen.getByText(/Municipal Agriculture Office/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
   it("signs a Farmer out immediately and returns them to the public landing page", async () => {
     let finishSignOut;
     mocks.signOut.mockImplementation(

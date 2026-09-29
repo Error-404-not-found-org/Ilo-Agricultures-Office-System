@@ -17,7 +17,6 @@ import {
   MapPin,
   Shield,
   Clock,
-  UserCheck,
   Lock,
   Edit2,
   AlertTriangle,
@@ -86,7 +85,6 @@ export default function UserDetailScreen() {
     actionLoading,
     handleSuspend,
     handleReactivate,
-    handleVerify,
     handleResetPassword,
     handleUpdateRole,
     handleDelete,
@@ -327,8 +325,8 @@ export default function UserDetailScreen() {
             />
             <DetailRow
               icon={user.isVerified ? <CircleCheck size={18} color="#16a34a" /> : <CircleAlert size={18} color="#d97706" />}
-              label="Verification"
-              value={user.isVerified ? "Verified" : "Verification pending"}
+              label="App connection"
+              value={profileClaimState.label}
             />
             <DetailRow
               icon={<Clock size={18} color="#64748b" />}
@@ -607,18 +605,6 @@ export default function UserDetailScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Verify Account Action */}
-          {!user.isVerified && (
-            <TouchableOpacity
-              onPress={handleVerify}
-              disabled={actionLoading}
-              className="bg-blue-600 py-3.5 rounded-2xl flex-row justify-center items-center gap-2"
-            >
-              <UserCheck size={18} color="white" />
-              <Text className="text-white font-bold text-[15px]">Verify Account Credentials</Text>
-            </TouchableOpacity>
-          )}
-
           {/* Reset Password Action */}
           {user.clerkId ? (
             <TouchableOpacity
@@ -665,14 +651,14 @@ export default function UserDetailScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Soft Delete Account Action */}
+          {/* Archive preserves the profile and historical records. */}
           <TouchableOpacity
             onPress={() => setDeleteDialogVisible(true)}
             disabled={actionLoading}
             className="bg-red-50 dark:bg-red-950/20 py-3.5 rounded-2xl flex-row justify-center items-center gap-2 border border-red-100 dark:border-red-900/30"
           >
             <UserMinus size={18} color="#dc2626" />
-            <Text className="text-red-600 font-bold text-[15px]">Delete Account Profile</Text>
+            <Text className="text-red-600 font-bold text-[15px]">{user.role === "farmer" ? "Archive Farmer" : "Archive Technician"}</Text>
           </TouchableOpacity>
         </View>
 
@@ -724,11 +710,11 @@ export default function UserDetailScreen() {
         </View>
       </Modal>
 
-      {/* Custom Delete Dialog */}
+      {/* Archive confirmation */}
       <CustomDialog
         visible={deleteDialogVisible}
-        title="Confirm Deletion"
-        description={`Are you sure you want to delete ${user?.name || "this user"}? This will permanently deactivate them from system access.`}
+        title={user.role === "farmer" ? "Archive Farmer?" : "Archive Technician?"}
+        description="This profile will be removed from active lists. Its historical records will be preserved, and an Admin can restore it later."
         onClose={() => setDeleteDialogVisible(false)}
         icon={
           <View
@@ -746,7 +732,7 @@ export default function UserDetailScreen() {
         }
         actions={[
           {
-            text: "Delete",
+            text: user.role === "farmer" ? "Archive Farmer" : "Archive Technician",
             variant: "danger",
             onPress: () => {
               setDeleteDialogVisible(false);

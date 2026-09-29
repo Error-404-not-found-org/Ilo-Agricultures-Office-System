@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuth } from "@clerk/clerk-expo";
+import { handleSuspendedApiError } from "@/features/auth/utils/suspendedAccount";
 
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "https://api.breedsmartoton.site/api";
@@ -77,6 +78,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    handleSuspendedApiError(error);
     const method = error.config?.method?.toUpperCase() || "UNKNOWN";
     const url = error.config?.url || "UNKNOWN";
     error.apiError = getApiErrorDetails(error);

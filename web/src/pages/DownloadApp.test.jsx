@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useClerk } from "@clerk/clerk-react";
 import axiosInstance from "../lib/axios";
 import DownloadApp from "./DownloadApp";
 
@@ -15,6 +15,7 @@ vi.mock("../config/appDistribution", () => ({
 
 vi.mock("@clerk/clerk-react", () => ({
   useAuth: vi.fn(),
+  useClerk: vi.fn(),
   SignUp: (props) => (
     <div
       data-testid="clerk-farmer-invitation-sign-up"
@@ -54,6 +55,24 @@ describe("DownloadApp Farmer invitation acceptance", () => {
       isLoaded: true,
       isSignedIn: false,
     });
+    useClerk.mockReturnValue({ signOut: vi.fn().mockResolvedValue(undefined) });
+  });
+
+  it("blocks a suspended Farmer on the download page with sign out only", async () => {
+    useAuth.mockReturnValue({
+      getToken: vi.fn().mockResolvedValue("token-1"),
+      isLoaded: true,
+      isSignedIn: true,
+      userId: "clerk-farmer",
+      sessionId: "session-1",
+    });
+    axiosInstance.post.mockRejectedValue({ response: { status: 403, data: { code: "ACCOUNT_SUSPENDED", retryable: false } } });
+    renderDownload();
+    expect(await screen.findByRole("heading", { name: "Account suspended" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open BreedSmart App" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(useClerk().signOut).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the normal public download page for signed-out visitors without a ticket", () => {

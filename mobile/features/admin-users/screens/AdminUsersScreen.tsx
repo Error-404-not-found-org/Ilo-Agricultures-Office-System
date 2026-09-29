@@ -132,7 +132,6 @@ export default function AdminUsersScreen() {
     refetch,
     isRefetching,
     handleSuspendUser,
-    handleVerifyUser,
     handleRestoreUser,
     animalCountMap,
     techAssignedFarmersMap,
@@ -259,7 +258,7 @@ export default function AdminUsersScreen() {
           onPress={() => handleStatPress("suspended")}
         />
         <StatChip
-          label="Pending"
+          label="Not connected"
           count={userStats.pendingVerification}
           color="#ea580c"
           isActive={activeStatKey === "pending"}
@@ -453,19 +452,6 @@ export default function AdminUsersScreen() {
                     }
                   },
                 },
-                ...(!activeUserForDialog?.isVerified
-                  ? [
-                      {
-                        text: "Verify User",
-                        variant: "secondary" as const,
-                        onPress: () => {
-                          setDialogVisible(false);
-                          if (activeUserForDialog)
-                            handleVerifyUser(activeUserForDialog);
-                        },
-                      },
-                    ]
-                  : []),
                 ...(activeUserForDialog?.role === "technician"
                   ? [
                       {

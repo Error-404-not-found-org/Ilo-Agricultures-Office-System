@@ -292,29 +292,42 @@ test("query cache switching and Clear Cache preserve retained offline work", asy
     queryClient,
   } = queryModule.exports;
   storage = {
-    BREEDSMART_QUERY_CACHE_OWNER: "farmer-A",
     REACT_QUERY_OFFLINE_CACHE: "private-cache-A",
     OFFLINE_MUTATION_QUEUE: "retained-owner-work",
     OFFLINE_SYNC_HISTORY: "retained-owner-history",
     OFFLINE_ENTITY_ID_MAP: "retained-owner-id-map",
   };
   persisterRemovals = 0;
+  queryClient.clearCalls = 0;
+
+  assert.equal(await establishQueryCacheOwner({
+    ownerUserId: "farmer-A",
+    bootstrapQueryKey: ["mongodb-user", "clerk-A"],
+    bootstrapData: { user: { _id: "farmer-A" } },
+  }), true);
+  assert.equal(queryClient.clearCalls, 1);
+  assert.equal(storage.BREEDSMART_QUERY_CACHE_OWNER, "farmer-A");
+  assert.deepEqual(
+    queryClient.data.get(JSON.stringify(["mongodb-user", "clerk-A"])),
+    { user: { _id: "farmer-A" } },
+  );
 
   assert.equal(await establishQueryCacheOwner({
     ownerUserId: "farmer-A",
     bootstrapQueryKey: ["mongodb-user", "clerk-A"],
     bootstrapData: { user: { _id: "farmer-A" } },
   }), false);
-  assert.equal(queryClient.clearCalls, 0);
+  assert.equal(queryClient.clearCalls, 1);
 
   assert.equal(await establishQueryCacheOwner({
     ownerUserId: "technician-B",
     bootstrapQueryKey: ["mongodb-user", "clerk-B"],
     bootstrapData: { user: { _id: "technician-B" } },
   }), true);
-  assert.equal(queryClient.clearCalls, 1);
-  assert.equal(persisterRemovals, 1);
+  assert.equal(queryClient.clearCalls, 2);
+  assert.equal(persisterRemovals, 2);
   assert.equal(storage.BREEDSMART_QUERY_CACHE_OWNER, "technician-B");
+  assert.equal(queryClient.data.has(JSON.stringify(["mongodb-user", "clerk-A"])), false);
   assert.deepEqual(
     queryClient.data.get(JSON.stringify(["mongodb-user", "clerk-B"])),
     { user: { _id: "technician-B" } },

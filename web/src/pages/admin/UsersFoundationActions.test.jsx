@@ -70,7 +70,7 @@ const pagedResponse = (data) => ({
   },
 });
 
-function renderUsers(view = "table") {
+function renderUsers(view = "table", role = "technician") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -78,7 +78,7 @@ function renderUsers(view = "table") {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter
-        initialEntries={[`/admin/users?role=technician&view=${view}`]}
+        initialEntries={[`/admin/users?role=${role}&view=${view}`]}
       >
         <Users />
       </MemoryRouter>
@@ -102,6 +102,21 @@ describe("Admin Users search, account status, and actions", () => {
       return pagedResponse(users);
     });
     axiosInstance.post.mockResolvedValue({ data: { message: "Updated" } });
+  });
+
+  it("offers Archive Farmer with preservation confirmation in the active Farmer table", async () => {
+    const farmerUser = { _id: "farmer-1", name: "Maria Farmer", role: "farmer", status: "active" };
+    axiosInstance.get.mockImplementation(async () => pagedResponse([farmerUser]));
+    renderUsers("table", "farmer");
+    await screen.findByText("Maria Farmer");
+    const menu = document.querySelector('[role="menu"][aria-label="Actions for Maria Farmer"]');
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Archive Farmer", hidden: true }));
+    expect(screen.getByText("Archive Farmer?", { selector: "h3" })).toBeInTheDocument();
+    expect(screen.getByText(/historical records will be preserved/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Archive Farmer" }));
+    await waitFor(() => expect(axiosInstance.post).toHaveBeenCalledWith(
+      "/admin/delete-user", { id: "farmer-1" },
+    ));
   });
 
   it("places directory search below the Users header and preserves search", async () => {
@@ -187,11 +202,11 @@ describe("Admin Users search, account status, and actions", () => {
       const unverifiedMenu = document.querySelector(
         '[role="menu"][aria-label="Actions for Una Technician"]',
       );
-      expect(within(unverifiedMenu).getByRole("menuitem", {
+      expect(within(unverifiedMenu).queryByRole("menuitem", {
         name: "Verify",
         hidden: true,
       }))
-        .toBeInTheDocument();
+        .not.toBeInTheDocument();
       expect(within(unverifiedMenu).getByRole("menuitem", {
         name: "Suspend",
         hidden: true,

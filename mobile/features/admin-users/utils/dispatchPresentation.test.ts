@@ -84,7 +84,7 @@ test("presents claim state independently from account state", () => {
       isVerified: false,
       profileClaimStatus: "unclaimed",
     }),
-    { label: "Verification pending", tone: "warning" },
+    { label: "Not connected", tone: "warning" },
   );
 
   assert.deepEqual(getProfileClaimStatePresentation(readyTechnician), {

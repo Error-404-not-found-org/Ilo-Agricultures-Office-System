@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
-import { listUsers, deleteUser, suspendUser, reactivateUser, verifyUser, getArchivedUsers, restoreUser } from "../services/adminUsers.service";
+import { listUsers, deleteUser, suspendUser, reactivateUser, getArchivedUsers, restoreUser } from "../services/adminUsers.service";
 import { UserItem } from "../types/adminUsers.types";
 import {
   filterOperationalUsers,
@@ -242,26 +242,6 @@ export const useAdminUsers = (initialSearch: string = "") => {
     }
   }, [api, queryClient]);
 
-  const handleVerifyUser = useCallback(async (userItem: UserItem) => {
-    if (!isOperationalUser(userItem)) {
-      toast.error("This account is outside operational user management.");
-      return;
-    }
-
-    if (userItem.isVerified) {
-      toast.info("User is already verified.");
-      return;
-    }
-    try {
-      await verifyUser(api, userItem._id);
-      toast.success(`${userItem.name || "User"} verified.`);
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to verify user.");
-    }
-  }, [api, queryClient]);
-
   const handleRestoreUser = useCallback(async (userItem: UserItem) => {
     if (!isOperationalUser(userItem)) {
       toast.error("This account is outside operational user management.");
@@ -298,7 +278,6 @@ export const useAdminUsers = (initialSearch: string = "") => {
     isRefetching,
     handleUserPress,
     handleSuspendUser,
-    handleVerifyUser,
     handleRestoreUser,
     animalCountMap,
     techAssignedFarmersMap,

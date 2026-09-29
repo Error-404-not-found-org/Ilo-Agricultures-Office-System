@@ -71,11 +71,6 @@ export const reactivateUser = async (api: AxiosInstance, id: string) => {
   return res.data;
 };
 
-export const verifyUser = async (api: AxiosInstance, id: string) => {
-  const res = await api.post("/admin/verify-user", { id });
-  return res.data;
-};
-
 export const resetPassword = async (api: AxiosInstance, id: string) => {
   const res = await api.post("/admin/reset-password", { id });
   return res.data;

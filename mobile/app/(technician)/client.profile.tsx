@@ -4,6 +4,8 @@ import {
   ScrollView,
   Image,
   Linking,
+  Alert,
+  Pressable,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
@@ -16,10 +18,10 @@ import {
   Plus,
   Calendar,
   FileText,
+  Archive,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useEffect } from "react";
-import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
@@ -143,7 +145,7 @@ export default function ClientProfileScreen() {
 
   const [activeTab, setActiveTab] = useState<"Info" | "Animals">("Info");
 
-  const { clientDetailsQuery } = useTechnicianClients(id as string);
+  const { clientDetailsQuery, archiveClientMutation } = useTechnicianClients(id as string);
   const client = clientDetailsQuery.data;
   const loading = clientDetailsQuery.isLoading;
 
@@ -203,6 +205,7 @@ export default function ClientProfileScreen() {
   const hasRealClerkId =
     Boolean(client.clerkId) && !String(client.clerkId).startsWith("manual_");
   const isClaimed = client.profileClaimStatus === "claimed" || hasRealClerkId;
+  const canOfferArchive = client.canTechnicianArchive === true;
   const isClaimable =
     client.profileClaimStatus === "unclaimed" ||
     (client.registeredByTechnician && !client.email && !hasRealClerkId);
@@ -313,6 +316,31 @@ export default function ClientProfileScreen() {
         toast.error("Could not open maps.");
       });
     }
+  };
+
+  const confirmArchive = () => {
+    Alert.alert(
+      "Archive Farmer?",
+      "This Farmer will be removed from active lists, but the profile and any existing records will be preserved. An Admin can restore it later.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Archive Farmer",
+          onPress: async () => {
+            try {
+              await archiveClientMutation.mutateAsync(String(client._id));
+              toast.success("Farmer archived");
+              router.replace("/(technician)/technician.clients" as any);
+            } catch (error: any) {
+              Alert.alert(
+                "Farmer not archived",
+                error?.response?.data?.message || "This Farmer could not be archived. Please refresh and try again.",
+              );
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -1198,6 +1226,32 @@ export default function ClientProfileScreen() {
                   </View>
                 </View>
               </View>
+
+              {canOfferArchive && (
+                <Pressable
+                  onPress={confirmArchive}
+                  accessibilityRole="button"
+                  accessibilityLabel="Archive Farmer"
+                  disabled={archiveClientMutation.isPending}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                    borderRadius: 16,
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  <Archive size={17} color={colors.textPrimary} />
+                  <Text variant="bold" style={{ color: colors.textPrimary }}>
+                    Archive Farmer
+                  </Text>
+                </Pressable>
+              )}
 
               {/* Contact Details Card */}
               <Card

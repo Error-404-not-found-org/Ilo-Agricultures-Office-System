@@ -14,6 +14,7 @@ import {
 
 import PublicNavbar from "./landing/components/PublicNavbar";
 import StaffSigningInScreen from "../components/auth/StaffSigningInScreen";
+import AuthShell from "../components/auth/AuthShell";
 import LandingHero from "./landing/components/LandingHero";
 import ValueStrip from "./landing/components/ValueStrip";
 import HowItWorks from "./landing/components/HowItWorks";
@@ -158,9 +159,9 @@ export default function Landing() {
       } catch (error) {
         if (cancelled) return;
         const failure = classifyStaffBootstrapFailure(error);
-        if (failure.kind === "server-unavailable") {
+        if (failure.kind === "server-unavailable" || failure.kind === "suspended") {
           setIsHandlingStaffAccessFeedback(true);
-          setStaffAccessIssue(failure.message);
+          setStaffAccessIssue({ kind: failure.kind, ...failure.message });
           return;
         }
         await rejectStaffAccess(undefined, failure.message);
@@ -180,6 +181,28 @@ export default function Landing() {
     signOut,
     staffAccessRetry,
   ]);
+
+  if (staffAccessIssue?.kind === "suspended") {
+    return (
+      <AuthShell
+        context="BreedSmart Staff"
+        title="Account suspended"
+        description={staffAccessIssue.description}
+      >
+        <button
+          type="button"
+          className="btn btn-block"
+          onClick={() => void signOut(() => {
+            window.sessionStorage.removeItem(STAFF_SIGN_IN_INTENT_KEY);
+            setStaffAccessIssue(null);
+            navigate("/", { replace: true });
+          })}
+        >
+          Sign out
+        </button>
+      </AuthShell>
+    );
+  }
 
   if (staffAccessIssue) {
     return (

@@ -5,6 +5,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { toast } from "sonner-native";
 import { useApi } from "@/lib/api";
+import { getSafeClerkErrorDiagnostic, getSafeOAuthOutcomeDiagnostic, getSuspendedAccount, isClerkBannedError, setSuspendedAccount } from "@/features/auth/utils/suspendedAccount";
 
 // 1. Warm up browser (Required for Android)
 export const useWarmUpBrowser = () => {
@@ -39,11 +40,11 @@ function useSocialAuth() {
       
       console.log("👉 Auto-Generated Redirect URL:", redirectUrl);
 
-      const { createdSessionId, setActive, signIn, signUp } = await startOAuthFlow({
+      const outcome = await startOAuthFlow({
         redirectUrl: redirectUrl,
       });
-
-      console.log("👉 Session ID:", createdSessionId);
+      if (__DEV__) console.info("[Auth diagnostic] Social sign-in outcome:", getSafeOAuthOutcomeDiagnostic(outcome));
+      const { createdSessionId, setActive } = outcome;
 
       if (createdSessionId && setActive) {
         console.log("✅ Login Successful! Setting active...");
@@ -55,13 +56,18 @@ function useSocialAuth() {
           await api.post("/user/bootstrap");
           console.log("✅ User bootstrapped in MongoDB");
         } catch (syncErr) {
-          console.error("⚠️ Bootstrap failed:", syncErr);
+          if (__DEV__) console.info("[Auth diagnostic] Google bootstrap error:", getSafeClerkErrorDiagnostic(syncErr));
           throw new Error("Account setup failed. Please check your connection and try again.");
         }
       }
 
     } catch (err: any) {
-      console.error("OAuth error", err);
+      if (__DEV__) console.info("[Auth diagnostic] Social sign-in error:", getSafeClerkErrorDiagnostic(err));
+      if (isClerkBannedError(err)) {
+        setSuspendedAccount();
+        return;
+      }
+      if (getSuspendedAccount()) return;
       toast.error("Authentication Failed", {
         description: err?.errors?.[0]?.message || "There was an issue signing in with your account."
       });

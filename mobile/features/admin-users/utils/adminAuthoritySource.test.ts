@@ -40,10 +40,10 @@ test("direct Admin detail targets cannot reach any operational action", () => {
   const actionLabels = [
     "Suspend Account",
     "Reactivate Account",
-    "Verify Account Credentials",
     "Reset User Password",
     "Change Account Role",
-    "Delete Account Profile",
+    "Archive Farmer",
+    "Archive Technician",
   ];
 
   assert.ok(guardIndex >= 0);
@@ -55,6 +55,12 @@ test("direct Admin detail targets cannot reach any operational action", () => {
   assert.match(detailSource, /router\.replace\("\/\(admin\)\/\(tabs\)\/admin\.users"/);
   assert.match(detailSource, /OPERATIONAL_USER_ROLES\.map/);
   assert.match(detailHookSource, /if \(!canManageUser\(\)\) return/);
+});
+
+test("manual identity verification is absent from Admin surfaces", () => {
+  for (const source of [directorySource, directoryHookSource, detailSource, detailHookSource, serviceSource]) {
+    assert.doesNotMatch(source, /Verify Account Credentials|Verify User|\/admin\/verify-user/);
+  }
 });
 
 test("Admin self-profile remains Clerk-backed and separate", () => {

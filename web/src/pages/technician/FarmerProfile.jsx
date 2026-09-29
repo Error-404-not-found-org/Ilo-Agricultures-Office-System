@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AlertCircle,
   ArrowLeft,
+  Archive,
   Beef,
   CalendarDays,
   ChevronLeft,
@@ -28,6 +30,7 @@ import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
 import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
+import Modal from "../../components/ui/Modal";
 
 const ITEMS_PER_PAGE = 8;
 const REPRODUCTIVE_STATUSES = [
@@ -246,6 +249,7 @@ function DirectAction({ icon: Icon, title, description, onClick }) {
 export default function FarmerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [animalSearch, setAnimalSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -253,6 +257,21 @@ export default function FarmerProfile() {
   const [isRegisterAnimalOpen, setIsRegisterAnimalOpen] = useState(false);
   const [isAIServiceOpen, setIsAIServiceOpen] = useState(false);
   const [isHealthServiceOpen, setIsHealthServiceOpen] = useState(false);
+  const [isArchiveFarmerOpen, setIsArchiveFarmerOpen] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+
+  const archiveFarmerMutation = useMutation({
+    mutationFn: async () => (await axiosInstance.patch(`/user/${id}/technician-archive`)).data,
+    onSuccess: () => {
+      toast.success("Farmer archived");
+      queryClient.invalidateQueries({ queryKey: ["technician", "farmers"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      navigate("/technician/farmers");
+    },
+    onError: (error) => {
+      setArchiveError(error.response?.data?.message || "This Farmer could not be archived. Please refresh and try again.");
+    },
+  });
 
   const farmerQuery = useQuery({
     queryKey: ["technician", "farmer", id],
@@ -414,6 +433,18 @@ export default function FarmerProfile() {
                 >
                   <Pencil size={16} /> Edit Farmer
                 </button>
+                {farmer.canTechnicianArchive && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost flex-1 sm:flex-none"
+                      onClick={() => {
+                        setArchiveError("");
+                        setIsArchiveFarmerOpen(true);
+                      }}
+                    >
+                      <Archive size={16} /> Archive Farmer
+                    </button>
+                  )}
                 <button
                   type="button"
                   className="btn btn-primary flex-1 sm:flex-none"
@@ -713,6 +744,17 @@ export default function FarmerProfile() {
         onClose={() => setIsEditFarmerOpen(false)}
         onSuccess={() => farmerQuery.refetch()}
       />
+      <Modal
+        isOpen={isArchiveFarmerOpen}
+        onClose={() => setIsArchiveFarmerOpen(false)}
+        title="Archive Farmer?"
+        confirmText="Archive Farmer"
+        isConfirmLoading={archiveFarmerMutation.isPending}
+        onConfirm={() => archiveFarmerMutation.mutate()}
+      >
+        <p>This Farmer will be removed from active lists, but the profile and any existing records will be preserved. An Admin can restore it later.</p>
+        {archiveError && <p role="alert" className="mt-3 text-error">{archiveError}</p>}
+      </Modal>
       <RegisterLivestockModal
         isOpen={isRegisterAnimalOpen}
         preSelectedFarmer={farmer}
