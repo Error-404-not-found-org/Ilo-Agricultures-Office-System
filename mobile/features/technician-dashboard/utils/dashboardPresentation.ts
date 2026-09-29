@@ -1,6 +1,25 @@
 import { getTechnicianRequestStatusPresentation } from "../../technician-requests/utils/requestPresentation.ts";
+import { formatHealthAssistanceLabel } from "../../farmer-requests/utils/healthRequestInput.ts";
 
 const EMPTY_LOCATION_LABEL = "Location not provided";
+
+export function getTechnicianDashboardRequestServiceLabel(item: any): string {
+  const requestType = item?.serviceType || item?.requestType || item?.raw?.requestType;
+  if (item?.type === "health" && requestType) {
+    return formatHealthAssistanceLabel(requestType);
+  }
+
+  const fallback =
+    item?.type === "breeding_verification"
+      ? "Pregnancy Check"
+      : item?.type === "health"
+        ? "Health Assistance"
+        : "Artificial Insemination";
+
+  return String(requestType || fallback)
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
 
 function firstText(...values: unknown[]): string | undefined {
   return values

@@ -75,6 +75,13 @@ const toTitleCase = (str) => {
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
 
+const isScheduledHealthFarmVisit = (task) =>
+  String(task?.workflowType || "").toLowerCase() === "health" &&
+  String(task?.status || "").toLowerCase() === "scheduled" &&
+  (task?.handlingMethod || task?.raw?.handlingMethod) === "farm_visit" &&
+  Boolean(task?.schedule?.date || task?.scheduledDate) &&
+  Boolean(task?.schedule?.visitPeriod || task?.visitPeriod);
+
 const formatRecordDate = (value) => {
   if (!value) return "Not recorded";
   const date = new Date(value);
@@ -659,8 +666,10 @@ export default function WorkQueue({ embedded = false }) {
 
     if (
       String(task.workflowType || "").toLowerCase() === "health" &&
-      task.allowedAction === "VIEW_DETAILS" &&
-      !isTerminal
+      !isTerminal &&
+      (task.allowedAction === "VIEW_DETAILS" ||
+        (isScheduledHealthFarmVisit(task) &&
+          task.allowedAction === "START_SERVICE"))
     ) {
       setStartHealthServiceOnOpen(false);
       setSelectedTaskWrapper(task);
@@ -1072,11 +1081,9 @@ export default function WorkQueue({ embedded = false }) {
                         : timing.kind === "completed"
                           ? `Completed ${formatRecordDate(timing.date)}`
                           : `Due ${formatRelativeSchedule(timing.date)}`;
-                    const isHealthFarmVisitScheduled =
-                      task.workflowType === "Health" &&
-                      task.allowedAction === "START_SERVICE";
-                    const primaryActionLabel = isHealthFarmVisitScheduled
-                      ? "Record Health Assistance"
+                    const isScheduledHealthVisit = isScheduledHealthFarmVisit(task);
+                    const primaryActionLabel = isScheduledHealthVisit
+                      ? "View Scheduled Visit"
                       : task.actionLabel || getTaskPrimaryActionLabel(task);
                     const theme = getWorkItemTheme(
                       task,
@@ -1278,7 +1285,7 @@ export default function WorkQueue({ embedded = false }) {
                                   className="btn btn-primary btn-sm shadow-xs hover:shadow transition-all"
                                   disabled={actionDisabled}
                                   onClick={() =>
-                                    openTask(task, { startHealthService: true })
+                                    openTask(task, { startHealthService: !isScheduledHealthVisit })
                                   }
                                 >
                                   {primaryActionLabel}

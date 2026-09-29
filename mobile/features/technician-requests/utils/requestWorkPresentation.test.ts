@@ -243,6 +243,27 @@ test("State 5: Claimed Health with farm_visit handling method and scheduled date
   assert.equal(item.actionLabel, "Record Health Assistance");
 });
 
+test("today's Health Farm Visit stays actionable in the morning regardless of visit period", () => {
+  const morningInManila = new Date("2026-09-29T01:00:00.000Z");
+  for (const visitPeriod of ["morning", "afternoon"] as const) {
+    const item = normalizeTechnicianWorkItem({
+      id: `health-${visitPeriod}`,
+      workflowId: `health-${visitPeriod}`,
+      workflowType: "Health",
+      serviceType: "health",
+      status: "scheduled",
+      handlingMethod: "farm_visit",
+      scheduledDate: "2026-09-29",
+      schedule: { date: "2026-09-29", visitPeriod },
+      allowedAction: "START_SERVICE",
+    } as any, morningInManila);
+
+    assert.equal(item.statusLabel, "Scheduled Today");
+    assert.equal(item.actionLabel, "Record Health Assistance");
+    assert.match(item.timingLabel || "", new RegExp(visitPeriod, "i"));
+  }
+});
+
 test("lifecycle task timing separates reports, readiness, deadlines, and expected calving", () => {
   const now = new Date("2026-09-20T04:00:00.000Z");
   const task = (taskType: string, dueDate: string, extra = {}) =>

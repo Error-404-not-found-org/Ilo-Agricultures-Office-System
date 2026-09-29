@@ -17,6 +17,7 @@ import { hasTechnicianRequestAssignee } from "@/features/technician-requests/uti
 import {
   formatDashboardLocation,
   formatSentAt,
+  getTechnicianDashboardRequestServiceLabel,
   getTechnicianRequestBadge,
 } from "../utils/dashboardPresentation";
 import { TechnicianRequestSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
@@ -110,18 +111,7 @@ function RequestRow({ item, onPress, isUpdating }: any) {
   const { colors, isDark } = useTheme();
   const isHealth = item.type === "health";
   const isPregnancyCheck = item.type === "breeding_verification";
-  const serviceLabel = String(
-    item.serviceType ||
-      item.requestType ||
-      item.raw?.requestType ||
-      (isPregnancyCheck
-        ? "Pregnancy Check"
-        : isHealth
-          ? "Health Assistance"
-          : "Artificial Insemination"),
-  )
-    .replace(/[_-]/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  const serviceLabel = getTechnicianDashboardRequestServiceLabel(item);
   const location = formatDashboardLocation(
     item,
     item.locationLabel || item.location,

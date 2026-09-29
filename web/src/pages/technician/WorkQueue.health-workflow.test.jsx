@@ -221,37 +221,51 @@ describe("Work Queue owned Health workflow", () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
-  it("opens scheduled Health through the same request-linked action system", async () => {
-    renderQueue([
-      {
-        ...baseTask,
-        id: ids.health,
-        workflowId: ids.health,
-        workflowType: "Health",
-        type: "health",
-        taskType: "Health",
-        status: "scheduled",
-        displayStatus: "scheduled",
-        serviceType: "Health Assistance",
-        allowedAction: "START_SERVICE",
-        actionLabel: "Start Visit",
-        raw: { _id: ids.health, status: "scheduled" },
-      },
-    ]);
+  it.each(["morning", "afternoon"])(
+    "opens today's %s Health visit without starting it or showing generic details",
+    async (visitPeriod) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-29T01:00:00.000Z"));
+      try {
+        renderQueue([
+          {
+            ...baseTask,
+            id: ids.health,
+            workflowId: ids.health,
+            workflowType: "Health",
+            type: "health",
+            taskType: "Health",
+            status: "scheduled",
+            displayStatus: "scheduled",
+            serviceType: "Health Assistance",
+            handlingMethod: "farm_visit",
+            scheduledDate: "2026-09-29",
+            schedule: { date: "2026-09-29", visitPeriod },
+            timing: { kind: "scheduled_visit", date: "2026-09-29", visitPeriod },
+            allowedAction: "START_SERVICE",
+            actionLabel: "Start Visit",
+            raw: { _id: ids.health, status: "scheduled", handlingMethod: "farm_visit" },
+          },
+        ]);
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Record Health Assistance" }),
-    );
+        fireEvent.click(
+          await screen.findByRole("button", { name: "View Scheduled Visit" }),
+        );
 
-    const dialog = screen.getByRole("dialog", {
-      name: "Owned Health request",
-    });
-    expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
-    expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
-    expect(dialog.getAttribute("data-start-service")).toBe("true");
-    expect(mocks.patch).not.toHaveBeenCalled();
-    expect(mocks.post).not.toHaveBeenCalled();
-  });
+        const dialog = screen.getByRole("dialog", {
+          name: "Owned Health request",
+        });
+        expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
+        expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
+        expect(dialog.getAttribute("data-start-service")).toBe("false");
+        expect(screen.getAllByRole("dialog")).toHaveLength(1);
+        expect(mocks.patch).not.toHaveBeenCalled();
+        expect(mocks.post).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("opens a future scheduled Health visit as read-only details", async () => {
     renderQueue([

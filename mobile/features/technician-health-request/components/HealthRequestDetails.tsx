@@ -92,8 +92,12 @@ import {
   TECHNICIAN_RECORDS_TARGET,
   runConfirmedHealthResponseSubmission,
 } from "../utils/healthResponseSubmission";
+import {
+  completeHealthScheduleTransition,
+  type HealthScheduleMode,
+} from "../utils/healthScheduleTransition";
 
-type ScheduleMode = "accept" | "schedule" | "reschedule";
+type ScheduleMode = HealthScheduleMode;
 
 interface HealthRequestDetailsProps {
   request: any;
@@ -495,8 +499,15 @@ export function HealthRequestDetails({
           : "Health request accepted and scheduled.",
       );
       setScheduleVisible(false);
-      await invalidateHealthWorkflow();
-      await onRefresh();
+      await completeHealthScheduleTransition(scheduleMode, {
+        invalidate: invalidateHealthWorkflow,
+        refresh: onRefresh,
+        navigateToMyWork: () =>
+          router.replace({
+            pathname: "/(technician)/(tabs)/technician.requests",
+            params: { section: "myWork" },
+          }),
+      });
     } catch (error: any) {
       setScheduleError(
         getErrorMessage(error, "The Health visit could not be scheduled."),
@@ -759,7 +770,6 @@ export function HealthRequestDetails({
           "The Health visit could not be started.",
         );
         setActionNotice(message);
-        toast.error(message);
       } finally {
         setUpdating(false);
       }
