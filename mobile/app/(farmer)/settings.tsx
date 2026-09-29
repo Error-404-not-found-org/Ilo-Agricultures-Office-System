@@ -9,8 +9,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from '../../contexts/TranslationContext';
 import { useTheme } from '@/lib/theme';
 import * as Updates from 'expo-updates';
+import * as Application from 'expo-application';
 import { AppPageHeader } from '@/components/AppPageHeader';
 import { clearDownloadableAppCache } from '@/lib/queryClient';
+import { getUpToDateMessage } from '@/features/update/utils/installedVersion';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -116,11 +118,11 @@ export default function SettingsScreen() {
         toast.success("Update installed! Restarting...");
         await Updates.reloadAsync();
       } else {
-        toast.success(`${t('upToDate')} (v1.0.4)`);
+        toast.success(getUpToDateMessage(t('upToDate'), Application.nativeApplicationVersion));
       }
     } catch (e) {
       toast.dismiss();
-      toast.success(`${t('upToDate')} (v1.0.4)`);
+      toast.error('Could not check for updates. Please try again later.');
     } finally {
       setCheckingUpdates(false);
     }

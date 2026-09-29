@@ -1,9 +1,9 @@
 import axios from "axios";
 import { useAuth } from "@clerk/clerk-expo";
 import { handleSuspendedApiError } from "@/features/auth/utils/suspendedAccount";
+import { requireApiUrl } from "./requiredApiUrl";
 
-const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "https://api.breedsmartoton.site/api";
+const API_URL = requireApiUrl(process.env.EXPO_PUBLIC_API_URL);
 
 let getTokenRef: ((options?: any) => Promise<string | null>) | null = null;
 

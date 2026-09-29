@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "channel": "development",
       "env": {
         "APP_VARIANT": "development"
@@ -15,13 +16,9 @@
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
+      "environment": "preview",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "APP_VARIANT": "development",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dXAtcHVnLTQ2LmNsZXJrLmFjY291bnRzLmRldiQ",
-        "EXPO_PUBLIC_API_URL": "https://summational-excludable-reagan.ngrok-free.dev/api"
       },
       "channel": "preview"
     },
@@ -29,12 +26,9 @@
     "production-apk": {
       "distribution": "internal",
       "autoIncrement": true,
+      "environment": "production",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYnJlZWRzbWFydG90b24uc2l0ZSQ",
-        "EXPO_PUBLIC_API_URL": "https://api.breedsmartoton.site/api"
       },
       "channel": "production"
     },
@@ -42,10 +36,7 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYnJlZWRzbWFydG90b24uc2l0ZSQ",
-        "EXPO_PUBLIC_API_URL": "https://api.breedsmartoton.site/api"
-      }
+      "environment": "production"
     }
   },
 
