@@ -6,12 +6,12 @@ import {
   getUserById,
   updateUser,
   getMe,
-  markVerified,
   resendVerificationCode,
   getBreedingMilestones,
   getMyActivityFeed,
   updatePushToken,
   deleteUser,
+  archiveFarmerByTechnician,
   restoreUser,
   updateFarmerProfileByTechnician,
   getArchivedUsers,
@@ -66,10 +66,10 @@ router.delete(
   cancelFarmerAppInvitationController,
 );
 router.patch("/:id/technician-update", protectedRoute, requireRole(["technician", "admin"]), updateFarmerProfileByTechnician);
+router.patch("/:id/technician-archive", protectedRoute, requireRole(["technician"]), archiveFarmerByTechnician);
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);
 router.delete("/:id", protectedRoute, deleteUser);
 router.post("/:id/restore", protectedRoute, restoreUser);
-router.post("/mark-verified", protectedRoute, markVerified);
 
 export default router;

@@ -877,7 +877,6 @@ export const walkInHealthRequest = async (req, res) => {
         inviteExistingUnclaimed: false,
         allowClaimedExisting: true,
         redirectUrl: getFarmerInvitationRedirectUrl(),
-        isVerified: true,
       });
       farmer = farmerResolution.farmer;
     }

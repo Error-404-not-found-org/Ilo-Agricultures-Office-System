@@ -150,6 +150,27 @@ test("Request reliability: account resolution failures stop protected mutations"
   assert.equal(nextCalled, false);
 });
 
+test("Request reliability: suspended account resolution preserves the blocked-account code", async () => {
+  const req = {
+    auth: { userId: "clerk-1" },
+    userResolutionError: Object.assign(new Error("Account has been suspended."), {
+      status: 403,
+      code: "ACCOUNT_SUSPENDED",
+      retryable: false,
+    }),
+  };
+  const recorder = createResponseRecorder();
+  let nextCalled = false;
+  await protectedRoute(req, recorder.response, () => { nextCalled = true; });
+  assert.equal(recorder.statusCode, 403);
+  assert.deepEqual(recorder.body, {
+    message: "Account has been suspended.",
+    code: "ACCOUNT_SUSPENDED",
+    retryable: false,
+  });
+  assert.equal(nextCalled, false);
+});
+
 test("Request reliability: cancellation responses have durable schema fields", () => {
   for (const model of [Insemination, HealthRequest]) {
     assert.ok(model.schema.path("cancellationResponseReason"));

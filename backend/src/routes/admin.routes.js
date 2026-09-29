@@ -24,7 +24,6 @@ import {
   exportDatabaseBackup,
   suspendUser,
   reactivateUser,
-  verifyUser,
   resetPassword,
   updateRole,
   getBarangaysInsightsList,
@@ -53,7 +52,6 @@ router.post("/sync-metadata", syncUserMetadata);
 router.post("/delete-user", deleteUser);
 router.post("/suspend-user", suspendUser);
 router.post("/reactivate-user", reactivateUser);
-router.post("/verify-user", verifyUser);
 router.post("/reset-password", resetPassword);
 router.post("/update-role", updateRole);
 router.get("/stats", getDashboardStats);

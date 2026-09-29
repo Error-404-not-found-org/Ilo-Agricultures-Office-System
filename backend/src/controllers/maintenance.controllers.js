@@ -76,6 +76,15 @@ export const getCleanupSurvey = async (req, res) => {
 
 export const executeCleanup = async (req, res) => {
     const { orphanAnimalIds, inactiveFarmerIds, cleanupCloudinary } = req.body;
+
+    // The survey's inactivity check is not a permanent-removal authorization.
+    // Farmer profiles must never be hard-deleted through this maintenance route.
+    if (Array.isArray(inactiveFarmerIds) && inactiveFarmerIds.length > 0) {
+        return res.status(400).json({
+            message: "Farmer removal is not supported by maintenance cleanup.",
+            code: "FARMER_REMOVAL_NOT_SUPPORTED",
+        });
+    }
     
     try {
         let animalsDeleted = 0;
@@ -85,11 +94,6 @@ export const executeCleanup = async (req, res) => {
         if (orphanAnimalIds && orphanAnimalIds.length > 0) {
             const result = await Animal.deleteMany({ _id: { $in: orphanAnimalIds } });
             animalsDeleted = result.deletedCount;
-        }
-
-        if (inactiveFarmerIds && inactiveFarmerIds.length > 0) {
-            const result = await User.deleteMany({ _id: { $in: inactiveFarmerIds } });
-            farmersDeleted = result.deletedCount;
         }
 
         // --- CLOUDINARY ORPHAN CLEANUP ---

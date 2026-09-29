@@ -1542,7 +1542,6 @@ export const walkInInsemination = async (req, res) => {
         inviteExistingUnclaimed: false,
         allowClaimedExisting: true,
         redirectUrl: getFarmerInvitationRedirectUrl(),
-        isVerified: true,
       });
       farmer = farmerResolution.farmer;
     }
@@ -1960,7 +1959,6 @@ export const registerFarmer = async (req, res) => {
       inviteExistingUnclaimed: true,
       allowClaimedExisting: false,
       redirectUrl: getFarmerInvitationRedirectUrl(),
-      isVerified: false,
     });
 
     res.status(resolution.reused ? 200 : 201).json({
@@ -2586,23 +2584,6 @@ export const getDashboardRegistry = async (req, res) => {
     res.status(200).json(formatted);
   } catch (error) {
     res.status(500).json({ message: "Error fetching registry" });
-  }
-};
-
-export const toggleFarmerVerification = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const farmer = await User.findById(id);
-    if (!farmer || farmer.role !== "farmer")
-      return res.status(404).json({ message: "Farmer not found" });
-    farmer.isVerified = !farmer.isVerified;
-    await farmer.save();
-    res.status(200).json({
-      message: `Farmer ${farmer.isVerified ? "Verified" : "Unverified"} successfully`,
-      isVerified: farmer.isVerified,
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to update verification status" });
   }
 };
 

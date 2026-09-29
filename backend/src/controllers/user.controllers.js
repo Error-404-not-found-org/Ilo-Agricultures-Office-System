@@ -56,10 +56,16 @@ import {
 import {
   cancelFarmerAppInvitation,
   deriveFarmerInvitationStatus,
+  hasRealClerkLink,
   loadInvitableFarmer,
   resendFarmerAppInvitation,
   sendFarmerAppInvitation,
 } from "../services/farmer-app-invitation.service.js";
+import { archiveFarmerAsTechnician } from "../services/technician-farmer-archive.service.js";
+import { archiveFarmerAsAdmin } from "../services/admin-farmer-archive.service.js";
+import { accountStatusClerkUsers } from "../services/account-status-clerk.service.js";
+import { AppError } from "../utils/app-error.js";
+import { linkFarmerProfileByPhone } from "../services/phone-farmer-link.service.js";
 import {
   clearPushTokenForUser,
   registerPushTokenForUser,
@@ -1226,6 +1232,11 @@ export const toTechnicianFarmerDirectoryEntry = (farmer) => {
     isVerified: source.isVerified,
     createdAt: source.createdAt,
     appAccountStatus: getFarmerAppAccountStatus(source),
+    canTechnicianArchive:
+      source.role === "farmer" &&
+      !source.deletedAt &&
+      source.profileClaimStatus === "unclaimed" &&
+      !hasRealClerkLink(source),
     animalsCount: source.animalsCount || 0,
     activeCount: source.activeCount || 0,
     nextVisit: source.nextVisit || null,
@@ -1234,6 +1245,7 @@ export const toTechnicianFarmerDirectoryEntry = (farmer) => {
 
 export const presentUserDetailForRequester = ({ requester, target }) => {
   const rawUser = target?.toObject ? target.toObject() : { ...(target || {}) };
+  delete rawUser.farmerClaimReservation;
   if (rawUser.farmerAppInvitation?.clerkInvitationId) {
     rawUser.farmerAppInvitation = { ...rawUser.farmerAppInvitation };
     delete rawUser.farmerAppInvitation.clerkInvitationId;
@@ -1402,8 +1414,8 @@ export const getUsers = async (req, res) => {
 
       query.$and = [...(query.$and || []), accountStatusFilter];
     }
-    if (status === "active") query.isVerified = true;
-    if (status === "inactive") query.isVerified = { $ne: true };
+    if (status === "active") query.status = { $in: ["active", "on-site"] };
+    if (status === "inactive") query.status = { $in: ["on-leave", "suspended"] };
 
     let selectFields = "-password -pushToken";
     if (req.user.role === "farmer") {
@@ -1490,28 +1502,33 @@ export const deleteUser = async (req, res) => {
 
     assertAdmin(req.user);
 
-    const user = await User.findById(id);
+    const archiveLookup = User.findById(id);
+    const user = await (archiveLookup.select
+      ? archiveLookup.select("+farmerClaimReservation +farmerAppInvitation.clerkInvitationId")
+      : archiveLookup);
     if (!user || user.deletedAt) {
       return res.status(404).json({ message: "User not found" });
     }
 
     assertOperationallyManageableUser(user);
 
-    // Attempt to suspend/deactivate Clerk user
-    if (user.clerkId) {
-      try {
-        await clerkClient.users.banUser(user.clerkId);
-        console.log(`[Clerk Deactivation] Banned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        console.error("Error suspending user in Clerk:", clerkErr);
+    if (user.role === "farmer") {
+      await archiveFarmerAsAdmin({ farmer: user, actorId: req.user._id });
+    } else {
+      // Preserve the existing non-Farmer archive path.
+      if (user.clerkId) {
+        try {
+          await accountStatusClerkUsers.banUser(user.clerkId);
+          console.log(`[Clerk Deactivation] Banned user: ${user.clerkId}`);
+        } catch (clerkErr) {
+          console.error("Error suspending user in Clerk:", clerkErr);
+        }
       }
+      user.deletedAt = new Date();
+      user.deactivatedBy = req.user._id;
+      user.pushToken = undefined;
+      await user.save();
     }
-
-    // Soft delete the user, keeping associated data intact
-    user.deletedAt = new Date();
-    user.deactivatedBy = req.user._id;
-    user.pushToken = undefined;
-    await user.save();
 
     return res.status(200).json({ message: "User successfully deactivated" });
   } catch (error) {
@@ -1571,75 +1588,22 @@ export const getArchivedUsers = async (req, res) => {
 };
 
 export const syncUser = async (req, res) => {
+  // protectedRoute has already resolved the canonical Clerk-to-User identity.
+  res.status(200).json({ message: "User synced", user: req.user });
+};
+
+export const archiveFarmerByTechnician = async (req, res) => {
   try {
-    const { userId } = req.auth;
-    const user = await clerkClient.users.getUser(userId);
-
-    const emailObj = user.emailAddresses?.[0];
-    const email = emailObj?.emailAddress;
-    const username = user.username;
-
-    // In free tier, users might sign up with just a Username instead of Email
-    const name =
-      `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-      username ||
-      "New User";
-    const isVerified =
-      emailObj?.verification?.status === "verified" || !!username;
-
-    // 1. Search for existing sync
-    let dbUser = await User.findOne({ clerkId: userId });
-
-    // 2. Search by Email
-    if (!dbUser && email) {
-      dbUser = await User.findOne({ email });
-    }
-
-    // 3. Search by Name (Offline Profiles Only)
-    if (!dbUser && name && name !== "New User") {
-      dbUser = await User.findOne({
-        name: { $regex: new RegExp(`^${name}$`, "i") },
-        clerkId: { $exists: false }, // Target offline profiles
-      });
-    }
-
-    if (dbUser) {
-      // Merge Account
-      dbUser.clerkId = userId;
-      if (email && !dbUser.email) dbUser.email = email;
-      dbUser.imageUrl = user.imageUrl || dbUser.imageUrl;
-      dbUser.isVerified = true;
-      dbUser.lastLogin = new Date();
-      await dbUser.save();
-    } else {
-      // Create Brand New Account
-      const role =
-        email &&
-        process.env.ADMIN_EMAIL &&
-        email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
-          ? "admin"
-          : "farmer";
-      dbUser = await User.create({
-        clerkId: userId,
-        name: name,
-        email: email || undefined,
-        imageUrl: user.imageUrl || "",
-        isVerified: isVerified,
-        role: role,
-        lastLogin: new Date(),
-      });
-    }
-
-    // Sync role from metadata if present
-    if (user.publicMetadata?.role && dbUser.role !== user.publicMetadata.role) {
-      dbUser.role = user.publicMetadata.role;
-      await dbUser.save();
-    }
-
-    res.status(200).json({ message: "User synced", user: dbUser });
+    const farmer = await archiveFarmerAsTechnician({
+      farmerId: req.params.id,
+      technicianId: req.user._id,
+    });
+    return res.status(200).json({ message: "Farmer archived", id: farmer._id });
   } catch (error) {
-    console.error("Error syncing user:", error);
-    res.status(500).json({ message: "Failed to sync user" });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to archive Farmer.",
+      code: error.code,
+    });
   }
 };
 
@@ -2189,39 +2153,6 @@ export const updateUser = async (req, res) => {
   }
 };
 
-export const markVerified = async (req, res) => {
-  try {
-    const { userId } = req.auth;
-
-    const user = await User.findOne({ clerkId: userId });
-    if (!user) return res.status(404).json({ message: "User not found." });
-
-    const clerkUser = await clerkClient.users.getUser(userId);
-
-    // 1. Update Clerk Metadata
-    await clerkClient.users.updateUser(userId, {
-      publicMetadata: {
-        ...(clerkUser.publicMetadata || {}),
-        isVerified: true,
-      },
-    });
-
-    user.isVerified = true;
-    await user.save();
-
-    req.app.get("io").emit("dashboardUpdate", {
-      type: "FARMER_VERIFIED",
-      message: `Farmer ${user.name} is now verified.`,
-      userId: user._id,
-    });
-
-    res.status(200).json({ message: "User successfully verified.", user });
-  } catch (error) {
-    console.error("[markVerified ERROR]", error.message);
-    res.status(500).json({ message: "Failed to verify user." });
-  }
-};
-
 export const resendVerificationCode = async (req, res) => {
   try {
     const { userId } = req.auth;
@@ -2649,19 +2580,40 @@ export const restoreUser = async (req, res) => {
 
     assertOperationallyManageableUser(user);
 
-    // Unban User in Clerk
-    if (user.clerkId) {
+    // Restoring a profile never reactivates a separately suspended account.
+    const shouldUnban = hasRealClerkLink(user) && user.status !== "suspended";
+    if (shouldUnban) {
       try {
-        await clerkClient.users.unbanUser(user.clerkId);
-        console.log(`[Clerk Restoration] Unbanned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        console.error("Error unbanning user in Clerk:", clerkErr);
+        await accountStatusClerkUsers.unbanUser(user.clerkId);
+      } catch {
+        throw new AppError("Could not restore account access in Clerk.", {
+          status: 502, code: "CLERK_RESTORE_FAILED",
+        });
       }
     }
 
+    const previousDeletedAt = user.deletedAt;
+    const previousDeactivatedBy = user.deactivatedBy;
     user.deletedAt = null;
     user.deactivatedBy = undefined;
-    await user.save();
+    try {
+      await user.save();
+    } catch {
+      user.deletedAt = previousDeletedAt;
+      user.deactivatedBy = previousDeactivatedBy;
+      if (shouldUnban) {
+        try {
+          await accountStatusClerkUsers.banUser(user.clerkId);
+        } catch {
+          throw new AppError("Restore needs account-access reconciliation. Contact an Admin.", {
+            status: 503, code: "FARMER_RESTORE_RECONCILIATION_REQUIRED",
+          });
+        }
+      }
+      throw new AppError("Profile restore could not be saved.", {
+        status: 500, code: "PROFILE_RESTORE_SAVE_FAILED",
+      });
+    }
 
     res.status(200).json({ message: "User successfully restored", data: user });
   } catch (error) {
@@ -2858,7 +2810,7 @@ export const verifyPhoneOtp = async (req, res) => {
       return res.status(status).json({ message, code: assessment.code });
     }
 
-    const matchingPhoneUsers = await User.find({
+    const matchingPhoneLookup = User.find({
       _id: { $ne: verificationUser._id },
       role: "farmer",
       deletedAt: null,
@@ -2867,6 +2819,9 @@ export const verifyPhoneOtp = async (req, res) => {
         { normalizedPhoneNumber: phone.normalized },
       ],
     });
+    const matchingPhoneUsers = await (matchingPhoneLookup.select
+      ? matchingPhoneLookup.select("+farmerAppInvitation.clerkInvitationId")
+      : matchingPhoneLookup);
 
     const unclaimedProfiles = matchingPhoneUsers.filter((user) => {
       const hasRealClerkId =
@@ -2917,46 +2872,17 @@ export const verifyPhoneOtp = async (req, res) => {
 
       const currentUser = verificationUser;
       const clerkId = currentUser.clerkId;
-      const email = currentUser.email;
-      const imageUrl = currentUser.imageUrl;
-
-      currentUser.clerkId = undefined;
-      currentUser.deletedAt = new Date();
-      currentUser.deactivatedBy = currentUser._id;
-      currentUser.phoneVerification.otpHash = undefined;
-      currentUser.phoneVerification.otpExpiresAt = null;
-      await currentUser.save();
-
-      existingProfile.clerkId = clerkId;
-      if (email && !existingProfile.email) existingProfile.email = email;
-      existingProfile.imageUrl = imageUrl || existingProfile.imageUrl;
-      existingProfile.phoneNumber = phone.local;
-      existingProfile.normalizedPhoneNumber = phone.normalized;
-      if (existingProfile.address) existingProfile.address.phoneNumber = phone.local;
-      existingProfile.isVerified = true;
-      existingProfile.status = "active";
-      existingProfile.profileClaimStatus = "claimed";
-      existingProfile.profileClaimedAt = new Date();
-      existingProfile.profileClaimedByClerkId = clerkId || "";
-      existingProfile.phoneVerification = {
-        ...(existingProfile.phoneVerification?.toObject?.() ||
-          existingProfile.phoneVerification ||
-          {}),
-        pendingPhoneNumber: "",
-        pendingNormalizedPhoneNumber: "",
-        otpHash: undefined,
-        otpExpiresAt: null,
-        isVerified: true,
-        verifiedAt: new Date(),
-        failedAttempts: 0,
-      };
-      await existingProfile.save();
+      const linkedProfile = await linkFarmerProfileByPhone({
+        sourceUser: currentUser,
+        targetFarmer: existingProfile,
+        phone,
+      });
 
       await createAuditLog({
         entityType: "User",
-        entityId: existingProfile._id,
+        entityId: linkedProfile._id,
         action: "claim_profile",
-        actorId: existingProfile._id,
+        actorId: linkedProfile._id,
         before: {
           profileClaimStatus: "unclaimed",
           placeholderUserId: currentUser._id,
@@ -2974,7 +2900,7 @@ export const verifyPhoneOtp = async (req, res) => {
           phoneNumber: maskPhoneNumber(phone.local),
           isVerified: true,
           linkedExistingProfile: true,
-          user: buildSafeUserPayload(existingProfile),
+          user: buildSafeUserPayload(linkedProfile),
         },
       });
     }
@@ -3004,7 +2930,7 @@ export const verifyPhoneOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("[verifyPhoneOtp ERROR]", error.message);
-    res.status(error.statusCode || 400).json({
+    res.status(error.status || error.statusCode || 400).json({
       message: error.message || "Invalid or expired OTP code.",
       code: error.code || "OTP_VERIFY_FAILED",
     });

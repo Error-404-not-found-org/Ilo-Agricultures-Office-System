@@ -113,6 +113,17 @@ const FarmLocationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const FarmerClaimReservationSchema = new mongoose.Schema(
+  {
+    token: { type: String },
+    phase: { type: String, enum: ["reserved", "committing", "uncertain"] },
+    sourceUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    startedAt: { type: Date },
+    expiresAt: { type: Date },
+  },
+  { _id: false },
+);
+
 const userSchema = new mongoose.Schema(
   {
     clerkId: {
@@ -165,6 +176,10 @@ const userSchema = new mongoose.Schema(
     profileClaimedByClerkId: {
       type: String,
       default: "",
+    },
+    farmerClaimReservation: {
+      type: FarmerClaimReservationSchema,
+      select: false,
     },
     farmerAppInvitation: {
       clerkInvitationId: { type: String, trim: true, select: false },
@@ -305,6 +320,7 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
     toJSON: {
       transform(_document, returned) {
+        delete returned.farmerClaimReservation;
         if (returned.farmerAppInvitation) {
           delete returned.farmerAppInvitation.clerkInvitationId;
         }

@@ -59,12 +59,13 @@ export const classifyFarmerProfile = (farmer) => {
 const findByEmail = (email) => {
   if (!email) return null;
   const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return User.findOne({
+  const lookup = User.findOne({
     $or: [
       { normalizedEmail: email },
       { email: { $regex: new RegExp(`^${escaped}$`, "i") } },
     ],
   });
+  return lookup.select?.("+farmerAppInvitation.clerkInvitationId") ?? lookup;
 };
 
 const findByPhone = ({ local, normalized }) => {
@@ -74,7 +75,8 @@ const findByPhone = ({ local, normalized }) => {
     local ? { phoneNumber: local } : null,
     normalized ? { phoneNumber: normalized } : null,
   ].filter(Boolean);
-  return User.findOne({ $or: candidates });
+  const lookup = User.findOne({ $or: candidates });
+  return lookup.select?.("+farmerAppInvitation.clerkInvitationId") ?? lookup;
 };
 
 export const resolveFarmerIdentity = async ({ email, phoneNumber }) => {
@@ -142,7 +144,6 @@ export const resolveOrCreateAssistedFarmer = async ({
   invitationMode = "none",
   inviteExistingUnclaimed = false,
   allowClaimedExisting = false,
-  isVerified = false,
 }) => {
   const identity = await resolveFarmerIdentity({ email, phoneNumber });
   let shouldAttachInvitedEmail = false;
@@ -195,6 +196,7 @@ export const resolveOrCreateAssistedFarmer = async ({
         try {
           invitation = await resendFarmerAppInvitation({
             farmer: identity.farmer,
+            ...(shouldAttachInvitedEmail ? { previousEmail: previousEmail || "" } : {}),
           });
         } catch (error) {
           identity.farmer.email = previousEmail;
@@ -265,7 +267,7 @@ export const resolveOrCreateAssistedFarmer = async ({
       imageUrl,
       role: "farmer",
       status: "active",
-      isVerified,
+      isVerified: false,
       registeredByTechnician: true,
       profileClaimStatus: "unclaimed",
       ...(invitation ? { farmerAppInvitation: invitation } : {}),

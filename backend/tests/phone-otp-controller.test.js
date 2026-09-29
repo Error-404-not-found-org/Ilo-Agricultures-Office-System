@@ -246,6 +246,14 @@ test("phone OTP: local verification preserves eligible unclaimed Farmer profile 
   existingProfile.save = mock.fn(async () => existingProfile);
 
   mockUserLookup(currentUser);
+  mock.method(User, "findOneAndUpdate", async (_filter, update) => {
+    if (update.$set?.farmerClaimReservation) {
+      existingProfile.farmerClaimReservation = update.$set.farmerClaimReservation;
+      return existingProfile;
+    }
+    Object.assign(existingProfile, update.$set);
+    return existingProfile;
+  });
   mock.method(User, "find", async () => [existingProfile]);
   for (const model of [Animal, Insemination, HealthRequest, Pregnancy, Calving, Task]) {
     mock.method(model, "countDocuments", async () => 0);

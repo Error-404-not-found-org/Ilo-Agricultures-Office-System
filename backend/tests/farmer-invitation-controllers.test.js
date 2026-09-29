@@ -14,6 +14,7 @@ const originals = {
   userFindOne: User.findOne,
   userFindById: User.findById,
   userCreate: User.create,
+  userFindOneAndUpdate: User.findOneAndUpdate,
   auditCreate: AuditLog.create,
   createInvitation: clerkClient.invitations.createInvitation,
   revokeInvitation: clerkClient.invitations.revokeInvitation,
@@ -23,6 +24,7 @@ afterEach(() => {
   User.findOne = originals.userFindOne;
   User.findById = originals.userFindById;
   User.create = originals.userCreate;
+  User.findOneAndUpdate = originals.userFindOneAndUpdate;
   AuditLog.create = originals.auditCreate;
   clerkClient.invitations.createInvitation = originals.createInvitation;
   clerkClient.invitations.revokeInvitation = originals.revokeInvitation;
@@ -107,6 +109,12 @@ test("createInvitedUser creates one unclaimed assisted Farmer and sends resumabl
 
 test("createInvitedUser reuses unclaimed Farmer and resends to the Farmer destination", async () => {
   const existing = unclaimed();
+  User.findOneAndUpdate = async (filter, update) => {
+    assert.equal(filter._id, existing._id);
+    assert.equal(filter.profileClaimStatus, "unclaimed");
+    Object.assign(existing, update.$set);
+    return existing;
+  };
   let createCount = 0;
   User.findOne = async (query) =>
     queryKind(query) === "email" ? existing : null;
@@ -245,6 +253,12 @@ test("registerFarmer reuses normalized-phone unclaimed profile and resends invit
   const existing = unclaimed({
     normalizedPhoneNumber: "+639171234567",
   });
+  User.findOneAndUpdate = async (filter, update) => {
+    assert.equal(filter._id, existing._id);
+    assert.equal(filter.profileClaimStatus, "unclaimed");
+    Object.assign(existing, update.$set);
+    return existing;
+  };
   let createCount = 0;
   User.findOne = async (query) =>
     queryKind(query) === "phone" ? existing : null;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import test, { afterEach } from "node:test";
+import test, { afterEach, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { User } from "../src/models/user.model.js";
@@ -27,12 +27,36 @@ const originals = {
   create: clerkClient.invitations.createInvitation,
   list: clerkClient.invitations.getInvitationList,
   revoke: clerkClient.invitations.revokeInvitation,
+  finalize: User.findOneAndUpdate,
 };
+
+beforeEach(() => {
+  User.findOneAndUpdate = async () => ({});
+});
 
 afterEach(() => {
   clerkClient.invitations.createInvitation = originals.create;
   clerkClient.invitations.getInvitationList = originals.list;
   clerkClient.invitations.revokeInvitation = originals.revoke;
+  User.findOneAndUpdate = originals.finalize;
+});
+
+test("sent invitation is compensated when Archive wins local finalization", async () => {
+  const target = farmer({ _id: "507f1f77bcf86cd799439099" });
+  const revoked = [];
+  clerkClient.invitations.createInvitation = async () => ({ id: "inv-race", createdAt: Date.now() });
+  clerkClient.invitations.revokeInvitation = async (id) => {
+    revoked.push(id);
+    return { id, status: "revoked" };
+  };
+  User.findOneAndUpdate = async () => null;
+
+  await assert.rejects(
+    sendFarmerAppInvitation({ farmer: target }),
+    (error) => error.code === "FARMER_INVITATION_STATE_CHANGED",
+  );
+  assert.deepEqual(revoked, ["inv-race"]);
+  assert.equal(target.farmerAppInvitation, undefined);
 });
 
 const farmer = (overrides = {}) => ({
@@ -94,7 +118,7 @@ test("send creates one seven-day invitation and persists its private snapshot", 
   assert.equal(snapshot.sentAt.toISOString(), now.toISOString());
   assert.equal(snapshot.expiresAt.toISOString(), "2026-09-22T00:00:00.000Z");
   assert.equal(target.farmerAppInvitation, snapshot);
-  assert.equal(target.saveCount, 1);
+  assert.equal(target.saveCount, 0);
 });
 
 test("send cannot create a duplicate while a stored invitation is still active", async () => {
@@ -325,7 +349,7 @@ test("Clerk revocation failure preserves the truthful pending snapshot", async (
     clerkInvitationId: "invitation-active",
     status: "pending",
     email: "farmer@example.com",
-    expiresAt: new Date("2026-09-22T00:00:00Z"),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   };
   const target = farmer({ farmerAppInvitation: originalSnapshot });
   clerkClient.invitations.getInvitationList = async () => [

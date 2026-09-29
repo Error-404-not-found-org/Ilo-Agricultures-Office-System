@@ -136,13 +136,13 @@ test("Admin Security: another Admin is blocked regardless of active Admin count"
     }
 });
 
-test("Admin Security: suspendUser creates audit log and retries clerk failure", async () => {
-    const { clerkClient } = await import("@clerk/clerk-sdk-node");
+test("Admin Security: Clerk suspend failure leaves domain status unchanged and no success audit", async () => {
+    const { accountStatusClerkUsers } = await import("../src/services/account-status-clerk.service.js");
     const { AuditLog } = await import("../src/models/audit-log.model.js");
 
     const originalFindById = User.findById;
     const originalAuditLogCreate = AuditLog.create;
-    const originalBanUser = clerkClient.users?.banUser;
+    const originalBanUser = accountStatusClerkUsers.banUser;
 
     const mockUser = {
         _id: "507f1f77bcf86cd799439015",
@@ -162,13 +162,9 @@ test("Admin Security: suspendUser creates audit log and retries clerk failure", 
     };
 
     let clerkCalls = 0;
-    if (!clerkClient.users) clerkClient.users = {};
-    clerkClient.users.banUser = async (id) => {
+    accountStatusClerkUsers.banUser = async () => {
         clerkCalls++;
-        if (clerkCalls === 1) {
-            throw new Error("Temporary Clerk Network Error");
-        }
-        return { id };
+        throw new Error("Temporary Clerk Network Error");
     };
 
     const req = {
@@ -182,7 +178,8 @@ test("Admin Security: suspendUser creates audit log and retries clerk failure", 
         status(code) {
             statusVal = code;
             return {
-                send(data) { sendVal = data; }
+                send(data) { sendVal = data; },
+                json(data) { sendVal = data; }
             };
         }
     };
@@ -190,16 +187,14 @@ test("Admin Security: suspendUser creates audit log and retries clerk failure", 
     try {
         await suspendUser(req, res);
         
-        assert.equal(statusVal, 200);
-        assert.equal(clerkCalls, 2); // 1 initial failure + 1 successful retry
-        assert.ok(auditCreated);
-        assert.equal(auditCreated.entityType, "User");
-        assert.equal(auditCreated.action, "suspend");
-        assert.equal(auditCreated.actorId, "507f1f77bcf86cd799439011");
-        assert.equal(mockUser.status, "suspended");
+        assert.equal(statusVal, 502);
+        assert.equal(sendVal.code, "CLERK_SUSPEND_FAILED");
+        assert.equal(clerkCalls, 1);
+        assert.equal(auditCreated, null);
+        assert.equal(mockUser.status, "active");
     } finally {
         User.findById = originalFindById;
         AuditLog.create = originalAuditLogCreate;
-        clerkClient.users.banUser = originalBanUser;
+        accountStatusClerkUsers.banUser = originalBanUser;
     }
 });

@@ -251,6 +251,18 @@ test("Phase 5D operational user listing boundary", async (t) => {
     }
   });
 
+  await t.test("GET /api/user status filter uses account status, not identity verification", async (st) => {
+    const captured = installListingMocks(st);
+    for (const [status, expected] of [
+      ["active", { $in: ["active", "on-site"] }],
+      ["inactive", { $in: ["on-leave", "suspended"] }],
+    ]) {
+      await getUsers({ user: { role: "admin" }, query: { status } }, responseRecorder().response);
+      assert.deepEqual(captured.finds.at(-1).status, expected);
+      assert.equal(captured.finds.at(-1).isVerified, undefined);
+    }
+  });
+
   await t.test("GET /api/user rejects Admin and malformed role queries before Mongo", async (st) => {
     const captured = installListingMocks(st);
     for (const role of ["admin", "auditor", "FARMER"]) {

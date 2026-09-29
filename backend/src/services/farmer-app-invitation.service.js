@@ -2,6 +2,10 @@ import { clerkClient } from "@clerk/clerk-sdk-node";
 import { User } from "../models/user.model.js";
 import { ENV } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
+import {
+  noActiveFarmerClaimReservation,
+  unlinkedFarmerClerkFilter,
+} from "./farmer-claim-reservation.service.js";
 
 export const FARMER_APP_INVITATION_DURATION_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -9,7 +13,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const normalizeEmail = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
-const hasRealClerkLink = (farmer) =>
+export const hasRealClerkLink = (farmer) =>
   Boolean(farmer?.clerkId) && !String(farmer.clerkId).startsWith("manual_");
 
 const clerkErrorDetails = (error) => {
@@ -77,6 +81,39 @@ export const deriveFarmerInvitationStatus = (
     return "expired";
   }
   return snapshot.status;
+};
+
+export const isEffectivePendingFarmerInvitation = (farmer, now = new Date()) =>
+  Boolean(
+    farmer && !farmer.deletedAt && farmer.profileClaimStatus !== "claimed" &&
+    !hasRealClerkLink(farmer) &&
+    deriveFarmerInvitationStatus(farmer.farmerAppInvitation, now, farmer.email) === "pending",
+  );
+
+export const invitationSnapshotMatch = (snapshot) => snapshot?.status
+  ? {
+      "farmerAppInvitation.status": snapshot.status,
+      "farmerAppInvitation.clerkInvitationId": snapshot.clerkInvitationId
+        ? snapshot.clerkInvitationId : { $exists: false },
+      "farmerAppInvitation.expiresAt": snapshot.expiresAt
+        ? snapshot.expiresAt : { $exists: false },
+    }
+  : { "farmerAppInvitation.status": { $exists: false } };
+
+export const revokeFarmerInvitationOrFail = async (invitationId) => {
+  if (!invitationId) {
+    throw new AppError("The Farmer invitation cannot be verified. Contact an Admin.", {
+      status: 409, code: "FARMER_INVITATION_UNVERIFIED",
+    });
+  }
+  try {
+    const result = await clerkClient.invitations.revokeInvitation(invitationId);
+    if (result?.status !== "revoked") throw new Error("Revocation was not confirmed.");
+  } catch {
+    throw new AppError("The Farmer invitation could not be revoked. Try again later.", {
+      status: 503, code: "FARMER_INVITATION_REVOKE_FAILED",
+    });
+  }
 };
 
 export const assertFarmerCanBeInvited = (farmer) => {
@@ -160,9 +197,38 @@ const createClerkInvitation = async ({ email, now }) => {
   }
 };
 
-const saveSnapshot = async (farmer, snapshot) => {
+const saveSnapshot = async (farmer, snapshot, { previousEmail } = {}) => {
+  const now = new Date();
+  const attachEmail = previousEmail !== undefined;
+  const previousEmailMatch = previousEmail
+    ? { email: previousEmail }
+    : { $or: [{ email: { $exists: false } }, { email: null }, { email: "" }] };
+  const updated = await User.findOneAndUpdate(
+    {
+      _id: farmer._id,
+      role: "farmer",
+      status: "active",
+      deletedAt: null,
+      profileClaimStatus: "unclaimed",
+      $and: [
+        unlinkedFarmerClerkFilter(),
+        noActiveFarmerClaimReservation(now),
+        ...(attachEmail ? [previousEmailMatch] : []),
+      ],
+      ...invitationSnapshotMatch(farmer.farmerAppInvitation),
+    },
+    { $set: {
+      farmerAppInvitation: snapshot,
+      ...(attachEmail ? { email: snapshot.email, normalizedEmail: snapshot.email } : {}),
+    } },
+    { returnDocument: "after", runValidators: true },
+  );
+  if (!updated) {
+    throw new AppError("Farmer profile changed while sending the invitation. Refresh and try again.", {
+      status: 409, code: "FARMER_INVITATION_STATE_CHANGED",
+    });
+  }
   farmer.farmerAppInvitation = snapshot;
-  if (typeof farmer.save === "function") await farmer.save();
   return snapshot;
 };
 
@@ -198,15 +264,37 @@ export const sendFarmerAppInvitation = async ({ farmer, now = new Date() }) => {
     );
   }
   const snapshot = await createClerkInvitation({ email, now });
-  await saveSnapshot(farmer, snapshot);
+  try {
+    await saveSnapshot(farmer, snapshot);
+  } catch (error) {
+    try {
+      await revokeFarmerInvitationOrFail(snapshot.clerkInvitationId);
+    } catch {
+      throw new AppError("Invitation sent but could not be reconciled. Contact an Admin.", {
+        status: 503, code: "FARMER_INVITATION_RECONCILIATION_REQUIRED",
+      });
+    }
+    throw error;
+  }
   return snapshot;
 };
 
-export const resendFarmerAppInvitation = async ({ farmer, now = new Date() }) => {
+export const resendFarmerAppInvitation = async ({ farmer, now = new Date(), previousEmail }) => {
   const email = assertFarmerCanBeInvited(farmer);
   await reconcilePendingInvitation(farmer, now);
   const snapshot = await createClerkInvitation({ email, now });
-  await saveSnapshot(farmer, snapshot);
+  try {
+    await saveSnapshot(farmer, snapshot, { previousEmail });
+  } catch (error) {
+    try {
+      await revokeFarmerInvitationOrFail(snapshot.clerkInvitationId);
+    } catch {
+      throw new AppError("Invitation sent but could not be reconciled. Contact an Admin.", {
+        status: 503, code: "FARMER_INVITATION_RECONCILIATION_REQUIRED",
+      });
+    }
+    throw error;
+  }
   return snapshot;
 };
 
