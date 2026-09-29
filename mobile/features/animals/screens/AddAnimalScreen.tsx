@@ -178,7 +178,7 @@ export function AddAnimalScreen() {
   };
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
-    const result = await pickImageFromSource(source);
+    const result = await pickImageFromSource(source, { allowsEditing: false });
     if (result) {
       setImageUri(result.uri);
       setImageBase64(result.base64);
