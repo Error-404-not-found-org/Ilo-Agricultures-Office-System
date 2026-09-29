@@ -29,7 +29,7 @@ import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
-import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { pickAttachmentsFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { AnimatedBottomSheet } from "@/components/shared/AnimatedBottomSheet";
 import { Text as AppText } from "@/components/ui/Text";
@@ -41,6 +41,13 @@ import {
   useMyAIRequestsQuery,
 } from "@/features/farmer-requests/hooks/useFarmerRequestForms";
 import { buildFarmerAIRequestPayload } from "@/features/farmer-requests/utils/payloadBuilders";
+import {
+  getAttachmentAssetKey,
+  getAttachmentPayloadError,
+  mergeAttachmentImages,
+  remainingAttachmentSlots,
+  type RequestAttachment,
+} from "@/features/farmer-requests/utils/attachmentSafety";
 import {
   findActiveAIRequestForAnimal,
   AI_REQUEST_INVALIDATION_KEYS,
@@ -182,6 +189,7 @@ export default function RequestAI() {
     params.mode === "re-inseminate" && Boolean(previousAttemptId);
   const scrollRef = useRef<ScrollView>(null);
   const submitLockRef = useRef(false);
+  const photoPickLockRef = useRef(false);
   const { colors, isDark } = useTheme();
 
   const primaryColor = isDark ? colors.primary : "#00643B";
@@ -194,7 +202,7 @@ export default function RequestAI() {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [selectedSigns, setSelectedSigns] = useState<string[]>([]);
   const [comment, setComment] = useState("");
-  const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
+  const [photos, setPhotos] = useState<RequestAttachment[]>([]);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
@@ -362,17 +370,24 @@ export default function RequestAI() {
   }, [animalsData, params.animalId, params.mode]);
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
+    if (photoPickLockRef.current) return;
     if (photos.length >= 5) {
       toast.error("You can attach up to 5 photos only.");
       return;
     }
-    const result = await pickImageFromSource(source, { aspect: [4, 3] });
-    if (result) {
-      setPhotos((prev) => [
-        ...prev,
-        { uri: result.uri, base64: result.base64 },
-      ]);
-      toast.success("Photo attached!");
+    photoPickLockRef.current = true;
+    try {
+      const { images, failedCount } = await pickAttachmentsFromSource(source, remainingAttachmentSlots(photos.length));
+      if (images.length) {
+        setPhotos((prev) => mergeAttachmentImages(prev, images.map((image) => ({
+          uri: image.uri,
+          base64: image.base64,
+          assetKey: getAttachmentAssetKey({ assetId: image.assetId, uri: image.sourceUri }),
+        }))));
+      }
+      if (failedCount) toast.error(`${failedCount} photo${failedCount === 1 ? "" : "s"} could not be processed. Other photos were kept.`);
+    } finally {
+      photoPickLockRef.current = false;
     }
   };
 
@@ -388,6 +403,12 @@ export default function RequestAI() {
       selectedSigns,
       HEAT_SIGNS,
     );
+
+    const payloadError = getAttachmentPayloadError(payload);
+    if (payloadError) {
+      showSubmitError(payloadError);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
