@@ -28,7 +28,7 @@ async function request(config, track = "preview") {
     const address = server.address();
     const query = track === null ? "" : `?track=${encodeURIComponent(track)}`;
     const response = await fetch(`http://127.0.0.1:${address.port}/api/app-release/android${query}`);
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await response.json(), cacheControl: response.headers.get("cache-control") };
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -37,25 +37,13 @@ async function request(config, track = "preview") {
 test("public release endpoint returns only validated Android release information", async () => {
   const result = await request({ ...valid, CLERK_SECRET_KEY: "never-expose" });
   assert.equal(result.status, 200);
+  assert.equal(result.cacheControl, "no-store");
   assert.deepEqual(result.body, {
-    platform: "android",
-    track: "preview",
-    latestVersion: "1.10.0",
-    latestBuildCode: 110,
-    minimumVersion: "1.9.0",
-    minimumBuildCode: 109,
-    downloadUrl: "https://example.com/preview.apk",
-    message: "Preview release.",
+    platform: "android", track: "preview", latestVersion: "1.10.0", latestBuildCode: 110,
+    minimumVersion: "1.9.0", minimumBuildCode: 109,
+    downloadUrl: "https://example.com/preview.apk", message: "Preview release.",
   });
   assert.equal(JSON.stringify(result.body).includes("never-expose"), false);
-});
-
-test("missing or malformed release configuration fails closed without invented metadata", async () => {
-  for (const config of [{}, { ...valid, ANDROID_RELEASE_PREVIEW_DOWNLOAD_URL: "http://example.com/a.apk" }, { ...valid, ANDROID_RELEASE_PREVIEW_LATEST_VERSION: "1.9" }, { ...valid, ANDROID_RELEASE_PREVIEW_MINIMUM_VERSION: "1.11.0" }]) {
-    const result = await request(config);
-    assert.equal(result.status, 503);
-    assert.deepEqual(result.body, { available: false });
-  }
 });
 
 test("production reads only production metadata and never preview metadata", async () => {
@@ -66,10 +54,41 @@ test("production reads only production metadata and never preview metadata", asy
   assert.equal(result.body.downloadUrl, "https://example.com/production.apk");
 });
 
-test("missing or unknown track and missing per-track config remain unavailable", async () => {
+test("missing and unknown tracks fail closed", async () => {
   for (const track of [null, "development", "staging"]) {
-    assert.deepEqual(await request(valid, track), { status: 503, body: { available: false } });
+    const result = await request(valid, track);
+    assert.equal(result.status, 503);
+    assert.deepEqual(result.body, { available: false });
   }
-  assert.deepEqual(await request({ ...valid, ANDROID_RELEASE_PREVIEW_DOWNLOAD_URL: undefined }, "preview"),
-    { status: 503, body: { available: false } });
+});
+
+test("invalid track config fails closed without exposing config", async () => {
+  const invalid = [
+    {},
+    { ...valid, ANDROID_RELEASE_PREVIEW_DOWNLOAD_URL: undefined },
+    { ...valid, ANDROID_RELEASE_PREVIEW_DOWNLOAD_URL: "http://example.com/a.apk" },
+    { ...valid, ANDROID_RELEASE_PREVIEW_DOWNLOAD_URL: "https://user:secret@example.com/a.apk" },
+    { ...valid, ANDROID_RELEASE_PREVIEW_LATEST_VERSION: "1.9" },
+    { ...valid, ANDROID_RELEASE_PREVIEW_MINIMUM_VERSION: "1.11.0" },
+    { ...valid, ANDROID_RELEASE_PREVIEW_LATEST_BUILD_CODE: "0" },
+    { ...valid, ANDROID_RELEASE_PREVIEW_MINIMUM_BUILD_CODE: "111" },
+  ];
+  for (const config of invalid) {
+    const result = await request(config);
+    assert.equal(result.status, 503);
+    assert.deepEqual(result.body, { available: false });
+  }
+});
+
+test("build codes may be omitted and release message is bounded", async () => {
+  const result = await request({
+    ...valid,
+    ANDROID_RELEASE_PREVIEW_LATEST_BUILD_CODE: undefined,
+    ANDROID_RELEASE_PREVIEW_MINIMUM_BUILD_CODE: undefined,
+    ANDROID_RELEASE_PREVIEW_MESSAGE: "x".repeat(300),
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.latestBuildCode, null);
+  assert.equal(result.body.minimumBuildCode, null);
+  assert.equal(result.body.message.length, 240);
 });
