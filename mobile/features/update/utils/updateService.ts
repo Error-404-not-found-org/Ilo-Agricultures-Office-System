@@ -25,6 +25,17 @@ export function createUpdateService(dependencies: UpdateDependencies) {
         ? { kind: ota.kind === 'error' ? 'error' : 'unavailable' }
         : ota;
     },
+    async checkForStartupUpdates(checkNative: () => Promise<NativeUpdateState>): Promise<Extract<NativeUpdateState, { kind: 'required' | 'optional' }> | null> {
+      const result = await service.checkForUpdates(checkNative);
+      if (result.kind === 'required' || result.kind === 'optional') return result;
+      if (result.kind === 'available') await service.downloadOta();
+      return null;
+    },
+    async checkForManualUpdates(checkNative: () => Promise<NativeUpdateState>): Promise<NativeUpdateState | OtaCheckState | { kind: 'downloaded' }> {
+      const result = await service.checkForUpdates(checkNative);
+      if (result.kind !== 'available') return result;
+      return (await service.downloadOta()).kind === 'ready' ? { kind: 'downloaded' } : { kind: 'error' };
+    },
     async downloadOta(): Promise<{ kind: 'ready' | 'error' }> {
       ready = false;
       try {

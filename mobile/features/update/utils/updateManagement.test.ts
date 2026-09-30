@@ -116,3 +116,75 @@ test('OTA service distinguishes no update, available, failed check and failed do
   failCheck = true;
   assert.deepEqual(await service.checkOta(), { kind: 'error' });
 });
+
+test('startup downloads a compatible OTA without displaying a notice or restarting', async () => {
+  let downloads = 0;
+  let reloads = 0;
+  const service = createUpdateService({
+    otaSupported: () => true,
+    checkOta: async () => true,
+    downloadOta: async () => { downloads++; return true; },
+    reloadOta: async () => { reloads++; },
+  });
+  assert.equal(await service.checkForStartupUpdates(async () => ({ kind: 'current' })), null);
+  assert.equal(downloads, 1);
+  assert.equal(reloads, 0);
+});
+
+test('startup keeps native notices ahead of OTA and does not download', async () => {
+  let otaChecks = 0;
+  let downloads = 0;
+  const service = createUpdateService({
+    otaSupported: () => true,
+    checkOta: async () => { otaChecks++; return true; },
+    downloadOta: async () => { downloads++; return true; },
+    reloadOta: async () => {},
+  });
+  assert.equal((await service.checkForStartupUpdates(async () => ({ kind: 'required', downloadUrl: release.downloadUrl, message: '' })))?.kind, 'required');
+  assert.equal((await service.checkForStartupUpdates(async () => ({ kind: 'optional', downloadUrl: release.downloadUrl, message: '' })))?.kind, 'optional');
+  assert.equal(otaChecks, 0);
+  assert.equal(downloads, 0);
+});
+
+test('startup OTA check or download failures stay non-blocking', async () => {
+  let failCheck = true;
+  const service = createUpdateService({
+    otaSupported: () => true,
+    checkOta: async () => { if (failCheck) throw Error('offline'); return true; },
+    downloadOta: async () => { throw Error('offline'); },
+    reloadOta: async () => {},
+  });
+  assert.equal(await service.checkForStartupUpdates(async () => ({ kind: 'current' })), null);
+  failCheck = false;
+  assert.equal(await service.checkForStartupUpdates(async () => ({ kind: 'current' })), null);
+});
+
+test('manual check downloads OTA and distinguishes current from failures', async () => {
+  let available = true;
+  let downloadSucceeds = true;
+  const service = createUpdateService({
+    otaSupported: () => true,
+    checkOta: async () => available,
+    downloadOta: async () => downloadSucceeds,
+    reloadOta: async () => {},
+  });
+  assert.deepEqual(await service.checkForManualUpdates(async () => ({ kind: 'current' })), { kind: 'downloaded' });
+  available = false;
+  assert.deepEqual(await service.checkForManualUpdates(async () => ({ kind: 'current' })), { kind: 'current' });
+  available = true;
+  downloadSucceeds = false;
+  assert.deepEqual(await service.checkForManualUpdates(async () => ({ kind: 'current' })), { kind: 'error' });
+});
+
+test('manual check preserves native priority and does not download OTA', async () => {
+  let downloads = 0;
+  const service = createUpdateService({
+    otaSupported: () => true,
+    checkOta: async () => true,
+    downloadOta: async () => { downloads++; return true; },
+    reloadOta: async () => {},
+  });
+  assert.equal((await service.checkForManualUpdates(async () => ({ kind: 'required', downloadUrl: release.downloadUrl, message: '' }))).kind, 'required');
+  assert.equal((await service.checkForManualUpdates(async () => ({ kind: 'optional', downloadUrl: release.downloadUrl, message: '' }))).kind, 'optional');
+  assert.equal(downloads, 0);
+});

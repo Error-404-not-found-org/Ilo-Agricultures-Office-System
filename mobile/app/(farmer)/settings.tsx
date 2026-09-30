@@ -14,7 +14,7 @@ import { clearDownloadableAppCache } from '@/lib/queryClient';
 import { getUpToDateMessage } from '@/features/update/utils/installedVersion';
 import { updateService } from '@/features/update/services/updateRuntime';
 import { UpdateNotice } from '@/features/update/components/UpdateNotice';
-import type { NativeUpdateState, OtaCheckState } from '@/features/update/utils/updatePolicy';
+import type { NativeUpdateState } from '@/features/update/utils/updatePolicy';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -28,7 +28,7 @@ export default function SettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [clearingCache, setClearingCache] = useState(false);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
-  const [updateNotice, setUpdateNotice] = useState<NativeUpdateState | OtaCheckState | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<Extract<NativeUpdateState, { kind: 'required' | 'optional' }> | null>(null);
 
   // Load preferences on mount
   useEffect(() => {
@@ -112,10 +112,12 @@ export default function SettingsScreen() {
     setCheckingUpdates(true);
     toast.loading("Checking for app updates...");
     try {
-      const update = await updateService.checkForUpdates();
+      const update = await updateService.checkForManualUpdates();
       toast.dismiss();
-      if (update.kind === 'available' || update.kind === 'optional' || update.kind === 'required') {
+      if (update.kind === 'optional' || update.kind === 'required') {
         setUpdateNotice(update);
+      } else if (update.kind === 'downloaded') {
+        toast.success('Update downloaded. It will be applied after BreedSmart is restarted.');
       } else if (update.kind === 'current') {
         toast.success(getUpToDateMessage(t('upToDate'), Application.nativeApplicationVersion));
       } else if (update.kind === 'unsupported') {

@@ -40,4 +40,6 @@ async function checkNativeRelease(): Promise<NativeUpdateState> {
 export const updateService = {
   ...service,
   checkForUpdates: () => service.checkForUpdates(checkNativeRelease),
+  checkForStartupUpdates: () => service.checkForStartupUpdates(checkNativeRelease),
+  checkForManualUpdates: () => service.checkForManualUpdates(checkNativeRelease),
 };

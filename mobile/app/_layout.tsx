@@ -45,7 +45,7 @@ import { AuthBootstrapGate } from "@/features/auth/components/AuthBootstrapGate"
 import { AppStartupScreen } from "@/features/startup/components/AppStartupScreen";
 import { updateService } from "@/features/update/services/updateRuntime";
 import { UpdateNotice } from "@/features/update/components/UpdateNotice";
-import type { NativeUpdateState, OtaCheckState } from "@/features/update/utils/updatePolicy";
+import type { NativeUpdateState } from "@/features/update/utils/updatePolicy";
 
 
 // Polyfills for crypto and auth libraries
@@ -67,7 +67,7 @@ if (!CLERK_PUBLISHABLE_KEY) {
 
 let updateCheckForUser: {
   id: string;
-  promise: ReturnType<typeof updateService.checkForUpdates>;
+  promise: ReturnType<typeof updateService.checkForStartupUpdates>;
 } | null = null;
 
 function AppContent({
@@ -91,18 +91,18 @@ function AppContent({
 }) {
   const navigationState = useRootNavigationState();
   const handledNotificationResponseId = useRef<string | null>(null);
-  const [updateNotice, setUpdateNotice] = useState<NativeUpdateState | OtaCheckState | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<Extract<NativeUpdateState, { kind: 'required' | 'optional' }> | null>(null);
 
   useEffect(() => {
     if (!isSignedIn || !user?.id) return;
     const previousCheck = updateCheckForUser;
     const check = previousCheck && previousCheck.id === user.id
       ? previousCheck.promise
-      : updateService.checkForUpdates();
+      : updateService.checkForStartupUpdates();
     updateCheckForUser = { id: user.id, promise: check };
     let active = true;
     void check.then((result) => {
-      if (active && ['required', 'optional', 'available'].includes(result.kind)) setUpdateNotice(result);
+      if (active && result) setUpdateNotice(result);
     }).catch(() => {});
     return () => { active = false; };
   }, [isSignedIn, user?.id]);
