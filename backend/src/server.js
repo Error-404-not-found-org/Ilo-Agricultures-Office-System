@@ -10,6 +10,7 @@ import cors from "cors";
 import { rateLimit } from "express-rate-limit";
 import { idempotencyMiddleware } from "./middleware/idempotency.middleware.js";
 import { resolveUserMiddleware } from "./middleware/resolveUser.middleware.js";
+import { createAndroidReleaseRouter } from "./routes/android-release.routes.js";
 
 import { inngest, functions } from "./config/inngest.js";
 
@@ -151,6 +152,7 @@ app.use("/api/ai-request", aiRequestRoutes);
 app.use("/api/health-request", healthRequestRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/config", configRoutes);
+app.use("/api/app-release", createAndroidReleaseRouter());
 app.use("/api/medical", medicalRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/analytics", analyticsRoutes);

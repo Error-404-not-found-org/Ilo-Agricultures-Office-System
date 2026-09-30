@@ -21,6 +21,7 @@ test('new native baseline uses an app-version runtime and the existing EAS proje
   assert.deepEqual(config.runtimeVersion, { policy: 'appVersion' });
   assert.equal(config.extra.eas.projectId, '3fc4429f-8376-4203-808d-b8911ea21070');
   assert.equal(config.updates.url, `https://u.expo.dev/${config.extra.eas.projectId}`);
+  assert.equal(config.updates.checkAutomatically, 'NEVER');
 });
 
 test('development is separate, while preview and production APKs share the updatable package', () => {

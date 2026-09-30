@@ -8,11 +8,13 @@ import { useColorScheme } from 'nativewind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from '../../contexts/TranslationContext';
 import { useTheme } from '@/lib/theme';
-import * as Updates from 'expo-updates';
 import * as Application from 'expo-application';
 import { AppPageHeader } from '@/components/AppPageHeader';
 import { clearDownloadableAppCache } from '@/lib/queryClient';
 import { getUpToDateMessage } from '@/features/update/utils/installedVersion';
+import { updateService } from '@/features/update/services/updateRuntime';
+import { UpdateNotice } from '@/features/update/components/UpdateNotice';
+import type { NativeUpdateState, OtaCheckState } from '@/features/update/utils/updatePolicy';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -26,6 +28,7 @@ export default function SettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [clearingCache, setClearingCache] = useState(false);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateNotice, setUpdateNotice] = useState<NativeUpdateState | OtaCheckState | null>(null);
 
   // Load preferences on mount
   useEffect(() => {
@@ -109,16 +112,16 @@ export default function SettingsScreen() {
     setCheckingUpdates(true);
     toast.loading("Checking for updates...");
     try {
-      const update = await Updates.checkForUpdateAsync();
+      const update = await updateService.checkForUpdates();
       toast.dismiss();
-      if (update.isAvailable) {
-        toast.loading("Downloading update...");
-        await Updates.fetchUpdateAsync();
-        toast.dismiss();
-        toast.success("Update installed! Restarting...");
-        await Updates.reloadAsync();
-      } else {
+      if (update.kind === 'available' || update.kind === 'optional' || update.kind === 'required') {
+        setUpdateNotice(update);
+      } else if (update.kind === 'current') {
         toast.success(getUpToDateMessage(t('upToDate'), Application.nativeApplicationVersion));
+      } else if (update.kind === 'unsupported') {
+        toast.info('Update checks are not available in this development build.');
+      } else {
+        toast.error('Couldn’t check for updates right now. You can continue using BreedSmart and try again later.');
       }
     } catch (e) {
       toast.dismiss();
@@ -138,6 +141,7 @@ export default function SettingsScreen() {
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
+      {updateNotice && <UpdateNotice notice={updateNotice} onDismiss={() => setUpdateNotice(null)} />}
       <AppPageHeader title={t('appSettings')} />
 
       <ScrollView 

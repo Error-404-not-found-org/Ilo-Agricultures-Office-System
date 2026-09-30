@@ -43,6 +43,9 @@ import { getPushNotificationTarget } from "@/features/notifications/utils/notifi
 import { invalidateNotificationLinkedQueries } from "@/features/notifications/utils/notificationQueryInvalidation";
 import { AuthBootstrapGate } from "@/features/auth/components/AuthBootstrapGate";
 import { AppStartupScreen } from "@/features/startup/components/AppStartupScreen";
+import { updateService } from "@/features/update/services/updateRuntime";
+import { UpdateNotice } from "@/features/update/components/UpdateNotice";
+import type { NativeUpdateState, OtaCheckState } from "@/features/update/utils/updatePolicy";
 
 
 // Polyfills for crypto and auth libraries
@@ -61,6 +64,11 @@ const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!CLERK_PUBLISHABLE_KEY) {
   throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
 }
+
+let updateCheckForUser: {
+  id: string;
+  promise: ReturnType<typeof updateService.checkForUpdates>;
+} | null = null;
 
 function AppContent({
   isSignedIn,
@@ -83,6 +91,21 @@ function AppContent({
 }) {
   const navigationState = useRootNavigationState();
   const handledNotificationResponseId = useRef<string | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<NativeUpdateState | OtaCheckState | null>(null);
+
+  useEffect(() => {
+    if (!isSignedIn || !user?.id) return;
+    const previousCheck = updateCheckForUser;
+    const check = previousCheck && previousCheck.id === user.id
+      ? previousCheck.promise
+      : updateService.checkForUpdates();
+    updateCheckForUser = { id: user.id, promise: check };
+    let active = true;
+    void check.then((result) => {
+      if (active && ['required', 'optional', 'available'].includes(result.kind)) setUpdateNotice(result);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [isSignedIn, user?.id]);
 
   useEffect(() => {
     const role = user?.publicMetadata?.role as string | undefined;
@@ -135,6 +158,7 @@ function AppContent({
           contentStyle: { backgroundColor: colors.background },
         }}
       />
+      {updateNotice && <UpdateNotice notice={updateNotice} onDismiss={() => setUpdateNotice(null)} />}
 
       {/* Persistent connectivity banner. Kept at the top of the screen. */}
       {isSignedIn && showOfflineToast && (
