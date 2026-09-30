@@ -110,7 +110,7 @@ export default function SettingsScreen() {
     const allowed = await checkRateLimit('updates');
     if (!allowed) return;
     setCheckingUpdates(true);
-    toast.loading("Checking for updates...");
+    toast.loading("Checking for app updates...");
     try {
       const update = await updateService.checkForUpdates();
       toast.dismiss();

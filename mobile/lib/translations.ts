@@ -43,7 +43,7 @@ export const translations: Record<string, Record<string, string>> = {
     languagePreference: "Language Preference",
     clearCache: "Clear Local Cache",
     cacheDescription: "Deletes local storage and cache data",
-    checkForUpdates: "Check for Updates",
+    checkForUpdates: "Check for App Updates",
     updatesDescription: "Checks for latest system builds",
     notificationsEnabled: "Notifications enabled",
     notificationsMuted: "Notifications muted",
