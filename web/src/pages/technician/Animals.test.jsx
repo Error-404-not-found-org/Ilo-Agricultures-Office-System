@@ -151,4 +151,3 @@ describe("Technician Animals Page", () => {
     expect(screen.getByText("Try changing or clearing the filters.")).toBeInTheDocument();
   });
 });
-

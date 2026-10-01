@@ -17,7 +17,7 @@ const resolveConfig = (variant) => {
 
 test('new native baseline uses an app-version runtime and the existing EAS project', () => {
   const config = resolveConfig(undefined);
-  assert.equal(config.version, '1.0.6');
+  assert.equal(config.version, '1.0.7');
   assert.deepEqual(config.runtimeVersion, { policy: 'appVersion' });
   assert.equal(config.extra.eas.projectId, '3fc4429f-8376-4203-808d-b8911ea21070');
   assert.equal(config.updates.url, `https://u.expo.dev/${config.extra.eas.projectId}`);

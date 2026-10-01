@@ -407,7 +407,7 @@ export default function RecordCalving() {
                 className="text-xs text-center leading-5 mb-6"
                 style={{ color: colors.textSecondary }}
               >
-                We couldn't verify the delivery recording window for this animal.
+                We couldn&apos;t verify the delivery recording window for this animal.
               </Text>
 
               {/* Try Again */}

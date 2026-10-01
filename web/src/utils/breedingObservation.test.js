@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatObservationValue,
   formatSubmittedAt,
   formatTaskSummary,
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
   isFarmerBreedingObservationPendingReview,
   normalizeFarmerObservation,
-  BREEDING_OBSERVATION_LABELS,
-  BREEDING_OBSERVATION_SIGN_LABELS,
 } from "./breedingObservation";
 
 describe("breedingObservation utilities", () => {
