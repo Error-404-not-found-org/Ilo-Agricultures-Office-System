@@ -105,6 +105,7 @@ interface HealthRequestDetailsProps {
   routeWorkflowId?: string;
   onRefresh: () => Promise<void>;
   onBack: () => void;
+  onSkipSuccess: () => void;
 }
 
 const EMPTY_ADVICE_DRAFT: AdviceResponseValues = {
@@ -218,6 +219,7 @@ export function HealthRequestDetails({
   routeWorkflowId,
   onRefresh,
   onBack,
+  onSkipSuccess,
 }: HealthRequestDetailsProps) {
   const api = useApi();
   const router = useRouter();
@@ -815,7 +817,7 @@ export function HealthRequestDetails({
       toast.success("Request skipped", {
         description: "It remains available to other eligible technicians.",
       });
-      onBack();
+      onSkipSuccess();
     } catch (error: any) {
       setActionNotice(
         getErrorMessage(error, "The request could not be declined."),

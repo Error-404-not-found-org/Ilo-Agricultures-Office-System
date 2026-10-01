@@ -67,6 +67,7 @@ interface AIRequestDetailsProps {
   routeWorkflowId?: string;
   onRefresh: () => Promise<void>;
   onBack: () => void;
+  onSkipSuccess: () => void;
 }
 
 interface AISchedulePayload {
@@ -135,6 +136,7 @@ export function AIRequestDetails({
   routeWorkflowId,
   onRefresh,
   onBack,
+  onSkipSuccess,
 }: AIRequestDetailsProps) {
   const api = useApi();
   const router = useRouter();
@@ -506,7 +508,7 @@ export function AIRequestDetails({
       toast.success("Request skipped", {
         description: "It remains available to other eligible technicians.",
       });
-      onBack();
+      onSkipSuccess();
     } catch (error: any) {
       setActionNotice(
         getErrorMessage(error, "The request could not be declined."),
