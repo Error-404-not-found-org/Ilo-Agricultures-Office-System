@@ -441,7 +441,7 @@ describe("Technician Dashboard Regression Tests", () => {
     assert.equal(response.body.stats.completedToday, 3);
   });
 
-  it("counts due-today and overdue owned work from canonical date fields", async () => {
+  it("counts today's assigned visits and excludes mirrored tasks from the agenda", async () => {
     const otherTechnician = await User.create({
       clerkId: "clerk-dashboard-other",
       role: "technician",
@@ -455,6 +455,23 @@ describe("Technician Dashboard Regression Tests", () => {
     const today = new Date(start.getTime() + 60 * 60 * 1000);
     const yesterday = new Date(start.getTime() - 60 * 60 * 1000);
     const tomorrow = new Date(end.getTime() + 60 * 60 * 1000);
+    const scheduledHealthRequest = await HealthRequest.create({
+      farmerId: farmerUser._id,
+      animalId: animal1._id,
+      status: "scheduled",
+      handledBy: techUser._id,
+      handlingMethod: "farm_visit",
+      scheduledDate: today,
+      symptoms: "Scheduled today",
+    });
+    const nonAgendaHealthRequest = await HealthRequest.create({
+      farmerId: farmerUser._id,
+      animalId: animal3._id,
+      status: "triaged",
+      handledBy: techUser._id,
+      handlingMethod: "advice",
+      symptoms: "Distinct advice request",
+    });
 
     await Promise.all([
       Insemination.create({
@@ -470,15 +487,6 @@ describe("Technician Dashboard Regression Tests", () => {
         status: "in-progress",
         approvedBy: techUser._id,
         scheduledDate: yesterday,
-      }),
-      HealthRequest.create({
-        farmerId: farmerUser._id,
-        animalId: animal1._id,
-        status: "scheduled",
-        handledBy: techUser._id,
-        handlingMethod: "farm_visit",
-        scheduledDate: today,
-        symptoms: "Scheduled today",
       }),
       HealthRequest.create({
         farmerId: farmerUser._id,
@@ -543,14 +551,62 @@ describe("Technician Dashboard Regression Tests", () => {
       Task.create({
         technicianId: techUser._id,
         farmerId: farmerUser._id,
-        animalIds: [animal3._id],
+        animalIds: [animal1._id],
         taskType: "Health",
         category: "Routine",
         notes: "Mirrored execution task",
         status: "Pending",
         dueDate: today,
         relatedRecordType: "health",
+        relatedRecordId: scheduledHealthRequest._id,
       }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal1._id],
+        taskType: "Health",
+        category: "Routine",
+        notes: "Metadata-linked execution task",
+        status: "Pending",
+        dueDate: today,
+        metadata: { healthRequestId: scheduledHealthRequest._id },
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal1._id],
+        taskType: "Health",
+        category: "Routine",
+        notes: "Unlinked Health task on same animal",
+        status: "Pending",
+        dueDate: today,
+      }),
+      Task.create({
+        technicianId: techUser._id,
+        farmerId: farmerUser._id,
+        animalIds: [animal3._id],
+        taskType: "Health",
+        category: "Routine",
+        notes: "Task linked to non-agenda Health request",
+        status: "Pending",
+        dueDate: today,
+        relatedRecordType: "health",
+        relatedRecordId: nonAgendaHealthRequest._id,
+      }),
+      ...["AI", "PD", "Calving"].map((taskType) =>
+        Task.create({
+          technicianId: techUser._id,
+          farmerId: farmerUser._id,
+          animalIds: [animal1._id],
+          taskType,
+          category: "Routine",
+          notes: `Distinct ${taskType} task`,
+          status: "Pending",
+          dueDate: today,
+          relatedRecordType: "health",
+          relatedRecordId: scheduledHealthRequest._id,
+        }),
+      ),
     ]);
 
     const { req, res, response } = mockReqRes(techUser, {
@@ -559,17 +615,40 @@ describe("Technician Dashboard Regression Tests", () => {
     await getTechnicianDashboardData(req, res);
 
     assert.equal(response.statusCode, 200);
-    assert.equal(response.body.stats.dueToday, 3);
-    assert.equal(response.body.stats.overdue, 3);
+    assert.equal(response.body.stats.todayActivities, 2);
     assert.equal(
-      response.body.agendaItems.filter((item) => item.isReadyToday).length,
-      response.body.stats.dueToday,
+      response.body.agendaItems.filter(
+        (item) => String(item.id) === String(scheduledHealthRequest._id),
+      ).length,
+      1,
     );
     assert.ok(
       !response.body.agendaItems.some(
         (item) => item.raw?.notes === "Mirrored execution task",
       ),
     );
+    assert.ok(
+      !response.body.agendaItems.some(
+        (item) => item.raw?.notes === "Metadata-linked execution task",
+      ),
+    );
+    assert.ok(
+      response.body.agendaItems.some(
+        (item) => item.raw?.notes === "Unlinked Health task on same animal",
+      ),
+    );
+    assert.ok(
+      response.body.agendaItems.some(
+        (item) => item.raw?.notes === "Task linked to non-agenda Health request",
+      ),
+    );
+    for (const taskType of ["AI", "PD", "Calving"]) {
+      assert.ok(
+        response.body.agendaItems.some(
+          (item) => item.raw?.notes === `Distinct ${taskType} task`,
+        ),
+      );
+    }
   });
 
   it("does not substitute update or status-history timestamps for the AI service date", async () => {

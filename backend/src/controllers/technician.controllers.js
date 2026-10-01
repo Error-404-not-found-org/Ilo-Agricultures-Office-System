@@ -583,6 +583,7 @@ export const getTechnicianDashboardData = async (req, res) => {
 
     const pendingRequests = [];
     const agendaItems = [];
+    const agendaHealthRequestIds = new Set();
 
     const taskDateContextIds = scheduledTasks.reduce(
       (result, taskDoc) => {
@@ -905,12 +906,39 @@ export const getTechnicianDashboardData = async (req, res) => {
           assignedToMeHealth
         ) {
           agendaItems.push(item);
+          agendaHealthRequestIds.add(String(healthRequest._id));
         }
       }
     });
 
     // Process scheduled technician tasks / general visits
     scheduledTasks.forEach((taskDoc) => {
+      const isDistinctWorkflowTask = [
+        "AI",
+        "PD",
+        "CD",
+        "Calving",
+        "BreedingFollowUp",
+      ].includes(taskDoc.taskType);
+      const isHealthExecutionTask =
+        !isDistinctWorkflowTask &&
+        (taskDoc.relatedRecordType === "health" ||
+          ["Health", "Treatment", "Vaccination", "Deworming"].includes(
+            taskDoc.taskType,
+          ));
+      const linkedHealthRequestIds = [
+        taskDoc.relatedRecordType === "health" ? taskDoc.relatedRecordId : null,
+        taskDoc.metadata?.healthRequestId,
+      ];
+      if (
+        isHealthExecutionTask &&
+        linkedHealthRequestIds.some(
+          (id) => id && agendaHealthRequestIds.has(String(id)),
+        )
+      ) {
+        return;
+      }
+
       const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
       const isOverdue =
         ["Pending", "In Progress"].includes(taskDoc.status) &&
