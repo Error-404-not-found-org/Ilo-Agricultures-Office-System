@@ -1,3 +1,4 @@
+import "./stable-clerk-client.js";
 import test, { afterEach, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { clerkClient } from "@clerk/clerk-sdk-node";

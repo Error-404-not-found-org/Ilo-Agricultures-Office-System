@@ -1,3 +1,4 @@
+import "./stable-clerk-client.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { User } from "../src/models/user.model.js";
