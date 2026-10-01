@@ -88,6 +88,26 @@ const renderModal = (
 };
 
 describe("HealthRequestActionModal", () => {
+  it("shows only coarse locality and no phone before a Health request is claimed", async () => {
+    const candidate = ownedRequest({
+      status: "pending",
+      handledBy: null,
+      assignedTechnicianId: null,
+      municipality: "Oton",
+      barangay: "Poblacion",
+      farmerId: {
+        _id: "farmer-1",
+        name: "Faye Farmer",
+        phoneNumber: "09170000000",
+        address: { street: "Private Street" },
+      },
+    });
+    renderModal(candidate, { ...task, status: "pending", raw: null });
+
+    expect(await screen.findByText("Poblacion, Oton")).toBeInTheDocument();
+    expect(screen.queryByText("09170000000")).not.toBeInTheDocument();
+    expect(screen.queryByText("Private Street")).not.toBeInTheDocument();
+  });
   it("reviews a pending cancellation without replacing the scheduled lifecycle", async () => {
     renderModal(ownedRequest({ status: "scheduled", cancellationStatus: "requested", cancellationReason: "Farmer unavailable", cancellationRequestedAt: "2026-09-20T02:15:00.000Z" }));
     expect(await screen.findByText("Cancellation Requested")).toBeInTheDocument();

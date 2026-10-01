@@ -475,13 +475,14 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(request.actionLabel, "Accept & Set Visit");
       assert.equal(request.requestKind, "re_insemination");
       assert.equal(request.attemptNumber, 2);
-      assert.equal(request.previousAttemptId._id, "completed-attempt-1");
+      assert.equal(request.previousAttemptId, undefined);
+      assert.equal(request.previousAttemptOutcome, "Failed (Re-heat)");
       const expectedKeys = [
         "id", "workflowId", "workflowType", "type", "serviceType", "attachments",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
         "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
         "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt", "farmer",
-        "requestKind", "attemptNumber", "previousAttemptId", "previousAttemptOutcome", "previousAttemptVerified"
+        "requestKind", "attemptNumber", "previousAttemptOutcome", "previousAttemptVerified", "farmerImageUrl"
       ].sort();
       assert.deepEqual(Object.keys(request).sort(), expectedKeys);
       assert.equal(request.farmer, "Maria Santos");

@@ -88,7 +88,7 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
     request.phone ||
     request.farmerPhone ||
     request.farmerDetails?.phone ||
-    "Not provided";
+    null;
   const animalTag =
     request.animalTag || request.earTag || request.animalId?.earTag || null;
   const animalName = request.animalName || request.animalId?.name || null;
@@ -202,7 +202,7 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
                 <MapPin className="h-3 w-3 shrink-0 text-primary" />
                 <span className="truncate">{location}</span>
               </p>
-              {phone && phone !== "Not provided" ? (
+              {phone ? (
                 <a
                   href={`tel:${phone}`}
                   className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-1.5 hover:underline"
@@ -212,7 +212,9 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
                 </a>
               ) : (
                 <span className="text-[11px] text-base-content/50 mt-1 block">
-                  Phone not provided
+                  {request.allowedAction === "CLAIM_AND_SCHEDULE"
+                    ? "Contact details available after claim"
+                    : "Phone not provided"}
                 </span>
               )}
             </div>

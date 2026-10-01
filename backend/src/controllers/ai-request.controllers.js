@@ -2382,10 +2382,7 @@ export const buildTechnicianCandidateAIDetail = (request) => {
     farmerId: {
       _id: farmer._id,
       name: safeCandidateText(farmer.name),
-      phoneNumber: safeCandidateText(farmer.phoneNumber),
       imageUrl: safeCandidateText(farmer.imageUrl),
-      address: farmer.address || null,
-      farmLocation: farmer.farmLocation || null,
     },
   };
 };

@@ -219,6 +219,10 @@ export default function HealthRequestActionModal({
   );
   const requestPhotos = useMemo(() => getRequestPhotos(request), [request]);
   const status = normalizeHealthStatus(request?.status);
+  const isUnassignedCandidate =
+    status === "pending" &&
+    !request?.handledBy &&
+    !request?.assignedTechnicianId;
   const isOwned = isOwnedHealthRequest(request);
   const isScheduled = status === "scheduled";
   const cancellationRequested =
@@ -865,13 +869,18 @@ export default function HealthRequestActionModal({
                           "Not recorded"}
                       </h4>
                       <p className="text-xs text-base-content/70 mt-0.5 truncate">
-                        {formatFarmerLocation(
-                          request?.farmerId,
-                          "Location unknown",
-                        )}
+                        {isUnassignedCandidate
+                          ? [request?.barangay, request?.municipality]
+                              .filter(Boolean)
+                              .join(", ") || "Location unknown"
+                          : formatFarmerLocation(
+                              request?.farmerId,
+                              "Location unknown",
+                            )}
                       </p>
-                      {(request?.farmerId?.phoneNumber ||
-                        request?.farmerId?.phone) && (
+                      {!isUnassignedCandidate &&
+                        (request?.farmerId?.phoneNumber ||
+                          request?.farmerId?.phone) && (
                         <a
                           href={`tel:${request?.farmerId?.phoneNumber || request?.farmerId?.phone}`}
                           className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-1.5 hover:underline"

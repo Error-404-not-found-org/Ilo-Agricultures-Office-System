@@ -94,7 +94,7 @@ test("H4 candidate AI detail supports review-first scheduling with safe request 
   );
 });
 
-test("H4 authenticated technician AI candidate includes review contact and location", () => {
+test("H4 authenticated technician AI candidate keeps review identity without private contact or location", () => {
   const candidate = buildTechnicianCandidateAIDetail({
     _id: "66b5f16a1f0d2c3b4a596880",
     type: "ai",
@@ -119,10 +119,8 @@ test("H4 authenticated technician AI candidate includes review contact and locat
   });
 
   assert.equal(candidate.farmerId.name, "Maria Farmer");
-  assert.equal(candidate.farmerId.phoneNumber, "09171234567");
-  assert.equal(candidate.farmerId.address.street, "Farm Road");
-  assert.equal(candidate.farmerId.farmLocation.latitude, 10.7);
-  assert.equal(candidate.farmerId.farmLocation.directionsNote, "Use the east gate");
+  assert.deepEqual(Object.keys(candidate.farmerId).sort(), ["_id", "imageUrl", "name"]);
+  assert.doesNotMatch(JSON.stringify(candidate), /09171234567|Farm Road|10\.7|122\.5|Use the east gate/);
 });
 
 test("H4 candidate AI detail prefers canonical dispatch locality", () => {
@@ -146,7 +144,7 @@ test("H4 candidate AI detail prefers canonical dispatch locality", () => {
   assert.equal(candidate.municipality, "Santa Barbara");
 });
 
-test("H4 unclaimed technician AI detail response includes review contact and location", async () => {
+test("H4 unclaimed technician AI detail response keeps review data without private contact or location", async () => {
   const originalFindOne = Insemination.findOne;
   const requestRecord = {
     _id: "66b5f16a1f0d2c3b4a596879",
@@ -225,13 +223,8 @@ test("H4 unclaimed technician AI detail response includes review contact and loc
       "https://example.test/ai-side.jpg",
     ]);
     assert.equal(res.payload.farmerId.name, "Candidate Farmer");
-    assert.equal(res.payload.farmerId.phoneNumber, "09170000000");
-    assert.equal(res.payload.farmerId.address.street, "Hidden Street");
-    assert.equal(res.payload.farmerId.farmLocation.latitude, 10.7);
-    assert.equal(
-      res.payload.farmerId.farmLocation.directionsNote,
-      "Hidden directions",
-    );
+    assert.deepEqual(Object.keys(res.payload.farmerId).sort(), ["_id", "imageUrl", "name"]);
+    assert.doesNotMatch(JSON.stringify(res.payload), /09170000000|Hidden Street|10\.7|Hidden directions/);
   } finally {
     Insemination.findOne = originalFindOne;
   }

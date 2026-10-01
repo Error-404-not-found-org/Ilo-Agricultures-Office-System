@@ -4226,28 +4226,18 @@ export const getTechnicianRequests = async (req, res) => {
           serviceType: "Artificial Insemination",
           requestKind,
           attemptNumber: rec.attemptNumber || 1,
-          previousAttemptId: previousAttemptContext,
           previousAttemptOutcome: previousAttempt?.outcome || null,
           previousAttemptVerified,
           status: rec.status,
           allowedAction,
           actionLabel,
           farmer: farmer.name || "Unknown Farmer",
-          farmerId: farmer._id || farmer,
           farmerImageUrl:
             farmer.imageUrl ||
             farmer.avatarUrl ||
             farmer.profilePicture ||
             farmer.avatar ||
             "",
-          farmerPhone: farmer.phoneNumber || "",
-          phone: farmer.phone || null,
-          farmerDetails: {
-            id: farmer._id || null,
-            name: farmer.name || "Unknown Farmer",
-            phone: farmer.phoneNumber || "",
-            location: formatAddress(farmer.address),
-          },
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -4259,14 +4249,6 @@ export const getTechnicianRequests = async (req, res) => {
           earTag: rec.animalId?.earTag || "",
           breed: rec.animalId?.breed || "",
           species: rec.animalId?.species || "",
-          location: formatAddress(farmer.address),
-          locationLabel:
-            barangay && city
-              ? `${barangay}, ${city}`
-              : formatAddress(farmer.address) || "Unknown Location",
-          hasFarmPin,
-          distanceKm,
-          farmPinStatus: hasFarmPin ? "available" : "missing",
           municipality: city,
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
@@ -4280,7 +4262,6 @@ export const getTechnicianRequests = async (req, res) => {
             count: attachmentUrls.length,
           },
           createdAt: rec.createdAt,
-          raw: rec,
         };
       }
 
@@ -4408,21 +4389,12 @@ export const getTechnicianRequests = async (req, res) => {
           requestType: rec.requestType || "health",
           status: rec.status,
           farmer: farmer.name || "Unknown Farmer",
-          farmerId: farmer._id || farmer,
           farmerImageUrl:
             farmer.imageUrl ||
             farmer.avatarUrl ||
             farmer.profilePicture ||
             farmer.avatar ||
             "",
-          farmerPhone: farmer.phoneNumber || "",
-          phone: farmer.phone || null,
-          farmerDetails: {
-            id: farmer._id || null,
-            name: farmer.name || "Unknown Farmer",
-            phone: farmer.phoneNumber || "",
-            location: formatAddress(farmer.address),
-          },
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -4437,14 +4409,6 @@ export const getTechnicianRequests = async (req, res) => {
           earTag: rec.animalId?.earTag || "",
           breed: rec.animalId?.breed || "",
           species: rec.animalId?.species || "",
-          location: formatAddress(farmer.address),
-          locationLabel:
-            barangay && city
-              ? `${barangay}, ${city}`
-              : formatAddress(farmer.address) || "Unknown Location",
-          hasFarmPin,
-          distanceKm,
-          farmPinStatus: hasFarmPin ? "available" : "missing",
           municipality: city,
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
@@ -4455,7 +4419,6 @@ export const getTechnicianRequests = async (req, res) => {
             count: attachmentUrls.length,
           },
           createdAt: rec.createdAt,
-          raw: rec,
         };
       }
 
