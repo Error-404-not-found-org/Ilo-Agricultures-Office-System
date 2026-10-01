@@ -999,6 +999,29 @@ export function AIRequestDetails({
               )}
             </TouchableOpacity> : null}
 
+            {isAvailable ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Skip Request"
+                disabled={updating}
+                onPress={() => setSkipConfirmationVisible(true)}
+                style={{
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 8,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  opacity: updating ? 0.6 : 1,
+                }}
+              >
+                <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
+                  Skip Request
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
             {isScheduled ? (
               <TouchableOpacity
                 accessibilityRole="button"
