@@ -176,7 +176,7 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
     assert.ok(pdBranch.$or[0].dueDate.$lte instanceof Date);
   });
 
-  await t.test("Schedule resolves Task Farmer context through Animal and Pregnancy relationships", async () => {
+  await t.test("Schedule uses populated Task Farmer context without inferring from incomplete legacy links", async () => {
     const animalId = "507f1f77bcf86cd799439101";
     const pregnancyAnimalId = "507f1f77bcf86cd799439102";
     const farmerId = "507f1f77bcf86cd799439103";
@@ -192,7 +192,11 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
         status: "Pending",
         dueDate,
         technicianId: "tech-a",
-        farmerId: directFarmerId,
+        farmerId: {
+          _id: directFarmerId,
+          name: "Direct Farmer",
+          address: { barangay: "Buray", municipality: "Oton" },
+        },
         animalIds: [],
         metadata: {},
       },
@@ -258,13 +262,15 @@ test("Technician full agenda exposes only owned canonical date-bound work", asyn
     const byTaskId = new Map(res.body.agendaItems.map((item) => [item.id, item]));
     assert.equal(byTaskId.get("direct-farmer-task").farmerName, "Direct Farmer");
     assert.equal(byTaskId.get("direct-farmer-task").location, "Buray, Oton");
-    assert.equal(byTaskId.get("singular-animal-task").farmerName, "No Location Farmer");
-    assert.equal(byTaskId.get("singular-animal-task").animalTag, "A-3");
+    // These three fixtures lack the required populated Task.farmerId; the
+    // singular animalId is not the canonical Task.animalIds relationship.
+    assert.equal(byTaskId.get("singular-animal-task").farmerName, "Unknown Farmer");
+    assert.equal(byTaskId.get("singular-animal-task").animalTag, null);
     assert.equal(byTaskId.get("singular-animal-task").location, "Unknown Location");
-    assert.equal(byTaskId.get("animal-linked-task").farmerName, "Resolved Farmer");
-    assert.equal(byTaskId.get("animal-linked-task").animalTag, "A-1");
-    assert.equal(byTaskId.get("pregnancy-linked-calving").farmerName, "Resolved Farmer");
-    assert.equal(byTaskId.get("pregnancy-linked-calving").animalTag, "A-2");
+    assert.equal(byTaskId.get("animal-linked-task").farmerName, "Unknown Farmer");
+    assert.equal(byTaskId.get("animal-linked-task").animalTag, null);
+    assert.equal(byTaskId.get("pregnancy-linked-calving").farmerName, "Unknown Farmer");
+    assert.equal(byTaskId.get("pregnancy-linked-calving").animalTag, null);
   });
 
   await t.test("Health agenda excludes Advice and Office Pickup", async () => {

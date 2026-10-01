@@ -142,11 +142,11 @@ test("animal-centered projections isolate active work between technicians", asyn
   };
 
   await t.test("Animal Details shows owner work, hides it from peers, and preserves completed AI", async () => {
-    for (const [actor, expectedActive] of [
-      [viewer("tech-a"), true],
-      [viewer("tech-b"), false],
-      [viewer("admin-1", "admin"), true],
-      [viewer("farmer-1", "farmer"), true],
+    for (const [actor, expectedActive, expectedInternalTask] of [
+      [viewer("tech-a"), true, true],
+      [viewer("tech-b"), false, false],
+      [viewer("admin-1", "admin"), true, true],
+      [viewer("farmer-1", "farmer"), true, false],
     ]) {
       installAnimalDetailFixtures();
       const recorder = responseRecorder();
@@ -171,8 +171,16 @@ test("animal-centered projections isolate active work between technicians", asyn
       );
       assert.equal(
         JSON.stringify(recorder.body).includes("task-active-a"),
-        expectedActive,
+        expectedInternalTask,
       );
+      if (actor.role === "farmer") {
+        assert.equal(recorder.body.nextAction?.type, "ATTEND_AI_VISIT");
+        assert.ok(
+          recorder.body.inseminations.every(
+            (item) => !Object.hasOwn(item, "pregnancyFollowUpTask"),
+          ),
+        );
+      }
     }
   });
 
