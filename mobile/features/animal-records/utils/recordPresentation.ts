@@ -103,12 +103,49 @@ const calvingOutcome = (record: any) => {
       title: "Pregnancy Loss Record",
       summary: "Pregnancy loss recorded",
       badge: "Pregnancy loss recorded",
+      countDetail: "",
+    };
+  }
+  const count = (value: unknown): number | null =>
+    typeof value === "number" && Number.isSafeInteger(value) && value > 0
+      ? value
+      : null;
+  const living = count(record.livingCalfCount);
+  const stillborn = count(record.stillbornCount);
+  const outcome = String(record.outcome || "").toLowerCase();
+  if (outcome === "live_birth" && living !== null) {
+    return {
+      title: "Calving Record",
+      summary: `${living} living ${living === 1 ? "calf" : "calves"}`,
+      badge: "Live birth",
+      countDetail: "",
+    };
+  }
+  if (outcome === "stillbirth") {
+    return {
+      title: "Calving outcome recorded",
+      summary: "Stillbirth",
+      badge: "Stillbirth",
+      countDetail: stillborn === null
+        ? ""
+        : `${stillborn} stillborn ${stillborn === 1 ? "calf" : "calves"}`,
+    };
+  }
+  if (outcome === "mixed") {
+    return {
+      title: "Mixed delivery",
+      summary: living !== null && stillborn !== null
+        ? `${living} living, ${stillborn} stillborn`
+        : "Mixed delivery",
+      badge: "Mixed delivery",
+      countDetail: "",
     };
   }
   return {
     title: "Calving Record",
     summary: "Calving recorded",
     badge: "Calving recorded",
+    countDetail: "",
   };
 };
 
@@ -244,6 +281,7 @@ export const formatAnimalRecord = (
       }],
       details: [
         outcome.summary,
+        outcome.countDetail,
         offspring.length ? `Offspring: ${offspring.join(", ")}` : "",
         record.technicianNote || record.notes || "",
       ].filter(Boolean),
