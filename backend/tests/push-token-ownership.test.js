@@ -332,12 +332,13 @@ test("push-token mutation route stays authenticated and every sign-out path uses
   assert.match(notificationHelpers, /await pendingPushTokenRegistration/);
   assert.match(notificationHelpers, /currentPushToken/);
 
-  const farmerSettings = fs.readFileSync(
-    new URL("../../mobile/app/(farmer)/settings.tsx", import.meta.url),
+  const authenticatedRoot = fs.readFileSync(
+    new URL("../../mobile/app/_layout.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(farmerSettings, /getRememberedPushToken/);
-  assert.match(farmerSettings, /rememberRegisteredPushToken/);
+  assert.match(authenticatedRoot, /syncPushTokenForAuthenticatedUser\(api, token\)/);
+  assert.match(notificationHelpers, /rememberRegisteredPushToken\(pushToken\)/);
+  assert.match(notificationHelpers, /await detachPushTokenBestEffort\(api\)/);
 });
 
 test("account deactivation clears stored push ownership in both Admin paths", () => {

@@ -51,34 +51,40 @@ test("pregnancy readiness enables the current Day-60 policy", () => {
 
 test("work queue, task details, and verification form share readiness guards", () => {
   const queue = source("mobile/features/technician-requests/components/TechnicianMyWorkPanel.tsx");
+  const card = source("mobile/features/technician-requests/components/RequestListCard.tsx");
   const task = source("mobile/app/(technician)/task-details.tsx");
   const animal = source(
     "mobile/features/animals/screens/RoleAwareAnimalDetailsScreen.tsx",
   );
   const form = source("mobile/app/(technician)/pregnancy-verification.tsx");
 
-  for (const code of [queue, form]) {
+  assert.match(queue, /<RequestListCard/);
+  for (const code of [card, form]) {
     assert.match(code, /Pregnancy check not yet available/);
   }
-  assert.match(task, /Confirmation not yet available/);
+  assert.match(task, /Diagnosis not yet available/);
   assert.match(task, /initialPregnancyCheckLocked = Boolean/);
   assert.match(task, /!task\.pregnancyReadiness\.isEligible/);
   assert.match(form, /officialDiagnosisReady/);
   assert.match(form, /pregnancyReadiness\?\.methods/);
-  assert.match(animal, /official outcome/);
-  assert.match(animal, /observationPresentation/);
+  assert.match(animal, /official pregnancy diagnosis/);
+  assert.match(animal, /getBreedingObservationPresentation\(latestObservation\)/);
 });
 
 test("farmer observation stays visible for Likely Pregnant without creating Pregnancy", () => {
   const profile = source(
     "mobile/features/animals/screens/RoleAwareAnimalDetailsScreen.tsx",
   );
+  const presentation = source(
+    "mobile/features/breeding/utils/breedingObservationPresentation.ts",
+  );
   const controller = source("backend/src/controllers/ai-request.controllers.js");
   const start = controller.indexOf("export const submitFarmerBreedingObservation");
   const end = controller.indexOf("export const deleteRequest", start);
   const observationHandler = controller.slice(start, end);
 
-  assert.match(profile, /Observation submitted/);
+  assert.match(profile, /presentation\.farmerMessage/);
+  assert.match(presentation, /Insemination outcome not yet confirmed\./);
   assert.match(profile, /Likely Pregnant/);
   assert.match(profile, /farmerObservationSigns/);
   assert.match(profile, /Update observation/);

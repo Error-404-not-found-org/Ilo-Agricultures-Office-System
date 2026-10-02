@@ -64,6 +64,7 @@ const otonHealthDispatch = {
   },
   stage: "local",
 };
+const healthFixturePhotos = ["https://res.cloudinary.com/demo/image/upload/v1/health-fixture.jpg"];
 
 const makeEligibleHealthTechnician = (req) => {
   Object.assign(req.user, {
@@ -156,7 +157,7 @@ test("FARMER HEALTH", async (t) => {
   await t.test("no preferredDate", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s" }, "farmer", farmerId);
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: healthFixturePhotos }, "farmer", farmerId);
     await createHealthRequest(req, res);
     assert.equal(res.statusCode, 201);
     assert.equal(res.body.request.preferredDate, undefined);
@@ -164,14 +165,14 @@ test("FARMER HEALTH", async (t) => {
   await t.test("legacy preferredDate ignored", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", preferredDate: new Date() }, "farmer", farmerId);
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", preferredDate: new Date(), photos: healthFixturePhotos }, "farmer", farmerId);
     await createHealthRequest(req, res);
     assert.equal(res.body.request.preferredDate, undefined);
   });
   await t.test("Farmer schedule fields ignored", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", scheduledDate: new Date(), visitPeriod: "morning", preferredTime: "10:00", scheduledAt: new Date(), serviceStartedAt: new Date() }, "farmer", farmerId);
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", scheduledDate: new Date(), visitPeriod: "morning", preferredTime: "10:00", scheduledAt: new Date(), serviceStartedAt: new Date(), photos: healthFixturePhotos }, "farmer", farmerId);
     await createHealthRequest(req, res);
     assert.equal(res.statusCode, 201);
     assert.equal(res.body.request.scheduledDate, undefined);
@@ -183,7 +184,7 @@ test("FARMER HEALTH", async (t) => {
   await t.test("farmerNotes trimmed", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", farmerNotes: "  abc  " }, "farmer", farmerId);
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", farmerNotes: "  abc  ", photos: healthFixturePhotos }, "farmer", farmerId);
     await createHealthRequest(req, res);
     assert.equal(res.body.request.farmerNotes, "abc");
   });
@@ -207,6 +208,7 @@ test("FARMER HEALTH", async (t) => {
       requestType: "disease",
       symptoms: "Legacy compatibility summary",
       farmerNotes: "Legacy note should not override structured data.",
+      photos: healthFixturePhotos,
       requestDetails: {
         version: 1,
         assistanceRequested: "medicine_request",
@@ -257,6 +259,7 @@ test("FARMER HEALTH", async (t) => {
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-PREVENTIVE", species: "Carabao", breed: "Native" });
     const { req, res } = reqRes({
       animalId: animalId.toString(),
+      photos: healthFixturePhotos,
       requestDetails: {
         version: 1,
         assistanceRequested: "preventive_care",
@@ -283,9 +286,9 @@ test("FARMER HEALTH", async (t) => {
   await t.test("duplicate protection preserved", async () => {
     const animalId = new mongoose.Types.ObjectId();
     await Animal.create({ _id: animalId, farmerId, animalId: "HL-123", species: "Carabao", breed: "Native" });
-    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s" }, "farmer", farmerId);
+    const { req, res } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: healthFixturePhotos }, "farmer", farmerId);
     await createHealthRequest(req, res);
-    const { req: req2, res: res2 } = reqRes({ animalId: animalId.toString(), symptoms: "s" }, "farmer", farmerId);
+    const { req: req2, res: res2 } = reqRes({ animalId: animalId.toString(), symptoms: "s", photos: healthFixturePhotos }, "farmer", farmerId);
     await createHealthRequest(req2, res2);
     assert.equal(res2.statusCode, 409);
   });

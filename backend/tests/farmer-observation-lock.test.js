@@ -5,7 +5,7 @@ import { Insemination } from "../src/models/insemination.model.js";
 import { submitFarmerBreedingObservation } from "../src/controllers/ai-request.controllers.js";
 import { Animal } from "../src/models/animal.model.js";
 
-test("Farmer observation modifications are rejected after Technician review", async (t) => {
+test("Farmer observation modifications are rejected after a terminal Technician outcome", async (t) => {
   // Mock request, response
   const farmerId = new mongoose.Types.ObjectId();
   const animalId = new mongoose.Types.ObjectId();
@@ -42,12 +42,14 @@ test("Farmer observation modifications are rejected after Technician review", as
     Animal.findById = originalFindById;
   });
 
-  await t.test("Rejects update if already verified", async () => {
+  await t.test("Rejects update if the AI outcome is already verified", async () => {
     Insemination.findOne = () => ({
       populate: () => ({
         _id: req.params.id,
         farmerId,
         status: "done",
+        inseminationDate: new Date("2026-01-01T00:00:00.000Z"),
+        outcome: "Pregnant",
         farmerOutcomeReport: "possible_pregnancy",
         verificationStatus: "verified",
         outcomeVerificationStatus: "verified",
@@ -60,6 +62,6 @@ test("Farmer observation modifications are rejected after Technician review", as
     await submitFarmerBreedingObservation(req, res);
 
     assert.strictEqual(statusCode, 409);
-    assert.strictEqual(jsonResponse.code, "OBSERVATION_ALREADY_VERIFIED");
+    assert.strictEqual(jsonResponse.code, "AI_ATTEMPT_TERMINAL");
   });
 });

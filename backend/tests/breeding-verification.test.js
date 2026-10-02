@@ -278,14 +278,14 @@ test("Breeding Verification: Missing verificationTaskId + valid explicit taskId 
   }
 });
 
-test("Breeding Verification: needs_recheck without checkMethod throws INVALID_CHECK_METHOD", async () => {
+test("Breeding Verification: needs_recheck without checkMethod requires a diagnostic method", async () => {
   const state = installVerificationStubs({ result: "needs_recheck" });
   state.req.body.checkMethod = "";
   const res = createMockRes();
   try {
     await verifyFarmerBreedingObservation(state.req, res);
-    assert.equal(res.statusVal, 400);
-    assert.equal(res.jsonVal.code, "INVALID_CHECK_METHOD");
+    assert.equal(res.statusVal, 422);
+    assert.equal(res.jsonVal.code, "PREGNANCY_DIAGNOSIS_METHOD_REQUIRED");
   } finally {
     state.restore();
   }

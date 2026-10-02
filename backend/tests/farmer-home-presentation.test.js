@@ -152,6 +152,6 @@ test("Farmer cattle cards show one status and preserve responsive 320, 360, and 
     1,
   );
   assert.match(card, /animal\.reproductiveStatus === "Likely Pregnant"/);
-  assert.match(card, /"Possible pregnancy"/);
+  assert.match(card, /"No return to heat observed"/);
   assert.match(card, /accessibilityLabel=\{`\$\{fullIdentifier\}/);
 });
