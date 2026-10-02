@@ -13,7 +13,8 @@ const requestsSource = readFileSync(
 describe("Technician Requests responsibility", () => {
   it("queries only AI and Health incoming services", () => {
     expect(requestsSource).toContain("includeOperationalTasks: false");
-    expect(requestsSource).toContain('["ai", "AI"]');
+    expect(requestsSource).toContain("type: typeFilter");
+    expect(requestsSource).toContain('["ai", "Insemination"]');
     expect(requestsSource).toContain('["health", "Health"]');
     expect(requestsSource).not.toContain("Pregnancy Check");
     expect(requestsSource).not.toContain("Calving Assistance");

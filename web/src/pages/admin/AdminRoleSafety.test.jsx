@@ -7,6 +7,7 @@ import axiosInstance from "../../lib/axios";
 import AdminWorkQueue from "./AdminWorkQueue";
 import AdminPregnancyOversight from "./AdminPregnancyOversight";
 import AdminCalvings from "./AdminCalvings";
+import { getScheduleNavigationTarget } from "../../utils/technicianSchedulePresentation";
 
 vi.mock("../../lib/axios", () => ({ default: { get: vi.fn() } }));
 vi.mock("../../components/layout/Topbar", () => ({
@@ -62,7 +63,7 @@ describe("Admin Web role safety", () => {
     expect(screen.getAllByText("Health")).toHaveLength(2);
     expect(screen.getAllByText("Pregnancy")).toHaveLength(2);
     expect(screen.getAllByText("Calving")).toHaveLength(2);
-    expect(screen.getAllByText("Other Tasks")).toHaveLength(2);
+    expect(screen.getAllByText("Other")).toHaveLength(2);
 
     const profileLinks = screen.getAllByRole("link", {
       name: /View Technician profile for Same Name/,
@@ -187,16 +188,26 @@ describe("Admin Web role safety", () => {
     expect(appSource).toContain('<LivestockProfile role="technician" />');
     expect(appSource).toContain('<TechnicianRequests role="technician" />');
     expect(appSource).not.toContain('import("./pages/technician/RequestDetails")');
-    expect(scheduleSource).toContain(
-      "/technician/requests?requestId=${encodeURIComponent(reqId)}&status=all",
-    );
+    expect(scheduleSource).toContain("navigate(target.path + target.search)");
+    expect(
+      getScheduleNavigationTarget(
+        { type: "health", requestId: "request-1" },
+        "today",
+      ),
+    ).toMatchObject({
+      path: "/technician/requests",
+      search: "?section=myWork&requestId=request-1",
+    });
     expect(scheduleSource).not.toContain("/technician/schedule/details?");
     expect(profileSource).toContain("{!isAdmin && (");
     expect(profileSource).not.toContain("window.location");
     expect(profileSource).not.toContain("Marites Dela Cruz");
     expect(profileSource).not.toContain("0917 123 4567");
     expect(requestsSource).not.toContain("window.location");
-    expect(requestsSource).toContain("if (!actionPolicy.canClaim) return;");
+    expect(requestsSource).toContain("canClaim={actionPolicy.canClaim}");
+    expect(appSource).toContain(
+      '`/technician/requests?section=myWork&requestId=${encodeURIComponent(requestId)}`',
+    );
     expect(requestsSource).toContain(
       "if (!actionPolicy.canCancelOwnRequest || isUpdating) return;",
     );

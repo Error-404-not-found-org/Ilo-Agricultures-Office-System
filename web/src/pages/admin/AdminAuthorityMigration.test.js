@@ -7,11 +7,12 @@ describe("Admin authority migration source safety", () => {
   it("keeps reassignment in Admin Requests and Dashboard navigation-only", () => {
     const dashboard = read("src/pages/admin/Dashboard.jsx");
     const requestDialog = read("src/components/dialogs/RequestActionModal.jsx");
+    const sidebar = read("src/components/layout/Sidebar.jsx");
 
     expect(requestDialog).toContain("reassignRequest({");
     expect(dashboard).not.toContain("AssignTaskModal");
     expect(dashboard).not.toContain("reassignRequest");
-    expect(dashboard).toContain("/admin/requests?requestId=");
+    expect(sidebar).toContain('path: "/admin/requests"');
     expect(requestDialog).not.toContain("status: scheduledDate ?");
     expect(requestDialog).toContain("/health-request/${taskData.id}/cancel-respond");
     expect(requestDialog).toContain("/ai-request/${taskData.id}/cancel-respond");
@@ -24,7 +25,8 @@ describe("Admin authority migration source safety", () => {
     expect(requestDialog).toContain("handleClaimTask");
     expect(requestDialog).toContain('nextStatus === "in-progress"');
     expect(requestDialog).toContain("{isAdmin ? (");
-    expect(requestsPage).toContain("if (!actionPolicy.canClaim) return;");
+    expect(requestsPage).toContain("canClaim={actionPolicy.canClaim}");
+    expect(requestsPage).toContain("{actionPolicy.canSchedule && (");
     expect(requestsPage).toContain(
       "if (!actionPolicy.canCancelOwnRequest || isUpdating) return;",
     );

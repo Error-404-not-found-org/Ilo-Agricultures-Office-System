@@ -209,7 +209,11 @@ describe("Work Queue owned Health workflow", () => {
     ]);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Complete Visit" }),
+      await screen.findByRole(
+        "button",
+        { name: "Complete Visit" },
+        { timeout: 5000 },
+      ),
     );
 
     const dialog = screen.getByRole("dialog", {

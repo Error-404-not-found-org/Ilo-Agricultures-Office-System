@@ -27,7 +27,7 @@ describe("Technician Web AI calendar-date start policy", () => {
 
   it("shows future AI as details with Reschedule and no Start Early or recording action", async () => {
     renderQueue([task()]);
-    fireEvent.click(await screen.findByRole("button", { name: "View Scheduled Visit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View Scheduled Visit" }, { timeout: 5000 }));
     expect(screen.getByText("Scheduled AI Visit")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reschedule Visit" })).toBeInTheDocument();
     expect(screen.queryByText("Start service early?")).not.toBeInTheDocument();

@@ -21,6 +21,8 @@ SKILL.md
 
 # Test Folders
 test/
+!web/src/test/
+!web/src/test/setup.js
 tests/
 __tests__/
 coverage/

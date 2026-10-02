@@ -55,7 +55,7 @@ const dashboardResponse = {
       type: "health",
       status: "scheduled",
       handlingMethod: "farm_visit",
-      scheduledDate: getPhilippineTodayKey(),
+      scheduledAt: getPhilippineTodayKey(),
       visitPeriod: "morning",
       farmer: "Farmer One",
       animalTag: "COW-1",
@@ -98,14 +98,14 @@ describe("Technician Dashboard current-work hierarchy", () => {
   it("shows authoritative overview and canonical today's work without duplicating Requests", async () => {
     renderDashboard();
 
-    expect(await screen.findByText("Scheduled Health Farm Visit")).toBeTruthy();
+    expect(await screen.findByText("Scheduled Health Visit")).toBeTruthy();
     expect(screen.getByText("Inseminated Today")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
     expect(screen.getByText("Monthly Inseminations")).toBeTruthy();
     expect(screen.getByText("12")).toBeTruthy();
     expect(screen.getByText("Success Rate")).toBeTruthy();
     expect(screen.getByText("75.0%")).toBeTruthy();
-    expect(screen.getByText("Scheduled Health Farm Visit")).toBeTruthy();
+    expect(screen.getByText("Scheduled Health Visit")).toBeTruthy();
     expect(screen.getByText("Morning")).toBeTruthy();
     expect(screen.queryByText("Farmer Requests")).toBeNull();
     expect(
@@ -156,7 +156,7 @@ describe("Technician Dashboard current-work hierarchy", () => {
       agendaItems: [{
         id: "loss-overdue", taskId: "loss-overdue", type: "task",
         taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report",
-        status: "Pending", dueDate: "2020-09-19T00:00:00.000Z",
+        status: "Pending", reportedAt: "2020-09-19T00:00:00.000Z",
       }],
     });
     expect(await screen.findByText("Pregnancy Loss Review")).toBeTruthy();
@@ -179,7 +179,7 @@ describe("Technician Dashboard current-work hierarchy", () => {
           type: "task",
           taskType: "BreedingFollowUp",
           status: "Pending",
-          dueDate: today,
+          dueAt: today,
           scheduleLabel: "Breeding Follow-up",
         },
         {
@@ -188,7 +188,7 @@ describe("Technician Dashboard current-work hierarchy", () => {
           type: "task",
           taskType: "PD",
           status: "Pending",
-          dueDate: today,
+          readyFrom: today,
           scheduleLabel: "Pregnancy Check",
         },
         {
@@ -198,7 +198,7 @@ describe("Technician Dashboard current-work hierarchy", () => {
           taskType: "BreedingFollowUp",
           sourceType: "farmer_pregnancy_loss_report",
           status: "Pending",
-          dueDate: today,
+          reportedAt: today,
           scheduleLabel: "Pregnancy Loss Review",
         },
         {
@@ -207,7 +207,7 @@ describe("Technician Dashboard current-work hierarchy", () => {
           type: "task",
           taskType: "Calving",
           status: "Pending",
-          dueDate: today,
+          expectedAt: today,
           scheduleLabel: "Expected Calving",
         },
       ],

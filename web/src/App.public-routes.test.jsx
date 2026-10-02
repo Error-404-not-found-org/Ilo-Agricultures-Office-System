@@ -52,10 +52,9 @@ describe("public invitation routes", () => {
     ).toBeInTheDocument();
   });
 
-  it("uses one modal-only staff sign-in wrapper across landing triggers", () => {
+  it("uses the modal-only staff sign-in wrapper at current landing entry points", () => {
     const componentFiles = [
       "PublicNavbar.jsx",
-      "LandingHero.jsx",
       "StaffPortalSection.jsx",
       "FinalCTA.jsx",
       "PublicFooter.jsx",
@@ -84,11 +83,10 @@ describe("public invitation routes", () => {
     });
   });
 
-  it("points all landing app-download actions to /download-app", () => {
+  it("points current landing app-download actions to /download-app", () => {
     const files = [
       "./pages/landing/data/landingContent.js",
       "./pages/landing/components/PublicNavbar.jsx",
-      "./pages/landing/components/LandingHero.jsx",
       "./pages/landing/components/FarmerAppSection.jsx",
       "./pages/landing/components/FinalCTA.jsx",
     ];

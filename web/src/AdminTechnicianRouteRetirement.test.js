@@ -26,10 +26,10 @@ describe("Admin Technician roster retirement source safety", () => {
     );
   });
 
-  it("points Dashboard roster intent at canonical Technician Users mode", () => {
+  it("keeps Dashboard workload navigation on the current Admin work route", () => {
     const dashboard = read("src/pages/admin/Dashboard.jsx");
 
-    expect(dashboard).toContain('to: "/admin/users?role=technician"');
+    expect(dashboard).toContain('to="/admin/work-queue"');
     expect(dashboard).not.toContain('to: "/admin/technicians"');
   });
 
