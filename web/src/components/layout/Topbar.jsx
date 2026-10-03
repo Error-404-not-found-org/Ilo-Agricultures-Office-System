@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import {
   Bell,
@@ -30,6 +31,7 @@ export default function Topbar({
 }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const { user } = useUser();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toggle } = useSidebar();
   const isAdmin =
@@ -77,8 +79,17 @@ export default function Topbar({
     clearMutation.mutate();
   };
 
-  const toggleRead = (id) => {
-    markReadMutation.mutate(id);
+  const toggleRead = (notification) => {
+    markReadMutation.mutate(notification._id);
+    if (
+      !isAdmin &&
+      notification.eventType === "cancellation_requested" &&
+      notification.metadata?.serviceType === "health" &&
+      notification.metadata?.requestId
+    ) {
+      setShowNotifications(false);
+      navigate(`/technician/requests?section=myWork&requestId=${encodeURIComponent(notification.metadata.requestId)}`);
+    }
   };
 
   const formatTimeAgo = (dateString) => {
@@ -210,7 +221,7 @@ export default function Topbar({
                       {notifications.map((notif) => (
                         <div
                           key={notif._id}
-                          onClick={() => toggleRead(notif._id)}
+                          onClick={() => toggleRead(notif)}
                           className={`p-3.5 flex gap-3 hover:bg-base-200 cursor-pointer transition-colors ${
                             !notif.isRead ? "bg-primary/5" : ""
                           }`}

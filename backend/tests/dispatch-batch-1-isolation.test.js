@@ -120,7 +120,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
       _id: "ai-unassigned",
       status: "pending",
       createdAt: new Date(),
-      farmerId: { name: "Test Farmer", phoneNumber: "1234", address: { city: "Iloilo" } },
+      farmerId: { name: "Test Farmer", phoneNumber: "1234", address: { city: "Iloilo", street: "Private AI Street" } },
       animalId: { earTag: "T1" }
     };
     Insemination.find = () => queryResult([unassignedAiRecord]);
@@ -184,7 +184,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
       _id: "health-unassigned",
       status: "pending",
       createdAt: new Date(),
-      farmerId: { name: "Health Farmer", phone: "5678", address: { city: "Oton" } },
+      farmerId: { name: "Health Farmer", phone: "5678", address: { city: "Oton", street: "Private Health Street" } },
       animalId: { earTag: "T2" }
     }]);
 
@@ -201,12 +201,50 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     assert.equal(aiReq.farmer, "Test Farmer");
     assert.equal(aiReq.raw, undefined);
     assert.equal(aiReq.farmerPhone, undefined);
+    for (const field of ["phone", "farmerId", "farmerDetails", "location", "locationLabel", "distanceKm", "hasFarmPin", "farmPinStatus"]) {
+      assert.equal(aiReq[field], undefined, `AI candidate must not expose ${field}`);
+    }
+    assert.deepEqual(aiReq.municipality, "Iloilo");
 
     const healthReq = requests.find(r => r.type === "health");
     assert.ok(healthReq, "Should return a Health request");
     assert.equal(healthReq.farmer, "Health Farmer");
     assert.equal(healthReq.raw, undefined);
     assert.equal(healthReq.farmerPhone, undefined);
+    for (const field of ["phone", "farmerId", "farmerDetails", "location", "locationLabel", "distanceKm", "hasFarmPin", "farmPinStatus"]) {
+      assert.equal(healthReq[field], undefined, `Health candidate must not expose ${field}`);
+    }
+    assert.deepEqual(healthReq.municipality, "Oton");
+    const serialized = JSON.stringify(requests);
+    for (const privateValue of ["1234", "5678", "Private AI Street", "Private Health Street"]) {
+      assert.equal(serialized.includes(privateValue), false, `candidate response leaked ${privateValue}`);
+    }
+  });
+
+  await t.test("Requests: assigned AI and Health retain authorized work context", async () => {
+    Task.countDocuments = () => Promise.resolve(0);
+    Insemination.find = () => queryResult([{
+      _id: "ai-assigned", status: "scheduled", approvedBy: { _id: "tech-a" },
+      farmerId: { _id: "farmer-ai", name: "AI Farmer", phoneNumber: "1234", address: { city: "Iloilo" } },
+      animalId: { earTag: "T1" }, createdAt: new Date(),
+    }]);
+    HealthRequest.find = () => queryResult([{
+      _id: "health-assigned", status: "scheduled", handledBy: { _id: "tech-a" },
+      farmerId: { _id: "farmer-health", name: "Health Farmer", phoneNumber: "5678", address: { city: "Oton" } },
+      animalId: { earTag: "T2" }, createdAt: new Date(),
+    }]);
+    const res = mockResponse();
+    await getTechnicianRequests(
+      { user: { _id: "tech-a", role: "technician" }, query: { assignment: "mine" } },
+      res,
+    );
+    assert.equal(res.statusCode, 200);
+    for (const [type, phone] of [["ai", "1234"], ["health", "5678"]]) {
+      const assigned = res.body.requests.find((request) => request.type === type);
+      assert.ok(assigned, `assigned ${type} request remains visible`);
+      assert.equal(assigned.farmerPhone, phone);
+      assert.ok(assigned.raw, `assigned ${type} keeps raw work context`);
+    }
   });
 
   await t.test("Requests: a skip hides the request only from that Technician", async () => {

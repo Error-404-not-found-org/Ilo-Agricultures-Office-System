@@ -77,19 +77,18 @@ describe("Web Health request workflow rules", () => {
     ).toEqual({
       advice: "Keep the animal hydrated.",
       followUpDate: "2026-09-03",
-      technicianNote: "Monitor the next request.",
     });
   });
 
-  it("validates Office Pickup and omits empty optional fields", () => {
+  it("keeps Farmer-facing Office Pickup fields and ignores legacy internal notes", () => {
     const draft = {
       item: " Dewormer ",
       availabilityConfirmed: true,
       pickupInstructions: " Collect during office hours. ",
-      farmerMessage: " ",
-      dosageInstructions: " ",
-      withdrawalGuidance: " ",
-      followUpDate: " ",
+      farmerMessage: " Bring the request reference. ",
+      dosageInstructions: " Give 10 mL once. ",
+      withdrawalGuidance: " Observe a 7-day withdrawal. ",
+      followUpDate: " 2099-09-04 ",
       internalNote: " internal only ",
     };
     expect(validateHealthOfficePickup(draft)).toBeNull();
@@ -97,7 +96,10 @@ describe("Web Health request workflow rules", () => {
       item: "Dewormer",
       availabilityConfirmed: true,
       instructions: "Collect during office hours.",
-      technicianNote: "internal only",
+      farmerMessage: "Bring the request reference.",
+      dosageOrUseInstructions: "Give 10 mL once.",
+      withdrawalGuidance: "Observe a 7-day withdrawal.",
+      followUpDate: "2099-09-04",
     });
     expect(
       validateHealthOfficePickup({ ...draft, availabilityConfirmed: false }),

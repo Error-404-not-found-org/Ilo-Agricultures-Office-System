@@ -1,21 +1,22 @@
 import React from "react";
-import { View, TouchableOpacity, useWindowDimensions } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import {
+  Calendar,
   CalendarDays,
+  Clock,
   HeartPulse,
   MapPin,
   Stethoscope,
   Syringe,
+  User,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 
 import { AsyncState, SectionHeader, StatusBadge } from "@/components/shared";
-import { Text } from "@/components/ui/Text";
+import { Text as AppText } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
-import {
-  formatDashboardLocation,
-  formatPlannedSchedule,
-} from "../utils/dashboardPresentation";
+import { formatDashboardLocation } from "../utils/dashboardPresentation";
+import { getDashboardWorkPreview } from "../utils/dashboardWorkPreview";
 import { TechnicianRouteSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
 import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
 import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
@@ -69,6 +70,58 @@ function getServiceTheme(
   };
 }
 
+function getWorkItemSchedule(item: TechnicianWorkItem) {
+  if (
+    item.workType !== "ai" &&
+    item.workType !== "health" &&
+    item.timingLabel
+  ) {
+    return { dateStr: item.timingLabel, timeStr: null };
+  }
+  const rawDate =
+    item.scheduledDate ||
+    (item as any).raw?.scheduledDate ||
+    (item as any).schedule?.date ||
+    item.dueDate ||
+    item.expectedDate;
+
+  let dateStr: string | null = null;
+  if (rawDate) {
+    const parsedDate = new Date(String(rawDate));
+    if (!Number.isNaN(parsedDate.getTime())) {
+      dateStr = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "Asia/Manila",
+      }).format(parsedDate);
+    }
+  }
+
+  if (!dateStr && item.timingLabel) {
+    dateStr = item.timingLabel;
+  }
+
+  const rawPeriod = String(
+    item.visitPeriod ||
+      (item as any).raw?.visitPeriod ||
+      (item as any).schedule?.visitPeriod ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const timeStr =
+    rawPeriod === "morning"
+      ? "Morning"
+      : rawPeriod === "afternoon"
+        ? "Afternoon"
+        : null;
+
+  return { dateStr, timeStr };
+}
+
 export function TechnicianRouteSection({
   loading,
   workItems,
@@ -76,40 +129,37 @@ export function TechnicianRouteSection({
 }: TechnicianRouteSectionProps) {
   const router = useRouter();
   const { colors } = useTheme();
-  const previewItems = workItems.slice(0, 3);
+  const { previewItems, total, hasMoreWork } =
+    getDashboardWorkPreview(workItems);
 
   return (
     <View style={{ marginBottom: 24 }}>
       <SectionHeader
         title="Today's work"
         rightAction={
-          <TouchableOpacity
-            onPress={() =>
-              router.push("/(technician)/technician.calendar" as any)
-            }
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Open calendar"
-            style={{
-              minHeight: 48,
-              paddingHorizontal: 4,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <CalendarDays size={17} color={colors.primary} />
-
-            <Text
-              variant="semibold"
-              size={14}
+          !loading && total > 0 ? (
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(technician)/(tabs)/technician.requests",
+                  params: { section: "myWork" },
+                } as any)
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`View all ${total} work items in My Work`}
+              hitSlop={4}
               style={{
-                color: colors.primary,
+                minHeight: 48,
+                paddingHorizontal: 8,
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              Open calendar
-            </Text>
-          </TouchableOpacity>
+              <AppText textRole="bodyStrong" style={{ color: colors.primary }}>
+                View all ({total})
+              </AppText>
+            </TouchableOpacity>
+          ) : null
         }
       />
 
@@ -133,15 +183,45 @@ export function TechnicianRouteSection({
           />
         </View>
       ) : (
-        previewItems.map((item, index) => {
-          return (
-            <VisitRow
-              key={`${item.workType}-${item.id || index}`}
-              item={item}
-              onPress={() => handleAction(item)}
-            />
-          );
-        })
+        <>
+          {previewItems.map((item, index) => {
+            return (
+              <VisitRow
+                key={`${item.workType}-${item.id || index}`}
+                item={item}
+                onPress={() => handleAction(item)}
+              />
+            );
+          })}
+
+          {hasMoreWork ? (
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(technician)/(tabs)/technician.requests",
+                  params: { section: "myWork" },
+                } as any)
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`View all ${total} work items in My Work`}
+              hitSlop={4}
+              style={{
+                paddingVertical: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: 4,
+                marginBottom: 4,
+              }}
+            >
+              <AppText
+                textRole="bodyStrong"
+                style={{ color: colors.primary }}
+              >
+                View all ({total})
+              </AppText>
+            </TouchableOpacity>
+          ) : null}
+        </>
       )}
     </View>
   );
@@ -154,11 +234,7 @@ function VisitRow({
   item: TechnicianWorkItem;
   onPress: () => void;
 }) {
-  const { width } = useWindowDimensions();
-
   const { colors, isDark } = useTheme();
-
-  const compact = width < 390;
 
   const service = item.title;
 
@@ -169,7 +245,11 @@ function VisitRow({
     : item.animalTag
       ? `Animal ${item.animalTag}`
       : null;
-  const plannedSchedule = formatPlannedSchedule(item);
+  const { dateStr, timeStr } = getWorkItemSchedule(item);
+  const locationText = item.location
+    ? formatDashboardLocation(item, item.location)
+    : null;
+
   const ServiceIcon =
     item.workType === "health"
       ? Stethoscope
@@ -187,26 +267,11 @@ function VisitRow({
         : "warning";
   const serviceTheme = getServiceTheme(service, item.overdue, isDark, colors);
 
-  const actionColumn = (
-    <View
-      style={{
-        width: compact ? "100%" : 110,
-        marginTop: compact ? 8 : 0,
-        marginLeft: compact ? 0 : 8,
-        flexDirection: compact ? "row" : "column",
-        alignItems: "center",
-        justifyContent: compact ? "flex-end" : "center",
-        gap: 6,
-      }}
-    >
-      <StatusBadge
-        label={item.statusLabel}
-        variant={statusVariant}
-        domain="service"
-        compact
-      />
-    </View>
-  );
+  const farmerText = item.farmerName?.trim();
+  const farmerAndAnimal =
+    farmerText && animal
+      ? `${farmerText} · ${animal}`
+      : farmerText || animal || null;
 
   return (
     <View
@@ -216,117 +281,116 @@ function VisitRow({
         padding: 12,
       }}
     >
-      <View
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`${service}${item.farmerName ? ` for ${item.farmerName}` : ""}`}
         style={{
           flexDirection: "row",
           alignItems: "center",
         }}
       >
-        <TouchableOpacity
-          onPress={onPress}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel={`${service}${item.farmerName ? ` for ${item.farmerName}` : ""}`}
+        {/* Left: Icon (Center Left) */}
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            backgroundColor: serviceTheme.bgColor,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 12,
+            alignSelf: "center",
+          }}
+        >
+          <ServiceIcon size={20} color={serviceTheme.iconColor} />
+        </View>
+
+        {/* Center: Content */}
+        <View
           style={{
             flex: 1,
             minWidth: 0,
-            flexDirection: "row",
-            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              backgroundColor: serviceTheme.bgColor,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 12,
-            }}
+          {/* Title with exact Farmer Upcoming Visits font style */}
+          <Text
+            numberOfLines={1}
+            className="w-full font-outfit-bold text-[14px] leading-5 text-slate-800 dark:text-white"
           >
-            <ServiceIcon size={20} color={serviceTheme.iconColor} />
-          </View>
+            {service}
+          </Text>
 
-          <View
-            style={{
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: "Outfit_700Bold",
-              }}
-              numberOfLines={2}
-            >
-              {service}
-            </Text>
+          {/* Date & Time Row with Icons matching Farmer Upcoming Visits */}
+          {dateStr || timeStr ? (
+            <View className="flex-row items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
+              {dateStr ? (
+                <View className="flex-row items-center">
+                  <Calendar size={12} color="#94a3b8" />
+                  <Text className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400">
+                    {dateStr}
+                  </Text>
+                </View>
+              ) : null}
 
-            <Text textRole="body" numberOfLines={1}>
-              {item.farmerName || "Farmer"}
-            </Text>
+              {timeStr ? (
+                <View className="flex-row items-center">
+                  <Clock size={12} color="#94a3b8" />
+                  <Text className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400">
+                    {timeStr}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
-            {animal ? (
-              <Text textRole="caption" color="secondary" numberOfLines={1}>
-                {animal}
+          {/* Farmer & Animal Row with User icon matching Farmer style */}
+          {farmerAndAnimal ? (
+            <View className="flex-row items-center mt-1">
+              <User size={12} color="#94a3b8" />
+              <Text
+                numberOfLines={1}
+                className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400"
+              >
+                {farmerAndAnimal}
               </Text>
-            ) : null}
+            </View>
+          ) : null}
 
-            {item.location ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  marginTop: 3,
-                }}
+          {/* Location Row with MapPin icon matching Farmer style */}
+          {locationText ? (
+            <View className="flex-row items-center mt-1">
+              <MapPin size={12} color="#94a3b8" />
+              <Text
+                numberOfLines={1}
+                className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400"
               >
-                <MapPin size={13} color={colors.textMuted} />
+                {locationText}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
-                <Text
-                  textRole="caption"
-                  color="secondary"
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                  }}
-                >
-                  {formatDashboardLocation(item, item.location)}
-                </Text>
-              </View>
-            ) : null}
-
-            {plannedSchedule ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  marginTop: 3,
-                }}
-              >
-                <CalendarDays size={13} color={colors.textMuted} />
-
-                <Text
-                  textRole="caption"
-                  color="secondary"
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                  }}
-                >
-                  Planned: {plannedSchedule}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </TouchableOpacity>
-
-        {compact ? null : actionColumn}
-      </View>
-
-      {compact ? actionColumn : null}
+        {/* Right: Badge (Center Right) */}
+        <View
+          style={{
+            marginLeft: 8,
+            alignSelf: "center",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+        >
+          <StatusBadge
+            label={item.statusLabel}
+            variant={statusVariant}
+            domain="service"
+            size={9}
+            compact
+          />
+        </View>
+      </TouchableOpacity>
     </View>
   );
 }

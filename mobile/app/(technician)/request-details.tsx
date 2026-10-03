@@ -161,6 +161,9 @@ export default function RequestDetailsScreen() {
         routeWorkflowId={routeWorkflowId}
         onRefresh={() => fetchRequestDetails()}
         onBack={() => router.back()}
+        onSkipSuccess={() =>
+          router.replace("/(technician)/(tabs)/technician.requests")
+        }
       />
     );
   }
@@ -172,6 +175,9 @@ export default function RequestDetailsScreen() {
       routeWorkflowId={routeWorkflowId}
       onRefresh={() => fetchRequestDetails()}
       onBack={() => router.back()}
+      onSkipSuccess={() =>
+        router.replace("/(technician)/(tabs)/technician.requests")
+      }
     />
   );
 }

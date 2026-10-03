@@ -1,5 +1,7 @@
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { toast } from "sonner-native";
+import { getAttachmentPickerOptions } from "./attachmentPickerOptions";
 
 export type PickImageSource = "camera" | "library";
 
@@ -15,6 +17,13 @@ export type PickImageOptions = {
   aspect?: [number, number];
   quality?: number;
   allowsEditing?: boolean;
+};
+
+export type PickedAttachmentResult = {
+  uri: string;
+  sourceUri: string;
+  base64: string;
+  assetId?: string;
 };
 
 /**
@@ -34,6 +43,27 @@ function getAssetMimeType(asset: ImagePicker.ImagePickerAsset): string {
   return "image/jpeg";
 }
 
+const requestPickerPermission = async (source: PickImageSource) => {
+  if (source === "camera") {
+    const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error(canAskAgain
+        ? "Camera permission is required to take photos."
+        : "Camera access is disabled. Please enable it in device Settings.");
+      return false;
+    }
+  } else {
+    const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      toast.error(canAskAgain
+        ? "Photo library permission is required to choose photos."
+        : "Photo library access is disabled. Please enable it in device Settings.");
+      return false;
+    }
+  }
+  return true;
+};
+
 /**
  * Safely requests permissions and picks an image from either the camera or media library.
  * Fully handles permission states, exceptions, base64 formatting, and memory compression.
@@ -50,27 +80,7 @@ export async function pickImageFromSource(
 
   try {
     // 1. Permission Handling
-    if (source === "camera") {
-      const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        if (!canAskAgain) {
-          toast.error("Camera access is disabled. Please enable it in device Settings.");
-        } else {
-          toast.error("Camera permission is required to take photos.");
-        }
-        return null;
-      }
-    } else {
-      const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        if (!canAskAgain) {
-          toast.error("Photo library access is disabled. Please enable it in device Settings.");
-        } else {
-          toast.error("Photo library permission is required to choose photos.");
-        }
-        return null;
-      }
-    }
+    if (!(await requestPickerPermission(source))) return null;
 
     // 2. Launch Image Picker
     const pickerOptions: ImagePicker.ImagePickerOptions = {
@@ -121,5 +131,54 @@ export async function pickImageFromSource(
     console.error(`[imagePickerHelper] Error picking image from ${source}:`, error);
     toast.error("An error occurred while opening the image picker.");
     return null;
+  }
+}
+
+/** Attachment-only mode; existing cropped single-image callers are unchanged. */
+export async function pickAttachmentsFromSource(
+  source: PickImageSource,
+  remainingSlots: number,
+): Promise<{ images: PickedAttachmentResult[]; failedCount: number }> {
+  if (remainingSlots <= 0) return { images: [], failedCount: 0 };
+  try {
+    if (!(await requestPickerPermission(source))) return { images: [], failedCount: 0 };
+    const options: ImagePicker.ImagePickerOptions = getAttachmentPickerOptions(source, remainingSlots);
+    const picked = source === "camera"
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+    if (picked.canceled || !picked.assets) return { images: [], failedCount: 0 };
+
+    const images: PickedAttachmentResult[] = [];
+    let failedCount = 0;
+    for (const asset of picked.assets.slice(0, source === "camera" ? 1 : remainingSlots)) {
+      try {
+        if (!asset.uri) throw new Error("Missing image URI");
+        const context = ImageManipulator.ImageManipulator.manipulate(asset.uri);
+        if (asset.width > 1600 || asset.height > 1600) {
+          context.resize(asset.width >= asset.height
+            ? { width: 1600, height: null }
+            : { width: null, height: 1600 });
+        }
+        const rendered = await context.renderAsync();
+        const processed = await rendered.saveAsync({
+          format: ImageManipulator.SaveFormat.JPEG,
+          compress: 0.7,
+          base64: true,
+        });
+        if (!processed.base64) throw new Error("Missing processed image data");
+        images.push({
+          uri: processed.uri,
+          sourceUri: asset.uri,
+          base64: `data:image/jpeg;base64,${processed.base64}`,
+          ...(asset.assetId ? { assetId: asset.assetId } : {}),
+        });
+      } catch {
+        failedCount++;
+      }
+    }
+    return { images, failedCount };
+  } catch {
+    toast.error("The photo picker could not open. Please try again.");
+    return { images: [], failedCount: 0 };
   }
 }

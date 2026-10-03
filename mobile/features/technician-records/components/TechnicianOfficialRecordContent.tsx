@@ -49,6 +49,11 @@ import {
   getFullAnimalReference,
 } from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
 import { formatAddressLabel } from "@/constants/address";
+import { getVisibleHealthTechnicianNote } from "../utils/healthRecordNote";
+import {
+  formatHealthAssistanceLabel,
+  getStructuredHealthRequestPresentation,
+} from "@/features/farmer-requests/utils/healthRequestInput";
 
 // --- EXISTING DATA HELPERS ---
 const hasValue = (value: unknown) => {
@@ -57,6 +62,13 @@ const hasValue = (value: unknown) => {
   return (
     Boolean(text) && !["n/a", "na", "none", "null", "undefined"].includes(text)
   );
+};
+
+const getVisibleTechnicianNote = (record: OfficialRecordDetail) => {
+  const note = record.details?.technicianNote;
+  return record.type === "health"
+    ? getVisibleHealthTechnicianNote(note)
+    : note;
 };
 
 const humanize = (value: unknown) =>
@@ -411,6 +423,10 @@ export function TechnicianOfficialRecordContent({
   );
   const [calfGalleryInitialIndex, setCalfGalleryInitialIndex] = useState(0);
   const details = record.details || {};
+  const technicianNote = getVisibleTechnicianNote(record);
+  const structuredHealthRequest = getStructuredHealthRequestPresentation({
+    requestDetails: details.requestDetails as any,
+  });
   const eventDate = formatDate(
     details.serviceDate || record.date,
     record.datePrecision === "datetime",
@@ -655,10 +671,44 @@ export function TechnicianOfficialRecordContent({
       : null,
   ];
 
+  const healthRequestRows: (DisplayRow | null)[] = [
+    !details.isDirectHealthService &&
+    hasValue(structuredHealthRequest?.assistanceLabel || details.requestType)
+      ? {
+          label: "Assistance requested",
+          value:
+            structuredHealthRequest?.assistanceLabel ||
+            formatHealthAssistanceLabel(details.requestType),
+          icon: <HeartPulse size={18} color={colors.primary} />,
+        }
+      : null,
+    structuredHealthRequest?.observedSigns.length
+      ? {
+          label: "Observed signs",
+          value: structuredHealthRequest.observedSigns.join(", "),
+          icon: <HeartPulse size={18} color={colors.primary} />,
+        }
+      : !details.isDirectHealthService && hasValue(details.symptoms)
+        ? {
+            label: "Observed signs",
+            value: details.symptoms || "",
+            icon: <Stethoscope size={18} color={colors.primary} />,
+          }
+        : null,
+    hasValue(structuredHealthRequest?.farmerDescription)
+      ? {
+          label: "Farmer description",
+          value: structuredHealthRequest?.farmerDescription || "",
+          icon: <MessageSquare size={18} color={colors.primary} />,
+        }
+      : null,
+  ];
+
   const healthRows: (DisplayRow | null)[] = [
+    details.isDirectHealthService &&
     hasValue(details.serviceType || details.requestType)
       ? {
-          label: details.isDirectHealthService ? "Service type" : "Request type",
+          label: "Service type",
           value: humanize(details.serviceType || details.requestType),
           icon: <HeartPulse size={18} color={colors.primary} />,
         }
@@ -668,37 +718,6 @@ export function TechnicianOfficialRecordContent({
           label: "Urgency",
           value: details.urgency?.toLowerCase() === "emergency" ? "Needs urgent attention" : humanize(details.urgency),
           icon: <Siren size={18} color={colors.primary} />,
-        }
-      : null,
-    hasValue(details.symptoms)
-      ? {
-          label: "Concern or symptoms",
-          value: details.symptoms || "",
-          icon: <Stethoscope size={18} color={colors.primary} />,
-        }
-      : null,
-    Array.isArray(details.requestDetails?.observedSigns) &&
-    details.requestDetails.observedSigns.length > 0
-      ? {
-          label: "Observed signs",
-          value: details.requestDetails.observedSigns
-            .map((sign) => humanize(sign))
-            .join(", "),
-          icon: <HeartPulse size={18} color={colors.primary} />,
-        }
-      : null,
-    hasValue(details.requestDetails?.farmerDescription)
-      ? {
-          label: "Farmer description",
-          value: details.requestDetails?.farmerDescription || "",
-          icon: <MessageSquare size={18} color={colors.primary} />,
-        }
-      : null,
-    hasValue(details.farmerNotes)
-      ? {
-          label: "Farmer notes",
-          value: details.farmerNotes || "",
-          icon: <MessageSquare size={18} color={colors.primary} />,
         }
       : null,
     hasValue(details.diagnosis)
@@ -715,14 +734,14 @@ export function TechnicianOfficialRecordContent({
           icon: <Bandage size={18} color={colors.primary} />,
         }
       : null,
-    hasValue(details.medicine)
+    typeof details.medicine === "string" && details.medicine.trim()
       ? {
-          label: "Medicine",
+          label: "Medication",
           value: details.medicine || "",
           icon: <Pill size={18} color={colors.primary} />,
         }
       : null,
-    hasValue(details.dosage)
+    hasValue(details.medicine) && hasValue(details.dosage)
       ? {
           label: "Dosage",
           value: details.dosage || "",
@@ -731,7 +750,7 @@ export function TechnicianOfficialRecordContent({
       : null,
     hasValue(details.advice)
       ? {
-          label: "Advice",
+          label: "Advice for Farmer",
           value: details.advice || "",
           icon: <MessageCircle size={18} color={colors.primary} />,
         }
@@ -861,6 +880,7 @@ export function TechnicianOfficialRecordContent({
   const visiblePregnancyRows = pregnancyRows.filter(Boolean);
   const visibleCalvingRows = calvingRows.filter(Boolean);
   const visibleHealthRows = healthRows.filter(Boolean);
+  const visibleHealthRequestRows = healthRequestRows.filter(Boolean);
   const visibleAdditionalRows = additionalRows.filter((r): r is DisplayRow =>
     Boolean(r),
   );
@@ -1046,6 +1066,14 @@ export function TechnicianOfficialRecordContent({
         </RecordDetailCard>
       ) : (
         /* COMMON DETAILS for non-calving records */
+        <>
+        {record.type === "health" &&
+        !details.isDirectHealthService &&
+        visibleHealthRequestRows.length > 0 ? (
+          <RecordDetailCard title="REQUEST DETAILS">
+            {renderRows(healthRequestRows)}
+          </RecordDetailCard>
+        ) : null}
         <RecordDetailCard title="SERVICE DETAILS">
           {eventDate ? (
             <RecordDetailRow
@@ -1074,6 +1102,7 @@ export function TechnicianOfficialRecordContent({
             <View style={{ marginTop: 8 }}>{renderRows(healthRows)}</View>
           ) : null}
         </RecordDetailCard>
+        </>
       )}
 
       {/* OFFSPRING DETAILS */}
@@ -1245,7 +1274,7 @@ export function TechnicianOfficialRecordContent({
       {/* 5. NOTES & ATTACHMENTS FOR NON-CALVING */}
       <EvidenceSection title="ATTACHMENTS" attachments={nonOffspringEvidence} />
 
-      {hasValue(details.technicianNote) && record.type !== "calving" ? (
+      {hasValue(technicianNote) && record.type !== "calving" ? (
         <RecordDetailCard title="TECHNICIAN NOTES">
           <Text
             style={{
@@ -1255,7 +1284,7 @@ export function TechnicianOfficialRecordContent({
               lineHeight: 22,
             }}
           >
-            {details.technicianNote}
+            {technicianNote}
           </Text>
         </RecordDetailCard>
       ) : null}

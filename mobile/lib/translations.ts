@@ -43,7 +43,7 @@ export const translations: Record<string, Record<string, string>> = {
     languagePreference: "Language Preference",
     clearCache: "Clear Local Cache",
     cacheDescription: "Deletes local storage and cache data",
-    checkForUpdates: "Check for Updates",
+    checkForUpdates: "Check for App Updates",
     updatesDescription: "Checks for latest system builds",
     notificationsEnabled: "Notifications enabled",
     notificationsMuted: "Notifications muted",
@@ -65,7 +65,7 @@ export const translations: Record<string, Record<string, string>> = {
     notSet: "Not Set",
     lightMode: "Light Mode Active",
     darkMode: "Dark Mode Active",
-    versionInfo: "ILO-AGRI HUB • VERSION 1.0.4",
+    versionInfo: "ILO-AGRI HUB • VERSION",
     
     // Passwords Modal
     currentPassword: "Current Password",
@@ -153,7 +153,7 @@ export const translations: Record<string, Record<string, string>> = {
     notSet: "Hindi Itinakda",
     lightMode: "Aktibo ang Light Mode",
     darkMode: "Aktibo ang Dark Mode",
-    versionInfo: "ILO-AGRI HUB • BERSYON 1.0.4",
+    versionInfo: "ILO-AGRI HUB • BERSYON",
     
     // Passwords Modal
     currentPassword: "Kasalukuyang Password",
@@ -241,7 +241,7 @@ export const translations: Record<string, Record<string, string>> = {
     notSet: "Wala Nabutang",
     lightMode: "Aktibo ang Light Mode",
     darkMode: "Aktibo ang Dark Mode",
-    versionInfo: "ILO-AGRI HUB • BERSYON 1.0.4",
+    versionInfo: "ILO-AGRI HUB • BERSYON",
     
     // Passwords Modal
     currentPassword: "Kasalukuyang Password",

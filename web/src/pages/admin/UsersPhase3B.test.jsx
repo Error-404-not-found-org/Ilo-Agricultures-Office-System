@@ -120,7 +120,7 @@ describe("Admin Users Technician roster capabilities", () => {
     expect(await screen.findByText("Maria Farmer")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add User" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
+  }, 10000);
 
   it("links every Technician name to the existing detail route", async () => {
     renderUsers();

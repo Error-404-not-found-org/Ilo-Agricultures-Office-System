@@ -1,3 +1,4 @@
+import "./stable-clerk-client.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,7 +22,6 @@ import {
   resetPassword,
   suspendUser,
   updateRole,
-  verifyUser,
 } from "../src/controllers/admin.controllers.js";
 
 const ADMIN_ID = "507f1f77bcf86cd799439011";
@@ -258,7 +258,6 @@ test("Phase 5B operational Admin target authority", async (t) => {
       ["delete", deleteUser],
       ["suspend", suspendUser],
       ["reactivate", reactivateUser],
-      ["verify", verifyUser],
       ["reset-password", resetPassword],
     ];
 
@@ -435,8 +434,10 @@ test("Phase 5B operational Admin target authority", async (t) => {
 
   await t.test("Farmer and Technician self-profile update/delete/restore remain valid", async (st) => {
     const originalFindById = User.findById;
+    const originalFindOneAndUpdate = User.findOneAndUpdate;
     st.after(() => {
       User.findById = originalFindById;
+      User.findOneAndUpdate = originalFindOneAndUpdate;
     });
 
     for (const role of ["farmer", "technician"]) {
@@ -458,14 +459,31 @@ test("Phase 5B operational Admin target authority", async (t) => {
 
       const deletable = mockUser({ id: TARGET_ID, role });
       User.findById = async () => deletable.user;
+      let archivedFarmer;
+      if (role === "farmer") {
+        User.findOneAndUpdate = async (filter, update) => {
+          assert.equal(filter._id, TARGET_ID);
+          assert.equal(filter.role, "farmer");
+          assert.equal(filter.deletedAt, null);
+          assert.equal(update.$set.deactivatedBy, ADMIN_ID);
+          archivedFarmer = { ...deletable.user, ...update.$set };
+          return archivedFarmer;
+        };
+      }
       const deleteRecorder = responseRecorder();
       await deleteUserGeneric(
         { params: { id: TARGET_ID }, user: adminRequester() },
         deleteRecorder.response,
       );
       assert.equal(deleteRecorder.state.statusCode, 200);
-      assert.ok(deletable.user.deletedAt instanceof Date);
-      assert.equal(deletable.getSaveCalls(), 1);
+      if (role === "farmer") {
+        assert.equal(archivedFarmer._id, TARGET_ID);
+        assert.ok(archivedFarmer.deletedAt instanceof Date);
+        assert.equal(deletable.getSaveCalls(), 0);
+      } else {
+        assert.ok(deletable.user.deletedAt instanceof Date);
+        assert.equal(deletable.getSaveCalls(), 1);
+      }
 
       const restorable = mockUser({
         id: TARGET_ID,

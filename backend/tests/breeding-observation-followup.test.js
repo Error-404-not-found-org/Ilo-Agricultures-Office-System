@@ -98,15 +98,15 @@ test("observation follow-up decisions do not depend on a farmer toggle", () => {
   assert.equal(
     getBreedingObservationFollowUpDecision({ reportType: "unsure" })
       .scheduleFollowUp,
-    false,
+    true,
   );
 });
 
-test("possible-pregnancy reuses the scheduled automatic task without making it immediate", async () => {
+test("possible-pregnancy annotates an existing Breeding Follow-up without making it immediate", async () => {
   const existingTask = {
-    _id: "automatic-task",
+    _id: "follow-up-task",
+    taskType: "BreedingFollowUp",
     status: "Pending",
-    sourceType: "automatic_pd_followup",
     dueDate: new Date("2026-10-01T00:00:00.000Z"),
   };
 
@@ -116,19 +116,21 @@ test("possible-pregnancy reuses the scheduled automatic task without making it i
       reportType: "possible_pregnancy",
     });
 
-    assert.equal(result.task._id, "automatic-task");
+    assert.equal(result.task._id, "follow-up-task");
     assert.equal(result.technicianActionRequired, false);
-    assert.equal(calls.update, null);
+    assert.equal(calls.update.update.$set["metadata.reportType"], "possible_pregnancy");
+    assert.equal(calls.update.update.$set.dueDate, undefined);
+    assert.equal(result.task.dueDate.toISOString(), existingTask.dueDate.toISOString());
     assert.equal(calls.create, null);
-    assert.equal(calls.lookup.animalIds, "animal-1");
+    assert.equal(calls.lookup.taskType, "BreedingFollowUp");
   });
 });
 
-test("return-to-heat promotes the existing pregnancy task for immediate verification", async () => {
+test("return-to-heat makes an existing Breeding Follow-up immediately actionable", async () => {
   const existingTask = {
-    _id: "automatic-task",
+    _id: "follow-up-task",
+    taskType: "BreedingFollowUp",
     status: "Pending",
-    sourceType: "automatic_pd_followup",
   };
 
   await withTaskStubs({ existingTask }, async (calls) => {
@@ -138,10 +140,8 @@ test("return-to-heat promotes the existing pregnancy task for immediate verifica
     });
 
     assert.equal(result.technicianActionRequired, true);
-    assert.equal(
-      calls.update.update.$set.sourceType,
-      "farmer_requested_verification",
-    );
+    assert.equal(calls.update.update.$set.sourceType, undefined);
+    assert.equal(calls.update.update.$set["metadata.reportType"], "return_to_heat");
     assert.equal(calls.update.update.$set.priority, 1);
     assert.equal(
       calls.update.update.$set.dueDate.toISOString(),
@@ -164,9 +164,10 @@ test("unsure creates no additional technician task", async () => {
   });
 });
 
-test("editing return-to-heat to possible pregnancy restores the automatic schedule", async () => {
+test("editing return-to-heat to possible pregnancy updates the existing follow-up context", async () => {
   const existingTask = {
-    _id: "promoted-task",
+    _id: "follow-up-task",
+    taskType: "BreedingFollowUp",
     status: "Pending",
     sourceType: "farmer_requested_verification",
   };
@@ -178,12 +179,9 @@ test("editing return-to-heat to possible pregnancy restores the automatic schedu
     });
 
     assert.equal(result.technicianActionRequired, false);
-    assert.equal(calls.update.update.$set.sourceType, "automatic_pd_followup");
-    assert.equal(
-      calls.update.update.$set.dueDate.toISOString(),
-      "2026-10-01T00:00:00.000Z",
-    );
-    assert.equal(calls.update.update.$unset["metadata.reportType"], 1);
+    assert.equal(calls.update.update.$set.sourceType, undefined);
+    assert.equal(calls.update.update.$set.dueDate, undefined);
+    assert.equal(calls.update.update.$set["metadata.reportType"], "possible_pregnancy");
   });
 });
 

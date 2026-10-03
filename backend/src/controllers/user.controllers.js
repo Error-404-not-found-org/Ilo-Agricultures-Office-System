@@ -20,7 +20,14 @@ import {
   getOperationalUserRoleFilter,
 } from "../policies/user.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
-import { sendOtpSms, verifyOtpSms } from "../services/sms.service.js";
+import { sendOtpSms } from "../services/sms.service.js";
+import {
+  assertOtpHashConfigured,
+  assessOtpAttempt,
+  buildPendingPhoneVerification,
+  buildSafeUserPayload,
+  OTP_SEND_COOLDOWN_SECONDS,
+} from "../services/phone-otp.service.js";
 import {
   maskPhoneNumber,
   normalizePhilippineMobileNumber,
@@ -33,6 +40,7 @@ import {
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 import { isVerifiedReturnToHeatAIAttempt } from "../services/ai-request-creation.service.js";
 import { CURRENT_AI_ATTEMPT_QUERY } from "../domain/previous-ai-entry.js";
+import { differenceInManilaCalendarDays } from "../domain/service-date-time.js";
 import { evaluateTechnicianDispatchReadiness } from "../domain/geographic/eligibilityEvaluator.js";
 import {
   canonicalizeMunicipality,
@@ -42,8 +50,22 @@ import {
 import { DISPATCH_CAPABILITIES } from "../domain/geographic/constants.js";
 import {
   getFarmerInvitationRedirectUrl,
+  normalizeFarmerPhone,
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
+import {
+  cancelFarmerAppInvitation,
+  deriveFarmerInvitationStatus,
+  hasRealClerkLink,
+  loadInvitableFarmer,
+  resendFarmerAppInvitation,
+  sendFarmerAppInvitation,
+} from "../services/farmer-app-invitation.service.js";
+import { archiveFarmerAsTechnician } from "../services/technician-farmer-archive.service.js";
+import { archiveFarmerAsAdmin } from "../services/admin-farmer-archive.service.js";
+import { accountStatusClerkUsers } from "../services/account-status-clerk.service.js";
+import { AppError } from "../utils/app-error.js";
+import { linkFarmerProfileByPhone } from "../services/phone-farmer-link.service.js";
 import {
   clearPushTokenForUser,
   registerPushTokenForUser,
@@ -189,9 +211,7 @@ export const bootstrapUser = async (req, res) => {
     }
 
     // Return safe user payload (omit sensitive fields/tokens if any)
-    const safeUser = user.toObject();
-    delete safeUser.password;
-    delete safeUser.pushToken; // optional, but standard
+    const safeUser = buildSafeUserPayload(user);
 
     return res.status(200).json({
       success: true,
@@ -222,9 +242,7 @@ export const staffBootstrapUser = async (req, res) => {
     }
 
     const user = await resolveStaffUser(clerkId);
-    const safeUser = user.toObject();
-    delete safeUser.password;
-    delete safeUser.pushToken;
+    const safeUser = buildSafeUserPayload(user);
 
     return res.status(200).json({ success: true, user: safeUser });
   } catch (error) {
@@ -241,7 +259,7 @@ export const staffBootstrapUser = async (req, res) => {
 const FARM_LANDMARK_MAX_LENGTH = 80;
 const FARM_DIRECTIONS_MAX_LENGTH = 250;
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
-const OTP_SEND_COOLDOWN_MS = 60 * 1000;
+const OTP_SEND_COOLDOWN_MS = OTP_SEND_COOLDOWN_SECONDS * 1000;
 const OTP_MAX_FAILED_ATTEMPTS = 5;
 
 const countFarmerOwnedRecords = async (farmerId) => {
@@ -458,7 +476,7 @@ export const getMe = async (req, res) => {
       };
     }
 
-    res.status(200).json({ ...user.toObject(), stats });
+    res.status(200).json({ ...buildSafeUserPayload(user), stats });
   } catch (error) {
     console.error("[getMe ERROR]", error);
     res.status(500).json({ message: "Failed to fetch your profile." });
@@ -1027,6 +1045,7 @@ const TECHNICIAN_FARMER_DIRECTORY_PROJECTION = [
   "clerkId",
   "profileClaimStatus",
   "registeredByTechnician",
+  "farmerAppInvitation",
 ].join(" ");
 
 export const getFarmerAppAccountStatus = (farmer) => {
@@ -1034,10 +1053,20 @@ export const getFarmerAppAccountStatus = (farmer) => {
     Boolean(farmer?.clerkId) &&
     !String(farmer.clerkId).startsWith("manual_");
 
-  if (farmer?.profileClaimStatus === "blocked") return "blocked";
+  if (
+    farmer?.profileClaimStatus === "blocked" ||
+    farmer?.status === "suspended"
+  ) return "blocked";
   if (farmer?.profileClaimStatus === "claimed" || hasRealClerkAccount) {
     return "connected";
   }
+  const invitationStatus = deriveFarmerInvitationStatus(
+    farmer?.farmerAppInvitation,
+    new Date(),
+    farmer?.email,
+  );
+  if (invitationStatus === "pending") return "invitation_sent";
+  if (invitationStatus === "expired") return "invitation_expired";
   if (
     farmer?.profileClaimStatus === "unclaimed" ||
     (farmer?.registeredByTechnician && !farmer?.email)
@@ -1046,6 +1075,146 @@ export const getFarmerAppAccountStatus = (farmer) => {
   }
   return "profile_only";
 };
+
+export const buildTechnicianFarmerMetricsPipeline = (farmerMatch) => [
+  { $match: farmerMatch },
+  {
+    $lookup: {
+      from: Animal.collection.name,
+      let: { farmerId: "$_id" },
+      pipeline: [
+        { $match: { $expr: { $eq: ["$farmerId", "$$farmerId"] } } },
+        { $match: { deletedAt: null } },
+        { $limit: 1 },
+      ],
+      as: "currentAnimals",
+    },
+  },
+  {
+    $set: {
+      directoryAccountStatus: {
+        $switch: {
+          branches: [
+            {
+              case: {
+                $or: [
+                  { $eq: ["$profileClaimStatus", "blocked"] },
+                  { $eq: ["$status", "suspended"] },
+                ],
+              },
+              then: "blocked",
+            },
+            {
+              case: {
+                $or: [
+                  { $eq: ["$profileClaimStatus", "claimed"] },
+                  {
+                    $and: [
+                      { $eq: [{ $type: "$clerkId" }, "string"] },
+                      { $ne: ["$clerkId", ""] },
+                      {
+                        $not: [
+                          {
+                            $regexMatch: {
+                              input: { $ifNull: ["$clerkId", ""] },
+                              regex: /^manual_/,
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              then: "connected",
+            },
+            {
+              case: {
+                $and: [
+                  { $eq: ["$farmerAppInvitation.status", "pending"] },
+                  { $gt: ["$farmerAppInvitation.expiresAt", "$$NOW"] },
+                  {
+                    $eq: [
+                      { $toLower: { $trim: { input: { $ifNull: ["$farmerAppInvitation.email", ""] } } } },
+                      { $toLower: { $trim: { input: { $ifNull: ["$email", ""] } } } },
+                    ],
+                  },
+                ],
+              },
+              then: "invitation_sent",
+            },
+            {
+              case: {
+                $or: [
+                  { $eq: ["$farmerAppInvitation.status", "expired"] },
+                  {
+                    $and: [
+                      { $eq: ["$farmerAppInvitation.status", "pending"] },
+                      {
+                        $or: [
+                          { $lte: ["$farmerAppInvitation.expiresAt", "$$NOW"] },
+                          {
+                            $ne: [
+                              { $toLower: { $trim: { input: { $ifNull: ["$farmerAppInvitation.email", ""] } } } },
+                              { $toLower: { $trim: { input: { $ifNull: ["$email", ""] } } } },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              then: "invitation_expired",
+            },
+            {
+              case: {
+                $or: [
+                  { $eq: ["$profileClaimStatus", "unclaimed"] },
+                  {
+                    $and: [
+                      { $eq: ["$registeredByTechnician", true] },
+                      { $in: [{ $ifNull: ["$email", ""] }, [null, ""]] },
+                    ],
+                  },
+                ],
+              },
+              then: "no_app_account",
+            },
+          ],
+          default: "profile_only",
+        },
+      },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      farmersFound: { $sum: 1 },
+      withAnimals: {
+        $sum: { $cond: [{ $gt: [{ $size: "$currentAnimals" }, 0] }, 1, 0] },
+      },
+      noAnimals: {
+        $sum: { $cond: [{ $eq: [{ $size: "$currentAnimals" }, 0] }, 1, 0] },
+      },
+      noAppAccount: {
+        $sum: {
+          $cond: [
+            {
+              $in: [
+                "$directoryAccountStatus",
+                ["no_app_account", "profile_only", "invitation_expired"],
+              ],
+            },
+            1,
+            0,
+          ],
+        },
+      },
+    },
+  },
+  { $project: { _id: 0 } },
+];
 
 export const toTechnicianFarmerDirectoryEntry = (farmer) => {
   const source = farmer?.toObject ? farmer.toObject() : farmer || {};
@@ -1063,6 +1232,11 @@ export const toTechnicianFarmerDirectoryEntry = (farmer) => {
     isVerified: source.isVerified,
     createdAt: source.createdAt,
     appAccountStatus: getFarmerAppAccountStatus(source),
+    canTechnicianArchive:
+      source.role === "farmer" &&
+      !source.deletedAt &&
+      source.profileClaimStatus === "unclaimed" &&
+      !hasRealClerkLink(source),
     animalsCount: source.animalsCount || 0,
     activeCount: source.activeCount || 0,
     nextVisit: source.nextVisit || null,
@@ -1071,6 +1245,11 @@ export const toTechnicianFarmerDirectoryEntry = (farmer) => {
 
 export const presentUserDetailForRequester = ({ requester, target }) => {
   const rawUser = target?.toObject ? target.toObject() : { ...(target || {}) };
+  delete rawUser.farmerClaimReservation;
+  if (rawUser.farmerAppInvitation?.clerkInvitationId) {
+    rawUser.farmerAppInvitation = { ...rawUser.farmerAppInvitation };
+    delete rawUser.farmerAppInvitation.clerkInvitationId;
+  }
   if (requester?.role === "admin") return rawUser;
 
   const presented =
@@ -1235,8 +1414,8 @@ export const getUsers = async (req, res) => {
 
       query.$and = [...(query.$and || []), accountStatusFilter];
     }
-    if (status === "active") query.isVerified = true;
-    if (status === "inactive") query.isVerified = { $ne: true };
+    if (status === "active") query.status = { $in: ["active", "on-site"] };
+    if (status === "inactive") query.status = { $in: ["on-leave", "suspended"] };
 
     let selectFields = "-password -pushToken";
     if (req.user.role === "farmer") {
@@ -1251,13 +1430,18 @@ export const getUsers = async (req, res) => {
       const limitNum = parseInt(limit, 10) || 10;
       const skip = (pageNum - 1) * limitNum;
 
-      const [users, total] = await Promise.all([
+      const metricsPromise =
+        req.user.role === "technician"
+          ? User.aggregate(buildTechnicianFarmerMetricsPipeline(query))
+          : Promise.resolve([]);
+      const [users, total, metricsResult] = await Promise.all([
         User.find(query)
           .select(selectFields)
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limitNum),
         User.countDocuments(query),
+        metricsPromise,
       ]);
 
       let responseData = users;
@@ -1270,12 +1454,20 @@ export const getUsers = async (req, res) => {
         responseData = await Promise.all(users.map((u) => enrichFarmerData(u)));
       }
 
+      const metrics = metricsResult[0] || {
+        farmersFound: total,
+        withAnimals: 0,
+        noAnimals: 0,
+        noAppAccount: 0,
+      };
+
       return res.status(200).json({
         data: responseData,
         total,
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
+        ...(req.user.role === "technician" ? { metrics } : {}),
       });
     }
 
@@ -1310,28 +1502,33 @@ export const deleteUser = async (req, res) => {
 
     assertAdmin(req.user);
 
-    const user = await User.findById(id);
+    const archiveLookup = User.findById(id);
+    const user = await (archiveLookup.select
+      ? archiveLookup.select("+farmerClaimReservation +farmerAppInvitation.clerkInvitationId")
+      : archiveLookup);
     if (!user || user.deletedAt) {
       return res.status(404).json({ message: "User not found" });
     }
 
     assertOperationallyManageableUser(user);
 
-    // Attempt to suspend/deactivate Clerk user
-    if (user.clerkId) {
-      try {
-        await clerkClient.users.banUser(user.clerkId);
-        console.log(`[Clerk Deactivation] Banned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        console.error("Error suspending user in Clerk:", clerkErr);
+    if (user.role === "farmer") {
+      await archiveFarmerAsAdmin({ farmer: user, actorId: req.user._id });
+    } else {
+      // Preserve the existing non-Farmer archive path.
+      if (user.clerkId) {
+        try {
+          await accountStatusClerkUsers.banUser(user.clerkId);
+          console.log(`[Clerk Deactivation] Banned user: ${user.clerkId}`);
+        } catch (clerkErr) {
+          console.error("Error suspending user in Clerk:", clerkErr);
+        }
       }
+      user.deletedAt = new Date();
+      user.deactivatedBy = req.user._id;
+      user.pushToken = undefined;
+      await user.save();
     }
-
-    // Soft delete the user, keeping associated data intact
-    user.deletedAt = new Date();
-    user.deactivatedBy = req.user._id;
-    user.pushToken = undefined;
-    await user.save();
 
     return res.status(200).json({ message: "User successfully deactivated" });
   } catch (error) {
@@ -1391,75 +1588,22 @@ export const getArchivedUsers = async (req, res) => {
 };
 
 export const syncUser = async (req, res) => {
+  // protectedRoute has already resolved the canonical Clerk-to-User identity.
+  res.status(200).json({ message: "User synced", user: req.user });
+};
+
+export const archiveFarmerByTechnician = async (req, res) => {
   try {
-    const { userId } = req.auth;
-    const user = await clerkClient.users.getUser(userId);
-
-    const emailObj = user.emailAddresses?.[0];
-    const email = emailObj?.emailAddress;
-    const username = user.username;
-
-    // In free tier, users might sign up with just a Username instead of Email
-    const name =
-      `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-      username ||
-      "New User";
-    const isVerified =
-      emailObj?.verification?.status === "verified" || !!username;
-
-    // 1. Search for existing sync
-    let dbUser = await User.findOne({ clerkId: userId });
-
-    // 2. Search by Email
-    if (!dbUser && email) {
-      dbUser = await User.findOne({ email });
-    }
-
-    // 3. Search by Name (Offline Profiles Only)
-    if (!dbUser && name && name !== "New User") {
-      dbUser = await User.findOne({
-        name: { $regex: new RegExp(`^${name}$`, "i") },
-        clerkId: { $exists: false }, // Target offline profiles
-      });
-    }
-
-    if (dbUser) {
-      // Merge Account
-      dbUser.clerkId = userId;
-      if (email && !dbUser.email) dbUser.email = email;
-      dbUser.imageUrl = user.imageUrl || dbUser.imageUrl;
-      dbUser.isVerified = true;
-      dbUser.lastLogin = new Date();
-      await dbUser.save();
-    } else {
-      // Create Brand New Account
-      const role =
-        email &&
-        process.env.ADMIN_EMAIL &&
-        email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
-          ? "admin"
-          : "farmer";
-      dbUser = await User.create({
-        clerkId: userId,
-        name: name,
-        email: email || undefined,
-        imageUrl: user.imageUrl || "",
-        isVerified: isVerified,
-        role: role,
-        lastLogin: new Date(),
-      });
-    }
-
-    // Sync role from metadata if present
-    if (user.publicMetadata?.role && dbUser.role !== user.publicMetadata.role) {
-      dbUser.role = user.publicMetadata.role;
-      await dbUser.save();
-    }
-
-    res.status(200).json({ message: "User synced", user: dbUser });
+    const farmer = await archiveFarmerAsTechnician({
+      farmerId: req.params.id,
+      technicianId: req.user._id,
+    });
+    return res.status(200).json({ message: "Farmer archived", id: farmer._id });
   } catch (error) {
-    console.error("Error syncing user:", error);
-    res.status(500).json({ message: "Failed to sync user" });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to archive Farmer.",
+      code: error.code,
+    });
   }
 };
 
@@ -2009,39 +2153,6 @@ export const updateUser = async (req, res) => {
   }
 };
 
-export const markVerified = async (req, res) => {
-  try {
-    const { userId } = req.auth;
-
-    const user = await User.findOne({ clerkId: userId });
-    if (!user) return res.status(404).json({ message: "User not found." });
-
-    const clerkUser = await clerkClient.users.getUser(userId);
-
-    // 1. Update Clerk Metadata
-    await clerkClient.users.updateUser(userId, {
-      publicMetadata: {
-        ...(clerkUser.publicMetadata || {}),
-        isVerified: true,
-      },
-    });
-
-    user.isVerified = true;
-    await user.save();
-
-    req.app.get("io").emit("dashboardUpdate", {
-      type: "FARMER_VERIFIED",
-      message: `Farmer ${user.name} is now verified.`,
-      userId: user._id,
-    });
-
-    res.status(200).json({ message: "User successfully verified.", user });
-  } catch (error) {
-    console.error("[markVerified ERROR]", error.message);
-    res.status(500).json({ message: "Failed to verify user." });
-  }
-};
-
 export const resendVerificationCode = async (req, res) => {
   try {
     const { userId } = req.auth;
@@ -2156,9 +2267,9 @@ export const getBreedingMilestones = async (req, res) => {
       if (calvedPregIds.includes(p._id.toString())) return;
 
       if (p.targetCalvingDate) {
-        const daysLeft = Math.ceil(
-          (new Date(p.targetCalvingDate).getTime() - now.getTime()) /
-            (1000 * 3600 * 24),
+        const daysLeft = differenceInManilaCalendarDays(
+          p.targetCalvingDate,
+          now,
         );
         // Show Calving alerts only within 45 days of target date, or if overdue by up to 30 days
         if (daysLeft >= -30 && daysLeft <= 45) {
@@ -2469,19 +2580,40 @@ export const restoreUser = async (req, res) => {
 
     assertOperationallyManageableUser(user);
 
-    // Unban User in Clerk
-    if (user.clerkId) {
+    // Restoring a profile never reactivates a separately suspended account.
+    const shouldUnban = hasRealClerkLink(user) && user.status !== "suspended";
+    if (shouldUnban) {
       try {
-        await clerkClient.users.unbanUser(user.clerkId);
-        console.log(`[Clerk Restoration] Unbanned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        console.error("Error unbanning user in Clerk:", clerkErr);
+        await accountStatusClerkUsers.unbanUser(user.clerkId);
+      } catch {
+        throw new AppError("Could not restore account access in Clerk.", {
+          status: 502, code: "CLERK_RESTORE_FAILED",
+        });
       }
     }
 
+    const previousDeletedAt = user.deletedAt;
+    const previousDeactivatedBy = user.deactivatedBy;
     user.deletedAt = null;
     user.deactivatedBy = undefined;
-    await user.save();
+    try {
+      await user.save();
+    } catch {
+      user.deletedAt = previousDeletedAt;
+      user.deactivatedBy = previousDeactivatedBy;
+      if (shouldUnban) {
+        try {
+          await accountStatusClerkUsers.banUser(user.clerkId);
+        } catch {
+          throw new AppError("Restore needs account-access reconciliation. Contact an Admin.", {
+            status: 503, code: "FARMER_RESTORE_RECONCILIATION_REQUIRED",
+          });
+        }
+      }
+      throw new AppError("Profile restore could not be saved.", {
+        status: 500, code: "PROFILE_RESTORE_SAVE_FAILED",
+      });
+    }
 
     res.status(200).json({ message: "User successfully restored", data: user });
   } catch (error) {
@@ -2493,8 +2625,12 @@ export const restoreUser = async (req, res) => {
   }
 };
 
-export const sendPhoneOtp = async (req, res) => {
+export const createSendPhoneOtpController = ({
+  sendOtp = sendOtpSms,
+  now = () => new Date(),
+} = {}) => async (req, res) => {
   try {
+    assertOtpHashConfigured();
     const { phoneNumber } = req.body;
     const phone = normalizePhilippineMobileNumber(
       phoneNumber || req.user?.phoneNumber,
@@ -2504,7 +2640,7 @@ export const sendPhoneOtp = async (req, res) => {
     const lastSentAt = currentVerification.lastOtpSentAt
       ? new Date(currentVerification.lastOtpSentAt).getTime()
       : 0;
-    const elapsedMs = Date.now() - lastSentAt;
+    const elapsedMs = now().getTime() - lastSentAt;
 
     if (lastSentAt && elapsedMs < OTP_SEND_COOLDOWN_MS) {
       const waitSeconds = Math.ceil((OTP_SEND_COOLDOWN_MS - elapsedMs) / 1000);
@@ -2515,75 +2651,167 @@ export const sendPhoneOtp = async (req, res) => {
       });
     }
 
-    await sendOtpSms(phone.local);
+    const { otpCode, otpExpiresAt } = await sendOtp(phone.local);
+    const sentAt = now();
 
-    req.user.phoneVerification = {
-      ...(req.user.phoneVerification?.toObject?.() ||
-        req.user.phoneVerification ||
-        {}),
-      pendingPhoneNumber: phone.local,
-      pendingNormalizedPhoneNumber: phone.normalized,
-      lastOtpSentAt: new Date(),
-      failedAttempts: 0,
-    };
+    req.user.phoneVerification = buildPendingPhoneVerification({
+      currentVerification: req.user.phoneVerification,
+      phoneNumber: phone.local,
+      normalizedPhoneNumber: phone.normalized,
+      otpCode,
+      otpExpiresAt,
+      sentAt,
+    });
     await req.user.save();
 
     res.status(200).json({
-      message: "OTP sent successfully.",
+      message: "Verification code sent.",
       data: {
         phoneNumber: maskPhoneNumber(phone.local),
-        expiresInMinutes: 5,
+        expiresAt: otpExpiresAt.toISOString(),
+        lastOtpSentAt: sentAt.toISOString(),
+        expiresInSeconds: Math.max(
+          0,
+          Math.ceil((otpExpiresAt.getTime() - sentAt.getTime()) / 1000),
+        ),
+        retryAfterSeconds: OTP_SEND_COOLDOWN_SECONDS,
       },
     });
   } catch (error) {
     console.error("[sendPhoneOtp ERROR]", error.message);
     res.status(error.statusCode || 500).json({
       message: error.message || "Failed to send OTP.",
-      code: error.statusCode === 503 ? "SMS_NOT_AVAILABLE" : "OTP_SEND_FAILED",
+      code:
+        error.code ||
+        (error.statusCode === 503 ? "SMS_NOT_AVAILABLE" : "OTP_SEND_FAILED"),
     });
   }
 };
 
+const handleFarmerInvitationAction = async (req, res, mode) => {
+  try {
+    const farmer = await loadInvitableFarmer(req.params.id);
+    const snapshot = mode === "resend"
+      ? await resendFarmerAppInvitation({ farmer })
+      : await sendFarmerAppInvitation({ farmer });
+
+    await createAuditLog({
+      entityType: "User",
+      entityId: farmer._id,
+      action: mode === "resend" ? "resend_farmer_invitation" : "send_farmer_invitation",
+      actorId: req.user?._id,
+      before: null,
+      after: {
+        appAccountStatus: "invitation_sent",
+        invitationEmail: snapshot.email,
+        expiresAt: snapshot.expiresAt,
+      },
+    });
+
+    return res.status(200).json({
+      message: mode === "resend"
+        ? `A new app invitation was sent to ${snapshot.email}.`
+        : `App invitation sent to ${snapshot.email}.`,
+      appAccountStatus: "invitation_sent",
+      invitationExpiresAt: snapshot.expiresAt,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to send Farmer invitation.",
+      code: error.code,
+    });
+  }
+};
+
+export const sendFarmerAppInvitationController = (req, res) =>
+  handleFarmerInvitationAction(req, res, "send");
+
+export const resendFarmerAppInvitationController = (req, res) =>
+  handleFarmerInvitationAction(req, res, "resend");
+
+export const cancelFarmerAppInvitationController = async (req, res) => {
+  try {
+    const farmer = await loadInvitableFarmer(req.params.id);
+    const snapshot = await cancelFarmerAppInvitation({ farmer });
+    const appAccountStatus = getFarmerAppAccountStatus(farmer);
+
+    await createAuditLog({
+      entityType: "User",
+      entityId: farmer._id,
+      action: "cancel_farmer_invitation",
+      actorId: req.user?._id,
+      before: null,
+      after: {
+        appAccountStatus,
+        invitationStatus: snapshot?.status || "revoked",
+      },
+    });
+
+    return res.status(200).json({
+      message: "Invitation cancelled.",
+      appAccountStatus,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "The invitation could not be cancelled. Try again.",
+      code: error.code,
+    });
+  }
+};
+
+export const sendPhoneOtp = createSendPhoneOtpController();
+
 export const verifyPhoneOtp = async (req, res) => {
   try {
     const { phoneNumber, otpCode } = req.body;
-    const phone = normalizePhilippineMobileNumber(
-      phoneNumber || req.user?.phoneVerification?.pendingPhoneNumber,
+    const verificationUser = await User.findById(req.user._id).select(
+      "+phoneVerification.otpHash",
     );
-    const currentVerification = req.user.phoneVerification || {};
-
+    if (!verificationUser) {
+      return res.status(404).json({ message: "User not found.", code: "USER_NOT_FOUND" });
+    }
+    const currentVerification = verificationUser.phoneVerification || {};
     if (
-      currentVerification.pendingNormalizedPhoneNumber &&
-      currentVerification.pendingNormalizedPhoneNumber !== phone.normalized
+      !currentVerification.pendingNormalizedPhoneNumber ||
+      !currentVerification.otpHash ||
+      !currentVerification.otpExpiresAt
     ) {
       return res.status(400).json({
-        message: "This OTP was requested for a different phone number.",
-        code: "OTP_PHONE_MISMATCH",
+        message: "No verification code is pending. Request a new code.",
+        code: "OTP_NOT_PENDING",
       });
     }
+    const phone = normalizePhilippineMobileNumber(
+      phoneNumber || currentVerification.pendingPhoneNumber,
+    );
 
-    if ((currentVerification.failedAttempts || 0) >= OTP_MAX_FAILED_ATTEMPTS) {
-      return res.status(429).json({
-        message: "Too many failed OTP attempts. Please request a new code.",
-        code: "OTP_TOO_MANY_ATTEMPTS",
-      });
-    }
-
-    try {
-      await verifyOtpSms(phone.local, otpCode);
-    } catch (error) {
-      req.user.phoneVerification = {
-        ...(req.user.phoneVerification?.toObject?.() ||
-          req.user.phoneVerification ||
-          {}),
+    const assessment = assessOtpAttempt({
+      verification: currentVerification,
+      normalizedPhoneNumber: phone.normalized,
+      otpCode,
+      maxFailedAttempts: OTP_MAX_FAILED_ATTEMPTS,
+    });
+    if (!assessment.ok && assessment.incrementFailedAttempts) {
+      verificationUser.phoneVerification = {
+        ...(currentVerification.toObject?.() || currentVerification || {}),
         failedAttempts: (currentVerification.failedAttempts || 0) + 1,
       };
-      await req.user.save();
-      throw error;
+      await verificationUser.save();
+    }
+    if (!assessment.ok) {
+      const errors = {
+        OTP_NOT_PENDING: [400, "No verification code is pending. Request a new code."],
+        OTP_PHONE_MISMATCH: [400, "This code was requested for a different phone number."],
+        OTP_TOO_MANY_ATTEMPTS: [429, "Too many failed verification attempts. Please request a new code."],
+        OTP_EXPIRED: [400, "The verification code has expired. Request a new code."],
+        OTP_INVALID: [400, "The verification code is incorrect."],
+      };
+      const [status, message] = errors[assessment.code] || [400, "Phone verification failed."];
+      return res.status(status).json({ message, code: assessment.code });
     }
 
-    const matchingPhoneUsers = await User.find({
-      _id: { $ne: req.user._id },
+    const matchingPhoneLookup = User.find({
+      _id: { $ne: verificationUser._id },
       role: "farmer",
       deletedAt: null,
       $or: [
@@ -2591,6 +2819,9 @@ export const verifyPhoneOtp = async (req, res) => {
         { normalizedPhoneNumber: phone.normalized },
       ],
     });
+    const matchingPhoneUsers = await (matchingPhoneLookup.select
+      ? matchingPhoneLookup.select("+farmerAppInvitation.clerkInvitationId")
+      : matchingPhoneLookup);
 
     const unclaimedProfiles = matchingPhoneUsers.filter((user) => {
       const hasRealClerkId =
@@ -2627,9 +2858,9 @@ export const verifyPhoneOtp = async (req, res) => {
       });
     }
 
-    if (unclaimedProfiles.length === 1 && req.user.role === "farmer") {
+    if (unclaimedProfiles.length === 1 && verificationUser.role === "farmer") {
       const existingProfile = unclaimedProfiles[0];
-      const currentUserRecordCount = await countFarmerOwnedRecords(req.user._id);
+      const currentUserRecordCount = await countFarmerOwnedRecords(verificationUser._id);
 
       if (currentUserRecordCount > 0) {
         return res.status(409).json({
@@ -2639,44 +2870,19 @@ export const verifyPhoneOtp = async (req, res) => {
         });
       }
 
-      const currentUser = req.user;
+      const currentUser = verificationUser;
       const clerkId = currentUser.clerkId;
-      const email = currentUser.email;
-      const imageUrl = currentUser.imageUrl;
-
-      currentUser.clerkId = undefined;
-      currentUser.deletedAt = new Date();
-      currentUser.deactivatedBy = currentUser._id;
-      await currentUser.save();
-
-      existingProfile.clerkId = clerkId;
-      if (email && !existingProfile.email) existingProfile.email = email;
-      existingProfile.imageUrl = imageUrl || existingProfile.imageUrl;
-      existingProfile.phoneNumber = phone.local;
-      existingProfile.normalizedPhoneNumber = phone.normalized;
-      if (existingProfile.address) existingProfile.address.phoneNumber = phone.local;
-      existingProfile.isVerified = true;
-      existingProfile.status = "active";
-      existingProfile.profileClaimStatus = "claimed";
-      existingProfile.profileClaimedAt = new Date();
-      existingProfile.profileClaimedByClerkId = clerkId || "";
-      existingProfile.phoneVerification = {
-        ...(existingProfile.phoneVerification?.toObject?.() ||
-          existingProfile.phoneVerification ||
-          {}),
-        pendingPhoneNumber: "",
-        pendingNormalizedPhoneNumber: "",
-        isVerified: true,
-        verifiedAt: new Date(),
-        failedAttempts: 0,
-      };
-      await existingProfile.save();
+      const linkedProfile = await linkFarmerProfileByPhone({
+        sourceUser: currentUser,
+        targetFarmer: existingProfile,
+        phone,
+      });
 
       await createAuditLog({
         entityType: "User",
-        entityId: existingProfile._id,
+        entityId: linkedProfile._id,
         action: "claim_profile",
-        actorId: existingProfile._id,
+        actorId: linkedProfile._id,
         before: {
           profileClaimStatus: "unclaimed",
           placeholderUserId: currentUser._id,
@@ -2694,23 +2900,25 @@ export const verifyPhoneOtp = async (req, res) => {
           phoneNumber: maskPhoneNumber(phone.local),
           isVerified: true,
           linkedExistingProfile: true,
-          user: existingProfile,
+          user: buildSafeUserPayload(linkedProfile),
         },
       });
     }
 
-    req.user.phoneNumber = phone.local;
-    req.user.normalizedPhoneNumber = phone.normalized;
-    if (req.user.address) req.user.address.phoneNumber = phone.local;
-    req.user.phoneVerification = {
-      ...(req.user.phoneVerification?.toObject?.() || req.user.phoneVerification || {}),
+    verificationUser.phoneNumber = phone.local;
+    verificationUser.normalizedPhoneNumber = phone.normalized;
+    if (verificationUser.address) verificationUser.address.phoneNumber = phone.local;
+    verificationUser.phoneVerification = {
+      ...(currentVerification.toObject?.() || currentVerification || {}),
       pendingPhoneNumber: "",
       pendingNormalizedPhoneNumber: "",
+      otpHash: undefined,
+      otpExpiresAt: null,
       isVerified: true,
       verifiedAt: new Date(),
       failedAttempts: 0,
     };
-    await req.user.save();
+    await verificationUser.save();
 
     res.status(200).json({
       message: "Phone number verified successfully.",
@@ -2722,9 +2930,9 @@ export const verifyPhoneOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("[verifyPhoneOtp ERROR]", error.message);
-    res.status(error.statusCode || 400).json({
+    res.status(error.status || error.statusCode || 400).json({
       message: error.message || "Invalid or expired OTP code.",
-      code: "OTP_VERIFY_FAILED",
+      code: error.code || "OTP_VERIFY_FAILED",
     });
   }
 };
@@ -2775,9 +2983,55 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
       user.rsbsaNumber = rsbsaNumber.trim();
     }
 
-    if (phoneNumber) {
-      user.phoneNumber = phoneNumber;
-      if (user.address) user.address.phoneNumber = phoneNumber;
+    if (typeof phoneNumber === "string" && phoneNumber.trim()) {
+      const phone = normalizeFarmerPhone(phoneNumber);
+      const currentNormalizedPhone = user.normalizedPhoneNumber || (
+        user.phoneNumber ? normalizeFarmerPhone(user.phoneNumber).normalized : undefined
+      );
+      const phoneChanged = currentNormalizedPhone !== phone.normalized;
+      const isClaimedOrVerified =
+        user.profileClaimStatus === "claimed" ||
+        Boolean(user.phoneVerification?.isVerified);
+
+      if (phoneChanged && isClaimedOrVerified) {
+        return res.status(409).json({
+          message:
+            "This Farmer's verified phone cannot be changed through ordinary profile editing.",
+          code: "VERIFIED_FARMER_PHONE_CHANGE_REQUIRES_RECOVERY",
+        });
+      }
+
+      const duplicate = await User.findOne({
+        _id: { $ne: user._id },
+        $or: [
+          { normalizedPhoneNumber: phone.normalized },
+          { phoneNumber: phone.local },
+          { phoneNumber: phone.normalized },
+        ],
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          message: "This phone number is already used by another Farmer profile.",
+          code: "FARMER_PHONE_ALREADY_IN_USE",
+        });
+      }
+
+      user.phoneNumber = phone.local;
+      user.normalizedPhoneNumber = phone.normalized;
+      if (user.address) user.address.phoneNumber = phone.local;
+      if (phoneChanged) {
+        user.phoneVerification = {
+          ...(user.phoneVerification?.toObject?.() || user.phoneVerification || {}),
+          pendingPhoneNumber: "",
+          pendingNormalizedPhoneNumber: "",
+          isVerified: false,
+          verifiedAt: null,
+          lastOtpSentAt: null,
+          otpHash: undefined,
+          otpExpiresAt: null,
+          failedAttempts: 0,
+        };
+      }
     }
 
     if (address) {
@@ -2865,8 +3119,11 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
     });
   } catch (error) {
     console.error("[updateFarmerProfileByTechnician ERROR]", error);
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
+    if (error.statusCode || error.status) {
+      return res.status(error.statusCode || error.status).json({
+        message: error.message,
+        code: error.code,
+      });
     }
     res.status(500).json({ message: "Failed to update farmer profile." });
   }

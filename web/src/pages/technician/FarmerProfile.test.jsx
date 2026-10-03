@@ -1,12 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
 
 vi.mock("../../lib/axios", () => ({
-  default: { get: mocks.get },
+  default: { get: mocks.get, patch: mocks.patch },
 }));
 
 vi.mock("../../components/dialogs/RegisterFarmerModal", () => ({
@@ -103,7 +103,46 @@ const renderProfile = () => {
 };
 
 describe("Technician Farmer Profile", () => {
-  beforeEach(() => mocks.get.mockReset());
+  beforeEach(() => { mocks.get.mockReset(); mocks.patch.mockReset(); });
+
+  it("shows Archive Farmer only for an unclaimed, unlinked profile", async () => {
+    mocks.get.mockImplementation(async (url) => ({
+      data: url === `/user/${farmerId}`
+        ? { ...farmer, canTechnicianArchive: true }
+        : [],
+    }));
+    renderProfile();
+    expect(await screen.findByRole("button", { name: "Archive Farmer" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Archive Farmer" }));
+    expect(screen.getByText("Archive Farmer?", { selector: "h3" })).toBeVisible();
+    expect(screen.getByText(/profile and any existing records will be preserved/)).toBeVisible();
+  });
+
+  it("does not offer Technician Archive to a claimed Farmer", async () => {
+    mocks.get.mockImplementation(async (url) => ({
+      data: url === `/user/${farmerId}` ? farmer : [],
+    }));
+    renderProfile();
+    await screen.findByText("Maria Santos");
+    expect(screen.queryByRole("button", { name: "Archive Farmer" })).toBeNull();
+  });
+
+  it("keeps a backend Archive rejection visible in the confirmation dialog", async () => {
+    mocks.get.mockImplementation(async (url) => ({
+      data: url === `/user/${farmerId}`
+        ? { ...farmer, canTechnicianArchive: true }
+        : [],
+    }));
+    mocks.patch.mockRejectedValueOnce({
+      response: { data: { message: "Cancel the active Farmer invitation before archiving this profile." } },
+    });
+    renderProfile();
+    fireEvent.click(await screen.findByRole("button", { name: "Archive Farmer" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Archive Farmer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Cancel the active Farmer invitation before archiving this profile.",
+    );
+  });
 
   it("shows authoritative identity, owned animals, recent activity, and canonical actions", async () => {
     mocks.get.mockImplementation(async (url) => {

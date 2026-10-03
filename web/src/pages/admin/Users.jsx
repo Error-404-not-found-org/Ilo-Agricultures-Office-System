@@ -20,6 +20,7 @@ import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
 import TechnicianInviteDialog from "../../components/dialogs/TechnicianInviteDialog";
 import UserDirectoryCards from "../../components/admin/users/UserDirectoryCards";
 import UserDirectoryTable from "../../components/admin/users/UserDirectoryTable";
+import Modal from "../../components/ui/Modal";
 import { ui } from "../../components/ui/uiClasses";
 import {
   ILOILO_MUNICIPALITIES,
@@ -89,6 +90,7 @@ export default function Users() {
   const [isAddUserRoleOpen, setIsAddUserRoleOpen] = useState(false);
   const [isFarmerDialogOpen, setIsFarmerDialogOpen] = useState(false);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState(null);
 
   useEffect(() => {
     const roleRequiresNormalization = requestedRole !== activeRole;
@@ -200,9 +202,9 @@ export default function Users() {
   const userActionMutation = useMutation({
     mutationFn: async ({ action, user }) => {
       const endpointByAction = {
-        verify: "/admin/verify-user",
         suspend: "/admin/suspend-user",
         reactivate: "/admin/reactivate-user",
+        archive: "/admin/delete-user",
       };
       const endpoint = endpointByAction[action];
       if (!endpoint) throw new Error("Unsupported user action.");
@@ -212,11 +214,15 @@ export default function Users() {
     },
     onSuccess: ({ action, user }) => {
       const actionLabel = {
-        verify: "verified",
         suspend: "suspended",
         reactivate: "reactivated",
+        archive: "archived",
       }[action];
       toast.success(`${user.name || "User"} ${actionLabel}.`);
+      if (action === "archive") {
+        setArchiveTarget(null);
+        queryClient.invalidateQueries({ queryKey: ["admin", "archived-users"] });
+      }
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
     },
@@ -491,9 +497,9 @@ export default function Users() {
               isError={isError}
               hasFilters={hasFilters}
               onRetry={() => refetch()}
-              onUserAction={(action, user) =>
-                userActionMutation.mutate({ action, user })
-              }
+              onUserAction={(action, user) => action === "archive"
+                ? setArchiveTarget(user)
+                : userActionMutation.mutate({ action, user })}
               pendingUserId={
                 userActionMutation.isPending
                   ? userActionMutation.variables?.user?._id
@@ -509,9 +515,9 @@ export default function Users() {
               isError={isError}
               hasFilters={hasFilters}
               onRetry={() => refetch()}
-              onUserAction={(action, user) =>
-                userActionMutation.mutate({ action, user })
-              }
+              onUserAction={(action, user) => action === "archive"
+                ? setArchiveTarget(user)
+                : userActionMutation.mutate({ action, user })}
               pendingUserId={
                 userActionMutation.isPending
                   ? userActionMutation.variables?.user?._id
@@ -568,6 +574,16 @@ export default function Users() {
         onClose={() => setIsAddUserRoleOpen(false)}
         onSelectRole={startAddUser}
       />
+      <Modal
+        isOpen={Boolean(archiveTarget)}
+        onClose={() => setArchiveTarget(null)}
+        title="Archive Farmer?"
+        confirmText="Archive Farmer"
+        isConfirmLoading={userActionMutation.isPending}
+        onConfirm={() => userActionMutation.mutate({ action: "archive", user: archiveTarget })}
+      >
+        This Farmer will be removed from active lists. Their profile and historical records will be preserved and can be restored later.
+      </Modal>
       <RegisterFarmerModal
         isOpen={isFarmerDialogOpen}
         onClose={() => setIsFarmerDialogOpen(false)}

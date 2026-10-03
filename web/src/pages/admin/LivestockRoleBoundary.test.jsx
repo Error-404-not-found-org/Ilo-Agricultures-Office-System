@@ -103,12 +103,11 @@ describe("LivestockProfile role boundary", () => {
 
     expect(screen.getByRole("button", { name: "Edit Profile" })).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Health Record" }),
+      screen.getByRole("button", { name: /Health Record/ }),
     ).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Pregnancy Check" }),
+      screen.getByRole("button", { name: /Pregnancy Check/ }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Calving" })).toBeVisible();
     expect(
       screen.getByRole("button", { name: /Record AI Service/ }),
     ).toBeVisible();

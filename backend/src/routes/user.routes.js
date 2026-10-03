@@ -6,12 +6,12 @@ import {
   getUserById,
   updateUser,
   getMe,
-  markVerified,
   resendVerificationCode,
   getBreedingMilestones,
   getMyActivityFeed,
   updatePushToken,
   deleteUser,
+  archiveFarmerByTechnician,
   restoreUser,
   updateFarmerProfileByTechnician,
   getArchivedUsers,
@@ -19,9 +19,12 @@ import {
   verifyPhoneOtp,
   bootstrapUser,
   staffBootstrapUser,
+  sendFarmerAppInvitationController,
+  resendFarmerAppInvitationController,
+  cancelFarmerAppInvitationController,
 } from "../controllers/user.controllers.js";
 import { protectedRoute, requireRole, requireClerkAuthentication } from "../middleware/auth.middleware.js";
-import { otpLimiter } from "../middleware/rateLimit.middleware.js";
+import { otpSendLimiter, otpVerifyLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
@@ -42,13 +45,31 @@ router.get("/activity", protectedRoute, getMyActivityFeed);
 router.get("/archived", protectedRoute, requireRole(["admin"]), getArchivedUsers);
 
 router.post("/push-token", protectedRoute, updatePushToken);
-router.post("/otp/send", protectedRoute, otpLimiter, sendPhoneOtp);
-router.post("/otp/verify", protectedRoute, otpLimiter, verifyPhoneOtp);
+router.post("/otp/send", protectedRoute, otpSendLimiter, sendPhoneOtp);
+router.post("/otp/verify", protectedRoute, otpVerifyLimiter, verifyPhoneOtp);
+router.post(
+  "/:id/app-invitation",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  sendFarmerAppInvitationController,
+);
+router.post(
+  "/:id/app-invitation/resend",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  resendFarmerAppInvitationController,
+);
+router.delete(
+  "/:id/app-invitation",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  cancelFarmerAppInvitationController,
+);
 router.patch("/:id/technician-update", protectedRoute, requireRole(["technician", "admin"]), updateFarmerProfileByTechnician);
+router.patch("/:id/technician-archive", protectedRoute, requireRole(["technician"]), archiveFarmerByTechnician);
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);
 router.delete("/:id", protectedRoute, deleteUser);
 router.post("/:id/restore", protectedRoute, restoreUser);
-router.post("/mark-verified", protectedRoute, markVerified);
 
 export default router;

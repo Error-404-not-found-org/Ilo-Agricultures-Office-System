@@ -126,6 +126,22 @@ export const getManilaDayBounds = (now = new Date()) => {
   };
 };
 
+export const getManilaMonthBounds = (now = new Date()) => {
+  const manilaNow = new Date(now.getTime() + MANILA_OFFSET_MS);
+  const year = manilaNow.getUTCFullYear();
+  const monthIndex = manilaNow.getUTCMonth();
+
+  return {
+    start: new Date(Date.UTC(year, monthIndex, 1) - MANILA_OFFSET_MS),
+    end: new Date(Date.UTC(year, monthIndex + 1, 1) - MANILA_OFFSET_MS),
+  };
+};
+
+export const getManilaMonthBoundsFor = (year, month) => ({
+  start: new Date(Date.UTC(year, month - 1, 1) - MANILA_OFFSET_MS),
+  end: new Date(Date.UTC(year, month, 1) - MANILA_OFFSET_MS),
+});
+
 export const buildAICompletedInRangeFilter = ({
   technicianId,
   start,
@@ -133,21 +149,7 @@ export const buildAICompletedInRangeFilter = ({
 } = {}) => ({
   $and: [
     buildCompletedAIWorkFilter({ technicianId }),
-    {
-      $or: [
-        { completedAt: { $gte: start, $lt: end } },
-        {
-          completedAt: null,
-          entryMode: { $nin: ["history_only", "continue_tracking"] },
-          statusHistory: {
-            $elemMatch: {
-              status: AI_STATUS.DONE,
-              createdAt: { $gte: start, $lt: end },
-            },
-          },
-        },
-      ],
-    },
+    { inseminationDate: { $gte: start, $lt: end } },
   ],
 });
 

@@ -35,6 +35,7 @@ import {
   normalizeVisitScheduleDate,
 } from "../domain/visit-scheduling.js";
 import { buildFarmerHealthRequest } from "../domain/health-request-presentation.js";
+import { buildFarmerRequestStatusFilter } from "../domain/farmer-request-list-filter.js";
 import {
   assertHealthRequestMutationOwnership,
   buildHealthRequestMutationOwnershipGuard,
@@ -50,6 +51,8 @@ import {
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
 import { resolveRequestNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
+import { getHealthVisitAvailability } from "../domain/health-visit-availability.js";
+import { firstGenuineHealthRecordNote } from "../domain/health-record-note.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -165,6 +168,13 @@ export const createHealthRequest = async (req, res) => {
       });
     }
 
+    if (candidatePhotos.length === 0) {
+      return res.status(400).json({
+        code: "HEALTH_REQUEST_PHOTO_REQUIRED",
+        message: "Please attach at least one photo of the animal.",
+      });
+    }
+
     let uploadResults = [];
     try {
       if (candidatePhotos.length > 0) {
@@ -244,11 +254,15 @@ export const createHealthRequest = async (req, res) => {
 // GET /api/health-request/my  — farmer's own requests
 export const getMyHealthRequests = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
+    const { page = 1, limit = 10, status, statusGroup } = req.query;
     const farmerId = req.user._id;
 
     const query = { farmerId, deletedAt: null, farmerDismissedAt: null };
-    if (status && status !== 'all') query.status = status;
+    const statusFilter = buildFarmerRequestStatusFilter("health", {
+      status,
+      statusGroup,
+    });
+    if (statusFilter) query.status = statusFilter;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -270,7 +284,10 @@ export const getMyHealthRequests = async (req, res) => {
     });
   } catch (error) {
     console.error("[getMyHealthRequests ERROR]", error.message);
-    res.status(500).json({ message: "Failed to fetch your requests." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch your requests.",
+      code: error.code,
+    });
   }
 };
 
@@ -528,6 +545,30 @@ export const updateHealthRequestStatus = async (req, res) => {
       });
     }
 
+    if (
+      status === "in-progress" &&
+      existing.status === "scheduled"
+    ) {
+      const availability = getHealthVisitAvailability({
+        scheduledDate: existing.scheduledDate,
+      });
+      if (availability?.workTiming === "upcoming") {
+        const scheduleLabel = new Intl.DateTimeFormat("en-PH", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "Asia/Manila",
+        }).format(existing.scheduledDate);
+        const periodLabel = existing.visitPeriod
+          ? ` · ${existing.visitPeriod === "morning" ? "Morning" : "Afternoon"}`
+          : "";
+        return res.status(409).json({
+          message: `This farm visit is scheduled for ${scheduleLabel}${periodLabel}. Reschedule it to today before starting the service.`,
+          code: "HEALTH_VISIT_NOT_DUE",
+        });
+      }
+    }
+
     assertStatusTransition("health", existing.status, status, { isAdmin: req.user.role === "admin" });
 
     const mayAtomicallyClaimPending =
@@ -601,10 +642,18 @@ export const updateHealthRequestStatus = async (req, res) => {
             dosage: updateFields.dosage || existing.dosage || "",
             diagnosis: updateFields.diagnosis || existing.diagnosis || "No specific diagnosis logged.",
             treatment: updateFields.treatment || existing.treatment || "No treatment logged.",
+            advice: updateFields.advice || existing.advice || undefined,
             withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
             withdrawalEndDate,
           },
-          note: updateFields.resolutionNotes || updateFields.technicianNote || updateFields.findings || existing.resolutionNotes || existing.technicianNote || existing.findings || "Resolved through health request queue.",
+          note: firstGenuineHealthRecordNote(
+            updateFields.resolutionNotes,
+            updateFields.technicianNote,
+            updateFields.findings,
+            existing.resolutionNotes,
+            existing.technicianNote,
+            existing.findings,
+          ),
           followUpDate: updateFields.followUpDate,
         },
       });
@@ -797,8 +846,8 @@ export const walkInHealthRequest = async (req, res) => {
       }
     }
 
-    if (!farmerId && (!phoneNumber || !animalDetails?.earTag)) {
-      return res.status(400).json({ message: "Phone number and Animal Ear Tag are required for manual entry." });
+    if (!farmerId && !animalDetails?.earTag) {
+      return res.status(400).json({ message: "Animal Ear Tag is required for manual entry." });
     }
 
     if (!diagnosis) {
@@ -828,7 +877,6 @@ export const walkInHealthRequest = async (req, res) => {
         inviteExistingUnclaimed: false,
         allowClaimedExisting: true,
         redirectUrl: getFarmerInvitationRedirectUrl(),
-        isVerified: true,
       });
       farmer = farmerResolution.farmer;
     }

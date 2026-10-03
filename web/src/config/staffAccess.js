@@ -35,6 +35,16 @@ export const classifyStaffBootstrapFailure = (error) => {
   const payload = error?.response?.data;
   const code = payload?.code || error?.code;
 
+  if (code === "ACCOUNT_SUSPENDED") {
+    return {
+      kind: "suspended",
+      message: {
+        title: "Account suspended",
+        description: "Your BreedSmart account has been suspended. Please contact the Municipal Agriculture Office for assistance.",
+      },
+    };
+  }
+
   if (code === "STAFF_PROFILE_NOT_FOUND") {
     return { kind: "access-denied", message: UNKNOWN_STAFF_ACCESS_MESSAGE };
   }

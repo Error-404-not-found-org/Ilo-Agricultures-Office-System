@@ -166,6 +166,8 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
       treatment: "Vaccine shot",
       medicineGiven: "Rabies Vac",
       dosage: "2ml",
+      advice: "Monitor appetite and provide clean water.",
+      technicianNote: "Internal follow-up context.",
       withdrawalPeriodDays: 5
     };
 
@@ -181,6 +183,8 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
     assert.strictEqual(rec.details.dosage, "2ml");
     assert.strictEqual(rec.details.diagnosis, "Healthy");
     assert.strictEqual(rec.details.treatment, "Vaccine shot");
+    assert.strictEqual(rec.details.advice, "Monitor appetite and provide clean water.");
+    assert.strictEqual(rec.note, "Internal follow-up context.");
     assert.strictEqual(rec.details.withdrawalPeriodDays, 5);
     assert.ok(rec.details.withdrawalEndDate);
 
@@ -201,6 +205,66 @@ test("H4 - Technician Health Workspace / Health Log controller tests", async (t)
     const records2 = await MedicalRecord.find({ healthRequestId: hr._id });
     assert.strictEqual(records2.length, 1, "Must not create duplicate MedicalRecord");
     assert.strictEqual(records2[0].details.dosage, "2ml", "Must not update existing idempotent record");
+  });
+
+  await t.test("3b. Request-linked completion without a genuine note does not invent one", async () => {
+    const animalId = new mongoose.Types.ObjectId();
+    const farmerId = new mongoose.Types.ObjectId();
+    const hr = await HealthRequest.create({
+      farmerId,
+      animalId,
+      requestType: "disease",
+      symptoms: "Low appetite",
+      urgency: "medium",
+      status: "in-progress",
+      handledBy: mockTechId,
+      serviceStartedAt: new Date(),
+      scheduledDate: new Date(),
+      visitPeriod: "Morning",
+      handlingMethod: "farm_visit",
+    });
+    const task = await Task.create({
+      taskType: "Health",
+      status: "In Progress",
+      technicianId: mockTechId,
+      farmerId,
+      animalIds: [animalId],
+      notes: "Complete health visit",
+      category: "Routine",
+    });
+
+    req.params.id = hr._id.toString();
+    req.body = {
+      status: "resolved",
+      taskId: task._id.toString(),
+      diagnosis: "Mild dehydration",
+      treatment: "Oral fluids",
+      medicineGiven: "Electrolytes",
+      dosage: "500 mL",
+      advice: "Keep clean water available.",
+      withdrawalPeriodDays: 3,
+    };
+
+    await updateHealthRequestStatus(req, res);
+    assert.strictEqual(res.statusCode, 200);
+
+    const records = await MedicalRecord.find({ healthRequestId: hr._id });
+    assert.strictEqual(records.length, 1);
+    const rec = records[0];
+    assert.ok(rec.note === undefined || rec.note === null || rec.note === "");
+    assert.notStrictEqual(rec.note, "Resolved through health request queue.");
+    assert.strictEqual(rec.details.diagnosis, "Mild dehydration");
+    assert.strictEqual(rec.details.treatment, "Oral fluids");
+    assert.strictEqual(rec.details.medicineName, "Electrolytes");
+    assert.strictEqual(rec.details.dosage, "500 mL");
+    assert.strictEqual(rec.details.advice, "Keep clean water available.");
+    assert.strictEqual(rec.details.withdrawalPeriodDays, 3);
+
+    await updateHealthRequestStatus(req, res);
+    assert.strictEqual(
+      await MedicalRecord.countDocuments({ healthRequestId: hr._id }),
+      1,
+    );
   });
 
   await t.test("4. Transaction Mismatch: Wrong Technician task", async () => {

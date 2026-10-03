@@ -1,6 +1,7 @@
 import axios from "axios";
 import { ENV } from "../config/env.js";
 import { normalizePhilippineMobileNumber } from "../utils/phone.js";
+import { parseProviderOtpPayload } from "./phone-otp.service.js";
 
 const DEFAULT_IPROG_BASE_URL = "https://www.iprogsms.com/api/v1";
 
@@ -51,15 +52,19 @@ export const sendOtpSms = async (phoneNumber, options = {}) => {
       },
     );
 
+    const otp = parseProviderOtpPayload(response.data);
     return {
       provider: "iprog",
       phone,
-      response: response.data,
+      ...otp,
     };
   } catch (error) {
     throw Object.assign(
       new Error(getProviderMessage(error, "Failed to send OTP.")),
-      { statusCode: error.response?.status || 502 },
+      {
+        statusCode: error.statusCode || error.response?.status || 502,
+        code: error.code,
+      },
     );
   }
 };

@@ -4,7 +4,19 @@ import mongoose from "mongoose";
 import { User } from "../src/models/user.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
+import { Task } from "../src/models/task.model.js";
+import { Config } from "../src/models/config.model.js";
+import { AnimalTimelineEvent } from "../src/models/animal-timeline-event.model.js";
+import { AuditLog } from "../src/models/audit-log.model.js";
 import { recordTechnicianBreedingObservation, submitFarmerBreedingObservation } from "../src/controllers/ai-request.controllers.js";
+
+const populatedQuery = (value) => {
+  const query = {
+    populate() { return query; },
+    then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); },
+  };
+  return query;
+};
 
 function createMockRes() {
   let statusVal = 200;
@@ -25,6 +37,26 @@ function createMockRes() {
 
 test("Technician Breeding Observation API", async (t) => {
   let farmer, technician, animal, insemination;
+  const originals = {
+    inseminationFindOne: Insemination.findOne,
+    inseminationFindById: Insemination.findById,
+    animalFindById: Animal.findById,
+    taskFindOne: Task.findOne,
+    configFindOne: Config.findOne,
+    timelineCreate: AnimalTimelineEvent.create,
+    auditCreate: AuditLog.create,
+    userFindOne: User.findOne,
+  };
+  t.after(() => {
+    Insemination.findOne = originals.inseminationFindOne;
+    Insemination.findById = originals.inseminationFindById;
+    Animal.findById = originals.animalFindById;
+    Task.findOne = originals.taskFindOne;
+    Config.findOne = originals.configFindOne;
+    AnimalTimelineEvent.create = originals.timelineCreate;
+    AuditLog.create = originals.auditCreate;
+    User.findOne = originals.userFindOne;
+  });
 
   t.beforeEach(async () => {
     farmer = new User({ _id: new mongoose.Types.ObjectId(), role: "farmer", name: "F1" });
@@ -34,9 +66,19 @@ test("Technician Breeding Observation API", async (t) => {
       _id: new mongoose.Types.ObjectId(),
       animalId: animal._id,
       farmerId: farmer._id,
+      approvedBy: technician._id,
+      technicianId: technician._id,
       status: "done",
-      inseminationDate: new Date(),
+      inseminationDate: new Date("2026-01-01T00:00:00.000Z"),
     });
+    Insemination.findOne = () => populatedQuery(insemination);
+    Insemination.findById = () => populatedQuery(insemination);
+    Animal.findById = async () => animal;
+    Task.findOne = async () => null;
+    Config.findOne = async () => null;
+    AnimalTimelineEvent.create = async () => ({});
+    AuditLog.create = async () => ({});
+    User.findOne = () => ({ select: async () => null });
   });
 
   await t.test("Scenario A: Farmer submits 'No heat noticed' (farmer_app provenance)", async () => {
@@ -44,24 +86,16 @@ test("Technician Breeding Observation API", async (t) => {
     animal.save = async () => {};
     const req = {
       params: { id: insemination._id },
-      user: { _id: farmer._id },
+      user: { _id: farmer._id, role: "farmer" },
       body: { reportType: "possible_pregnancy", notes: "No heat noticed" }
     };
     const res = createMockRes();
-
-    // Mock DB queries inside controller
-    mongoose.Model.findById = async function(id) {
-      if (id.toString() === insemination._id.toString()) return insemination;
-      if (id.toString() === animal._id.toString()) return animal;
-      return null;
-    };
-    insemination.populate = function() { return this; };
 
     await submitFarmerBreedingObservation(req, res);
 
     assert.equal(res.statusVal, 200);
     assert.equal(insemination.farmerOutcomeReport, "possible_pregnancy");
-    assert.equal(insemination.observationSource, "farmer_app");
+    assert.equal(insemination.observationSource, "farmer");
     assert.equal(insemination.observationRecordedBy.toString(), farmer._id.toString());
   });
 
@@ -70,49 +104,62 @@ test("Technician Breeding Observation API", async (t) => {
     animal.save = async () => {};
     const req = {
       params: { id: insemination._id },
-      user: { _id: technician._id },
+      user: { _id: technician._id, role: "technician" },
       body: { reportType: "possible_pregnancy", source: "technician_phone", notes: "Called farmer" }
     };
     const res = createMockRes();
-
-    mongoose.Model.findById = async function(id) {
-      if (id.toString() === insemination._id.toString()) return insemination;
-      if (id.toString() === animal._id.toString()) return animal;
-      return null;
-    };
-    insemination.populate = function() { return this; };
 
     await recordTechnicianBreedingObservation(req, res);
 
     assert.equal(res.statusVal, 200);
     assert.equal(insemination.farmerOutcomeReport, "possible_pregnancy");
-    assert.equal(insemination.observationSource, "technician_phone");
+    assert.equal(insemination.observationSource, "technician");
+    assert.match(insemination.statusHistory.at(-1).note, /technician_phone/);
     assert.equal(insemination.observationRecordedBy.toString(), technician._id.toString());
   });
 
-  await t.test("Scenario D: Technician field observation (technician_field)", async () => {
+  await t.test("Scenario D: Technician field return-to-heat is professionally verified", async () => {
     insemination.save = async () => {};
     animal.save = async () => {};
+    const originalsForVerification = {
+      startSession: mongoose.startSession,
+      taskFind: Task.find,
+      inseminationFindOneAndUpdate: Insemination.findOneAndUpdate,
+      animalFindByIdAndUpdate: Animal.findByIdAndUpdate,
+    };
+    mongoose.startSession = async () => ({
+      withTransaction: async (work) => work(),
+      endSession: async () => {},
+    });
+    Task.find = () => ({ session: async () => [] });
+    Insemination.findOneAndUpdate = async (_query, update) => {
+      Object.assign(insemination, update.$set);
+      return insemination;
+    };
+    Animal.findByIdAndUpdate = async (_id, update) => {
+      Object.assign(animal, update.$set);
+      return animal;
+    };
     const req = {
       params: { id: insemination._id },
-      user: { _id: technician._id },
+      user: { _id: technician._id, role: "technician" },
       body: { reportType: "return_to_heat", source: "technician_field", signs: ["Standing"] }
     };
     const res = createMockRes();
 
-    mongoose.Model.findById = async function(id) {
-      if (id.toString() === insemination._id.toString()) return insemination;
-      if (id.toString() === animal._id.toString()) return animal;
-      return null;
-    };
-    insemination.populate = function() { return this; };
+    try {
+      await recordTechnicianBreedingObservation(req, res);
 
-    await recordTechnicianBreedingObservation(req, res);
-
-    assert.equal(res.statusVal, 200);
-    assert.equal(insemination.farmerOutcomeReport, "return_to_heat");
-    assert.equal(insemination.observationSource, "technician_field");
-    assert.equal(insemination.observationRecordedBy.toString(), technician._id.toString());
-    assert.equal(insemination.failureReason, null); // AI not automatically failed
+      assert.equal(res.statusVal, 200);
+      assert.equal(insemination.outcome, "Failed (Re-heat)");
+      assert.equal(insemination.failureReason, "return_to_heat");
+      assert.equal(insemination.outcomeConfirmationSource, "technician_return_to_heat");
+      assert.equal(insemination.outcomeConfirmedBy.toString(), technician._id.toString());
+    } finally {
+      mongoose.startSession = originalsForVerification.startSession;
+      Task.find = originalsForVerification.taskFind;
+      Insemination.findOneAndUpdate = originalsForVerification.inseminationFindOneAndUpdate;
+      Animal.findByIdAndUpdate = originalsForVerification.animalFindByIdAndUpdate;
+    }
   });
 });

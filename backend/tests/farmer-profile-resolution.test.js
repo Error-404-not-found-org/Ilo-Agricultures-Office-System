@@ -1,4 +1,5 @@
-import test, { afterEach, mock } from "node:test";
+import "./stable-clerk-client.js";
+import test, { afterEach, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { ENV } from "../src/config/env.js";
@@ -13,13 +14,17 @@ import {
 const originals = {
   findOne: User.findOne,
   create: User.create,
+  update: User.findOneAndUpdate,
   createInvitation: clerkClient.invitations.createInvitation,
   revokeInvitation: clerkClient.invitations.revokeInvitation,
 };
 
+beforeEach(() => { User.findOneAndUpdate = async () => ({}); });
+
 afterEach(() => {
   User.findOne = originals.findOne;
   User.create = originals.create;
+  User.findOneAndUpdate = originals.update;
   clerkClient.invitations.createInvitation = originals.createInvitation;
   clerkClient.invitations.revokeInvitation = originals.revokeInvitation;
 });
@@ -66,7 +71,8 @@ test("fresh assisted Farmer sends one resumable invitation and creates one uncla
   assert.equal(result.created, true);
   assert.equal(result.invitationSent, true);
   assert.equal(invitationPayload.emailAddress, "new.farmer@example.com");
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
+  assert.equal(invitationPayload.expiresInDays, 7);
   assert.equal(invitationPayload.publicMetadata.role, "farmer");
   assert.equal(
     invitationPayload.redirectUrl,
@@ -76,6 +82,60 @@ test("fresh assisted Farmer sends one resumable invitation and creates one uncla
   assert.equal(result.farmer.normalizedPhoneNumber, "+639171234567");
   assert.equal(result.farmer.profileClaimStatus, "unclaimed");
   assert.equal(result.farmer.registeredByTechnician, true);
+});
+
+test("fresh registration revokes its Clerk invitation when Mongo profile creation fails", async () => {
+  User.findOne = async () => null;
+  User.create = async () => {
+    throw new Error("Mongo write failed");
+  };
+  clerkClient.invitations.createInvitation = async () => ({ id: "invitation-orphan" });
+  let revokedId;
+  clerkClient.invitations.revokeInvitation = async (id) => {
+    revokedId = id;
+    return { id, status: "revoked" };
+  };
+
+  await assert.rejects(
+    () => resolveOrCreateAssistedFarmer({
+      email: "new@example.com",
+      name: "New Farmer",
+      source: "test",
+      invitationMode: "required",
+      inviteExistingUnclaimed: true,
+    }),
+    /Mongo write failed/,
+  );
+  assert.equal(revokedId, "invitation-orphan");
+});
+
+test("fresh assisted Farmer without a phone omits phone storage and OTP state", async () => {
+  let createdPayload;
+  User.findOne = async () => null;
+  User.create = async (payload) => {
+    createdPayload = payload;
+    return farmer({ _id: "farmer-without-phone", ...payload });
+  };
+
+  const result = await resolveOrCreateAssistedFarmer({
+    name: "Phone-less Farmer",
+    address: {
+      barangay: "Poblacion",
+      city: "Oton",
+      province: "Iloilo",
+      phoneNumber: "",
+    },
+    source: "test",
+    invitationMode: "none",
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(result.farmer.profileClaimStatus, "unclaimed");
+  assert.equal(result.farmer.isVerified, false);
+  assert.equal(Object.hasOwn(createdPayload, "phoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload, "normalizedPhoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload.address, "phoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload, "phoneVerification"), false);
 });
 
 test("existing unclaimed Farmer is reused and invitation is resent without User.create", async () => {
@@ -104,11 +164,33 @@ test("existing unclaimed Farmer is reused and invitation is resent without User.
   assert.equal(result.reused, true);
   assert.equal(result.invitationResent, true);
   assert.equal(createCount, 0);
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
   assert.equal(
     invitationPayload.redirectUrl,
     ENV.FARMER_INVITATION_REDIRECT_URL,
   );
+});
+
+test("assisted invitation atomically attaches email to a phone-matched unclaimed Farmer", async () => {
+  const existing = farmer({ email: undefined, normalizedEmail: undefined });
+  let finalUpdate;
+  User.findOne = async (query) => queryKind(query) === "phone" ? existing : null;
+  User.findOneAndUpdate = async (_filter, update) => {
+    finalUpdate = update;
+    return {};
+  };
+  clerkClient.invitations.createInvitation = async () => ({ id: "inv-phone-email" });
+
+  const result = await resolveOrCreateAssistedFarmer({
+    email: "phone@example.test",
+    phoneNumber: "09171234567",
+    invitationMode: "required",
+    inviteExistingUnclaimed: true,
+  });
+
+  assert.equal(result.invitationSent, true);
+  assert.equal(finalUpdate.$set.email, "phone@example.test");
+  assert.equal(finalUpdate.$set.normalizedEmail, "phone@example.test");
 });
 
 test("claimed Farmer explicit registration returns FARMER_ACCOUNT_ALREADY_ACTIVE", async () => {
@@ -214,13 +296,15 @@ test("walk-in fresh Farmer survives invitation failure and reports it truthfully
       invitationMode: "best-effort",
       allowClaimedExisting: true,
       source: "walk-in-test",
+      isVerified: true,
     });
 
     assert.equal(createCount, 1);
     assert.equal(result.created, true);
+    assert.equal(result.farmer.isVerified, false);
     assert.equal(result.invitationAttempted, true);
     assert.equal(result.invitationSent, false);
-    assert.match(result.invitationError, /Clerk unavailable/);
+    assert.match(result.invitationError, /temporarily unavailable/i);
   } finally {
     console.error = originalConsoleError;
   }

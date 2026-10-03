@@ -4,6 +4,7 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -29,6 +30,7 @@ export interface VisitSchedulePayload {
   scheduledDate: string;
   visitPeriod: VisitPeriod;
   samePeriodConfirmed?: boolean;
+  farmerPreparationNote?: string;
 }
 
 export interface VisitPeriodAvailability {
@@ -47,6 +49,8 @@ interface VisitScheduleSheetProps {
   errorMessage?: string | null;
   initialDate?: string | null;
   initialVisitPeriod?: VisitPeriod | null;
+  initialFarmerPreparationNote?: string | null;
+  showFarmerPreparationNote?: boolean;
   getPeriodAvailability?: (
     date: Date,
     period: VisitPeriod,
@@ -89,6 +93,8 @@ export function VisitScheduleSheet({
   errorMessage,
   initialDate,
   initialVisitPeriod,
+  initialFarmerPreparationNote,
+  showFarmerPreparationNote = false,
   getPeriodAvailability = getVisitSchedulePeriodAvailability,
   onClose,
   onErrorClear,
@@ -100,6 +106,7 @@ export function VisitScheduleSheet({
     "today",
   );
   const [visitPeriod, setVisitPeriod] = useState<VisitPeriod | null>(null);
+  const [farmerPreparationNote, setFarmerPreparationNote] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCurrentPeriodWarning, setShowCurrentPeriodWarning] =
     useState(false);
@@ -108,6 +115,8 @@ export function VisitScheduleSheet({
 
   useEffect(() => {
     if (!visible) return;
+
+    setFarmerPreparationNote(initialFarmerPreparationNote || "");
 
     const refreshAvailability = () => setAvailabilityNow(new Date());
     refreshAvailability();
@@ -123,7 +132,7 @@ export function VisitScheduleSheet({
       clearTimeout(timeoutId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [visible]);
+  }, [initialFarmerPreparationNote, visible]);
 
   useEffect(() => {
     if (!visible || !visitPeriod) return;
@@ -210,6 +219,9 @@ export function VisitScheduleSheet({
         scheduledDate: formatLocalCalendarDate(selectedDate),
         visitPeriod,
         ...(samePeriodConfirmed ? { samePeriodConfirmed: true } : {}),
+        ...(showFarmerPreparationNote
+          ? { farmerPreparationNote: farmerPreparationNote.trim() }
+          : {}),
       });
     } finally {
       submitLock.current = false;
@@ -343,6 +355,46 @@ export function VisitScheduleSheet({
               </Text>
             </View>
           </View>
+
+          {showFarmerPreparationNote ? (
+            <View style={{ marginTop: 20 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
+                  Farmer Preparation Note
+                </Text>
+                <Text textRole="caption" style={{ color: colors.textMuted }}>
+                  Optional
+                </Text>
+              </View>
+              <Text textRole="caption" style={{ color: colors.textSecondary, marginTop: 4 }}>
+                Tell the farmer what they should prepare before your scheduled visit.
+              </Text>
+              <TextInput
+                multiline
+                maxLength={500}
+                value={farmerPreparationNote}
+                onChangeText={setFarmerPreparationNote}
+                editable={!isSubmitting}
+                placeholder="Keep the cow secured and prepare any previous breeding records."
+                placeholderTextColor={colors.textMuted}
+                textAlignVertical="top"
+                style={{
+                  minHeight: 96,
+                  marginTop: 10,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.card,
+                  fontFamily: "Outfit_400Regular",
+                }}
+              />
+              <Text textRole="caption" style={{ color: colors.textMuted, textAlign: "right", marginTop: 4 }}>
+                {farmerPreparationNote.length} / 500
+              </Text>
+            </View>
+          ) : null}
 
           <View style={{ marginTop: 20 }}>
             <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>

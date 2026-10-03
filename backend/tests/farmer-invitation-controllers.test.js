@@ -1,15 +1,21 @@
+import "./stable-clerk-client.js";
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { ENV } from "../src/config/env.js";
 import { User } from "../src/models/user.model.js";
 import { AuditLog } from "../src/models/audit-log.model.js";
-import { createInvitedUser } from "../src/controllers/user.controllers.js";
+import {
+  createInvitedUser,
+  updateFarmerProfileByTechnician,
+} from "../src/controllers/user.controllers.js";
 import { registerFarmer } from "../src/controllers/technician.controllers.js";
 
 const originals = {
   userFindOne: User.findOne,
+  userFindById: User.findById,
   userCreate: User.create,
+  userFindOneAndUpdate: User.findOneAndUpdate,
   auditCreate: AuditLog.create,
   createInvitation: clerkClient.invitations.createInvitation,
   revokeInvitation: clerkClient.invitations.revokeInvitation,
@@ -17,7 +23,9 @@ const originals = {
 
 afterEach(() => {
   User.findOne = originals.userFindOne;
+  User.findById = originals.userFindById;
   User.create = originals.userCreate;
+  User.findOneAndUpdate = originals.userFindOneAndUpdate;
   AuditLog.create = originals.auditCreate;
   clerkClient.invitations.createInvitation = originals.createInvitation;
   clerkClient.invitations.revokeInvitation = originals.revokeInvitation;
@@ -92,7 +100,8 @@ test("createInvitedUser creates one unclaimed assisted Farmer and sends resumabl
   assert.equal(recorder.body.newUser.profileClaimStatus, "unclaimed");
   assert.equal(recorder.body.newUser.registeredByTechnician, true);
   assert.equal(recorder.body.invitationSent, true);
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
+  assert.equal(invitationPayload.expiresInDays, 7);
   assert.equal(
     invitationPayload.redirectUrl,
     ENV.FARMER_INVITATION_REDIRECT_URL,
@@ -101,6 +110,12 @@ test("createInvitedUser creates one unclaimed assisted Farmer and sends resumabl
 
 test("createInvitedUser reuses unclaimed Farmer and resends to the Farmer destination", async () => {
   const existing = unclaimed();
+  User.findOneAndUpdate = async (filter, update) => {
+    assert.equal(filter._id, existing._id);
+    assert.equal(filter.profileClaimStatus, "unclaimed");
+    Object.assign(existing, update.$set);
+    return existing;
+  };
   let createCount = 0;
   User.findOne = async (query) =>
     queryKind(query) === "email" ? existing : null;
@@ -198,7 +213,10 @@ test("registerFarmer fresh path normalizes identity and creates exactly one prof
   assert.equal(createdPayload.email, "new@example.com");
   assert.equal(createdPayload.phoneNumber, "09171234567");
   assert.equal(createdPayload.normalizedPhoneNumber, "+639171234567");
-  assert.equal(invitationPayload.ignoreExisting, true);
+  assert.equal(invitationPayload.ignoreExisting, false);
+  assert.equal(invitationPayload.expiresInDays, 7);
+  assert.equal(createdPayload.farmerAppInvitation.status, "pending");
+  assert.equal(createdPayload.farmerAppInvitation.clerkInvitationId, "invitation-1");
   assert.equal(
     invitationPayload.redirectUrl,
     ENV.FARMER_INVITATION_REDIRECT_URL,
@@ -206,10 +224,42 @@ test("registerFarmer fresh path normalizes identity and creates exactly one prof
   assert.equal(recorder.body.invitationSent, true);
 });
 
+test("registerFarmer creates a Farmer without a phone and stores no phone sentinel", async () => {
+  let createdPayload;
+  User.findOne = async () => null;
+  User.create = async (payload) => {
+    createdPayload = payload;
+    return unclaimed({ _id: "farmer-without-phone", ...payload });
+  };
+
+  const recorder = responseRecorder();
+  await registerFarmer(
+    request({
+      firstName: "No",
+      lastName: "Phone",
+      phoneNumber: "   ",
+      address: { barangay: "Poblacion", city: "Oton" },
+    }),
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 201);
+  assert.equal(Object.hasOwn(createdPayload, "phoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload, "normalizedPhoneNumber"), false);
+  assert.equal(Object.hasOwn(createdPayload.address, "phoneNumber"), false);
+  assert.equal(recorder.body.user.phoneVerification?.isVerified || false, false);
+});
+
 test("registerFarmer reuses normalized-phone unclaimed profile and resends invitation", async () => {
   const existing = unclaimed({
     normalizedPhoneNumber: "+639171234567",
   });
+  User.findOneAndUpdate = async (filter, update) => {
+    assert.equal(filter._id, existing._id);
+    assert.equal(filter.profileClaimStatus, "unclaimed");
+    Object.assign(existing, update.$set);
+    return existing;
+  };
   let createCount = 0;
   User.findOne = async (query) =>
     queryKind(query) === "phone" ? existing : null;
@@ -235,4 +285,51 @@ test("registerFarmer reuses normalized-phone unclaimed profile and resends invit
   assert.equal(recorder.body.invitationResent, true);
   assert.equal(createCount, 0);
   assert.equal(existing.address, undefined);
+});
+
+test("staff can add a normalized unverified phone to an unclaimed phone-less Farmer", async () => {
+  const existing = unclaimed({
+    phoneVerification: { isVerified: false, verifiedAt: null },
+    address: { barangay: "Poblacion", city: "Oton", province: "Iloilo" },
+    async save() { return this; },
+  });
+  User.findById = async () => existing;
+  User.findOne = async () => null;
+
+  const recorder = responseRecorder();
+  await updateFarmerProfileByTechnician(
+    {
+      ...request({ phoneNumber: "+63 917 123 4567" }),
+      params: { id: existing._id },
+    },
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 200);
+  assert.equal(existing.phoneNumber, "09171234567");
+  assert.equal(existing.normalizedPhoneNumber, "+639171234567");
+  assert.equal(existing.address.phoneNumber, "09171234567");
+  assert.equal(existing.phoneVerification.isVerified, false);
+  assert.equal(existing.phoneVerification.verifiedAt, null);
+});
+
+test("staff edit rejects a duplicate normalized Farmer phone", async () => {
+  const existing = unclaimed({
+    address: { barangay: "Poblacion", city: "Oton", province: "Iloilo" },
+    async save() { return this; },
+  });
+  User.findById = async () => existing;
+  User.findOne = async () => unclaimed({ _id: "other-farmer" });
+
+  const recorder = responseRecorder();
+  await updateFarmerProfileByTechnician(
+    {
+      ...request({ phoneNumber: "09171234567" }),
+      params: { id: existing._id },
+    },
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 409);
+  assert.equal(recorder.body.code, "FARMER_PHONE_ALREADY_IN_USE");
 });

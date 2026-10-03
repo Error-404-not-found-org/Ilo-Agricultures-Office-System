@@ -78,11 +78,11 @@ describe("Admin semantic palette consistency", () => {
     const dashboard = read("src/pages/admin/Dashboard.jsx");
     const sidebar = read("src/components/layout/Sidebar.jsx");
 
-    expect(dashboard.indexOf('title="Needs Attention"')).toBeLessThan(
-      dashboard.indexOf('title="Pending Requests"'),
-    );
+    expect(dashboard).toContain("Overview");
+    expect(dashboard).not.toContain('title="Needs Attention"');
+    expect(dashboard).not.toContain('title="Pending Requests"');
     expect(dashboard).toContain('title="Technician Workload"');
-    expect(dashboard).toContain('title="Recent Admin Activity"');
+    expect(dashboard).toContain('title="Recent Audit Activity"');
     expect(dashboard).not.toContain('title="Barangays Needing Attention"');
     expect(sidebar).toContain("ADMIN_GROUPS");
     expect(sidebar).toContain("admin-service-records-menu");

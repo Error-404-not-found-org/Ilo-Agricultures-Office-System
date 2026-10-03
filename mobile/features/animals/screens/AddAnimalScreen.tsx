@@ -10,16 +10,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Camera, ChevronDown, X } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { getEarTagValidationError } from "@/components/earTagSuggestion";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { useTheme } from "@/lib/theme";
 import {
@@ -33,6 +33,7 @@ import {
 } from "../hooks/useMyAnimals";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
+import { hasAnimalFormErrors } from "../utils/animalFormValidation";
 
 const SPECIES_OPTIONS = CATTLE_SPECIES;
 
@@ -87,10 +88,30 @@ export function AddAnimalScreen() {
   });
 
   const registerMutation = useRegisterAnimalMutation();
-  const { data: animalsData } = useMyAnimalsInfiniteQuery({ limit: 1 });
-  const totalAnimals = animalsData?.total || 0;
+  const {
+    data: animalsData,
+    refetch: refetchAnimals,
+    isFetching: animalsRefreshing,
+    hasNextPage: hasNextAnimalsPage,
+    fetchNextPage: fetchNextAnimalsPage,
+  } = useMyAnimalsInfiniteQuery({ limit: 50 });
+  const activeEarTags = (animalsData?.animals || []).map(
+    (animal: any) => animal.earTag,
+  );
   const primaryColor = isDark ? colors.primary : "#00643B";
   const loadingForm = registerMutation.isPending;
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchAnimals();
+    }, [refetchAnimals]),
+  );
+
+  useEffect(() => {
+    if (hasNextAnimalsPage && !animalsRefreshing) {
+      void fetchNextAnimalsPage();
+    }
+  }, [animalsRefreshing, fetchNextAnimalsPage, hasNextAnimalsPage]);
 
   useEffect(() => {
     if (!formData.species) return;
@@ -115,12 +136,14 @@ export function AddAnimalScreen() {
   const validate = () => {
     const nextErrors: FormErrors = {};
     if (!formData.earTag.trim()) nextErrors.earTag = "Ear tag is required.";
+    else nextErrors.earTag = getEarTagValidationError(formData.earTag) || undefined;
     if (!formData.species) nextErrors.species = "Select the animal species.";
     if (!formData.breed) nextErrors.breed = "Select the animal breed.";
+    if (!formData.color) nextErrors.color = "Select the animal color.";
     if (!formData.birthDate) nextErrors.birthDate = "Birth date is required.";
 
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return !hasAnimalFormErrors(nextErrors);
   };
 
   const handleSave = async () => {
@@ -155,7 +178,7 @@ export function AddAnimalScreen() {
   };
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
-    const result = await pickImageFromSource(source);
+    const result = await pickImageFromSource(source, { allowsEditing: false });
     if (result) {
       setImageUri(result.uri);
       setImageBase64(result.base64);
@@ -275,7 +298,6 @@ export function AddAnimalScreen() {
             <InputField
               label="Ear Tag"
               value={formData.earTag}
-              maxLength={6}
               onChangeText={(text: string) => setField("earTag", text)}
               placeholder="Enter the ear tag number"
               error={errors.earTag}
@@ -289,7 +311,8 @@ export function AddAnimalScreen() {
                   `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
                   "Farmer"
                 }
-                animalCount={totalAnimals}
+                existingEarTags={activeEarTags}
+                disabled={animalsRefreshing}
                 onGenerate={(tag) => setField("earTag", tag)}
                 isDark={isDark}
               />
@@ -357,6 +380,8 @@ export function AddAnimalScreen() {
                     COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
                   );
                 }}
+                error={errors.color}
+                required
               />
             </View>
             <View style={{ flex: 1 }}>

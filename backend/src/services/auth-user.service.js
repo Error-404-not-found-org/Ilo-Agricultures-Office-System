@@ -1,6 +1,14 @@
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { ENV } from "../config/env.js";
 import { User } from "../models/user.model.js";
+import {
+  deriveFarmerInvitationStatus,
+  invitationSnapshotMatch,
+} from "./farmer-app-invitation.service.js";
+import {
+  noActiveFarmerClaimReservation,
+  unlinkedFarmerClerkFilter,
+} from "./farmer-claim-reservation.service.js";
 
 // Custom error for controlled failure handling
 export class AuthResolutionError extends Error {
@@ -17,8 +25,11 @@ export const getClerkUserId = (req) => {
   return typeof req.auth === "function" ? req.auth().userId : req.auth.userId;
 };
 
-const findByClerkId = (clerkId) =>
-  User.findOne({ clerkId }).maxTimeMS?.(3000) ?? User.findOne({ clerkId });
+const findByClerkId = (clerkId) => {
+  const lookup = User.findOne({ clerkId });
+  const selected = lookup.select?.("+farmerAppInvitation.clerkInvitationId") ?? lookup;
+  return selected.maxTimeMS?.(3000) ?? selected;
+};
 
 const normalizeEmail = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : null;
@@ -60,14 +71,43 @@ const loadVerifiedClerkIdentity = async (clerkId) => {
 
 const claimFarmerProfile = async ({ user, clerkId, imageUrl }) => {
   if (user.role !== "farmer") return false;
-  user.clerkId = clerkId;
-  user.isVerified = true;
-  user.profileClaimStatus = "claimed";
-  user.profileClaimedAt ||= new Date();
-  user.profileClaimedByClerkId = clerkId;
-  user.imageUrl = imageUrl || user.imageUrl;
-  await user.save();
-  return true;
+  const now = new Date();
+  const consumeInvitation = deriveFarmerInvitationStatus(
+    user.farmerAppInvitation, now, user.email,
+  ) === "pending";
+  const claimed = await User.findOneAndUpdate(
+    {
+      _id: user._id,
+      role: "farmer",
+      status: "active",
+      deletedAt: null,
+      profileClaimStatus: { $in: ["none", "unclaimed", "claimed"] },
+      $and: [
+        { $or: [...unlinkedFarmerClerkFilter().$or, { clerkId }] },
+        noActiveFarmerClaimReservation(now),
+      ],
+      ...invitationSnapshotMatch(user.farmerAppInvitation),
+    },
+    { $set: {
+      clerkId,
+      isVerified: true,
+      profileClaimStatus: "claimed",
+      profileClaimedAt: user.profileClaimedAt || now,
+      profileClaimedByClerkId: clerkId,
+      imageUrl: imageUrl || user.imageUrl,
+      ...(consumeInvitation
+        ? { "farmerAppInvitation.status": "accepted", "farmerAppInvitation.lastCheckedAt": now }
+        : {}),
+    } },
+    { returnDocument: "after", runValidators: true },
+  );
+  if (!claimed) {
+    throw new AuthResolutionError(
+      "This Farmer profile changed while connecting the account. Refresh and try again.",
+      409, "FARMER_CLAIM_STATE_CHANGED", false,
+    );
+  }
+  return claimed;
 };
 
 /**
@@ -87,9 +127,12 @@ export const resolveStaffUser = async (clerkId) => {
   }
 
   const { email, imageUrl } = await loadVerifiedClerkIdentity(clerkId);
-  user = await User.findOne({
+  const existingLookup = User.findOne({
     $or: [{ normalizedEmail: email }, { email }],
   });
+  user = await (existingLookup.select
+    ? existingLookup.select("+farmerAppInvitation.clerkInvitationId")
+    : existingLookup);
 
   if (!user) {
     throw new AuthResolutionError(
@@ -165,7 +208,7 @@ export const resolveOrSyncUser = async (clerkId) => {
       user.role === "farmer" &&
       (user.profileClaimStatus !== "claimed" || !user.profileClaimedAt)
     ) {
-      await claimFarmerProfile({ user, clerkId, imageUrl: user.imageUrl });
+      user = await claimFarmerProfile({ user, clerkId, imageUrl: user.imageUrl });
     }
     return user;
   }
@@ -196,9 +239,12 @@ export const resolveOrSyncUser = async (clerkId) => {
   const imageUrl = clerkUser.imageUrl || "";
 
   // 3. Look for existing profile by email
-  user = await User.findOne({
+  const existingFarmerLookup = User.findOne({
     $or: [{ normalizedEmail: email }, { email }],
   });
+  user = await (existingFarmerLookup.select
+    ? existingFarmerLookup.select("+farmerAppInvitation.clerkInvitationId")
+    : existingFarmerLookup);
 
   if (user) {
     if (user.status === "suspended") {
@@ -226,8 +272,7 @@ export const resolveOrSyncUser = async (clerkId) => {
       user.imageUrl = imageUrl || user.imageUrl;
       // Preserve role
     } else if (user.role === "farmer") {
-      await claimFarmerProfile({ user, clerkId, imageUrl });
-      return user;
+      return claimFarmerProfile({ user, clerkId, imageUrl });
     } else {
       // Standard claiming / attaching Clerk ID
       user.clerkId = clerkId;
@@ -261,15 +306,19 @@ export const resolveOrSyncUser = async (clerkId) => {
       user = await findByClerkId(clerkId);
       if (user) return user;
 
-      user = await User.findOne({
+      const recoveredLookup = User.findOne({
         $or: [{ normalizedEmail: email }, { email }],
       });
+      user = await (recoveredLookup.select
+        ? recoveredLookup.select("+farmerAppInvitation.clerkInvitationId")
+        : recoveredLookup);
       if (user) {
+        assertAccountIsActive(user);
         if (hasRealClerkLink(user) && user.clerkId !== clerkId) {
           throw new AuthResolutionError("This email is linked to another account.", 409, "IDENTITY_LINK_CONFLICT", false);
         }
         if (user.role === "farmer") {
-          await claimFarmerProfile({ user, clerkId, imageUrl });
+          return claimFarmerProfile({ user, clerkId, imageUrl });
         } else {
           user.clerkId = clerkId;
           user.isVerified = true;

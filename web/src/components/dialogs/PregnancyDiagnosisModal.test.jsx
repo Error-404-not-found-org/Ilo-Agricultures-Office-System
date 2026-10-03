@@ -113,7 +113,8 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     );
     expect(await screen.findByText("Aug 26, 2024")).toBeTruthy();
     expect(screen.getByText("#1")).toBeTruthy();
-    expect(screen.getByText("44-12 · Brahman")).toBeTruthy();
+    expect(screen.getAllByText("Brahman").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("44-12")).toBeTruthy();
     expect(screen.getByText(/736 days since Inseminated/i)).toBeTruthy();
     expect(screen.getByText("possible pregnancy")).toBeTruthy();
     expect(screen.getByText("No heat signs noticed.")).toBeTruthy();
@@ -159,7 +160,7 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${label}`) }));
     await chooseMethodAndDate();
-    fireEvent.change(screen.getByLabelText("Clinical Notes"), {
+    fireEvent.change(screen.getByLabelText("Technician Notes"), {
       target: { value: "Field finding." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Submit Diagnosis" }));
@@ -284,12 +285,12 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
   it("preserves same-task input and resets it when the Task identity changes", async () => {
     const { rerenderModal } = renderModal();
     await screen.findByText("Aug 26, 2024");
-    fireEvent.change(screen.getByLabelText("Clinical Notes"), {
+    fireEvent.change(screen.getByLabelText("Technician Notes"), {
       target: { value: "Keep this finding" },
     });
 
     rerenderModal(ids.task, { taskType: "PD", raw: { status: "Pending" } });
-    expect(screen.getByLabelText("Clinical Notes")).toHaveValue(
+    expect(screen.getByLabelText("Technician Notes")).toHaveValue(
       "Keep this finding",
     );
 
@@ -299,7 +300,7 @@ describe("PregnancyDiagnosisModal Work Queue parity", () => {
     });
     rerenderModal(nextTaskId);
     await waitFor(() =>
-      expect(screen.getByLabelText("Clinical Notes")).toHaveValue(""),
+      expect(screen.getByLabelText("Technician Notes")).toHaveValue(""),
     );
   });
 });

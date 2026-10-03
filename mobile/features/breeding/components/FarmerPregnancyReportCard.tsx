@@ -46,9 +46,6 @@ export function FarmerPregnancyReportCard({
   const hasReport = Boolean(insemination?.farmerPregnancyReport);
   const submittedAt = formatSubmittedAt(insemination?.farmerPregnancyReportedAt);
   const notes = insemination?.farmerPregnancyNotes?.trim();
-  const verificationStatus =
-    insemination?.pregnancyReportVerificationStatus || "pending";
-  const isAwaitingDiagnosis = verificationStatus === "pending";
   const { subtitle, guidance } = getFarmerUpdateCopy(hasReport);
 
   const photos = useMemo<ImageViewerItem[]>(
@@ -256,13 +253,14 @@ export function FarmerPregnancyReportCard({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 16,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
   headingRow: {
     flexDirection: "row",

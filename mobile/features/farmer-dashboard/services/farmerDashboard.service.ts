@@ -10,6 +10,7 @@ import type {
 import {
   filterPendingOutcomes,
   responseToArray,
+  responseToCollection,
 } from "../utils/farmerDashboard.transforms";
 
 export const getFarmerProfile = async (
@@ -45,9 +46,9 @@ export const getMilestones = async (api: AxiosInstance): Promise<FarmerMilestone
   return responseToArray(response.data);
 };
 
-export const getMyAnimals = async (api: AxiosInstance): Promise<Animal[]> => {
+export const getMyAnimals = async (api: AxiosInstance) => {
   const response = await api.get("/animals/my");
-  return responseToArray<Animal>(response.data);
+  return responseToCollection<Animal>(response.data);
 };
 
 export const getActivityFeed = async (

@@ -2,7 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { selectNeedsAttention } from "./farmerDashboard.transforms.ts";
+import {
+  responseToCollection,
+  selectNeedsAttention,
+} from "./farmerDashboard.transforms.ts";
+
+test("preserves the authoritative animals total from a paginated response", () => {
+  const result = responseToCollection<{ _id: string }>({
+    data: [{ _id: "animal-3" }],
+    total: 3,
+  });
+
+  assert.deepEqual(result.items, [{ _id: "animal-3" }]);
+  assert.equal(result.total, 3);
+});
+
+test("supports legacy array responses when deriving an animals total", () => {
+  const result = responseToCollection<{ _id: string }>([
+    { _id: "animal-1" },
+    { _id: "animal-2" },
+  ]);
+
+  assert.equal(result.total, 2);
+});
 
 const heatFollowUp = {
   type: "heat_check",
@@ -101,6 +123,28 @@ test("pregnancy-check milestones do not become Farmer Home actions", () => {
   ]);
 
   assert.deepEqual(attention, []);
+});
+
+test("expected-calving labels preserve backend Manila calendar-day differences", () => {
+  const makeCalving = (daysLeft: number) => ({
+    type: "calving",
+    animal: { _id: `animal-${daysLeft}`, earTag: `COW-${daysLeft}` },
+    date: "2026-09-22T19:14:00.000Z",
+    daysLeft,
+  });
+
+  assert.equal(
+    selectNeedsAttention([makeCalving(0)])[0]?.displayTitle,
+    "Expected Calving Today",
+  );
+  assert.match(
+    selectNeedsAttention([makeCalving(1)])[0]?.displaySubtitle || "",
+    /Expected in 1 day$/,
+  );
+  assert.equal(
+    selectNeedsAttention([makeCalving(-1)])[0]?.displayTitle,
+    "Past Expected Calving Date",
+  );
 });
 
 test("Animal Details exposes the direct report action and submitted state", () => {

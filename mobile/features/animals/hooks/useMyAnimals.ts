@@ -49,9 +49,11 @@ export function useRegisterAnimalMutation() {
 
   return useMutation({
     mutationFn: (payload: any) => registerAnimal(api, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: animalKeys.all });
-      await queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: animalKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ["user", "me"] }),
+      ]);
     },
   });
 }

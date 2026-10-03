@@ -3,29 +3,33 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Activity,
+  Archive,
   AlertCircle,
   Beef,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  CircleDot,
   Download,
   Edit,
+  Eye,
   HeartPulse,
-  History,
   MapPin,
   Plus,
   RefreshCw,
   Search,
   SlidersHorizontal,
   UserRound,
-  MoreVertical,
   X,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
+import { useToast } from "../../contexts/ToastContext";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import Modal from "../../components/ui/Modal";
 import Topbar from "../../components/layout/Topbar";
 import AnimalAvatar from "../../components/ui/AnimalAvatar";
 import TableNameLink from "../../components/ui/TableNameLink";
+import RecordActionsMenu from "../../components/technician/RecordActionsMenu";
+import OverviewMetricCard from "../../components/ui/OverviewMetricCard";
 import { ui } from "../../components/ui/uiClasses";
 import {
   ILOILO_CITY_DISTRICT_OPTIONS,
@@ -56,42 +60,32 @@ const cleanLocationPart = (value) => {
   return ["", "n/a", "na", "unknown", "not provided"].includes(text.toLowerCase()) ? "" : text;
 };
 
-function MetricCard({ icon, value, label, note }) {
-  return (
-    <div className="stats border border-base-300 bg-base-100 shadow-sm">
-      <div className="stat py-4">
-        <div className="stat-figure hidden text-primary sm:block">{icon}</div>
-        <div className="stat-title text-xs font-semibold">{label}</div>
-        <div className="stat-value text-2xl">{value}</div>
-        <div className="stat-desc text-base-content/70">{note}</div>
-      </div>
-    </div>
-  );
-}
-
-function AnimalCard({ animal, onOpen, onEdit }) {
+function AnimalCard({ animal, actions }) {
   return (
     <article className="card card-sm card-border overflow-hidden bg-base-100 shadow-sm sm:card-side">
       <figure className="h-36 bg-base-200 sm:h-auto sm:w-44 sm:shrink-0">
         {animal.imageUrl ? <img src={animal.imageUrl} alt={`Animal ${animal.tag}`} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-primary/45"><Beef size={44} /></div>}
       </figure>
       <div className="card-body min-w-0 gap-4">
-        <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between">
+        <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="card-title text-base">Animal #{animal.tag}</h3>
             <p className="mt-1 text-sm text-base-content/60">{animal.species} · {animal.breed}</p>
           </div>
-          <span className={`badge badge-sm badge-soft ${statusClass(animal.reproductiveStatus)}`}>{animal.reproductiveStatus}</span>
+          <div className="flex shrink-0 items-center gap-1">
+            <span className={`badge badge-sm badge-soft ${statusClass(animal.reproductiveStatus)}`}>{animal.reproductiveStatus}</span>
+            <RecordActionsMenu
+              id={`mobile-${animal.id}`}
+              ariaLabel={`Actions for animal ${animal.tag}`}
+              actions={actions}
+            />
+          </div>
         </div>
         <div className="grid gap-2 text-sm text-base-content/70 sm:grid-cols-2">
           <p className="flex items-center gap-2"><UserRound size={15} /> {animal.farmer}</p>
           <p className="flex items-center gap-2"><MapPin size={15} /> {animal.location}</p>
           <p><span className="text-base-content/50">Sex:</span> {animal.gender}</p>
           <p><span className="text-base-content/50">Last AI:</span> {animal.lastAI}</p>
-        </div>
-        <div className="card-actions grid grid-cols-2 border-t border-base-300 pt-3">
-          <button type="button" className="btn btn-sm" onClick={() => onOpen(animal)}><History size={15} /> Open history</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEdit(animal)}><Edit size={15} /> Edit animal</button>
         </div>
       </div>
     </article>
@@ -101,9 +95,22 @@ function AnimalCard({ animal, onOpen, onEdit }) {
 export default function AnimalRegistry() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toastContext = useToast();
+  const toast = toastContext || {
+    success: () => {},
+    error: () => {},
+    info: () => {},
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRegisterLivestockOpen, setIsRegisterLivestockOpen] = useState(false);
   const [selectedAnimalForEdit, setSelectedAnimalForEdit] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+  });
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const searchQuery = searchParams.get("search") || "";
   const speciesFilter = searchParams.get("species") || "";
@@ -188,6 +195,10 @@ export default function AnimalRegistry() {
       raw: animal,
       tag: animal.earTag || animal.animalId || "Unassigned tag",
       farmer: animal.farmerId?.name || "Farmer not available",
+      farmerId:
+        animal.farmerId?._id ||
+        animal.farmerId?.id ||
+        (typeof animal.farmerId === "string" ? animal.farmerId : null),
       location: [cleanLocationPart(address.barangay), cleanLocationPart(address.city || address.municipality)].filter(Boolean).join(", ") || "Location not provided",
       species: animal.species || animal.type || "Not recorded",
       breed: animal.breed || "Not recorded",
@@ -203,14 +214,70 @@ export default function AnimalRegistry() {
   const totalPages = Math.max(1, animalPage.totalPages || animalPage.pages || Math.ceil(totalItems / ITEMS_PER_PAGE));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
   const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
-  const summary = animalPage.summary || {};
+  const metrics = animalPage.metrics || {};
   const hasFilters = Boolean(searchQuery || speciesFilter || reproductiveFilter || breedFilter || municipalityFilter || districtFilter || barangayFilter || genderFilter);
 
   const openAnimal = (animal) => navigate(`/technician/animals/${animal.id}`);
+  const viewOwner = (animal) => {
+    if (animal.farmerId) {
+      navigate(`/technician/farmers/${animal.farmerId}`);
+    } else {
+      toast.error("Farmer profile not linked for this animal.");
+    }
+  };
   const editAnimal = (animal) => {
     setSelectedAnimalForEdit(animal.raw);
     setIsRegisterLivestockOpen(true);
   };
+  const handleArchiveAnimal = (animal) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Archive Animal",
+      message: `Archive animal #${animal.tag}? It will be removed from the active registry with its related records preserved.`,
+      onConfirm: async () => {
+        setIsArchiving(true);
+        try {
+          await axiosInstance.delete(`/animals/${animal.id}`);
+          toast.success(`Animal #${animal.tag} archived successfully.`);
+          queryClient.invalidateQueries({ queryKey: ["animals", "registry-list"] });
+          refetch();
+        } catch (err) {
+          toast.error(err.response?.data?.message || "Failed to archive animal.");
+        } finally {
+          setIsArchiving(false);
+        }
+      },
+    });
+  };
+
+  const buildAnimalActions = (animal) => [
+    {
+      id: "view-profile",
+      label: "View Animal Profile",
+      icon: Eye,
+      onClick: () => openAnimal(animal),
+    },
+    {
+      id: "view-owner",
+      label: "View Owner",
+      icon: UserRound,
+      onClick: () => viewOwner(animal),
+      disabled: !animal.farmerId,
+    },
+    {
+      id: "edit",
+      label: "Edit Details",
+      icon: Edit,
+      onClick: () => editAnimal(animal),
+    },
+    {
+      id: "archive",
+      label: "Archive Animal",
+      icon: Archive,
+      danger: true,
+      onClick: () => handleArchiveAnimal(animal),
+    },
+  ];
 
   const exportPage = () => {
     const rows = animals.map((animal) => [animal.tag, animal.species, animal.breed, animal.gender, animal.farmer, animal.location, animal.reproductiveStatus, animal.lastAI]);
@@ -231,11 +298,11 @@ export default function AnimalRegistry() {
     <div className={ui.page}>
       <Topbar title="Animals" subtitle="Find an animal and open its complete service and breeding history" />
       <main className={ui.main}>
-        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <MetricCard icon={<Beef size={21} />} value={isLoading ? "—" : summary.total ?? totalItems} label="Animals found" note="Matching current filters" />
-          <MetricCard icon={<Activity size={21} />} value={isLoading ? "—" : summary.cattle ?? 0} label="Cattle" note="Within filtered results" />
-          <MetricCard icon={<HeartPulse size={21} />} value={isLoading ? "—" : summary.pregnant ?? 0} label="Pregnant" note="Within filtered results" />
-          <MetricCard icon={<CircleDot size={21} />} value={isLoading ? "—" : summary.available ?? 0} label="Available for assessment" note="Normal or legacy open status" />
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Animal directory overview">
+          <OverviewMetricCard icon={Beef} value={metrics.animalsFound ?? totalItems} label="Animals found" description="Matching current filters" isLoading={isLoading} />
+          <OverviewMetricCard icon={Activity} value={metrics.inseminated ?? 0} label="Inseminated" description="Current breeding status" borderClass="border-l-info" iconClass="bg-info/10 text-info" isLoading={isLoading} />
+          <OverviewMetricCard icon={HeartPulse} value={metrics.pregnant ?? 0} label="Pregnant" description="Confirmed pregnancy status" borderClass="border-l-success" iconClass="bg-success/10 text-success" isLoading={isLoading} />
+          <OverviewMetricCard icon={CalendarDays} value={metrics.expectedCalvingThisMonth ?? 0} label="Expected Calving This Month" description="Due this month" borderClass="border-l-warning" iconClass="bg-warning/10 text-warning" isLoading={isLoading} />
         </section>
 
         <section className="card card-border bg-base-100 shadow-sm">
@@ -251,7 +318,7 @@ export default function AnimalRegistry() {
 
             <div className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3 md:flex-row md:flex-wrap md:items-center">
               <span className="flex items-center gap-1.5 text-sm font-bold text-base-content/75"><SlidersHorizontal size={14} /> Filters</span>
-              <select className="select w-full md:w-auto" aria-label="Filter animals by species" value={speciesFilter} onChange={(event) => updateParams({ species: event.target.value })}><option value="">All species</option><option value="Cattle">Cattle</option><option value="Carabao">Carabao</option><option value="Goat">Goat</option><option value="Swine">Swine</option></select>
+              <select className="select w-full md:w-auto" aria-label="Filter animals by species" value={speciesFilter} onChange={(event) => updateParams({ species: event.target.value })}><option value="">All species</option><option value="Cattle">Cattle</option><option value="Carabao">Carabao</option></select>
               <select className="select w-full md:w-auto" aria-label="Filter animals by reproductive status" value={reproductiveFilter} onChange={(event) => updateParams({ repro: event.target.value })}><option value="">All reproductive statuses</option>{REPRODUCTIVE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select>
               <select className="select w-full md:w-auto" aria-label="Filter animals by sex" value={genderFilter} onChange={(event) => updateParams({ gender: event.target.value })}><option value="">All sexes</option><option value="Female">Female</option><option value="Male">Male</option></select>
               <input className="input w-full md:w-44" aria-label="Filter animals by breed" placeholder="Breed contains…" value={breedFilter} onChange={(event) => updateParams({ breed: event.target.value })} />
@@ -267,8 +334,8 @@ export default function AnimalRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-72 w-full" />)}</div>
                 <div className="hidden overflow-hidden rounded-box border border-base-300 lg:block" aria-label="Loading animal records">
-                  <table className="table table-sm"><thead><tr><th>Animal</th><th>Farmer</th><th>Location</th><th>Species / breed</th><th>Sex</th><th>Reproductive status</th><th>Last AI</th><th><span className="sr-only">Actions</span></th></tr></thead>
-                    <tbody>{[0, 1, 2, 3, 4].map((row) => <tr key={row}><td colSpan={8}><div className="grid grid-cols-[.7fr_1.2fr_1.2fr_1.2fr_.6fr_1fr_.8fr_.8fr] gap-5 py-1"><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /></div></td></tr>)}</tbody>
+                  <table className="table table-sm"><thead><tr><th>Animal</th><th>Breed / Species</th><th>Barangay</th><th>Status</th><th>Last AI</th><th><span className="sr-only">Actions</span></th></tr></thead>
+                    <tbody>{[0, 1, 2, 3, 4].map((row) => <tr key={row}><td colSpan={6}><div className="grid grid-cols-[1.3fr_1fr_1fr_.8fr_.8fr_.4fr] gap-5 py-1"><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /></div></td></tr>)}</tbody>
                   </table>
                 </div>
               </>
@@ -276,14 +343,14 @@ export default function AnimalRegistry() {
               <div className="rounded-box border border-dashed border-base-300 px-5 py-12 text-center"><Beef className="mx-auto mb-3 text-base-content/35" /><h2 className="font-bold">No animals found</h2><p className="mt-1 text-sm text-base-content/60">{hasFilters ? "Try changing or clearing the filters." : "Registered animals will appear here."}</p>{hasFilters && <button type="button" className="btn btn-sm mt-4" onClick={() => setSearchParams(new URLSearchParams(), { replace: true })}>Clear filters</button>}</div>
             ) : (
               <>
-                <div className="grid gap-3 lg:hidden">{animals.map((animal) => <AnimalCard key={animal.id} animal={animal} onOpen={openAnimal} onEdit={editAnimal} />)}</div>
+                <div className="grid gap-3 lg:hidden">{animals.map((animal) => <AnimalCard key={animal.id} animal={animal} actions={buildAnimalActions(animal)} />)}</div>
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
                   <table className="table table-pin-rows w-full text-left min-w-250">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Animal</th>
                         <th className="p-3.5">Breed / Species</th>
-                        <th className="p-3.5">Location</th>
+                        <th className="p-3.5">Barangay</th>
                         <th className="p-3.5">Status</th>
                         <th className="p-3.5">Last AI</th>
                         <th className="p-3.5 pr-6 text-right w-25">Actions</th>
@@ -325,7 +392,7 @@ export default function AnimalRegistry() {
                               </span>
                             </td>
 
-                            {/* 3. LOCATION */}
+                            {/* 3. BARANGAY */}
                             <td className="p-3.5 font-medium text-base-content/75">
                               {animal.location.split(",")[0] || "Unknown location"}
                             </td>
@@ -342,31 +409,14 @@ export default function AnimalRegistry() {
                               {animal.lastAI}
                             </td>
 
-                            {/* 6. ACTIONS (Kebab Dropdown) */}
+                            {/* 6. ACTIONS (Kebab Popover Menu) */}
                             <td className="p-3.5 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="dropdown dropdown-end">
-                                <button tabIndex={0} role="button" className="btn btn-ghost btn-circle btn-xs hover:bg-base-200" aria-label={`Actions for animal ${animal.tag}`}>
-                                  <MoreVertical size={16} className="text-base-content/60" />
-                                </button>
-                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-xl z-30 w-44 p-1.5 shadow-xl border border-base-200 mt-1">
-                                  <li>
-                                    <button
-                                      onClick={() => openAnimal(animal)}
-                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
-                                    >
-                                      <History size={13} className="mr-1" /> Open History
-                                    </button>
-                                  </li>
-                                  <li>
-                                    <button
-                                      onClick={() => editAnimal(animal)}
-                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
-                                    >
-                                      <Edit size={13} className="mr-1" /> Edit Details
-                                    </button>
-                                  </li>
-                                </ul>
-                              </div>
+                              <RecordActionsMenu
+                                id={animal.id}
+                                ariaLabel={`Actions for animal ${animal.tag}`}
+                                buttonClassName="btn btn-ghost btn-circle btn-xs hover:bg-base-200"
+                                actions={buildAnimalActions(animal)}
+                              />
                             </td>
 
                           </tr>
@@ -383,7 +433,72 @@ export default function AnimalRegistry() {
         </section>
       </main>
 
-      <RegisterLivestockModal isOpen={isRegisterLivestockOpen} livestock={selectedAnimalForEdit} onClose={() => { setIsRegisterLivestockOpen(false); setSelectedAnimalForEdit(null); }} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["animals", "registry-list"] })} />
+      <RegisterLivestockModal
+        isOpen={isRegisterLivestockOpen}
+        livestock={selectedAnimalForEdit}
+        onClose={() => {
+          setIsRegisterLivestockOpen(false);
+          setSelectedAnimalForEdit(null);
+        }}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["animals", "registry-list"] })}
+      />
+
+      {/* CONFIRM ARCHIVE ANIMAL MODAL */}
+      <Modal
+        isOpen={confirmModal.isOpen}
+        onClose={() =>
+          setConfirmModal({
+            isOpen: false,
+            title: "",
+            message: "",
+            onConfirm: null,
+          })
+        }
+        title={confirmModal.title || "Archive Animal"}
+        type="error"
+        size="sm"
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              disabled={isArchiving}
+              onClick={() =>
+                setConfirmModal({
+                  isOpen: false,
+                  title: "",
+                  message: "",
+                  onConfirm: null,
+                })
+              }
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm btn-error ${isArchiving ? "loading" : ""}`}
+              disabled={isArchiving}
+              onClick={async () => {
+                if (confirmModal.onConfirm) {
+                  await confirmModal.onConfirm();
+                }
+                setConfirmModal({
+                  isOpen: false,
+                  title: "",
+                  message: "",
+                  onConfirm: null,
+                });
+              }}
+            >
+              {isArchiving ? "Archiving..." : "Archive Animal"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-base-content/70 font-medium leading-relaxed">
+          {confirmModal.message}
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   normalizeTechnicianWorkItems,
 } from "../utils/requestWorkPresentation";
 import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
+import { getCalvingWorkNavigation } from "../utils/calvingWorkNavigation";
 import { RequestListCard } from "./RequestListCard";
 
 interface TechnicianMyWorkPanelProps {
@@ -74,6 +75,12 @@ export default function TechnicianMyWorkPanel({
   const filteredTasks = workItems;
 
   const openWorkItem = (item: TechnicianWorkItem) => {
+    const calvingNavigation = getCalvingWorkNavigation(item);
+    if (calvingNavigation) {
+      router.push(calvingNavigation as any);
+      return;
+    }
+
     if (item.workType === "ai") {
       if (!item.workflowId && !item.id) {
         toast.error("This AI work item is missing its canonical identifier.");

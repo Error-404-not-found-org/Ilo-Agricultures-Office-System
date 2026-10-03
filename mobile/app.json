@@ -2,7 +2,7 @@
   "expo": {
     "name": "BreedSmart",
     "slug": "mobile",
-    "version": "1.0.5",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ilo-agriculture",
@@ -89,9 +89,12 @@
       }
     },
     "owner": "johndong28",
-    "runtimeVersion": "1.04",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "updates": {
-      "url": "https://u.expo.dev/3fc4429f-8376-4203-808d-b8911ea21070"
+      "url": "https://u.expo.dev/3fc4429f-8376-4203-808d-b8911ea21070",
+      "checkAutomatically": "NEVER"
     }
   }
 }

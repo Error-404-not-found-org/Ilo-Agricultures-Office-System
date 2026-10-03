@@ -475,15 +475,27 @@ function RequestBoard({
   const requests = useMemo(() => {
     const queue = Array.isArray(queueData?.requests) ? queueData.requests : [];
     let mapped = queue.map((req) => {
-      const service = getServiceMeta(req);
+      const isUnassignedCandidate =
+        primaryView === REQUEST_BOARD_VIEWS.AVAILABLE &&
+        (req.type === "ai" || req.type === "health");
+      const raw = isUnassignedCandidate ? null : req.raw;
+      const service = getServiceMeta(
+        isUnassignedCandidate
+          ? { type: req.type, requestType: req.requestType }
+          : req,
+      );
       const animalTag = req.earTag || req.animal || "Not recorded";
-      const breed = req.breed || req.raw?.animalId?.breed || "Not recorded";
-      const healthDetail =
-        req.raw?.symptoms || req.raw?.requestType || "No symptoms listed";
-      const previousAttempt = req.raw?.previousAttemptId;
+      const breed = req.breed || raw?.animalId?.breed || "Not recorded";
+      const healthDetail = isUnassignedCandidate
+        ? req.requestType || "Health assistance requested"
+        : raw?.symptoms || raw?.requestType || "No symptoms listed";
+      const previousAttempt = raw?.previousAttemptId;
       const isReInsemination =
-        service.workflow === "insemination" && Boolean(previousAttempt);
-      const attemptNumber = Number(req.raw?.attemptNumber || 1);
+        service.workflow === "insemination" &&
+        (isUnassignedCandidate
+          ? req.requestKind === "re_insemination"
+          : Boolean(previousAttempt));
+      const attemptNumber = Number(req.attemptNumber || raw?.attemptNumber || 1);
       const previousTechnician =
         previousAttempt?.technicianId?.name ||
         previousAttempt?.approvedBy?.name;
@@ -497,7 +509,7 @@ function RequestBoard({
         ? `${req.distanceKm.toFixed(1)} km away`
         : "Distance unavailable";
 
-      const farmerBadge = req.raw?.farmerId?.accountStatus || null;
+      const farmerBadge = raw?.farmerId?.accountStatus || null;
       const isCanonicalAI = req.workflowType === "AI";
       const isCanonicalHealth = service.workflow === "health";
       const usesCanonicalVisitPeriod = isCanonicalAI || isCanonicalHealth;
@@ -505,12 +517,12 @@ function RequestBoard({
         date:
           req.schedule?.date ||
           (isCanonicalHealth
-            ? req.scheduledDate || req.raw?.scheduledDate || null
+            ? req.scheduledDate || raw?.scheduledDate || null
             : null),
         visitPeriod:
           req.schedule?.visitPeriod ||
           (isCanonicalHealth
-            ? req.visitPeriod || req.raw?.visitPeriod || null
+            ? req.visitPeriod || raw?.visitPeriod || null
             : null),
       };
       const legacyScheduleValue =
@@ -561,7 +573,7 @@ function RequestBoard({
       const farmerDetails =
         req.farmer && typeof req.farmer === "object"
           ? req.farmer
-          : req.farmerDetails || null;
+          : isUnassignedCandidate ? null : req.farmerDetails || null;
       const animalDetails =
         req.animal && typeof req.animal === "object" ? req.animal : null;
 
@@ -574,17 +586,20 @@ function RequestBoard({
         farmer: farmerDetails?.name || req.farmer || "Farmer unavailable",
         farmerDetails,
         farmerImageUrl: req.farmerImageUrl || null,
-        farmerPhone:
-          req.phone ||
-          req.farmerPhone ||
-          farmerDetails?.phone ||
-          req.raw?.farmerId?.phoneNumber ||
-          "Not provided",
-        location:
-          req.locationLabel ||
-          req.location ||
-          req.raw?.farmerId?.address?.barangay ||
-          "Location unavailable",
+        farmerPhone: isUnassignedCandidate
+          ? null
+          : req.phone ||
+            req.farmerPhone ||
+            farmerDetails?.phone ||
+            raw?.farmerId?.phoneNumber ||
+            "Not provided",
+        location: isUnassignedCandidate
+          ? [req.barangay, req.municipality].filter(Boolean).join(", ") ||
+            "Location unavailable"
+          : req.locationLabel ||
+            req.location ||
+            raw?.farmerId?.address?.barangay ||
+            "Location unavailable",
         type: service.workflow,
         queueType: req.type,
         serviceType: service.serviceType,
@@ -603,25 +618,25 @@ function RequestBoard({
           animalDetails?.name ||
           (typeof req.animal === "string" ? req.animal : null) ||
           animalTag,
-        species: req.species || req.raw?.animalId?.species || "",
+        species: req.species || raw?.animalId?.species || "",
         breed,
         taskDetails:
-          req.raw?.symptoms ||
-          req.raw?.issueDescription ||
-          req.raw?.diagnosis ||
-          req.raw?.treatment ||
-          req.raw?.farmerObservation ||
-          req.raw?.observationNotes ||
-          req.raw?.notes ||
-          req.raw?.remarks ||
-          req.raw?.taskDescription ||
-          req.raw?.description ||
+          raw?.symptoms ||
+          raw?.issueDescription ||
+          raw?.diagnosis ||
+          raw?.treatment ||
+          raw?.farmerObservation ||
+          raw?.observationNotes ||
+          raw?.notes ||
+          raw?.remarks ||
+          raw?.taskDescription ||
+          raw?.description ||
           (service.workflow === "insemination"
             ? isReInsemination
               ? `Re-insemination attempt ${attemptNumber}`
               : "Artificial insemination requested"
             : service.workflow === "health"
-              ? req.raw?.requestType || "Health assistance requested"
+              ? req.requestType || raw?.requestType || "Health assistance requested"
               : service.label),
         task:
           service.workflow === "insemination"
@@ -635,12 +650,12 @@ function RequestBoard({
         formattedSentAt,
         status: normalizedStatus === "resolved" ? "done" : normalizedStatus,
         createdAt: req.createdAt,
-        updatedAt: req.updatedAt || req.raw?.updatedAt || req.createdAt || null,
+        updatedAt: req.updatedAt || raw?.updatedAt || req.createdAt || null,
         updatedAtTime: new Date(
-          req.updatedAt || req.raw?.updatedAt || req.createdAt || 0,
+          req.updatedAt || raw?.updatedAt || req.createdAt || 0,
         ).getTime(),
-        preferredDate: req.preferredDate || req.raw?.preferredDate || null,
-        scheduledDate: req.scheduledDate || req.raw?.scheduledDate || null,
+        preferredDate: req.preferredDate || raw?.preferredDate || null,
+        scheduledDate: req.scheduledDate || raw?.scheduledDate || null,
         schedule: canonicalSchedule,
         visitDate: isCanonicalAI
           ? canonicalSchedule.date
@@ -651,7 +666,7 @@ function RequestBoard({
         attachments: req.attachments || { count: 0, urls: [] },
         urgency: req.urgency,
         previousTechnician,
-        raw: req.raw || req,
+        raw: isUnassignedCandidate ? null : raw || req,
       };
     });
 

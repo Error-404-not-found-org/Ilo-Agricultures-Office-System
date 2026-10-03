@@ -6,7 +6,11 @@ import { toast } from "sonner-native";
 
 import { useApi } from "@/lib/api";
 import { useTechnicianDashboardQuery } from "@/features/technician/hooks/useTechnicianDashboard";
-import { normalizeTechnicianWorkItems } from "@/features/technician-requests/utils/requestWorkPresentation";
+import {
+  getDashboardAttentionItems,
+  normalizeTechnicianWorkItems,
+} from "@/features/technician-requests/utils/requestWorkPresentation";
+import { getCalvingWorkNavigation } from "@/features/technician-requests/utils/calvingWorkNavigation";
 import { normalizeTechnicianDashboardStats } from "../utils/dashboardStats";
 import {
   AVAILABILITY_HELPER_FEEDBACK_COPY,
@@ -43,13 +47,7 @@ export function useTechnicianDashboardScreen() {
     [data?.stats],
   );
   const todayWorkItems = useMemo(
-    () =>
-      workItems.filter(
-        (item) =>
-          item.isReadyToday &&
-          item.state !== "completed" &&
-          item.state !== "cancelled",
-      ),
+    () => getDashboardAttentionItems(workItems),
     [workItems],
   );
 
@@ -198,6 +196,12 @@ export function useTechnicianDashboardScreen() {
   };
 
   const openItemDetails = (item: any) => {
+    const calvingNavigation = getCalvingWorkNavigation(item);
+    if (calvingNavigation) {
+      router.push(calvingNavigation as never);
+      return;
+    }
+
     if (
       item.workType === "pregnancy_check" ||
       item.workType === "calving" ||

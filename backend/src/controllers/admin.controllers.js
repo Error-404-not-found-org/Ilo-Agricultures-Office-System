@@ -7,6 +7,7 @@ import { Inventory } from "../models/inventory.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { accountStatusClerkUsers } from "../services/account-status-clerk.service.js";
 import { createAuditLog } from "../services/audit.service.js";
 import {
   evaluateTechnicianDispatchReadiness,
@@ -18,6 +19,7 @@ import {
 } from "../domain/status-vocabulary.js";
 import { canonicalizeMunicipality } from "../domain/geographic/psgcRegistry.js";
 import { archiveInseminationAsAdmin } from "../services/admin-insemination-archive.service.js";
+import { archiveFarmerAsAdmin } from "../services/admin-farmer-archive.service.js";
 import {
   assertOperationallyManageableUser,
   assertOperationalUserRole,
@@ -629,7 +631,10 @@ export const deleteUser = async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).send({ message: "User ID required" });
 
-    const user = await User.findById(id);
+    const archiveLookup = User.findById(id);
+    const user = await (archiveLookup.select
+      ? archiveLookup.select("+farmerClaimReservation +farmerAppInvitation.clerkInvitationId")
+      : archiveLookup);
     if (!user || user.deletedAt) {
       return res.status(404).send({ message: "User not found" });
     }
@@ -638,38 +643,43 @@ export const deleteUser = async (req, res) => {
 
     const beforeState = { deletedAt: user.deletedAt };
 
-    // Clerk Synchronization Safety
-    if (user.clerkId) {
-      try {
-        await runWithClerkRetry(
-          () => clerkClient.users.banUser(user.clerkId),
-          "banUser",
-        );
-        console.log(`[Clerk Deactivation] Banned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        return handleControllerError(
-          res,
-          clerkErr,
-          "Failed to deactivate account in Clerk authentication service",
-        );
+    let archivedUser;
+    if (user.role === "farmer") {
+      archivedUser = await archiveFarmerAsAdmin({
+        farmer: user,
+        actorId: req.user._id,
+      });
+    } else {
+      // Preserve the existing non-Farmer archive path.
+      if (user.clerkId) {
+        try {
+          await accountStatusClerkUsers.banUser(user.clerkId);
+          console.log(`[Clerk Deactivation] Banned user: ${user.clerkId}`);
+        } catch (clerkErr) {
+          return handleControllerError(
+            res,
+            clerkErr,
+            "Failed to deactivate account in Clerk authentication service",
+          );
+        }
       }
+      user.deletedAt = new Date();
+      user.deactivatedBy = req.user._id;
+      user.pushToken = undefined;
+      await user.save();
+      archivedUser = user;
     }
 
-    user.deletedAt = new Date();
-    user.deactivatedBy = req.user._id;
-    user.pushToken = undefined;
-    await user.save();
-
-    logAdminAction("user deleted", req.user, user, {
-      deletedAt: user.deletedAt,
+    logAdminAction("user deleted", req.user, archivedUser, {
+      deletedAt: archivedUser.deletedAt,
     });
     await createAuditLog({
       entityType: "User",
-      entityId: user._id,
+      entityId: archivedUser._id,
       action: "delete",
       actorId: req.user._id,
       before: beforeState,
-      after: { deletedAt: user.deletedAt },
+      after: { deletedAt: archivedUser.deletedAt },
       metadata: {
         actingAdmin: req.user.email || req.user.name,
         targetUser: user.email || user.name,
@@ -909,8 +919,15 @@ export const exportDatabaseBackup = async (req, res) => {
   }
 };
 
-// POST /api/admin/suspend-user
-export const suspendUser = async (req, res) => {
+const hasRealClerkIdentity = (user) =>
+  Boolean(user.clerkId) && !String(user.clerkId).startsWith("manual_");
+
+const changeAccountStatus = async (req, res, operation) => {
+  const suspending = operation === "suspend";
+  const nextStatus = suspending ? "suspended" : "active";
+  const clerkMethod = suspending ? "banUser" : "unbanUser";
+  const compensationMethod = suspending ? "unbanUser" : "banUser";
+  const pastTense = suspending ? "suspended" : "reactivated";
   try {
     const { id } = req.body;
     if (!id) return res.status(400).send({ message: "User ID required" });
@@ -922,36 +939,79 @@ export const suspendUser = async (req, res) => {
 
     assertOperationallyManageableUser(user);
 
-    const beforeState = { status: user.status };
+    if (user.status === nextStatus) {
+      return res.status(409).json({
+        message: `Account is already ${nextStatus}.`,
+        code: suspending ? "ACCOUNT_ALREADY_SUSPENDED" : "ACCOUNT_ALREADY_ACTIVE",
+      });
+    }
+    if (!suspending && user.status !== "suspended") {
+      return res.status(409).json({
+        message: "Only suspended accounts can be reactivated.",
+        code: "ACCOUNT_NOT_SUSPENDED",
+      });
+    }
 
-    // Clerk Synchronization Safety
-    if (user.clerkId) {
+    const previousStatus = user.status;
+    const linked = hasRealClerkIdentity(user);
+
+    if (linked) {
       try {
-        await runWithClerkRetry(
-          () => clerkClient.users.banUser(user.clerkId),
-          "banUser",
-        );
-        console.log(`[Clerk Ban] Banned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        return handleControllerError(
-          res,
-          clerkErr,
-          "Failed to suspend account in Clerk authentication service",
-        );
+        await accountStatusClerkUsers[clerkMethod](user.clerkId);
+      } catch (error) {
+        console.error("[Account Status] Clerk transition failed", {
+          operation,
+          userId: String(user._id),
+          code: error.errors?.[0]?.code || error.code || null,
+          status: error.status || null,
+        });
+        return res.status(502).json({
+          message: `Could not ${operation} account because the authentication service did not confirm the change.`,
+          code: suspending ? "CLERK_SUSPEND_FAILED" : "CLERK_REACTIVATE_FAILED",
+        });
       }
     }
 
-    user.status = "suspended";
-    await user.save();
+    user.status = nextStatus;
+    try {
+      await user.save();
+    } catch (saveError) {
+      user.status = previousStatus;
+      if (linked) {
+        try {
+          await accountStatusClerkUsers[compensationMethod](user.clerkId);
+        } catch (compensationError) {
+          console.error("[Account Status] Reconciliation required", {
+            operation,
+            userId: String(user._id),
+            saveCode: saveError.code || null,
+            clerkCode: compensationError.errors?.[0]?.code || compensationError.code || null,
+          });
+          return res.status(500).json({
+            message: "Account status could not be saved and authentication state could not be restored. Contact support for reconciliation.",
+            code: "ACCOUNT_STATE_RECONCILIATION_REQUIRED",
+          });
+        }
+      }
+      console.error("[Account Status] Save failed; authentication state restored", {
+        operation,
+        userId: String(user._id),
+        saveCode: saveError.code || null,
+      });
+      return res.status(500).json({
+        message: "Account status could not be saved. The previous authentication state was restored.",
+        code: "ACCOUNT_STATUS_SAVE_FAILED_RESTORED",
+      });
+    }
 
-    logAdminAction("user suspended", req.user, user, { status: "suspended" });
+    logAdminAction(`user ${pastTense}`, req.user, user, { status: nextStatus });
     await createAuditLog({
       entityType: "User",
       entityId: user._id,
-      action: "suspend",
+      action: operation,
       actorId: req.user._id,
-      before: beforeState,
-      after: { status: "suspended" },
+      before: { status: previousStatus },
+      after: { status: nextStatus },
       metadata: {
         actingAdmin: req.user.email || req.user.name,
         targetUser: user.email || user.name,
@@ -959,131 +1019,17 @@ export const suspendUser = async (req, res) => {
       },
     });
 
-    res.status(200).send({ message: "User suspended successfully", user });
+    return res.status(200).send({ message: `User ${pastTense} successfully`, user });
   } catch (error) {
-    return handleControllerError(res, error, "Error suspending user");
+    return handleControllerError(res, error, `Error ${suspending ? "suspending" : "reactivating"} user`);
   }
 };
+
+// POST /api/admin/suspend-user
+export const suspendUser = (req, res) => changeAccountStatus(req, res, "suspend");
 
 // POST /api/admin/reactivate-user
-export const reactivateUser = async (req, res) => {
-  try {
-    const { id } = req.body;
-    if (!id) return res.status(400).send({ message: "User ID required" });
-
-    const user = await User.findById(id);
-    if (!user || user.deletedAt) {
-      return res.status(404).send({ message: "User not found" });
-    }
-
-    assertOperationallyManageableUser(user);
-
-    const beforeState = { status: user.status };
-
-    // Clerk Synchronization Safety
-    if (user.clerkId) {
-      try {
-        await runWithClerkRetry(
-          () => clerkClient.users.unbanUser(user.clerkId),
-          "unbanUser",
-        );
-        console.log(`[Clerk Unban] Unbanned user: ${user.clerkId}`);
-      } catch (clerkErr) {
-        return handleControllerError(
-          res,
-          clerkErr,
-          "Failed to reactivate account in Clerk authentication service",
-        );
-      }
-    }
-
-    user.status = "active";
-    await user.save();
-
-    logAdminAction("user reactivated", req.user, user, { status: "active" });
-    await createAuditLog({
-      entityType: "User",
-      entityId: user._id,
-      action: "reactivate",
-      actorId: req.user._id,
-      before: beforeState,
-      after: { status: "active" },
-      metadata: {
-        actingAdmin: req.user.email || req.user.name,
-        targetUser: user.email || user.name,
-        timestamp: new Date().toISOString(),
-      },
-    });
-
-    res.status(200).send({ message: "User reactivated successfully", user });
-  } catch (error) {
-    return handleControllerError(res, error, "Error reactivating user");
-  }
-};
-
-// POST /api/admin/verify-user
-export const verifyUser = async (req, res) => {
-  try {
-    const { id } = req.body;
-    if (!id) return res.status(400).send({ message: "User ID required" });
-
-    const user = await User.findById(id);
-    if (!user || user.deletedAt) {
-      return res.status(404).send({ message: "User not found" });
-    }
-
-    assertOperationallyManageableUser(user);
-
-    const beforeState = { isVerified: user.isVerified };
-
-    if (user.clerkId) {
-      try {
-        const clerkUser = await runWithClerkRetry(
-          () => clerkClient.users.getUser(user.clerkId),
-          "getUser",
-        );
-        await runWithClerkRetry(
-          () =>
-            clerkClient.users.updateUser(user.clerkId, {
-              publicMetadata: {
-                ...(clerkUser.publicMetadata || {}),
-                isVerified: true,
-              },
-            }),
-          "updateUser",
-        );
-      } catch (clerkErr) {
-        return handleControllerError(
-          res,
-          clerkErr,
-          "Failed to update verification status in Clerk authentication service",
-        );
-      }
-    }
-
-    user.isVerified = true;
-    await user.save();
-
-    logAdminAction("verification", req.user, user, { isVerified: true });
-    await createAuditLog({
-      entityType: "User",
-      entityId: user._id,
-      action: "verify",
-      actorId: req.user._id,
-      before: beforeState,
-      after: { isVerified: true },
-      metadata: {
-        actingAdmin: req.user.email || req.user.name,
-        targetUser: user.email || user.name,
-        timestamp: new Date().toISOString(),
-      },
-    });
-
-    res.status(200).send({ message: "User verified successfully", user });
-  } catch (error) {
-    return handleControllerError(res, error, "Error verifying user");
-  }
-};
+export const reactivateUser = (req, res) => changeAccountStatus(req, res, "reactivate");
 
 // POST /api/admin/reset-password
 export const resetPassword = async (req, res) => {

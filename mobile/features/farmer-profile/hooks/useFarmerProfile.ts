@@ -19,6 +19,10 @@ import {
   verifyPhoneOtp,
 } from "../services/farmerProfile.service";
 import { PHONE_OTP_CODE_LENGTH } from "../constants";
+import {
+  getPhoneOtpErrorPresentation,
+  resolvePhoneOtpTiming,
+} from "../utils/phoneOtpPresentation";
 import type { EditMode, ProfileFormData, PasswordForm } from "../types/farmerProfile.types";
 import {
   findIloiloCityBarangay,
@@ -30,6 +34,7 @@ import {
 
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_PHONE_OTP_EXPIRY_MINUTES = 5;
+const DEFAULT_PHONE_OTP_COOLDOWN_SECONDS = 60;
 
 export const useFarmerProfile = () => {
   const { signOut } = useClerk();
@@ -66,6 +71,14 @@ export const useFarmerProfile = () => {
   const [phoneOtpRemainingSeconds, setPhoneOtpRemainingSeconds] = useState(0);
   const [isChangingPhoneNumber, setIsChangingPhoneNumber] = useState(false);
   const [phoneError, setPhoneError] = useState("");
+  const [phoneFeedbackTitle, setPhoneFeedbackTitle] = useState("");
+  const [phoneFeedbackKind, setPhoneFeedbackKind] = useState<"error" | "info">("info");
+
+  const clearPhoneFeedback = () => {
+    setPhoneError("");
+    setPhoneFeedbackTitle(phoneOtpSent ? "Verification code sent" : "");
+    setPhoneFeedbackKind("info");
+  };
 
 
   useEffect(() => {
@@ -106,6 +119,8 @@ export const useFarmerProfile = () => {
         setPhoneError(
           "The verification code expired. Request a new code to continue.",
         );
+        setPhoneFeedbackTitle("Verification code expired");
+        setPhoneFeedbackKind("error");
       }
     };
 
@@ -347,6 +362,33 @@ export const useFarmerProfile = () => {
     }
   }, [editMode, dbUser, phoneOtpSent]);
 
+  useEffect(() => {
+    const pending = dbUser?.phoneVerification;
+    if (!pending?.pendingPhoneNumber || !pending?.otpExpiresAt) return;
+    const timing = resolvePhoneOtpTiming({
+      expiresAt: pending.otpExpiresAt,
+      lastOtpSentAt: pending.lastOtpSentAt,
+      retryAfterSeconds:
+        pending.retryAfterSeconds || DEFAULT_PHONE_OTP_COOLDOWN_SECONDS,
+    });
+    if (!timing.isActive) return;
+
+    setFormData((current) => ({
+      ...current,
+      phoneNumber: pending.pendingPhoneNumber || current.phoneNumber,
+    }));
+    setPhoneOtpSent(true);
+    setPhoneOtpExpiresAt(Date.parse(pending.otpExpiresAt));
+    setPhoneOtpRemainingSeconds(timing.remainingSeconds);
+    setPhoneOtpCooldown(timing.cooldownSeconds);
+    setPhoneFeedbackTitle("Verification code sent");
+    setPhoneFeedbackKind("info");
+    setPhoneError("");
+    setIsChangingPhoneNumber(
+      Boolean(dbUser.phoneNumber && dbUser.phoneNumber !== pending.pendingPhoneNumber),
+    );
+  }, [dbUser]);
+
   const mutation = useMutation({
     mutationFn: (updatedData: any) => {
       if (!dbUser?._id) throw new Error("No user ID");
@@ -379,25 +421,39 @@ export const useFarmerProfile = () => {
   const sendPhoneOtpMutation = useMutation({
     mutationFn: (phoneNumber: string) => sendPhoneOtp(api, phoneNumber),
     onSuccess: (result) => {
+      const wasResend = phoneOtpSent;
       setPhoneError("");
-      const expiresInMinutes = Number(
-        result?.data?.expiresInMinutes || DEFAULT_PHONE_OTP_EXPIRY_MINUTES,
-      );
-      const expiryDurationMs =
-        Math.max(1, expiresInMinutes) * 60 * 1000;
+      const fallbackExpiryMs = Date.now() + DEFAULT_PHONE_OTP_EXPIRY_MINUTES * 60 * 1000;
+      const serverExpiryMs = result?.data?.expiresAt
+        ? Date.parse(result.data.expiresAt)
+        : Number.NaN;
+      const expiryMs = Number.isFinite(serverExpiryMs) ? serverExpiryMs : fallbackExpiryMs;
+      const timing = resolvePhoneOtpTiming({
+        expiresAt: result?.data?.expiresAt,
+        lastOtpSentAt: result?.data?.lastOtpSentAt,
+        retryAfterSeconds:
+          result?.data?.retryAfterSeconds || DEFAULT_PHONE_OTP_COOLDOWN_SECONDS,
+      });
 
       setPhoneOtpSent(true);
-      setPhoneOtpCooldown(60);
-      setPhoneOtpExpiresAt(Date.now() + expiryDurationMs);
-      setPhoneOtpRemainingSeconds(Math.ceil(expiryDurationMs / 1000));
+      setPhoneOtpCooldown(
+        result?.data?.lastOtpSentAt
+          ? timing.cooldownSeconds
+          : Number(result?.data?.retryAfterSeconds || DEFAULT_PHONE_OTP_COOLDOWN_SECONDS),
+      );
+      setPhoneOtpExpiresAt(expiryMs);
+      setPhoneOtpRemainingSeconds(Math.max(0, Math.ceil((expiryMs - Date.now()) / 1000)));
+      setPhoneFeedbackTitle(wasResend ? "New verification code sent" : "Verification code sent");
+      setPhoneFeedbackKind("info");
     },
     onError: (error: any) => {
+      const code = error.response?.data?.code;
       const retryAfter = error.response?.data?.retryAfterSeconds;
       if (retryAfter) setPhoneOtpCooldown(Number(retryAfter));
-      setPhoneError(
-        error.response?.data?.message ||
-          "The verification code could not be sent. Please try again.",
-      );
+      const feedback = getPhoneOtpErrorPresentation(code, error.response?.data?.message);
+      setPhoneFeedbackTitle(feedback.title);
+      setPhoneFeedbackKind(feedback.kind);
+      setPhoneError(feedback.message);
     },
   });
 
@@ -416,10 +472,13 @@ export const useFarmerProfile = () => {
       setEditMode(null);
     },
     onError: (error: any) => {
-      setPhoneError(
-        error.response?.data?.message ||
-          "The verification code is invalid or has expired.",
+      const feedback = getPhoneOtpErrorPresentation(
+        error.response?.data?.code,
+        error.response?.data?.message,
       );
+      setPhoneFeedbackTitle(feedback.title);
+      setPhoneFeedbackKind(feedback.kind);
+      setPhoneError(feedback.message);
     },
   });
 
@@ -751,7 +810,9 @@ export const useFarmerProfile = () => {
     phoneOtpCooldown,
     phoneOtpRemainingSeconds,
     phoneError,
-    setPhoneError,
+    phoneFeedbackTitle,
+    phoneFeedbackKind,
+    clearPhoneFeedback,
     hasPhoneNumber,
     hasVerifiedPhone,
     isChangingPhoneNumber,

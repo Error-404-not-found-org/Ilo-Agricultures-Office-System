@@ -67,7 +67,7 @@ export default function RecordActionsMenu({
         role="menu"
         aria-label={ariaLabel}
         style={{ positionAnchor: anchorName }}
-        className="dropdown dropdown-end menu menu-sm z-50 w-44 rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl"
+        className="dropdown dropdown-end menu menu-sm z-50 w-48 max-h-72 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {visibleActions.map((action) => {

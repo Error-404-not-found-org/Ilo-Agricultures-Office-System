@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal, ScrollView, Text, View } from "react-native";
-import { CheckCircle2 } from "lucide-react-native";
+import { AlertCircle, CheckCircle2 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/Button";
 import { useTheme } from "@/lib/theme";
@@ -15,6 +15,7 @@ interface InseminationReviewModalProps {
   saving: boolean;
   isHistoricalMode?: boolean;
   entryMode?: PreviousAIEntryMode;
+  errorMessage?: string | null;
   onGoBack: () => void;
   onComplete: () => void;
 }
@@ -82,6 +83,7 @@ export function InseminationReviewModal({
   saving,
   isHistoricalMode,
   entryMode,
+  errorMessage,
   onGoBack,
   onComplete,
 }: InseminationReviewModalProps) {
@@ -175,6 +177,41 @@ export function InseminationReviewModal({
                 </Text>
               </View>
             </View>
+
+            {errorMessage ? (
+              <View
+                accessibilityRole="alert"
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  marginTop: 14,
+                  borderRadius: 12,
+                  backgroundColor: colors.errorContainer,
+                  borderWidth: 1,
+                  borderColor: colors.errorBorder,
+                }}
+              >
+                <AlertCircle
+                  size={16}
+                  color={colors.errorForeground}
+                  style={{ flexShrink: 0, marginTop: 1 }}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    marginLeft: 8,
+                    color: colors.errorForeground,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 12,
+                    lineHeight: 18,
+                  }}
+                >
+                  {errorMessage}
+                </Text>
+              </View>
+            ) : null}
 
             <View style={{ marginTop: 16 }}>
               <ReviewRow label="Farmer" value={snapshot.farmer.name} />

@@ -12,7 +12,6 @@ const task = (overrides = {}) => ({
   type: "task",
   taskType: "PD",
   status: "Pending",
-  dueDate: "2026-09-02T00:00:00.000Z",
   ...overrides,
 });
 
@@ -20,24 +19,39 @@ describe("Technician Dashboard schedule overview", () => {
   it("counts due and overdue canonical work without treating future work as current", () => {
     const overview = getDashboardScheduleOverview(
       [
-        task(),
+        task({ readyFrom: "2026-09-02T00:00:00.000Z" }),
         task({
           id: "overdue-calving",
           taskId: "overdue-calving",
           taskType: "CD",
-          dueDate: "2026-09-01T00:00:00.000Z",
+          expectedAt: "2026-09-01T00:00:00.000Z",
         }),
         task({
           id: "future-pregnancy",
           taskId: "future-pregnancy",
-          dueDate: "2026-09-03T00:00:00.000Z",
+          readyFrom: "2026-09-03T00:00:00.000Z",
         }),
       ],
       NOW,
     );
 
     expect(overview.dueCount).toBe(2);
-    expect(overview.todayWork.map((item) => item.id)).toEqual(["task-1"]);
+    expect(overview.todayWork.map((item) => item.id)).toEqual(["overdue-calving", "task-1"]);
+  });
+
+  it("includes due and overdue follow-ups and loss reviews without losing task identity", () => {
+    const overview = getDashboardScheduleOverview([
+      task({ id: "followup-today", taskId: "followup-today", taskType: "BreedingFollowUp", dueAt: "2026-09-02T00:00:00.000Z" }),
+      task({ id: "followup-overdue", taskId: "followup-overdue", taskType: "BreedingFollowUp", dueAt: "2026-09-01T00:00:00.000Z" }),
+      task({ id: "loss-today", taskId: "loss-today", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", reportedAt: "2026-09-02T00:00:00.000Z" }),
+      task({ id: "loss-overdue", taskId: "loss-overdue", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", reportedAt: "2026-09-01T00:00:00.000Z" }),
+      task({ id: "loss-done", taskId: "loss-done", taskType: "BreedingFollowUp", sourceType: "farmer_pregnancy_loss_report", status: "Completed", reportedAt: "2026-09-02T00:00:00.000Z" }),
+      task({ id: "future", taskId: "future", readyFrom: "2026-09-03T00:00:00.000Z" }),
+    ], NOW);
+    expect(overview.todayWork.map((item) => item.id)).toEqual([
+      "followup-overdue", "loss-overdue", "followup-today", "loss-today",
+    ]);
+    expect(overview.todayWork.find((item) => item.id === "loss-today")?.scheduleLabel).toBe("Pregnancy Loss Review");
   });
 
   it("uses canonical Schedule filtering for Health response methods", () => {
@@ -48,7 +62,7 @@ describe("Technician Dashboard schedule overview", () => {
           type: "health",
           status: "scheduled",
           handlingMethod: "farm_visit",
-          scheduledDate: "2026-09-02T00:00:00.000Z",
+          scheduledAt: "2026-09-02T00:00:00.000Z",
           visitPeriod: "afternoon",
         },
         {
@@ -56,7 +70,7 @@ describe("Technician Dashboard schedule overview", () => {
           type: "health",
           status: "resolved",
           handlingMethod: "advice",
-          scheduledDate: "2026-09-02T00:00:00.000Z",
+          scheduledAt: "2026-09-02T00:00:00.000Z",
         },
       ],
       NOW,

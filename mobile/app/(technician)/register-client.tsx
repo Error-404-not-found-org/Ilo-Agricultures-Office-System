@@ -114,11 +114,14 @@ export default function RegisterClientScreen() {
     onSuccess: (result) => {
       if (result.status === "synced") {
         const hasEmail = Boolean(formData.email.trim());
+        const hasPhone = Boolean(formData.phoneNumber.trim());
         toast.success('Farmer registered successfully!', {
           id: REGISTER_FARMER_TOAST_ID,
           description: hasEmail
             ? "An app invitation was sent to the farmer email."
-            : "No email added. The farmer can later create an app account and verify this phone number to access their records.",
+            : hasPhone
+              ? "The farmer can later verify this phone number for app access."
+              : "Registered for technician-managed services. A phone can be added later for app access.",
           duration: 5000,
         });
       }
@@ -163,7 +166,7 @@ export default function RegisterClientScreen() {
     const newErrors: any = {};
     if (!formData.firstName.trim() || formData.firstName.length > 50) newErrors.firstName = "First name is required (max 50 chars)";
     if (!formData.lastName.trim() || formData.lastName.length > 50) newErrors.lastName = "Last name is required (max 50 chars)";
-    if (!formData.phoneNumber.trim() || !/^09\d{9}$/.test(formData.phoneNumber)) newErrors.phoneNumber = "Phone must start with 09 and be exactly 11 digits";
+    if (formData.phoneNumber.trim() && !/^09\d{9}$/.test(formData.phoneNumber)) newErrors.phoneNumber = "Phone must start with 09 and be exactly 11 digits";
     if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = "Invalid email format";
     if (!formData.city) newErrors.city = "Please select a municipality or city";
     if (formData.city === ILOILO_CITY_NAME && !formData.district) newErrors.district = "Please select a district";
@@ -190,7 +193,9 @@ export default function RegisterClientScreen() {
     const payload = {
       firstName: formData.firstName.trim(),
       lastName: formData.lastName.trim(),
-      phoneNumber: formData.phoneNumber.trim(),
+      ...(formData.phoneNumber.trim()
+        ? { phoneNumber: formData.phoneNumber.trim() }
+        : {}),
       email: formData.email.trim() || undefined,
       imageUrl: imageBase64 || undefined,
       address: {
@@ -225,7 +230,7 @@ export default function RegisterClientScreen() {
           <TechnicianFormInfo
             icon={<UserPlus size={18} color={colors.primary} />}
           >
-            Register a farmer for immediate service. If no email is added, they can later claim this profile by verifying the same phone number in the app.
+            Register a farmer for municipal services. A phone number is only needed if they will use the BreedSmart mobile app.
           </TechnicianFormInfo>
 
           {/* Profile Photo Picker */}
@@ -289,7 +294,7 @@ export default function RegisterClientScreen() {
           <View className="gap-4">
              <View>
                 <View className="flex-row justify-between mb-1 ml-1">
-                   <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">Phone Number *</Text>
+                   <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">Phone Number (Optional)</Text>
                    {errors.phoneNumber && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.phoneNumber}</Text>}
                 </View>
                 <TextInput
@@ -300,6 +305,7 @@ export default function RegisterClientScreen() {
                    maxLength={11}
                    value={formData.phoneNumber}
                    onChangeText={(t) => setFormData({...formData, phoneNumber: t})}
+                   accessibilityHint="Needed only if the farmer will use the BreedSmart mobile app"
                 />
              </View>
 

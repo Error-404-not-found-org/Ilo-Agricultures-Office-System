@@ -26,7 +26,7 @@ import { toast } from "sonner-native";
 
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { pickAttachmentsFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { AnimatedBottomSheet } from "@/components/shared/AnimatedBottomSheet";
 import { Text as AppText } from "@/components/ui/Text";
@@ -38,6 +38,13 @@ import {
   useTechnicianDirectoryQuery,
 } from "@/features/farmer-requests/hooks/useFarmerRequestForms";
 import { buildFarmerHealthRequestPayload } from "@/features/farmer-requests/utils/payloadBuilders";
+import {
+  getAttachmentAssetKey,
+  getAttachmentPayloadError,
+  mergeAttachmentImages,
+  remainingAttachmentSlots,
+  type RequestAttachment,
+} from "@/features/farmer-requests/utils/attachmentSafety";
 import {
   findActiveHealthCase,
   getHealthRequestErrorMessage,
@@ -107,6 +114,7 @@ export default function ReportSickness() {
   }>();
   const scrollRef = useRef<ScrollView>(null);
   const submitLockRef = useRef(false);
+  const photoPickLockRef = useRef(false);
   const { colors, isDark } = useTheme();
 
   const primaryColor = colors.primary;
@@ -124,7 +132,7 @@ export default function ReportSickness() {
   >([]);
   const [description, setDescription] = useState("");
   const [needsUrgentAttention, setNeedsUrgentAttention] = useState(false);
-  const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
+  const [photos, setPhotos] = useState<RequestAttachment[]>([]);
   const mutation = useSubmitHealthRequestMutation();
   const requestType = getLegacyRequestType(category);
   const urgency = needsUrgentAttention ? "critical" : "medium";
@@ -199,17 +207,24 @@ export default function ReportSickness() {
   }, [animalsData, routeAnimalId, selectedAnimal]);
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
+    if (photoPickLockRef.current) return;
     if (photos.length >= 5) {
       toast.error("You can attach up to 5 photos only.");
       return;
     }
-    const result = await pickImageFromSource(source, { aspect: [4, 3] });
-    if (result) {
-      setPhotos((prev) => [
-        ...prev,
-        { uri: result.uri, base64: result.base64 },
-      ]);
-      toast.success("Photo attached!");
+    photoPickLockRef.current = true;
+    try {
+      const { images, failedCount } = await pickAttachmentsFromSource(source, remainingAttachmentSlots(photos.length));
+      if (images.length) {
+        setPhotos((prev) => mergeAttachmentImages(prev, images.map((image) => ({
+          uri: image.uri,
+          base64: image.base64,
+          assetKey: getAttachmentAssetKey({ assetId: image.assetId, uri: image.sourceUri }),
+        }))));
+      }
+      if (failedCount) toast.error(`${failedCount} photo${failedCount === 1 ? "" : "s"} could not be processed. Other photos were kept.`);
+    } finally {
+      photoPickLockRef.current = false;
     }
   };
 
@@ -235,12 +250,15 @@ export default function ReportSickness() {
       requestDetails,
     );
 
+    const submission = { ...payload, imageUrl: base64Photos[0] || "" };
+    const payloadError = getAttachmentPayloadError(submission);
+    if (payloadError) {
+      toast.error(payloadError);
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const result = await mutation.mutateAsync({
-        ...payload,
-        imageUrl: base64Photos[0] || "",
-      });
+      const result = await mutation.mutateAsync(submission);
       if (result.status === "synced") {
         toast.success(
           "Health request submitted. A technician will review it and respond.",
@@ -309,6 +327,7 @@ export default function ReportSickness() {
         assistanceRequested: category,
         observedSigns: selectedOptions,
         farmerDescription: description,
+        photoCount: photos.length,
       });
       if (validationMessage) {
         showSubmitError(validationMessage);
@@ -874,7 +893,7 @@ export default function ReportSickness() {
                 { color: colors.textMuted },
               ]}
             >
-              Photos (Optional){" "}
+              Photos *{" "}
               {photos.length > 0 ? `(${photos.length}/5)` : ""}
             </Text>
             {photos.length > 0 && photos.length < 5 && (
@@ -916,7 +935,7 @@ export default function ReportSickness() {
                 className="text-[13px] font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                Add up to 5 photos if they help explain the concern
+                Add at least 1 clear photo of the animal (up to 5)
               </Text>
             </TouchableOpacity>
           ) : (

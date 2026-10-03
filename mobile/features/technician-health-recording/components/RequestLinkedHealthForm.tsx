@@ -63,7 +63,6 @@ export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitP
       dosage,
       withdrawalPeriodDays: withdrawalPeriodDays ? Number(withdrawalPeriodDays) : undefined,
       advice,
-      resolutionNotes: advice,
       followUpDate: null,
     });
   };

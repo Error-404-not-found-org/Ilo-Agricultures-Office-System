@@ -6,10 +6,15 @@ import {
   Sunrise,
   Sunset,
   Calendar,
+  CalendarCheck,
+  CalendarDays,
   Clock,
+  HeartPulse,
   MapPin,
-  User,
   PawPrint,
+  Stethoscope,
+  Syringe,
+  User,
   ChevronRight,
   AlertCircle,
   AlertTriangle,
@@ -17,10 +22,7 @@ import {
   Clock as ClockIcon,
   Link2,
 } from "lucide-react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-
 import { Text } from "@/components/ui/Text";
-import { AppBadge } from "@/components/ui/AppBadge";
 import { useTheme } from "@/lib/theme";
 
 import {
@@ -74,12 +76,26 @@ function getStatusColor(item: WorkCardItem, colors: any) {
   }
   if (isTechnicianWorkItem(item)) {
     if (item.overdue) return colors.error;
-    if (item.isReadyToday) return colors.warning;
+    if (item.isReadyToday) {
+      if (item.workType === "pregnancy_check") {
+        return "#ec4899";
+      }
+      return colors.warning;
+    }
     if (item.state === "completed") return colors.success;
   }
   const status = normalizeWorkflowStatus(item);
   if (status === "overdue") return colors.error;
-  if (status === "due_today") return colors.warning;
+  if (status === "due_today") {
+    const isPd = isTechnicianWorkItem(item)
+      ? item.workType === "pregnancy_check"
+      : getTitle(item).toLowerCase().includes("pregnancy check") ||
+        (item as any).workflowType === "PregnancyDiagnosis";
+    if (isPd) {
+      return "#ec4899";
+    }
+    return colors.warning;
+  }
   if (status === "completed") return colors.success;
   return colors.primary;
 }
@@ -113,19 +129,49 @@ function getStatusLabel(item: WorkCardItem) {
 }
 
 function getCardBorderColor(item: WorkCardItem, colors: any) {
-  if (isNeedsReview(item)) {
-    return colors.border;
-  }
-  if (isTechnicianWorkItem(item)) {
-    if (item.overdue) return colors.error;
-    if (item.isReadyToday) return colors.warning;
-    if (item.state === "completed") return colors.success;
-  }
-  const status = normalizeWorkflowStatus(item);
-  if (status === "overdue") return colors.error;
-  if (status === "due_today") return colors.warning;
-  if (status === "completed") return colors.success;
   return colors.border;
+}
+
+function getServiceTheme(service: string, workType: string, isDark: boolean, colors: any) {
+  const norm = `${workType || ""} ${service || ""}`.toLowerCase();
+  if (norm.includes("follow") || norm.includes("breeding")) {
+    return {
+      icon: CalendarCheck,
+      iconColor: isDark ? "#38bdf8" : "#0284c7",
+      bgColor: isDark ? "rgba(2, 132, 199, 0.15)" : "#f0f9ff",
+      borderColor: isDark ? "rgba(2, 132, 199, 0.3)" : "#bae6fd",
+    };
+  }
+  if (norm.includes("pregnancy") || norm.includes("pd")) {
+    return {
+      icon: HeartPulse,
+      iconColor: isDark ? "#f472b6" : "#ec4899",
+      bgColor: isDark ? "rgba(236, 72, 153, 0.15)" : "#fdf2f8",
+      borderColor: isDark ? "rgba(236, 72, 153, 0.3)" : "#fbcfe8",
+    };
+  }
+  if (norm.includes("health")) {
+    return {
+      icon: Stethoscope,
+      iconColor: isDark ? "#fbbf24" : "#f59e0b",
+      bgColor: isDark ? "rgba(245, 158, 11, 0.15)" : "#fffbeb",
+      borderColor: isDark ? "rgba(245, 158, 11, 0.3)" : "#fde68a",
+    };
+  }
+  if (norm.includes("ai") || norm.includes("insem")) {
+    return {
+      icon: Syringe,
+      iconColor: isDark ? "#34d399" : "#10b981",
+      bgColor: isDark ? "rgba(16, 185, 129, 0.15)" : "#f0fdf4",
+      borderColor: isDark ? "rgba(16, 185, 129, 0.3)" : "#bbf7d0",
+    };
+  }
+  return {
+    icon: CalendarDays,
+    iconColor: isDark ? "#818cf8" : "#4f46e5",
+    bgColor: isDark ? "rgba(79, 70, 229, 0.12)" : "#eef2ff",
+    borderColor: isDark ? "rgba(79, 70, 229, 0.25)" : "#c7d2fe",
+  };
 }
 
 function getActionLabel(item: WorkCardItem): string {
@@ -284,23 +330,6 @@ function isReInsemination(item: WorkCardItem): boolean {
   );
 }
 
-function isPregnancyCheck(item: WorkCardItem): boolean {
-  const service = normalizeServiceType(item);
-  return service === "pregnancy";
-}
-
-function isClosed(item: WorkCardItem): boolean {
-  const status = String(item.status || "").toLowerCase();
-  return [
-    "done",
-    "resolved",
-    "completed",
-    "rejected",
-    "cancelled",
-    "declined",
-  ].includes(status);
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function RequestListCard({ item, onPress, onActionPress }: RequestListCardProps) {
@@ -312,6 +341,11 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
   const statusColor = getStatusColor(item, colors);
   const StatusIcon = getStatusIcon(item);
   const statusLabel = getStatusLabel(item);
+  const showStatusBadge =
+    !isTechnicianWorkItem(item) ||
+    ["ai", "health", "pregnancy_check"].includes(item.workType) ||
+    statusLabel === "Needs review" ||
+    item.state === "in_progress";
   const borderColor = getCardBorderColor(item, colors);
   const actionLabel = getActionLabel(item);
 
@@ -333,30 +367,24 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
   const farmerImageUrl = getFarmerImageUrl(item);
   const urgent = isUrgent(item);
   const reInsemination = isReInsemination(item);
-  const pregnancyCheck = isPregnancyCheck(item);
+  const serviceTheme = getServiceTheme(servicePresentation.label, workType, isDark, colors);
+  const ServiceIcon = serviceTheme.icon;
+  const isBreedingFollowUp =
+    workType === "breedingfollowup" ||
+    workType === "breeding_follow_up" ||
+    title.toLowerCase().includes("breeding follow") ||
+    (item as any).workflowType === "BreedingFollowUp";
+  const isPregnancy =
+    !isBreedingFollowUp &&
+    (workType === "pregnancy_check" ||
+      title.toLowerCase().includes("pregnancy check") ||
+      (service === "pregnancy" && !title.toLowerCase().includes("loss")));
 
-  // Type icon and colors - using blue instead of violet
-  const typeIcon = pregnancyCheck
-    ? "clipboard-pulse-outline"
-    : service === "health"
-      ? "stethoscope"
-      : "needle";
-
-  const typeColor = pregnancyCheck
-    ? isDark
-      ? "#60a5fa"
-      : "#2563eb" // Blue instead of violet
-    : service === "health"
-      ? colors.warningForeground
-      : colors.primary;
-
-  const typeBackground = pregnancyCheck
-    ? isDark
-      ? "rgba(59,130,246,0.16)"
-      : "#eff6ff" // Blue instead of violet
-    : service === "health"
-      ? colors.warningContainer
-      : colors.tint;
+  const contextText =
+    (isTechnicianWorkItem(item) && item.contextLabel) ||
+    (isPregnancy && !title.toLowerCase().includes("loss")
+      ? "Recommended time for pregnancy diagnosis reached"
+      : null);
 
   return (
     <TouchableOpacity
@@ -368,22 +396,22 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
         borderWidth: 1,
         borderColor: borderColor,
         backgroundColor: colors.card,
-        shadowColor: isDark ? "#000" : "#000",
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: isDark ? 0.2 : 0.02,
-        shadowRadius: 2,
+        shadowOpacity: isDark ? 0.2 : 0.03,
+        shadowRadius: 3,
         elevation: 1,
         overflow: "hidden",
       }}
     >
-      {/* ─── Header ─────────────────────────────────────────────────────────── */}
+      {/* ─── Header: Farmer & Location (Left) + Status (Right) ─────────────── */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 16,
-          paddingTop: 14,
+          paddingTop: 12,
           paddingBottom: 10,
           backgroundColor: isDark
             ? "rgba(255,255,255,0.03)"
@@ -392,7 +420,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
           borderBottomColor: colors.border,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 }}>
           {/* Avatar / Icon */}
           <View
             style={{
@@ -404,6 +432,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
               backgroundColor: isDark
                 ? "rgba(255,255,255,0.06)"
                 : "rgba(0,0,0,0.04)",
+              overflow: "hidden",
             }}
           >
             {farmerImageUrl ? (
@@ -416,8 +445,10 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
             )}
           </View>
 
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
               style={{
                 fontFamily: "Outfit_700Bold",
                 fontSize: 15,
@@ -426,86 +457,134 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
             >
               {farmerName || "Farmer"}
             </Text>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <Text
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 11,
-                  color: colors.textMuted,
-                }}
-              >
-                {servicePresentation.label}
-              </Text>
-              <View
-                style={{
-                  width: 3,
-                  height: 3,
-                  borderRadius: 1.5,
-                  backgroundColor: colors.textMuted,
-                }}
-              />
-              <Text
-                style={{
-                  fontFamily: "Outfit_600SemiBold",
-                  fontSize: 11,
-                  color:
-                    servicePresentation.tone === "emerald"
-                      ? colors.success
-                      : servicePresentation.tone === "blue"
-                        ? colors.primary
-                        : colors.textMuted,
-                }}
-              >
-                #{animalTag || "No Tag"}
-              </Text>
-            </View>
+            {location ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+                <MapPin size={12} color={colors.textMuted} />
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={{
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 11,
+                    color: colors.textMuted,
+                  }}
+                >
+                  {location}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
         {/* Status Badge */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: 16,
-            backgroundColor: statusColor + "18",
-          }}
-        >
-          <StatusIcon size={13} color={statusColor} />
-          <Text
+        {showStatusBadge ? (
+          <View
             style={{
-              fontFamily: "Outfit_700Bold",
-              fontSize: 11,
-              color: statusColor,
+              flexDirection: "row",
+              alignItems: "center",
+              flexShrink: 0,
+              marginLeft: 8,
+              gap: 5,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 12,
+              backgroundColor: statusColor + "18",
             }}
           >
-            {statusLabel}
-          </Text>
-        </View>
+            <StatusIcon size={13} color={statusColor} />
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                fontSize: 11,
+                color: statusColor,
+              }}
+            >
+              {statusLabel}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
-      {/* ─── Body ───────────────────────────────────────────────────────────── */}
-      <View style={{ padding: 16, gap: 10 }}>
-        {/* Title */}
-        <Text
-          style={{
-            fontFamily: "Outfit_700Bold",
-            fontSize: 16,
-            color: colors.textPrimary,
-            lineHeight: 22,
-          }}
-          numberOfLines={2}
-        >
-          {title}
-        </Text>
+      {/* ─── Body: Service Info & Context ───────────────────────────────────── */}
+      <View style={{ padding: 16, gap: 12 }}>
+        {/* Service Identity Row */}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+          {/* Themed Service Icon */}
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: serviceTheme.bgColor,
+              borderWidth: 1,
+              borderColor: serviceTheme.borderColor,
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <ServiceIcon size={20} color={serviceTheme.iconColor} />
+          </View>
 
-        {/* Urgency / Re-insemination / Pregnancy Check badges */}
-        {(urgent || reInsemination || pregnancyCheck) && (
+          {/* Title & Context */}
+          <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
+            <Text
+              numberOfLines={2}
+              style={{
+                fontFamily: "Outfit_700Bold",
+                fontSize: 15,
+                color: colors.textPrimary,
+                lineHeight: 20,
+              }}
+            >
+              {title}
+            </Text>
+            {contextText ? (
+              <Text
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                textRole="caption"
+                color="secondary"
+                style={{ marginTop: 2 }}
+              >
+                {contextText}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* Animal Tag Chip */}
+          {animalTag ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 8,
+                backgroundColor: isDark
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(0,0,0,0.04)",
+                flexShrink: 0,
+              }}
+            >
+              <PawPrint size={12} color={colors.textMuted} />
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                }}
+              >
+                #{animalTag}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Chips Row: Urgency, Re-insemination, Shift, Attempt */}
+        {(urgent || reInsemination || visitPeriod || (workType === "ai" && attemptNumber && !reInsemination)) ? (
           <View
             style={{
               flexDirection: "row",
@@ -513,7 +592,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
               gap: 8,
             }}
           >
-            {urgent && (
+            {urgent ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -521,11 +600,11 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
                   gap: 5,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
-                  borderRadius: 12,
+                  borderRadius: 8,
                   backgroundColor: colors.error + "18",
                 }}
               >
-                <AlertTriangle size={13} color={colors.error} />
+                <AlertTriangle size={12} color={colors.error} />
                 <Text
                   style={{
                     fontFamily: "Outfit_700Bold",
@@ -536,8 +615,9 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
                   Needs urgent attention
                 </Text>
               </View>
-            )}
-            {reInsemination && (
+            ) : null}
+
+            {reInsemination ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -545,11 +625,11 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
                   gap: 4,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
-                  borderRadius: 12,
+                  borderRadius: 8,
                   backgroundColor: colors.infoContainer,
                 }}
               >
-                <Link2 size={13} color={colors.infoForeground} />
+                <Link2 size={12} color={colors.infoForeground} />
                 <Text
                   style={{
                     fontFamily: "Outfit_600SemiBold",
@@ -560,184 +640,89 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
                   Re-insemination · Attempt {attemptNumber || 1}
                 </Text>
               </View>
-            )}
-            {pregnancyCheck && (
+            ) : null}
+
+            {visitPeriod ? (
               <View
                 style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
-                  borderRadius: 12,
-                  backgroundColor: isDark ? "rgba(59,130,246,0.16)" : "#eff6ff",
+                  borderRadius: 8,
+                  backgroundColor:
+                    visitPeriod === "morning"
+                      ? isDark
+                        ? "rgba(251, 191, 36, 0.12)"
+                        : "#fffbeb"
+                      : isDark
+                        ? "rgba(129, 140, 248, 0.12)"
+                        : "#eef2ff",
                 }}
               >
+                {visitPeriod === "morning" ? (
+                  <Sunrise size={12} color={isDark ? "#fbbf24" : "#d97706"} />
+                ) : (
+                  <Sunset size={12} color={isDark ? "#818cf8" : "#4f46e5"} />
+                )}
                 <Text
                   style={{
                     fontFamily: "Outfit_600SemiBold",
                     fontSize: 11,
-                    color: isDark ? "#60a5fa" : "#2563eb",
+                    color:
+                      visitPeriod === "morning"
+                        ? isDark
+                          ? "#fbbf24"
+                          : "#d97706"
+                        : isDark
+                          ? "#818cf8"
+                          : "#4f46e5",
                   }}
                 >
-                  Pregnancy Check
+                  {visitPeriod === "morning" ? "Morning" : "Afternoon"}
                 </Text>
               </View>
-            )}
-          </View>
-        )}
+            ) : null}
 
-        {/* Quick Info Row */}
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 12,
-            paddingVertical: 4,
-          }}
-        >
-          {animalTag ? (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <PawPrint size={14} color={colors.textMuted} />
-              <Text
+            {workType === "ai" && attemptNumber && !reInsemination ? (
+              <View
                 style={{
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
-                  color: colors.textSecondary,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 8,
+                  backgroundColor: isDark
+                    ? "rgba(16, 185, 129, 0.12)"
+                    : "rgba(16, 185, 129, 0.06)",
                 }}
               >
-                {animalTag}
-              </Text>
-            </View>
-          ) : null}
-
-          {location ? (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <MapPin size={14} color={colors.textMuted} />
-              <Text
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                }}
-                numberOfLines={1}
-              >
-                {location}
-              </Text>
-            </View>
-          ) : null}
-
-          {timingLabel ? (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <TimingIcon size={14} color={colors.textMuted} />
-              <Text
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                }}
-              >
-                {timingLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Timing & Schedule Section */}
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 8,
-            paddingTop: 8,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
-          }}
-        >
-          {visitPeriod ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor:
-                  visitPeriod === "morning"
-                    ? isDark
-                      ? "rgba(251, 191, 36, 0.12)"
-                      : "#fffbeb"
-                    : isDark
-                      ? "rgba(129, 140, 248, 0.12)"
-                      : "#eef2ff",
-              }}
-            >
-              {visitPeriod === "morning" ? (
-                <Sunrise size={12} color={isDark ? "#fbbf24" : "#d97706"} />
-              ) : (
-                <Sunset size={12} color={isDark ? "#818cf8" : "#4f46e5"} />
-              )}
-              <Text
-                style={{
-                  fontFamily: "Outfit_600SemiBold",
-                  fontSize: 11,
-                  color:
-                    visitPeriod === "morning"
-                      ? isDark
-                        ? "#fbbf24"
-                        : "#d97706"
-                      : isDark
-                        ? "#818cf8"
-                        : "#4f46e5",
-                }}
-              >
-                {visitPeriod === "morning" ? "Morning" : "Afternoon"}
-              </Text>
-            </View>
-          ) : null}
-
-          {workType === "ai" && attemptNumber ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor: isDark
-                  ? "rgba(16, 185, 129, 0.12)"
-                  : "rgba(16, 185, 129, 0.06)",
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 11,
-                  color: colors.success,
-                }}
-              >
-                Attempt {attemptNumber}
-              </Text>
-              {previousAttemptVerified ? (
                 <Text
                   style={{
-                    fontFamily: "Outfit_500Medium",
-                    fontSize: 10,
-                    color: colors.textMuted,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 11,
+                    color: colors.success,
                   }}
                 >
-                  · Previous unsuccessful
+                  Attempt {attemptNumber}
                 </Text>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
+                {previousAttemptVerified ? (
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 10,
+                      color: colors.textMuted,
+                    }}
+                  >
+                    · Previous unsuccessful
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Pregnancy Readiness Warning */}
         {readinessMessage ? (
@@ -746,14 +731,14 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
               flexDirection: "row",
               alignItems: "flex-start",
               gap: 8,
-              padding: 12,
-              borderRadius: 12,
+              padding: 10,
+              borderRadius: 10,
               backgroundColor: isDark ? "rgba(245, 158, 11, 0.08)" : "#fffbeb",
               borderWidth: 1,
               borderColor: isDark ? "rgba(245, 158, 11, 0.25)" : "#fde68a",
             }}
           >
-            <AlertCircle size={16} color={isDark ? "#fbbf24" : "#92400e"} />
+            <AlertCircle size={15} color={isDark ? "#fbbf24" : "#92400e"} style={{ marginTop: 1 }} />
             <View style={{ flex: 1 }}>
               <Text
                 style={{
@@ -780,56 +765,86 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
           </View>
         ) : null}
 
-        {/* ─── Action Button ────────────────────────────────────────────────── */}
+        {/* ─── Footer: Timing & Action Button ──────────────────────────────── */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginTop: 4,
-            paddingTop: 12,
+            paddingTop: 10,
             borderTopWidth: 1,
             borderTopColor: colors.border,
+            gap: 12,
           }}
         >
+          {/* Timing / Schedule info */}
           <View
             style={{
+              flex: 1,
+              minWidth: 0,
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
+              gap: 6,
             }}
           >
-            <ClockIcon size={14} color={colors.textMuted} />
-            <Text
-              style={{
-                fontFamily: "Outfit_400Regular",
-                fontSize: 11,
-                color: colors.textMuted,
-              }}
-            >
-              {state === "completed"
-                ? "Completed"
-                : state === "cancelled"
-                  ? "Cancelled"
-                  : "Action required"}
-            </Text>
+            {timingLabel ? (
+              <>
+                <TimingIcon size={14} color={colors.textMuted} />
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={{
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                  }}
+                >
+                  {timingLabel}
+                </Text>
+              </>
+            ) : state === "completed" ? (
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: "Outfit_400Regular",
+                  fontSize: 11,
+                  color: colors.textMuted,
+                }}
+              >
+                Completed
+              </Text>
+            ) : isPregnancy ? null : (
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: "Outfit_400Regular",
+                  fontSize: 11,
+                  color: colors.textMuted,
+                }}
+              >
+                No schedule set
+              </Text>
+            )}
           </View>
 
+          {/* CTA Button */}
           <TouchableOpacity
             onPress={onActionPress || onPress}
             accessibilityRole="button"
             accessibilityLabel={actionLabel}
+            activeOpacity={0.8}
             style={{
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
-              paddingHorizontal: 16,
+              paddingHorizontal: 14,
               paddingVertical: 8,
-              borderRadius: 12,
+              borderRadius: 10,
               backgroundColor:
                 state === "completed"
                   ? colors.successContainer
                   : colors.primary,
+              flexShrink: 0,
             }}
           >
             <Text
@@ -843,7 +858,7 @@ export function RequestListCard({ item, onPress, onActionPress }: RequestListCar
               {actionLabel}
             </Text>
             <ChevronRight
-              size={16}
+              size={15}
               color={state === "completed" ? colors.success : colors.onPrimary}
             />
           </TouchableOpacity>

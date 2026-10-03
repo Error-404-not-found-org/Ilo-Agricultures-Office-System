@@ -82,6 +82,7 @@ export default function RecordAIScreen() {
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(
     null,
   );
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const saving =
     requestMutation.isPending ||
     walkInMutation.isPending ||
@@ -108,6 +109,7 @@ export default function RecordAIScreen() {
 
   const updateValues = (next: Partial<AIRecordingValues>) => {
     setPreviousRecordError(null);
+    setReviewError(null);
     if (next.inseminationTime) {
       setHistoricalTimeConfirmationRequired(false);
     }
@@ -159,6 +161,7 @@ export default function RecordAIScreen() {
 
   const openReview = (farmer: SelectedFarmer, animal: SelectedAnimal) => {
     toast.dismiss();
+    setReviewError(null);
     if (historicalTimeConfirmationRequired) {
       toast.error(
         "Confirm the actual historical service time. The visit period is not an exact procedure time.",
@@ -206,6 +209,7 @@ export default function RecordAIScreen() {
     if (submissionLockRef.current || saving || !reviewSnapshot) return;
     submissionLockRef.current = true;
     toast.dismiss();
+    setReviewError(null);
     let accepted = false;
 
     try {
@@ -289,7 +293,7 @@ export default function RecordAIScreen() {
         setPreviousRecordError(getPreviousAIErrorMessage(error));
         setReviewSnapshot(null);
       } else {
-        toast.error(getAIRecordingErrorMessage(error));
+        setReviewError(getAIRecordingErrorMessage(error));
       }
     } finally {
       if (!accepted) {
@@ -486,9 +490,13 @@ export default function RecordAIScreen() {
         isHistoricalMode={isHistoricalMode}
         entryMode={previousEntryMode}
         snapshot={reviewSnapshot}
+        errorMessage={reviewError}
         saving={saving}
         onGoBack={() => {
-          if (!saving) setReviewSnapshot(null);
+          if (!saving) {
+            setReviewSnapshot(null);
+            setReviewError(null);
+          }
         }}
         onComplete={() => void completeRecord()}
       />

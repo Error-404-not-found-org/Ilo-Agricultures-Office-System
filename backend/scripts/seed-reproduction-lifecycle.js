@@ -42,40 +42,58 @@ import {
 } from "../src/domain/status-vocabulary.js";
 
 import { normalizeVisitScheduleDate } from "../src/domain/visit-scheduling.js";
+import { MANILA_OFFSET_MS } from "../src/domain/service-date-time.js";
+import {
+  CANONICAL_HEALTH_REQUEST_TYPE,
+  HEALTH_HANDLING_METHOD,
+} from "../src/domain/health-request-vocabulary.js";
+import {
+  HEALTH_OBSERVED_SIGN,
+  HEALTH_REQUEST_DETAILS_VERSION,
+} from "../src/domain/health-request-input.js";
 import {
   LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
   LEGACY_PREGNANCY_POLICY_VERSION,
 } from "../src/domain/pregnancy-confirmation-policy.js";
+import { PREGNANCY_TASK_STAGE } from "../src/domain/pregnancy-task-workflow.js";
+import { resolveRequestLocation } from "../src/domain/geographic/municipalityResolver.js";
+import { evaluateTechnicianDispatchEligibility } from "../src/domain/geographic/eligibilityEvaluator.js";
 
-export const SEED_PREFIX = "RC26-";
-
-export const SCENARIO_NAMES = Object.freeze([
-  "RC26-01-AVAILABLE",
-  "RC26-02-AI-PENDING",
-  "RC26-03-AI-SCHEDULED",
-  "RC26-04-AI-DAY10",
-  "RC26-05-AI-DAY21",
-  "RC26-06-LIKELY-PREGNANT",
-  "RC26-07-PD-DUE",
-  "RC26-08-PREGNANCY-LOSS-REVIEW",
-  "RC26-09-CALVING-DUE",
-  "RC26-10-CALVING-OVERDUE",
-  "RC26-11-POSTPARTUM",
-  "RC26-12-STILLBIRTH",
-  "RC26-13-ABORTION",
-  "RC26-14-MIXED",
-  "RC26-15-REHEAT",
-  "RC26-16-ATTEMPT-2",
-
-  // H4 request / scheduling / records scenarios
-  "RC26-17-AI-IN-PROGRESS",
-  "RC26-18-HEALTH-PENDING",
-  "RC26-19-HEALTH-SCHEDULED",
-  "RC26-20-HEALTH-IN-PROGRESS",
-  "RC26-21-HEALTH-RESOLVED",
-  "RC26-22-HEALTH-WALK-IN",
-  "RC26-23-HEAT-CHECK",
+export const SEED_FAMILY = "reproduction-lifecycle";
+export const SEED_PREFIX = "OT-";
+export const LEGACY_SEED_PREFIX = "RC26-";
+const scenario = (number, key, legacyName, description, aliases = []) => Object.freeze({
+  number, key, legacyName, description,
+  earTag: `OT-${String(number).padStart(3, "0")}`,
+  singleEarTag: `OT-S${String(number).padStart(3, "0")}`,
+  aliases: Object.freeze(aliases),
+});
+export const SCENARIO_REGISTRY = Object.freeze([
+  scenario(1, "01_AVAILABLE", "RC26-01-AVAILABLE", "Available for Breeding"),
+  scenario(2, "02_AI_PENDING", "RC26-02-AI-PENDING", "AI Request Pending"),
+  scenario(3, "03_AI_SCHEDULED", "RC26-03-AI-SCHEDULED", "AI Visit Scheduled"),
+  scenario(4, "04_AI_DAY10", "RC26-04-AI-DAY10", "AI Day 10 Unsure Observation"),
+  scenario(5, "05_RETURN_TO_HEAT", "RC26-05-AI-DAY21", "Return to Heat Reported", ["reheat"]),
+  scenario(6, "06_PREGNANCY_REPORT", "RC26-06-LIKELY-PREGNANT", "Farmer Pregnancy Report", ["pregnancy-report"]),
+  scenario(7, "07_PD_READY", "RC26-07-PD-DUE", "Pregnancy Check Ready"),
+  scenario(8, "08_PREGNANCY_LOSS_REVIEW", "RC26-08-PREGNANCY-LOSS-REVIEW", "Pregnancy Loss Review QA", ["pregnant", "pregnancy-loss-review", "rc26-08-pregnant"]),
+  scenario(9, "09_EXPECTED_CALVING_TODAY", "RC26-09-CALVING-DUE", "Expected Calving Today"),
+  scenario(10, "10_EXPECTED_CALVING_PAST", "RC26-10-CALVING-OVERDUE", "Expected Calving Past Date"),
+  scenario(11, "11_POSTPARTUM", "RC26-11-POSTPARTUM", "Postpartum Recovery"),
+  scenario(12, "12_STILLBIRTH", "RC26-12-STILLBIRTH", "Stillbirth Outcome"),
+  scenario(13, "13_ABORTION", "RC26-13-ABORTION", "Pregnancy Loss / Abortion"),
+  scenario(14, "14_MIXED", "RC26-14-MIXED", "Mixed Twin Outcome"),
+  scenario(15, "15_REHEAT", "RC26-15-REHEAT", "Verified Return to Heat"),
+  scenario(16, "16_ATTEMPT_2", "RC26-16-ATTEMPT-2", "AI Attempt 2 Pending"),
+  scenario(17, "17_AI_IN_PROGRESS", "RC26-17-AI-IN-PROGRESS", "AI In Progress"),
+  scenario(18, "18_HEALTH_PENDING", "RC26-18-HEALTH-PENDING", "Health Request Pending"),
+  scenario(19, "19_HEALTH_SCHEDULED", "RC26-19-HEALTH-SCHEDULED", "Health Visit Scheduled"),
+  scenario(20, "20_HEALTH_IN_PROGRESS", "RC26-20-HEALTH-IN-PROGRESS", "Health Visit In Progress"),
+  scenario(21, "21_HEALTH_RESOLVED", "RC26-21-HEALTH-RESOLVED", "Health Resolved with Official Medical Record"),
+  scenario(22, "22_HEALTH_WALK_IN", "RC26-22-HEALTH-WALK-IN", "Walk-In Health Record"),
+  scenario(23, "23_HEAT_CHECK", "RC26-23-HEAT-CHECK", "Pre-Observation Heat Check", ["heat-check"]),
 ]);
+export const SCENARIO_NAMES = Object.freeze(SCENARIO_REGISTRY.map((item) => item.legacyName));
 
 export const HEALTH_SCENARIO_NAMES = Object.freeze([
   "RC26-18-HEALTH-PENDING",
@@ -89,14 +107,10 @@ export const REPRODUCTIVE_SCENARIO_NAMES = Object.freeze(
   SCENARIO_NAMES.filter((name) => !HEALTH_SCENARIO_NAMES.includes(name)),
 );
 
-export const SCENARIO_ALIASES = Object.freeze({
-  reheat: "RC26-05-AI-DAY21",
-  "pregnancy-report": "RC26-06-LIKELY-PREGNANT",
-  pregnant: "RC26-08-PREGNANCY-LOSS-REVIEW",
-  "pregnancy-loss-review": "RC26-08-PREGNANCY-LOSS-REVIEW",
-  "rc26-08-pregnant": "RC26-08-PREGNANCY-LOSS-REVIEW",
-  "heat-check": "RC26-23-HEAT-CHECK",
-});
+export const SCENARIO_ALIASES = Object.freeze(Object.fromEntries(
+  SCENARIO_REGISTRY.flatMap((item) => item.aliases
+    .map((alias) => [String(alias).toLowerCase(), item.legacyName])),
+));
 
 export const resolveScenarioName = (input) => {
   if (!input) return null;
@@ -105,6 +119,10 @@ export const resolveScenarioName = (input) => {
   if (SCENARIO_ALIASES[normalized]) {
     return SCENARIO_ALIASES[normalized];
   }
+  const registryMatch = SCENARIO_REGISTRY.find((item) =>
+    [item.key, item.earTag, item.singleEarTag].some((value) => value.toLowerCase() === normalized),
+  );
+  if (registryMatch) return registryMatch.legacyName;
   const match = SCENARIO_NAMES.find(
     (name) => name.toLowerCase() === normalized,
   );
@@ -112,6 +130,32 @@ export const resolveScenarioName = (input) => {
   throw new Error(
     `Unknown scenario: "${input}". Available aliases: ${Object.keys(SCENARIO_ALIASES).join(", ")} or scenario names like ${SCENARIO_NAMES.slice(0, 3).join(", ")}.`,
   );
+};
+
+export const resolveScenarioRange = (input) => {
+  const parts = String(input || "")
+    .split(":")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length !== 2) {
+    throw new Error(
+      'Scenario ranges must use the inclusive "START:END" format, for example OT-009:OT-014.',
+    );
+  }
+
+  const startName = resolveScenarioName(parts[0]);
+  const endName = resolveScenarioName(parts[1]);
+  const start = SCENARIO_REGISTRY.find((item) => item.legacyName === startName);
+  const end = SCENARIO_REGISTRY.find((item) => item.legacyName === endName);
+
+  if (!start || !end || start.number > end.number) {
+    throw new Error(`Invalid scenario range: "${input}".`);
+  }
+
+  return SCENARIO_REGISTRY
+    .slice(start.number - 1, end.number)
+    .map((item) => item.legacyName);
 };
 
 const DAY_MS = 86_400_000;
@@ -196,8 +240,15 @@ const REQUIRED_SCHEMA_PATHS = {
   AuditLog: ["entityType", "entityId", "action", "metadata"],
 };
 
-const addDays = (date, days) =>
-  new Date(new Date(date).getTime() + days * DAY_MS);
+const addDays = (date, days) => {
+  const value = new Date(date);
+  if (!Number.isInteger(days)) {
+    return new Date(value.getTime() + days * DAY_MS);
+  }
+  const manila = new Date(value.getTime() + MANILA_OFFSET_MS);
+  manila.setUTCDate(manila.getUTCDate() + days);
+  return new Date(manila.getTime() - MANILA_OFFSET_MS);
+};
 
 /**
  * Creates the canonical BreedSmart visit date anchor.
@@ -251,6 +302,14 @@ export const parseSeedArgs = (argv = process.argv.slice(2)) => {
 
   const rawScenario = value("scenario");
   const resolvedScenario = rawScenario ? resolveScenarioName(rawScenario) : null;
+  const rawScenarioRange = value("scenarioRange");
+  const scenarioRange = rawScenarioRange
+    ? resolveScenarioRange(rawScenarioRange)
+    : null;
+
+  if (resolvedScenario && scenarioRange) {
+    throw new Error("Use either --scenario or --scenarioRange, not both.");
+  }
   const excludeHealth =
     argv.includes("--excludeHealth") ||
     argv.includes("--exclude-health") ||
@@ -265,6 +324,7 @@ export const parseSeedArgs = (argv = process.argv.slice(2)) => {
     seedBatch: value("seedBatch") || "",
     scenario: resolvedScenario,
     scenarioName: resolvedScenario,
+    scenarioRange,
     excludeHealth,
     execute: argv.includes("--execute"),
   };
@@ -375,8 +435,19 @@ export const createSeedBatch = (now = new Date()) =>
     .replace(/[^0-9]/g, "")
     .slice(0, 14)}-${crypto.randomBytes(3).toString("hex")}`;
 
-const makeScenarioTag = (batchSuffix, index, label) =>
-  `${SEED_PREFIX}${batchSuffix}-${String(index).padStart(2, "0")}-${label}`;
+export const assertScenario02DispatchReady = ({ farmer, technician, scenarioName = null }) => {
+  if (scenarioName && resolveScenarioName(scenarioName) !== SCENARIO_REGISTRY[1].legacyName) return;
+  const location = resolveRequestLocation(farmer);
+  if (!location.municipalityCode) {
+    throw new Error("OT-002 requires a Farmer address that resolves to a dispatch municipality.");
+  }
+  const eligibility = evaluateTechnicianDispatchEligibility({
+    technician, requestType: "AI", dispatchLocation: location, dispatchStage: "local",
+  });
+  if (!eligibility.eligible) {
+    throw new Error(`OT-002 cannot appear in this Technician's Open Requests: ${eligibility.blockingReasons.join(", ")}.`);
+  }
+};
 
 const seededCattleImageUrl = (earTag) => {
   const key = String(earTag || "");
@@ -507,6 +578,21 @@ const baseInsemination = ({
 
   ...extra,
 });
+
+// Farmer AI submission stores no preferred visit date; the Technician confirms
+// the actual date and Morning/Afternoon period after accepting the request.
+const pendingFarmerAIFields = ({ farmer, now }) => {
+  const location = resolveRequestLocation(farmer);
+  return {
+    dispatch: {
+      location,
+      stage: "local",
+      resolutionStatus: location.source === "unresolved" ? "unresolved" : "resolved",
+      version: 1,
+      resolvedAt: now,
+    },
+  };
+};
 
 const baseHealthRequest = ({
   _id,
@@ -694,6 +780,12 @@ const baseTask = ({
 
   metadata: {
     seedBatch,
+    ...(type === "PD" && sourceType === "automatic_pd_followup" ? {
+      workflowStage: PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION,
+      animalId,
+      farmerId,
+      policyVersion: LEGACY_PREGNANCY_POLICY_VERSION,
+    } : {}),
 
     ...(visitPeriod ? { visitPeriod } : {}),
 
@@ -769,6 +861,7 @@ export const buildReproductionLifecyclePlan = ({
   now = new Date(),
   seedBatch = createSeedBatch(now),
   scenarioName = null,
+  scenarioRange = null,
   excludeHealth = false,
 }) => {
   if (!farmer?._id || !technician?._id) {
@@ -782,24 +875,29 @@ export const buildReproductionLifecyclePlan = ({
   const selectedScenario = scenarioName
     ? resolveScenarioName(scenarioName)
     : null;
+  const selectedScenarioRange = scenarioRange?.map((item) =>
+    resolveScenarioName(item),
+  ) || null;
+
+  if (selectedScenario && selectedScenarioRange) {
+    throw new Error("Use either scenarioName or scenarioRange, not both.");
+  }
+
+  const selectedScenarioNames = selectedScenarioRange ||
+    (selectedScenario ? [selectedScenario] : null);
 
   const shouldBuild = (index) => {
     const name = SCENARIO_NAMES[index - 1];
     if (excludeHealth && HEALTH_SCENARIO_NAMES.includes(name)) {
       return false;
     }
-    if (!selectedScenario) return true;
-    return name === selectedScenario;
+    if (!selectedScenarioNames) return true;
+    return selectedScenarioNames.includes(name);
   };
 
   const farmerId = farmer._id;
 
   const technicianId = technician._id;
-
-  const suffix = seedBatch
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .slice(-6)
-    .toUpperCase();
 
   const collections = {
     animals: [],
@@ -826,11 +924,12 @@ export const buildReproductionLifecyclePlan = ({
   const scenarios = [];
 
   const start = (index, label, status = "Normal", extra = {}) => {
-    const scenario = SCENARIO_NAMES[index - 1];
+    const definition = SCENARIO_REGISTRY[index - 1];
+    const scenario = definition.legacyName;
 
     const motherId = id();
 
-    const earTag = makeScenarioTag(suffix, index, label);
+    const earTag = selectedScenario ? definition.singleEarTag : definition.earTag;
 
     const animal = baseAnimal({
       _id: motherId,
@@ -850,6 +949,13 @@ export const buildReproductionLifecyclePlan = ({
       motherId,
       earTag,
       animal,
+      seedIdentity: {
+        family: SEED_FAMILY,
+        key: definition.key,
+        number: definition.number,
+        batch: seedBatch,
+        mode: selectedScenario ? "single" : selectedScenarioNames ? "range" : "full",
+      },
 
       inseminations: [],
 
@@ -875,6 +981,18 @@ export const buildReproductionLifecyclePlan = ({
 
       expectedResult: "",
     };
+
+    const identityAudit = {
+      _id: id(), entityType: "Animal", entityId: motherId,
+      action: "seed_fixture_created", actorId: technicianId,
+      metadata: {
+        seedFamily: SEED_FAMILY, scenarioKey: definition.key,
+        scenarioNumber: definition.number, seedBatch,
+        seedMode: selectedScenario ? "single" : "full", farmerId,
+      },
+    };
+    collections.audits.push(identityAudit);
+    item.audits.push(identityAudit);
 
     scenarios.push(item);
 
@@ -1410,7 +1528,7 @@ export const buildReproductionLifecyclePlan = ({
 
         scheduledDate: undefined,
 
-        preferredDate: addDays(now, 3),
+        ...pendingFarmerAIFields({ farmer, now }),
 
         heatSigns: ["standing_heat", "clear_mucus"],
 
@@ -1947,7 +2065,7 @@ export const buildReproductionLifecyclePlan = ({
 
         scheduledDate: undefined,
 
-        preferredDate: addDays(now, 2),
+        ...pendingFarmerAIFields({ farmer, now }),
 
         attemptSeriesId: seriesId,
 
@@ -2036,7 +2154,7 @@ export const buildReproductionLifecyclePlan = ({
     addHealthRequest(s18, {
       status: HEALTH_STATUS.PENDING,
 
-      requestType: "loss_of_appetite",
+      requestType: "disease",
 
       symptoms:
         "Reduced appetite since yesterday and lower activity than normal.",
@@ -2045,6 +2163,12 @@ export const buildReproductionLifecyclePlan = ({
 
       extra: {
         farmerNotes: "Please check her appetite and hydration.",
+        requestDetails: {
+          version: HEALTH_REQUEST_DETAILS_VERSION,
+          assistanceRequested: CANONICAL_HEALTH_REQUEST_TYPE.HEALTH_CONCERN,
+          observedSigns: [HEALTH_OBSERVED_SIGN.NOT_EATING_NORMALLY],
+          farmerDescription: "Reduced appetite since yesterday and lower activity than normal.",
+        },
       },
     });
 
@@ -2072,7 +2196,7 @@ export const buildReproductionLifecyclePlan = ({
 
       status: HEALTH_STATUS.SCHEDULED,
 
-      requestType: "injury",
+      requestType: "disease",
 
       symptoms: "Small wound on the rear leg with mild swelling.",
 
@@ -2086,6 +2210,13 @@ export const buildReproductionLifecyclePlan = ({
         claimedAt: now,
 
         farmerNotes: "Animal is walking but favors the affected leg.",
+        handlingMethod: HEALTH_HANDLING_METHOD.FARM_VISIT,
+        requestDetails: {
+          version: HEALTH_REQUEST_DETAILS_VERSION,
+          assistanceRequested: CANONICAL_HEALTH_REQUEST_TYPE.HEALTH_CONCERN,
+          observedSigns: [HEALTH_OBSERVED_SIGN.WOUND_OR_INJURY, HEALTH_OBSERVED_SIGN.SWELLING],
+          farmerDescription: "Animal is walking but favors the affected leg.",
+        },
       },
     });
 
@@ -2130,7 +2261,7 @@ export const buildReproductionLifecyclePlan = ({
 
       status: HEALTH_STATUS.IN_PROGRESS,
 
-      requestType: "fever",
+      requestType: "disease",
 
       symptoms: "Warm to the touch, reduced appetite, and lethargy.",
 
@@ -2148,6 +2279,13 @@ export const buildReproductionLifecyclePlan = ({
         findings: "Elevated temperature and mild dehydration.",
 
         farmerNotes: "Symptoms started this morning.",
+        handlingMethod: HEALTH_HANDLING_METHOD.FARM_VISIT,
+        requestDetails: {
+          version: HEALTH_REQUEST_DETAILS_VERSION,
+          assistanceRequested: CANONICAL_HEALTH_REQUEST_TYPE.HEALTH_CONCERN,
+          observedSigns: [HEALTH_OBSERVED_SIGN.FEVER, HEALTH_OBSERVED_SIGN.NOT_EATING_NORMALLY, HEALTH_OBSERVED_SIGN.WEAKNESS],
+          farmerDescription: "Symptoms started this morning.",
+        },
       },
     });
 
@@ -2225,6 +2363,13 @@ export const buildReproductionLifecyclePlan = ({
         claimedAt: addDays(now, -3),
 
         farmerNotes: "Cough became more frequent overnight.",
+        handlingMethod: HEALTH_HANDLING_METHOD.FARM_VISIT,
+        requestDetails: {
+          version: HEALTH_REQUEST_DETAILS_VERSION,
+          assistanceRequested: CANONICAL_HEALTH_REQUEST_TYPE.HEALTH_CONCERN,
+          observedSigns: [HEALTH_OBSERVED_SIGN.COUGHING_OR_BREATHING_PROBLEM, HEALTH_OBSERVED_SIGN.NASAL_DISCHARGE, HEALTH_OBSERVED_SIGN.NOT_EATING_NORMALLY],
+          farmerDescription: "Cough became more frequent overnight.",
+        },
 
         findings: "Mild dehydration with respiratory signs.",
 
@@ -2411,6 +2556,17 @@ export const buildReproductionLifecyclePlan = ({
     };
   });
 
+  const qaSummary = scenarios.map((item) => {
+    const definition = SCENARIO_REGISTRY[item.index - 1];
+    return {
+      "#": String(definition.number).padStart(2, "0"),
+      "Ear tag": item.earTag,
+      Scenario: definition.description,
+      "Animal ID": idString(item.motherId),
+      "Primary work ID": idString(item.tasks[0]?._id || item.healthRequests[0]?._id || item.inseminations[0]?._id) || "—",
+    };
+  });
+
   return {
     seedBatch,
     now,
@@ -2419,7 +2575,9 @@ export const buildReproductionLifecyclePlan = ({
     collections,
     scenarios,
     table,
+    qaSummary,
     selectedScenario,
+    selectedScenarios: selectedScenarioNames,
     excludeHealth: Boolean(excludeHealth),
   };
 };
@@ -2440,6 +2598,13 @@ export const validateSeedPlan = (plan, models = MODELS) => {
       throw new Error(
         "Selected scenario plan must contain exactly one matching scenario.",
       );
+    }
+  } else if (plan.selectedScenarios) {
+    if (
+      names.length !== plan.selectedScenarios.length ||
+      names.some((name, index) => name !== plan.selectedScenarios[index])
+    ) {
+      throw new Error("Selected scenario range does not match the planned scenarios.");
     }
   } else if (
     new Set(names).size !== names.length ||
@@ -2740,6 +2905,21 @@ export const createManifest = ({
 
   earTags: plan.collections.animals.map((item) => item.earTag),
 
+  scenarios: plan.scenarios.map((item) => ({
+    scenario: item.scenario,
+    key: item.seedIdentity.key,
+    number: item.seedIdentity.number,
+    earTag: item.earTag,
+    animalId: idString(item.motherId),
+    offspringIds: item.offspring.map((record) => idString(record._id)),
+    inseminationIds: item.inseminations.map((record) => idString(record._id)),
+    pregnancyIds: item.pregnancies.map((record) => idString(record._id)),
+    calvingIds: item.calvings.map((record) => idString(record._id)),
+    healthRequestIds: item.healthRequests.map((record) => idString(record._id)),
+    medicalRecordIds: item.medicalRecords.map((record) => idString(record._id)),
+    taskIds: item.tasks.map((record) => idString(record._id)),
+  })),
+
   cleanupOrder: [
     "notifications",
     "audits",
@@ -2832,6 +3012,7 @@ export const cleanupSingleScenario = async ({
     throw new Error(`Cannot cleanup unknown scenario: ${scenarioName}`);
   }
 
+  const definition = SCENARIO_REGISTRY[index - 1];
   const tagIndex = String(index).padStart(2, "0");
   const batchSuffix = seedBatch
     ? seedBatch.replace(/[^a-zA-Z0-9]/g, "").slice(-6)
@@ -2840,8 +3021,8 @@ export const cleanupSingleScenario = async ({
     batchSuffix.toLowerCase() === "single"
       ? "single"
       : `${batchSuffix}|single`;
-  const earTagPattern = new RegExp(
-    `^${SEED_PREFIX}(?:${singleSuffixPattern})-${tagIndex}-`,
+  const legacyEarTagPattern = new RegExp(
+    `^${LEGACY_SEED_PREFIX}(?:${singleSuffixPattern})-${tagIndex}-`,
     "i",
   );
   const options = session ? { session } : {};
@@ -2852,14 +3033,26 @@ export const cleanupSingleScenario = async ({
     return (typeof q?.lean === "function" ? await q.lean() : await q) || [];
   };
 
-  const existingAnimals = await executeFindLean(
-    models.Animal,
-    {
-      farmerId,
-      earTag: { $regex: earTagPattern },
-    },
-    "_id earTag",
-  );
+  const identityAudits = await executeFindLean(models.AuditLog, {
+    action: "seed_fixture_created",
+    "metadata.seedFamily": SEED_FAMILY,
+    "metadata.scenarioKey": definition.key,
+    "metadata.seedMode": "single",
+    "metadata.farmerId": farmerId,
+  }, "entityId");
+  const identityAnimalIds = identityAudits.map((item) => item.entityId).filter(Boolean);
+  const identifiedAnimals = identityAnimalIds.length
+    ? await executeFindLean(models.Animal, {
+        _id: { $in: identityAnimalIds },
+        farmerId,
+      }, "_id earTag")
+    : [];
+  const legacyAnimals = await executeFindLean(models.Animal, {
+    farmerId,
+    earTag: { $regex: legacyEarTagPattern },
+  }, "_id earTag");
+  const existingAnimals = [...new Map([...identifiedAnimals, ...legacyAnimals]
+    .map((animal) => [String(animal._id), animal])).values()];
 
   if (!existingAnimals.length) {
     return {
@@ -2870,9 +3063,15 @@ export const cleanupSingleScenario = async ({
     };
   }
 
-  const animalIds = existingAnimals.map((a) => a._id);
+  const motherIds = existingAnimals.map((a) => a._id);
+  const offspring = await executeFindLean(models.Animal, {
+    farmerId,
+    motherId: { $in: motherIds },
+  }, "_id earTag");
+  const scopedAnimals = [...existingAnimals, ...offspring];
+  const animalIds = scopedAnimals.map((a) => a._id);
 
-  const [existingInseminations, existingPregnancies, existingHealthRequests] =
+  const [existingInseminations, existingPregnancies, existingHealthRequests, existingLossReports] =
     await Promise.all([
       executeFindLean(
         models.Insemination,
@@ -2889,11 +3088,17 @@ export const cleanupSingleScenario = async ({
         { animalId: { $in: animalIds } },
         "_id",
       ),
+      executeFindLean(
+        models.PregnancyLossReport,
+        { farmerId, animalId: { $in: animalIds } },
+        "_id",
+      ),
     ]);
 
   const inseminationIds = existingInseminations.map((i) => i._id);
   const pregnancyIds = existingPregnancies.map((p) => p._id);
   const healthRequestIds = existingHealthRequests.map((h) => h._id);
+  const lossReportIds = existingLossReports.map((report) => report._id);
 
   await Promise.all([
     models.Notification.deleteMany(
@@ -2905,6 +3110,7 @@ export const cleanupSingleScenario = async ({
                 ...inseminationIds,
                 ...pregnancyIds,
                 ...healthRequestIds,
+                ...lossReportIds,
               ],
             },
           },
@@ -2924,6 +3130,7 @@ export const cleanupSingleScenario = async ({
                 ...inseminationIds,
                 ...pregnancyIds,
                 ...healthRequestIds,
+                ...lossReportIds,
               ],
             },
           },
@@ -2936,7 +3143,7 @@ export const cleanupSingleScenario = async ({
       {
         $or: [
           { animalId: { $in: animalIds } },
-          { sourceId: { $in: [...inseminationIds, ...pregnancyIds] } },
+          { sourceId: { $in: [...inseminationIds, ...pregnancyIds, ...lossReportIds] } },
         ],
       },
       options,
@@ -2953,6 +3160,7 @@ export const cleanupSingleScenario = async ({
                 ...inseminationIds,
                 ...pregnancyIds,
                 ...healthRequestIds,
+                ...lossReportIds,
               ],
             },
           },
@@ -3008,7 +3216,7 @@ export const cleanupSingleScenario = async ({
   return {
     deletedCount: animalIds.length,
     scenarioName: resolved,
-    cleanedAnimals: existingAnimals.map((a) => a.earTag),
+    cleanedAnimals: scopedAnimals.map((a) => a.earTag),
     scenarioAnimalIds: animalIds,
   };
 };
@@ -3044,7 +3252,7 @@ export const assertSeedBatchAvailable = async ({
 
   if (existingTag) {
     throw new Error(
-      "One or more planned RC26 ear tags already exist for this farmer.",
+      "One or more planned seed ear tags already exist for this Farmer.",
     );
   }
 };
@@ -3391,9 +3599,13 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
       technicianEmail: args.technicianEmail,
     });
 
+    const dispatchScenario = args.scenario ||
+      (args.scenarioRange?.includes(SCENARIO_NAMES[1]) ? SCENARIO_NAMES[1] : null);
+    assertScenario02DispatchReady({ farmer, technician, scenarioName: dispatchScenario });
+
     const seedBatch =
       args.seedBatch ||
-      (args.scenario ? "repro-single" : undefined);
+      (args.scenario ? "repro-single" : args.scenarioRange ? "repro-range" : undefined);
 
     if (args.scenario && args.execute) {
       const cleanupResult = await cleanupSingleScenario({
@@ -3414,6 +3626,7 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
       seedBatch,
       scenarioName: args.scenario,
+      scenarioRange: args.scenarioRange,
       excludeHealth: args.excludeHealth,
     });
 
@@ -3437,11 +3650,14 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
     if (plan.selectedScenario) {
       console.log(`Single scenario: ${plan.selectedScenario}`);
+    } else if (plan.selectedScenarios) {
+      console.log(`Scenario range: ${plan.selectedScenarios[0]} through ${plan.selectedScenarios.at(-1)}`);
     } else if (args.excludeHealth) {
       console.log("Scope: Reproduction lifecycle only (health-related scenarios excluded)");
     }
 
-    console.table(plan.table);
+    console.log("\nBREEDSMART E2E SCENARIOS");
+    console.table(plan.qaSummary);
 
     console.log(
       "Planned inserts:",
@@ -3471,10 +3687,15 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
+    const manifestLabel = plan.selectedScenario
+      ? plan.selectedScenario.toLowerCase()
+      : plan.selectedScenarios
+        ? `${plan.selectedScenarios[0].toLowerCase()}-through-${plan.selectedScenarios.at(-1).toLowerCase()}`
+        : null;
     const manifestPath = path.join(
       backupDir,
-      plan.selectedScenario
-        ? `reproduction-lifecycle-seed-${plan.selectedScenario.toLowerCase()}-${timestamp}.json`
+      manifestLabel
+        ? `reproduction-lifecycle-seed-${manifestLabel}-${timestamp}.json`
         : `reproduction-lifecycle-seed-${timestamp}.json`,
     );
 
@@ -3543,7 +3764,8 @@ export const runSeedCli = async (argv = process.argv.slice(2)) => {
       "utf8",
     );
 
-    console.table(plan.table);
+    console.log("\nBREEDSMART E2E SCENARIOS — CREATED");
+    console.table(plan.qaSummary);
 
     console.log(`\nSeed complete. Manifest: ${manifestPath}`);
 

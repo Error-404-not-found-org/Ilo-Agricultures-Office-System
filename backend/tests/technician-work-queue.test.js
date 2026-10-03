@@ -475,13 +475,14 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(request.actionLabel, "Accept & Set Visit");
       assert.equal(request.requestKind, "re_insemination");
       assert.equal(request.attemptNumber, 2);
-      assert.equal(request.previousAttemptId._id, "completed-attempt-1");
+      assert.equal(request.previousAttemptId, undefined);
+      assert.equal(request.previousAttemptOutcome, "Failed (Re-heat)");
       const expectedKeys = [
         "id", "workflowId", "workflowType", "type", "serviceType", "attachments",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
         "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
         "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt", "farmer",
-        "requestKind", "attemptNumber", "previousAttemptId", "previousAttemptOutcome", "previousAttemptVerified"
+        "requestKind", "attemptNumber", "previousAttemptOutcome", "previousAttemptVerified", "farmerImageUrl"
       ].sort();
       assert.deepEqual(Object.keys(request).sort(), expectedKeys);
       assert.equal(request.farmer, "Maria Santos");
@@ -841,8 +842,9 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.has(ids.calvingTask), true);
 
       const scheduled = byId.get(ids.scheduled);
-      assert.equal(scheduled.allowedAction, "RECORD_SERVICE");
-      assert.equal(scheduled.actionLabel, "Record Insemination");
+      assert.equal(scheduled.allowedAction, "VIEW_DETAILS");
+      assert.equal(scheduled.actionLabel, "View Scheduled Visit");
+      assert.equal(scheduled.workTiming, "upcoming");
       assert.equal(scheduled.workflowId, ids.scheduled);
       assert.equal(scheduled.taskId, ids.linkedAiTask);
       assert.notEqual(scheduled.workflowId, scheduled.taskId);
@@ -943,7 +945,7 @@ test("Technician Work Queue backend contract", async (t) => {
           assignedTechnicianId: ids.technician,
           status: "scheduled",
           handlingMethod: "farm_visit",
-          scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          scheduledDate: new Date("2099-12-01T04:00:00.000Z"),
           visitPeriod: "afternoon",
           requestType: "checkup",
           urgency: "medium",
@@ -994,8 +996,9 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.has(ids.otherHealth), false);
       assert.equal(byId.has(ids.linkedHealthTask), false);
       assert.equal(byId.get(ids.health).taskId, ids.linkedHealthTask);
-      assert.equal(byId.get(ids.health).allowedAction, "START_SERVICE");
-      assert.equal(byId.get(ids.health).actionLabel, "Start Visit");
+      assert.equal(byId.get(ids.health).allowedAction, "VIEW_DETAILS");
+      assert.equal(byId.get(ids.health).actionLabel, "View Scheduled Visit");
+      assert.equal(byId.get(ids.health).workTiming, "upcoming");
       assert.equal(byId.get(ids.health).schedule.visitPeriod, "afternoon");
       assert.equal(byId.get(ids.health).visitPeriod, "afternoon");
       assert.equal(byId.get(ids.pdTask).workflowType, "PD");
@@ -1007,6 +1010,21 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.get(ids.calvingTask).workflowType, "Calving");
       assert.equal(byId.get(ids.calvingTask).allowedAction, "RECORD_SERVICE");
       assert.equal(byId.get(ids.calvingTask).actionLabel, "Record Calving");
+
+      state.healthRequests[0] = {
+        ...state.healthRequests[0],
+        scheduledDate: new Date(),
+      };
+      const todayRecorder = responseRecorder();
+      await getWorkQueue(
+        { user: { _id: ids.technician, role: "technician" } },
+        todayRecorder.response,
+      );
+      const todayHealth = todayRecorder.body.data.find(
+        (item) => item.id === ids.health,
+      );
+      assert.equal(todayHealth.allowedAction, "START_SERVICE");
+      assert.equal(todayHealth.workTiming, "actionable");
 
       state.healthRequests[0] = {
         ...state.healthRequests[0],

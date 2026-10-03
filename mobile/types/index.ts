@@ -108,7 +108,9 @@ export interface AppUser {
     isVerified?: boolean;
     verifiedAt?: string | null;
     lastOtpSentAt?: string | null;
+    otpExpiresAt?: string | null;
     failedAttempts?: number;
+    retryAfterSeconds?: number;
   };
   address?: Address;
   farmLocation?: FarmLocation | null;
@@ -230,6 +232,7 @@ export interface AIRequest extends ServiceRequest {
   heatSigns?: string[];
   imageUrl?: string | null;
   technicianNote?: string | null;
+  farmerPreparationNote?: string | null;
   cancellationStatus?:
     | "requested"
     | "approved"

@@ -92,8 +92,12 @@ import {
   TECHNICIAN_RECORDS_TARGET,
   runConfirmedHealthResponseSubmission,
 } from "../utils/healthResponseSubmission";
+import {
+  completeHealthScheduleTransition,
+  type HealthScheduleMode,
+} from "../utils/healthScheduleTransition";
 
-type ScheduleMode = "accept" | "schedule" | "reschedule";
+type ScheduleMode = HealthScheduleMode;
 
 interface HealthRequestDetailsProps {
   request: any;
@@ -101,6 +105,7 @@ interface HealthRequestDetailsProps {
   routeWorkflowId?: string;
   onRefresh: () => Promise<void>;
   onBack: () => void;
+  onSkipSuccess: () => void;
 }
 
 const EMPTY_ADVICE_DRAFT: AdviceResponseValues = {
@@ -214,6 +219,7 @@ export function HealthRequestDetails({
   routeWorkflowId,
   onRefresh,
   onBack,
+  onSkipSuccess,
 }: HealthRequestDetailsProps) {
   const api = useApi();
   const router = useRouter();
@@ -495,8 +501,15 @@ export function HealthRequestDetails({
           : "Health request accepted and scheduled.",
       );
       setScheduleVisible(false);
-      await invalidateHealthWorkflow();
-      await onRefresh();
+      await completeHealthScheduleTransition(scheduleMode, {
+        invalidate: invalidateHealthWorkflow,
+        refresh: onRefresh,
+        navigateToMyWork: () =>
+          router.replace({
+            pathname: "/(technician)/(tabs)/technician.requests",
+            params: { section: "myWork" },
+          }),
+      });
     } catch (error: any) {
       setScheduleError(
         getErrorMessage(error, "The Health visit could not be scheduled."),
@@ -759,7 +772,6 @@ export function HealthRequestDetails({
           "The Health visit could not be started.",
         );
         setActionNotice(message);
-        toast.error(message);
       } finally {
         setUpdating(false);
       }
@@ -805,7 +817,7 @@ export function HealthRequestDetails({
       toast.success("Request skipped", {
         description: "It remains available to other eligible technicians.",
       });
-      onBack();
+      onSkipSuccess();
     } catch (error: any) {
       setActionNotice(
         getErrorMessage(error, "The request could not be declined."),
@@ -1368,6 +1380,29 @@ export function HealthRequestDetails({
                 )}
               </TouchableOpacity>
             )}
+
+            {isAvailable ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Skip Request"
+                disabled={updating}
+                onPress={() => setSkipConfirmationVisible(true)}
+                style={{
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 8,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  opacity: updating ? 0.6 : 1,
+                }}
+              >
+                <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
+                  Skip Request
+                </Text>
+              </TouchableOpacity>
+            ) : null}
 
             {isScheduled ? (
               <TouchableOpacity

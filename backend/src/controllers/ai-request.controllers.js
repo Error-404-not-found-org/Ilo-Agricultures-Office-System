@@ -51,7 +51,7 @@ import {
   cancelPendingReproductiveTasksForInsemination,
   buildInseminationIdMatch,
 } from "../services/breeding-observation-followup.service.js";
-import { getEarlyStartTiming } from "../domain/service-timing.js";
+import { getAIVisitAvailability } from "../domain/ai-visit-availability.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
 import {
@@ -81,10 +81,29 @@ import {
   buildFarmerAIRequest,
   buildFarmerAIRequests,
 } from "../domain/ai-request-presentation.js";
+import { buildFarmerRequestStatusFilter } from "../domain/farmer-request-list-filter.js";
 import {
   getAIRequestPhotos,
   normalizeSubmittedAIRequestPhotos,
 } from "../domain/ai-request-attachments.js";
+
+const normalizeFarmerPreparationNote = (body) => {
+  if (!Object.hasOwn(body, "farmerPreparationNote")) return undefined;
+  if (typeof body.farmerPreparationNote !== "string") {
+    const error = new Error("Farmer Preparation Note must be text.");
+    error.status = 400;
+    error.code = "INVALID_FARMER_PREPARATION_NOTE";
+    throw error;
+  }
+  const note = body.farmerPreparationNote.trim();
+  if (note.length > 500) {
+    const error = new Error("Farmer Preparation Note cannot exceed 500 characters.");
+    error.status = 400;
+    error.code = "FARMER_PREPARATION_NOTE_TOO_LONG";
+    throw error;
+  }
+  return note;
+};
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -471,11 +490,15 @@ export const createLegacyReInseminationRequest = async (req, res) => {
 // GET /api/ai-request/my
 export const getMyRequests = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status } = req.query;
+    const { page = 1, limit = 10, status, statusGroup } = req.query;
     const farmerId = req.user._id;
 
     const query = { farmerId, deletedAt: null, farmerDismissedAt: null };
-    if (status && status !== "all") query.status = status;
+    const statusFilter = buildFarmerRequestStatusFilter("ai", {
+      status,
+      statusGroup,
+    });
+    if (statusFilter) query.status = statusFilter;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -502,7 +525,10 @@ export const getMyRequests = async (req, res) => {
     });
   } catch (error) {
     console.error("[getMyRequests ERROR]", error.message);
-    res.status(500).json({ message: "Failed to fetch your AI requests." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch your AI requests.",
+      code: error.code,
+    });
   }
 };
 
@@ -641,9 +667,9 @@ export const updateRequestStatus = async (req, res) => {
       semenDosesUsed,
       estrus,
       visitPeriod,
-      earlyStartConfirmed,
     } = req.body;
     const normalizedTechnicianNote = normalizeTechnicianNoteInput(req.body);
+    const farmerPreparationNote = normalizeFarmerPreparationNote(req.body);
 
     const VALID_STATUSES = Object.values(AI_STATUS);
     if (!VALID_STATUSES.includes(status)) {
@@ -661,8 +687,6 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(404).json({ message: "AI request record not found." });
     }
     const authoritativePreviousStatus = existing.status;
-
-    assertAIRequestStatusAccess(req.user, existing);
 
     assertAIRequestStatusAccess(req.user, existing);
 
@@ -706,21 +730,24 @@ export const updateRequestStatus = async (req, res) => {
       });
     }
 
-    const startTiming =
+    const startAvailability =
       status === "in-progress"
-        ? getEarlyStartTiming(
-            existing.scheduledDate,
-            new Date(),
-            existing.visitPeriod,
-          )
+        ? getAIVisitAvailability({ scheduledDate: existing.scheduledDate })
         : null;
 
-    if (startTiming?.isEarly && earlyStartConfirmed !== true) {
+    if (startAvailability?.workTiming === "upcoming") {
       return res.status(409).json({
-        message: `This visit starts in about ${startTiming.earlyStartMinutes} minutes. Confirm that you want to start the service early.`,
-        code: "EARLY_START_CONFIRMATION_REQUIRED",
-        earlyStartMinutes: startTiming.earlyStartMinutes,
+        message:
+          "This AI visit is scheduled for a future date. Reschedule the visit to today before starting the service.",
+        code: "AI_VISIT_NOT_DUE",
         scheduledDate: existing.scheduledDate,
+      });
+    }
+
+    if (status === "in-progress" && existing.status === "in-progress") {
+      return res.status(200).json({
+        message: "AI service is already in progress.",
+        request: existing,
       });
     }
 
@@ -765,9 +792,7 @@ export const updateRequestStatus = async (req, res) => {
     };
 
     const isRescheduled =
-      (existing.status === "approved" ||
-        existing.status === "in-progress" ||
-        existing.status === "scheduled") &&
+      (existing.status === "approved" || existing.status === "scheduled") &&
       status === "scheduled" &&
       hasVisitScheduleChanged(
         existing.scheduledDate,
@@ -800,11 +825,16 @@ export const updateRequestStatus = async (req, res) => {
 
     if (status === "scheduled") {
       updateData.scheduledDate = normalizedScheduledDate;
+      if (isRescheduled) {
+        updateData.scheduledAt = new Date();
+      }
+      if (farmerPreparationNote !== undefined) {
+        updateData.farmerPreparationNote = farmerPreparationNote;
+      }
     }
 
-    if (status === "in-progress" && startTiming) {
-      updateData.serviceStartedAt = startTiming.startedAt;
-      updateData.earlyStartMinutes = startTiming.earlyStartMinutes;
+    if (status === "in-progress") {
+      updateData.serviceStartedAt = new Date();
     }
 
     if (status === "done") {
@@ -988,6 +1018,8 @@ export const claimAndScheduleAIRequest = async (req, res) => {
 
     const scheduledDate = normalizeAIScheduleDate(req.body.scheduledDate);
     const visitPeriod = normalizeVisitPeriod(req.body.visitPeriod);
+    const farmerPreparationNote =
+      normalizeFarmerPreparationNote(req.body) ?? "";
     if (visitPeriod === undefined) {
       return res.status(400).json({
         message: "Choose morning or afternoon before scheduling.",
@@ -1034,6 +1066,7 @@ export const claimAndScheduleAIRequest = async (req, res) => {
           approvedBy: req.user._id,
           scheduledDate,
           visitPeriod,
+          farmerPreparationNote,
           status: AI_STATUS.SCHEDULED,
           claimedAt: changedAt,
           scheduledAt: changedAt,
@@ -2349,10 +2382,7 @@ export const buildTechnicianCandidateAIDetail = (request) => {
     farmerId: {
       _id: farmer._id,
       name: safeCandidateText(farmer.name),
-      phoneNumber: safeCandidateText(farmer.phoneNumber),
       imageUrl: safeCandidateText(farmer.imageUrl),
-      address: farmer.address || null,
-      farmLocation: farmer.farmLocation || null,
     },
   };
 };

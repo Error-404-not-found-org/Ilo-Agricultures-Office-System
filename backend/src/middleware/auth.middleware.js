@@ -33,6 +33,13 @@ export const protectedRoute = async (req, res, next) => {
     }
 
     if (req.userResolutionError) {
+      if (req.userResolutionError.code === "ACCOUNT_SUSPENDED") {
+        return res.status(403).json({
+          message: "Account has been suspended.",
+          code: "ACCOUNT_SUSPENDED",
+          retryable: false,
+        });
+      }
       // Allow bootstrap requests to bypass this error by not using protectedRoute
       return res.status(503).json({
         message: "Your account could not be loaded. Please try again.",

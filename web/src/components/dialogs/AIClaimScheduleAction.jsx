@@ -88,7 +88,7 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
     request.phone ||
     request.farmerPhone ||
     request.farmerDetails?.phone ||
-    "Not provided";
+    null;
   const animalTag =
     request.animalTag || request.earTag || request.animalId?.earTag || null;
   const animalName = request.animalName || request.animalId?.name || null;
@@ -202,7 +202,7 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
                 <MapPin className="h-3 w-3 shrink-0 text-primary" />
                 <span className="truncate">{location}</span>
               </p>
-              {phone && phone !== "Not provided" ? (
+              {phone ? (
                 <a
                   href={`tel:${phone}`}
                   className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-1.5 hover:underline"
@@ -212,7 +212,9 @@ const AIRequestSummary = ({ request, compact = false, onPreviewImage }) => {
                 </a>
               ) : (
                 <span className="text-[11px] text-base-content/50 mt-1 block">
-                  Phone not provided
+                  {request.allowedAction === "CLAIM_AND_SCHEDULE"
+                    ? "Contact details available after claim"
+                    : "Phone not provided"}
                 </span>
               )}
             </div>
@@ -334,6 +336,7 @@ export default function AIRequestModal({
   const [dateChoice, setDateChoice] = useState("");
   const [customDate, setCustomDate] = useState("");
   const [visitPeriod, setVisitPeriod] = useState("");
+  const [farmerPreparationNote, setFarmerPreparationNote] = useState("");
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [samePeriodConfirmed, setSamePeriodConfirmed] = useState(false);
@@ -401,6 +404,9 @@ export default function AIRequestModal({
         {
           scheduledDate: selectedDate,
           visitPeriod,
+          ...(farmerPreparationNote.trim()
+            ? { farmerPreparationNote: farmerPreparationNote.trim() }
+            : {}),
           ...(selectedPeriodAvailability.requiresConfirmation
             ? { samePeriodConfirmed: true }
             : {}),
@@ -698,6 +704,29 @@ export default function AIRequestModal({
                   {errors.visitPeriod}
                 </p>
               )}
+            </div>
+
+            <div className="border border-base-300 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-base-content" htmlFor={`ai-preparation-note-${fieldId}`}>
+                  Farmer Preparation Note
+                </label>
+                <span className="text-xs text-base-content/50">Optional</span>
+              </div>
+              <p className="text-xs text-base-content/65">
+                Tell the farmer what they should prepare before your scheduled visit.
+              </p>
+              <textarea
+                id={`ai-preparation-note-${fieldId}`}
+                className="textarea textarea-bordered w-full min-h-24"
+                maxLength={500}
+                value={farmerPreparationNote}
+                onChange={(event) => setFarmerPreparationNote(event.target.value)}
+                placeholder="Keep the cow secured and prepare any previous breeding records."
+              />
+              <p className="text-right text-xs text-base-content/50">
+                {farmerPreparationNote.length} / 500
+              </p>
             </div>
           </div>
         )}

@@ -18,7 +18,6 @@ import {
   getDashboardFeed,
   getDashboardRegistry,
   walkInLivestock,
-  toggleFarmerVerification,
   getTechnicianAnalytics,
   deletePregnancyCheck,
   deleteCalving,
@@ -112,7 +111,6 @@ router.post(
   recordPregnancyContinuation,
 );
 router.post("/record-calving", requireRole(["technician"]), recordCalving);
-router.patch("/farmers/:id/verify", toggleFarmerVerification);
 // Compatibility alias: legacy Technician clients share the canonical archive workflow.
 router.delete("/animals/:id", archiveAnimal);
 router.delete(

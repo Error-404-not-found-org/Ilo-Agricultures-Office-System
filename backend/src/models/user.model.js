@@ -113,6 +113,17 @@ const FarmLocationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const FarmerClaimReservationSchema = new mongoose.Schema(
+  {
+    token: { type: String },
+    phase: { type: String, enum: ["reserved", "committing", "uncertain"] },
+    sourceUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    startedAt: { type: Date },
+    expiresAt: { type: Date },
+  },
+  { _id: false },
+);
+
 const userSchema = new mongoose.Schema(
   {
     clerkId: {
@@ -146,7 +157,7 @@ const userSchema = new mongoose.Schema(
     },
     normalizedPhoneNumber: {
       type: String,
-      default: "",
+      default: undefined,
       index: true,
     },
     registeredByTechnician: {
@@ -166,6 +177,21 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    farmerClaimReservation: {
+      type: FarmerClaimReservationSchema,
+      select: false,
+    },
+    farmerAppInvitation: {
+      clerkInvitationId: { type: String, trim: true, select: false },
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "revoked", "expired"],
+      },
+      email: { type: String, trim: true, lowercase: true },
+      sentAt: { type: Date },
+      expiresAt: { type: Date },
+      lastCheckedAt: { type: Date },
+    },
     phoneVerification: {
       pendingPhoneNumber: {
         type: String,
@@ -184,6 +210,15 @@ const userSchema = new mongoose.Schema(
         default: null,
       },
       lastOtpSentAt: {
+        type: Date,
+        default: null,
+      },
+      otpHash: {
+        type: String,
+        select: false,
+        default: undefined,
+      },
+      otpExpiresAt: {
         type: Date,
         default: null,
       },
@@ -283,6 +318,15 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      transform(_document, returned) {
+        delete returned.farmerClaimReservation;
+        if (returned.farmerAppInvitation) {
+          delete returned.farmerAppInvitation.clerkInvitationId;
+        }
+        return returned;
+      },
+    },
   },
 );
 

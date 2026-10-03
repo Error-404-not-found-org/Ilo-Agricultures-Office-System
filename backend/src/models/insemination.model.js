@@ -130,6 +130,12 @@ const InseminationSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
     },
+    farmerPreparationNote: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "",
+    },
     serviceStartedAt: {
       type: Date,
     },

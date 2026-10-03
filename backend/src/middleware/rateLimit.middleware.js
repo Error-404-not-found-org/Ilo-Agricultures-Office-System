@@ -39,14 +39,31 @@ export const voiceflowLimiter = rateLimit({
   }
 });
 
-// OTP limiter: protects paid SMS credits and reduces brute-force attempts
-export const otpLimiter = rateLimit({
+const authenticatedUserKey = (req) => String(req.user._id);
+
+// Sending consumes paid SMS credits. Verification is intentionally separate so
+// entering a code cannot exhaust the send bucket (or vice versa).
+export const otpSendLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 5,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  keyGenerator: authenticatedUserKey,
   message: {
-    message: "Too many OTP attempts. Please wait before trying again.",
+    message: "Too many verification codes requested. Please wait before trying again.",
+    code: "RATE_LIMITED",
+    retryable: true,
+  },
+});
+
+export const otpVerifyLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: authenticatedUserKey,
+  message: {
+    message: "Too many verification attempts. Please wait before trying again.",
     code: "RATE_LIMITED",
     retryable: true,
   },

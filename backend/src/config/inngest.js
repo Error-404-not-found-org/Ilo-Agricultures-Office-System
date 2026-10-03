@@ -22,6 +22,8 @@ import {
 import { HEAT_RETURN_MONITORING_POLICY, isTerminalAIAttempt, getHeatReturnMonitoringDates } from "../domain/reproduction-policy.js";
 import { ENV } from "./env.js";
 import { resolveReproductiveNotificationTechnicians } from "../services/notification-recipient-authority.service.js";
+import { disconnectClerkIdentityFromDomainUser } from "../services/clerk-identity-disconnection.service.js";
+import { resolveOrSyncUser, resolveStaffUser } from "../services/auth-user.service.js";
 
 export const inngest = new Inngest({
   id: "ilo-agricultures-office-system-backend",
@@ -46,6 +48,7 @@ const handleUserSync = async ({ event }) => {
     image_url,
     email_addresses,
     external_accounts,
+    public_metadata,
   } = event.data;
 
   const emailObj = email_addresses?.[0];
@@ -57,31 +60,25 @@ const handleUserSync = async ({ event }) => {
     return;
   }
 
-  const isVerified = emailObj?.verification?.status === "verified";
   const name = `${first_name || ""} ${last_name || ""}`.trim();
+  const requestedRole = public_metadata?.role;
+  const isConfiguredAdmin = Boolean(
+    process.env.ADMIN_EMAIL &&
+      email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase(),
+  );
+  const isStaffIdentity =
+    isConfiguredAdmin || ["admin", "technician"].includes(requestedRole);
+  const user = isStaffIdentity
+    ? await resolveStaffUser(clerkId)
+    : await resolveOrSyncUser(clerkId);
 
-  let user = await User.findOne({ email });
-
-  if (user) {
-    user.clerkId = clerkId;
-    user.isVerified = isVerified;
-    user.imageUrl = image_url || user.imageUrl;
-    user.name = name || user.name;
+  if ((name && user.name !== name) || (image_url && user.imageUrl !== image_url)) {
+    if (name) user.name = name;
+    if (image_url) user.imageUrl = image_url;
     await user.save();
-  } else {
-    const role = (email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ? "admin" : "farmer";
-    user = await User.create({
-      clerkId,
-      email,
-      name: name || "New User",
-      imageUrl: image_url || "",
-      role,
-      isVerified,
-    });
-    console.log(`Created new ${role} from Clerk signup: ${email}`);
   }
 
-  const currentRole = event.data.public_metadata?.role;
+  const currentRole = public_metadata?.role;
   if (currentRole !== user.role) {
     await clerkClient.users.updateUser(clerkId, {
       publicMetadata: { role: user.role }
@@ -108,7 +105,7 @@ const deleteUserFromDB = inngest.createFunction(
   async ({ event }) => {
     await connectDB();
     const { id: clerkId } = event.data;
-    await User.deleteOne({ clerkId });
+    await disconnectClerkIdentityFromDomainUser({ clerkId });
   },
 );
 

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, FlatList, Image, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AlertTriangle, ArrowLeft, Save, Info, X, Camera, Image as ImageIcon, Calendar } from 'lucide-react-native';
+import { AlertTriangle, Save, Info, X, Camera, Image as ImageIcon, Calendar, CheckCircle2, Sparkles } from 'lucide-react-native';
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
+import { getEarTagValidationError } from '@/components/earTagSuggestion';
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import {
     OfflineMutationLifecycleState,
@@ -149,7 +149,7 @@ export default function RecordCalfDropScreen() {
     );
 
     const [farmerName, setFarmerName] = useState('');
-    const [farmerAnimalCount, setFarmerAnimalCount] = useState(0);
+    const [farmerEarTags, setFarmerEarTags] = useState<string[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(!!initialMotherId);
 
     const selectActivePregnancy = (history: any, requestedPregnancyId?: string) => {
@@ -190,7 +190,7 @@ export default function RecordCalfDropScreen() {
                         const list = Array.isArray(farmerAnimalsRes.data)
                             ? farmerAnimalsRes.data
                             : (farmerAnimalsRes.data?.data || []);
-                        setFarmerAnimalCount(list.length);
+                        setFarmerEarTags(list.map((animal: any) => animal.earTag).filter(Boolean));
                         const historyRes = await api.get(`/technician/animal-history/${initialMotherId}`);
                         const activePregnancy = selectActivePregnancy(historyRes.data, initialPregnancyId);
                         if (!activePregnancy) {
@@ -240,7 +240,7 @@ export default function RecordCalfDropScreen() {
             // Load pregnant animals for the farmer
             const res = await api.get(`/animals/farmer/${farmer._id}`);
             const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-            setFarmerAnimalCount(list.length);
+            setFarmerEarTags(list.map((animal: any) => animal.earTag).filter(Boolean));
 
             // Filter to only those whose status is 'Pregnant'
             const pregnantCows = list.filter((a: any) => a.reproductiveStatus === 'Pregnant');
@@ -477,6 +477,14 @@ export default function RecordCalfDropScreen() {
             return false;
         }
 
+        const overlongIndex = normalizedCalves.findIndex(
+            (calf) => calf.isLiving !== false && Boolean(getEarTagValidationError(calf.earTag)),
+        );
+        if (overlongIndex >= 0) {
+            toast.error(`Calf #${overlongIndex + 1}: ${getEarTagValidationError(normalizedCalves[overlongIndex].earTag)}`);
+            return false;
+        }
+
         const livingCalves = normalizedCalves.filter((calf) => calf.isLiving !== false);
         const duplicateEarTag = livingCalves.find((calf, index) =>
             livingCalves.findIndex(
@@ -576,7 +584,7 @@ export default function RecordCalfDropScreen() {
         : 'Not available';
 
     if (loadingDetails) {
-        return <RecordCalfDropSkeleton onBack={() => router.back()} />;
+        return <RecordCalfDropSkeleton onBack={() => router.back()} motherTag={motherTag} />;
     }
 
     return (
@@ -598,12 +606,20 @@ export default function RecordCalfDropScreen() {
                 showsVerticalScrollIndicator={false}
             >
 
+                {/* Informative Top Banner */}
+                <TechnicianFormInfo icon={<Sparkles size={18} color={colors.primary} />}>
+                    Record the birth or outcome of this pregnancy and register any newborn calves.
+                </TechnicianFormInfo>
+
                 {/* Standalone Selection Flow */}
                 {!initialMotherId && (
-                    <>
+                    <TechnicianFormSection
+                        title="Owner and Pregnant Cow"
+                        description="Select the owner and the confirmed pregnant cow."
+                    >
                         {/* Farmer Selection */}
-                        <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Owner / Client</Text>
-                        <View className="mb-6">
+                        <Text className="font-outfit-bold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider mb-2 ml-1">Owner / Client</Text>
+                        <View className="mb-4">
                             <TechnicianFarmerSelector
                                 farmer={selectedFarmer}
                                 secondaryText={selectedFarmer
@@ -618,8 +634,8 @@ export default function RecordCalfDropScreen() {
                         {/* Mother selection */}
                         {selectedFarmer && (
                             <>
-                                <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Pregnant Mother (Cattle)</Text>
-                                <View className="mb-6">
+                                <Text className="font-outfit-bold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider mb-2 ml-1">Pregnant Mother (Cattle)</Text>
+                                <View className="mb-2">
                                     <TechnicianAnimalSelector
                                         animal={selectedAnimal}
                                         placeholder="Select pregnant cow"
@@ -628,29 +644,109 @@ export default function RecordCalfDropScreen() {
                                 </View>
                             </>
                         )}
-                    </>
+                    </TechnicianFormSection>
                 )}
 
-                {/* Event Basics Card */}
-                {motherId && pregnancyId ? (
-                    <TechnicianFormSection
-                        title="Calving Details"
-                        description="Record the delivery, outcome, and offspring count for this pregnancy."
-                    >
+                {(!motherId || !pregnancyId) && !initialMotherId && (
+                    <TechnicianFormInfo icon={<Info size={18} color={colors.primary} />}>
+                        Select a farmer and a pregnant cow to unlock calving entry details.
+                    </TechnicianFormInfo>
+                )}
 
-                        <View className="bg-slate-50 dark:bg-slate-800 rounded-[14px] p-4 mb-5 border border-slate-200 dark:border-slate-700">
-                            <Text className="text-slate-800 dark:text-white font-outfit-black text-sm">
-                                Mother #{motherTag || selectedAnimal?.earTag || 'N/A'}
-                            </Text>
-                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">
-                                Breed: {selectedAnimal?.breed || 'Unknown'}
-                            </Text>
-                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-3">AI date: {formatDate(aiDate)}</Text>
-                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">Diagnosis: {formatDate(diagnosisDate)}</Text>
-                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">Expected calving: {formatDate(expectedCalvingDate)}</Text>
-                            <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-bold text-xs mt-2">{eventTiming}</Text>
+                {/* Event Basics & Calving Details */}
+                {motherId && pregnancyId && (
+                    <>
+                        {/* Confirmed Pregnancy Reference Card */}
+                        <View className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl p-4 mb-4">
+                            {/* Top Row: Animal Tag, Breed & Owner */}
+                            <View className="flex-row items-start justify-between pb-3 border-b border-blue-100/70 dark:border-blue-900/30">
+                                <View className="flex-1 mr-2">
+                                    <Text className="text-slate-900 dark:text-white font-outfit-bold text-base">
+                                        Mother #{motherTag || selectedAnimal?.earTag || 'N/A'}
+                                    </Text>
+                                    <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-0.5">
+                                        Breed: {selectedAnimal?.breed || 'Unknown'}
+                                    </Text>
+                                </View>
+                                {(farmerName || selectedFarmer?.name) && (
+                                    <View className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-blue-200/60 dark:border-blue-800/40">
+                                        <Text className="text-slate-600 dark:text-slate-300 font-outfit-medium text-xs">
+                                            {farmerName || selectedFarmer?.name}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+
+                            {/* Timing & Dates Grid */}
+                            <View className="mt-3 gap-y-1.5">
+                                <View className="flex-row items-center justify-between">
+                                    <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs">
+                                        Last Insemination
+                                    </Text>
+                                    <Text className="text-slate-800 dark:text-slate-200 font-outfit-semibold text-xs">
+                                        {formatDate(aiDate)}
+                                    </Text>
+                                </View>
+                                <View className="flex-row items-center justify-between">
+                                    <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs">
+                                        Diagnosis
+                                    </Text>
+                                    <Text className="text-slate-800 dark:text-slate-200 font-outfit-semibold text-xs">
+                                        {formatDate(diagnosisDate)}
+                                    </Text>
+                                </View>
+                                <View className="flex-row items-center justify-between">
+                                    <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs">
+                                        Expected calving:
+                                    </Text>
+                                    <Text className="text-slate-800 dark:text-slate-200 font-outfit-semibold text-xs">
+                                        {expectedCalvingDateFormatted || formatDate(expectedCalvingDate)}
+                                    </Text>
+                                </View>
+                                <View className="flex-row items-center justify-between">
+                                    <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs">
+                                        Gestation Progress
+                                    </Text>
+                                    <Text className="text-slate-800 dark:text-slate-200 font-outfit-bold text-xs">
+                                        Day {selectedGestationDays !== null ? selectedGestationDays : 'N/A'}{averageGestationDays ? ` of ~${averageGestationDays}` : ''}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Readiness Status Badges */}
+                            {isDeliveryEligible ? (
+                                <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-blue-100/70 dark:border-blue-900/30">
+                                    <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/40">
+                                        <CheckCircle2 size={13} color={isDark ? '#34d399' : '#059669'} />
+                                        <Text className="text-emerald-800 dark:text-emerald-300 font-outfit-bold text-xs">
+                                            Delivery recording is available
+                                        </Text>
+                                    </View>
+                                    <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-semibold text-xs">
+                                        {eventTiming}
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View className="mt-3 pt-3 border-t border-blue-100/70 dark:border-blue-900/30">
+                                    <View className="flex-row items-start gap-2 px-2.5 py-1.5 rounded-lg bg-amber-100/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40">
+                                        <AlertTriangle size={14} color={isDark ? '#fbbf24' : '#d97706'} style={{ marginTop: 1 }} />
+                                        <View className="flex-1">
+                                            <Text className="text-amber-800 dark:text-amber-300 font-outfit-bold text-xs">
+                                                Delivery recording available from Day {minimumGestationDays}
+                                                {daysRemaining !== null ? ` · ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} remaining` : ''}
+                                            </Text>
+                                            {earliestLiveDeliveryDateFormatted && (
+                                                <Text className="text-amber-700 dark:text-amber-400 font-outfit-regular text-xs mt-0.5">
+                                                    Available from: {earliestLiveDeliveryDateFormatted}
+                                                </Text>
+                                            )}
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
                         </View>
 
+                        {/* Readiness Warning (Gating Alert) */}
                         {isLiveOutcomeTooEarly ? (
                             <View
                                 accessibilityRole="alert"
@@ -690,8 +786,8 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : null}
 
-                        {/* Pregnancy Timing & Eligibility Notice */}
-                        {selectedPregnancy && selectedGestationDays !== null && minimumGestationDays !== null && averageGestationDays !== null ? (
+                        {/* Retained policy diagnostics are intentionally not rendered in the standard field form. */}
+                        {false && selectedPregnancy && selectedGestationDays !== null && minimumGestationDays !== null && averageGestationDays !== null ? (
                             <View
                                 style={{
                                     padding: 14,
@@ -827,33 +923,45 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : null}
 
-                        <View className="gap-y-4">
-                            <View>
-                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Calving Date</Text>
-                                <Text className="text-slate-400 dark:text-slate-500 text-[10px] font-outfit-medium mb-2 ml-1">Date the calf was born or the calving occurred.</Text>
+                        {/* Calving Details Section */}
+                        <TechnicianFormSection
+                            title="Calving Details"
+                            description="Record the delivery date, outcome, and method."
+                        >
+                            {/* Calving Date */}
+                            <View className="mb-4">
+                                <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold mb-1.5 ml-1 uppercase tracking-wider">
+                                    Calving Date
+                                </Text>
                                 <TouchableOpacity
                                     onPress={() => {
                                         setTempDate(date ? new Date(`${date}T00:00:00`) : new Date());
                                         setShowDatePicker(true);
                                     }}
-                                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 flex-row items-center"
+                                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center justify-between"
                                 >
-                                    <Calendar size={18} color={colors.primary} />
-                                    <Text className="ml-3 flex-1 text-slate-800 dark:text-white font-outfit-medium text-[13px]">
-                                        {date
-                                            ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-                                                month: "short",
-                                                day: "numeric",
-                                                year: "numeric",
-                                            })
-                                            : "Select date"}
-                                    </Text>
+                                    <View className="flex-row items-center gap-3">
+                                        <Calendar size={18} color={colors.primary} />
+                                        <Text className="text-slate-800 dark:text-white font-outfit-semibold text-sm">
+                                            {date
+                                                ? new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+                                                    month: "short",
+                                                    day: "numeric",
+                                                    year: "numeric",
+                                                })
+                                                : "Select date"}
+                                        </Text>
+                                    </View>
+                                    <Text className="text-slate-400 font-outfit-medium text-xs">Change</Text>
                                 </TouchableOpacity>
                             </View>
 
-                            <View>
-                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Outcome</Text>
-                                <View className="flex-row flex-wrap gap-2 mb-2">
+                            {/* Outcome Selector */}
+                            <View className="mb-4">
+                                <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold mb-1.5 ml-1 uppercase tracking-wider">
+                                    Delivery Outcome
+                                </Text>
+                                <View className="flex-row flex-wrap gap-2">
                                     {[
                                         ['live_birth', 'Live Birth'],
                                         ['mixed', 'Mixed'],
@@ -863,6 +971,11 @@ export default function RecordCalfDropScreen() {
                                         const isDelivery = value !== 'abortion';
                                         const isOptionDisabled = isDelivery && !isDeliveryEligible;
                                         const isSelected = outcome === value;
+
+                                        let activeStyle = 'bg-emerald-600 border-emerald-600';
+                                        if (value === 'mixed') activeStyle = 'bg-amber-600 border-amber-600';
+                                        if (value === 'stillbirth') activeStyle = 'bg-slate-700 border-slate-700';
+                                        if (value === 'abortion') activeStyle = 'bg-rose-600 border-rose-600';
 
                                         return (
                                             <TouchableOpacity
@@ -874,19 +987,17 @@ export default function RecordCalfDropScreen() {
                                                 }}
                                                 className={`px-4 py-2.5 rounded-xl border ${
                                                     isSelected
-                                                        ? isOptionDisabled
-                                                            ? 'bg-amber-600/70 border-amber-600'
-                                                            : 'bg-emerald-600 border-emerald-600'
+                                                        ? activeStyle
                                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
                                                 }`}
                                             >
                                                 <Text
-                                                    className={`font-outfit-bold text-[11px] ${
+                                                    className={`font-outfit-bold text-xs ${
                                                         isSelected
                                                             ? 'text-white'
                                                             : isOptionDisabled
                                                                 ? 'text-slate-400 dark:text-slate-600'
-                                                                : 'text-slate-600 dark:text-slate-300'
+                                                                : 'text-slate-700 dark:text-slate-200'
                                                     }`}
                                                 >
                                                     {label}
@@ -900,7 +1011,8 @@ export default function RecordCalfDropScreen() {
                                 {!isDeliveryEligible && (
                                     <View
                                         style={{
-                                            marginBottom: 12,
+                                            marginTop: 10,
+                                            marginBottom: 8,
                                             padding: 10,
                                             borderRadius: 10,
                                             backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc',
@@ -926,7 +1038,8 @@ export default function RecordCalfDropScreen() {
                                 {outcome !== 'abortion' && !isDeliveryEligible ? (
                                     <View
                                         style={{
-                                            marginBottom: 12,
+                                            marginTop: 6,
+                                            marginBottom: 8,
                                             padding: 10,
                                             borderRadius: 10,
                                             backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
@@ -946,270 +1059,363 @@ export default function RecordCalfDropScreen() {
                                         </Text>
                                     </View>
                                 ) : null}
-
-                                {!isAbortion && <>
-                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Delivery Method</Text>
-                                <View className="flex-row flex-wrap gap-2">
-                                    {['Natural', 'Normal', 'Difficult', 'Cesarean'].map(opt => (
-                                        <TouchableOpacity
-                                            key={opt}
-                                            onPress={() => setCalvingEase(opt)}
-                                            className={`px-4 py-2.5 rounded-xl border ${calvingEase === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}
-                                        >
-                                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[11px] ${calvingEase === opt ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{opt}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                                </>}
                             </View>
 
-                            {!isAbortion && <View>
-                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Number of calves born</Text>
-                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center justify-between">
-                                    <Text className="text-slate-700 dark:text-slate-300 font-outfit-bold">{calves.length} {calves.length === 1 ? 'Calf' : 'Calves'}</Text>
-                                    <Text className="text-slate-400 font-outfit-medium text-[10px] uppercase">Determined by entries below</Text>
+                            {/* Delivery Method */}
+                            {!isAbortion && (
+                                <View className="mb-4">
+                                    <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold mb-1.5 ml-1 uppercase tracking-wider">
+                                        Delivery Method
+                                    </Text>
+                                    <View className="flex-row flex-wrap gap-2">
+                                        {['Natural', 'Normal', 'Difficult', 'Cesarean'].map(opt => (
+                                            <TouchableOpacity
+                                                key={opt}
+                                                onPress={() => setCalvingEase(opt)}
+                                                className={`px-3.5 py-2 rounded-xl border ${
+                                                    calvingEase === opt
+                                                        ? 'bg-emerald-600 border-emerald-600'
+                                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+                                                }`}
+                                            >
+                                                <Text className={`font-outfit-bold text-xs ${
+                                                    calvingEase === opt ? 'text-white' : 'text-slate-700 dark:text-slate-200'
+                                                }`}>
+                                                    {opt}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
                                 </View>
-                            </View>}
-                        </View>
-                    </TechnicianFormSection>
-                ) : (
-                    !initialMotherId && (
-                        <TechnicianFormInfo icon={<Info size={18} color={colors.primary} />}>
-                            Select a farmer and a pregnant cow to unlock calving entry details.
-                        </TechnicianFormInfo>
-                    )
-                )}
+                            )}
 
-                {/* Offspring Details */}
-                {motherId && pregnancyId && (
-                    <>
-                        <View className="flex-row justify-between items-end mb-4 px-1">
-                            <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">
+                            {/* Calves Count Summary */}
+                            {!isAbortion && (
+                                <View>
+                                    <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold mb-1.5 ml-1 uppercase tracking-wider">
+                                        Number of calves born
+                                    </Text>
+                                    <View className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center justify-between">
+                                        <Text className="text-slate-800 dark:text-white font-outfit-bold text-sm">
+                                            {calves.length} {calves.length === 1 ? 'Calf' : 'Calves'}
+                                        </Text>
+                                        <Text className="text-slate-400 font-outfit-medium text-xs">
+                                            Determined by entries below
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+                        </TechnicianFormSection>
+                        {/* Offspring Details Section */}
+                        <View className="flex-row justify-between items-center mb-2 px-1 mt-2">
+                            <Text className="font-outfit-bold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider">
                                 {isAbortion ? 'Pregnancy Loss Details' : isLiveBirth ? 'Offspring Registry' : 'Stillborn Calf Details'}
                             </Text>
-                            <View className="flex-row items-center gap-1.5">
+                            <View className="flex-row items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800">
                                 <View className={`w-1.5 h-1.5 rounded-full ${isLiveBirth ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                <Text className={`${isLiveBirth ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'} font-outfit-bold text-[9px] uppercase`}>
+                                <Text className={`${isLiveBirth ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'} font-outfit-bold text-xs`}>
                                     {isLiveBirth ? 'Auto-Registering' : 'No livestock profile'}
                                 </Text>
                             </View>
                         </View>
 
                         {isAbortion ? (
-                            <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/50 p-5 rounded-3xl mb-8">
-                                <Text className="text-amber-900 dark:text-amber-200 font-outfit-bold text-sm">
-                                    No living calf record will be created. Add clinical observations in Technical Notes.
+                            <View className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 p-4 rounded-2xl mb-4">
+                                <View className="flex-row items-center gap-2 mb-1">
+                                    <AlertTriangle size={16} color={isDark ? '#fbbf24' : '#d97706'} />
+                                    <Text className="text-amber-900 dark:text-amber-200 font-outfit-bold text-sm">
+                                        Pregnancy Loss / Abortion
+                                    </Text>
+                                </View>
+                                <Text className="text-amber-800 dark:text-amber-300 font-outfit-regular text-xs leading-5">
+                                    No living calf record will be created. Add clinical observations or notes regarding the loss in the Technical Notes section below.
                                 </Text>
                             </View>
-                        ) : <View className="gap-y-4 mb-8">
-                            {calves.map((calf, idx) => (
-                                <View key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[32px] p-6 relative shadow-sm">
-                                    <View className="absolute -top-3 -left-2 w-8 h-8 rounded-full bg-emerald-500 items-center justify-center shadow-md z-10">
-                                        <Text className="text-white text-[10px] font-outfit-black">{idx + 1}</Text>
-                                    </View>
-                                    <View className="flex-row items-center justify-between mb-4 mt-2">
-                                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-sm">
-                                            {calf.isLiving !== false ? 'Living Calf Details' : 'Stillborn Calf Details'}
-                                        </Text>
-                                        {calves.length > 1 && (
-                                            <TouchableOpacity onPress={() => removeCalf(idx)} className="w-8 h-8 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
-                                                <X size={16} color={colors.error || '#e11d48'} />
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
-
-                                    {outcome === 'mixed' && (
-                                        <View className="flex-row gap-2 mb-4">
-                                            {[[true, 'Living'], [false, 'Stillborn']].map(([value, label]) => (
-                                                <TouchableOpacity key={String(value)} onPress={() => updateCalf(idx, 'isLiving', value as any)} className={`flex-1 py-2 rounded-xl items-center border ${calf.isLiving !== false === value ? 'bg-emerald-600 border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
-                                                    <Text className={calf.isLiving !== false === value ? 'text-white font-outfit-bold' : 'text-slate-500 font-outfit-bold'}>{label as string}</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-                                    )}
-
-                                    <View className="gap-5">
-                                        <View>
-                                            <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Gender / Sex</Text>
-                                            <View className="flex-row gap-2">
-                                                <TouchableOpacity
-                                                    onPress={() => updateCalf(idx, 'sex', 'F')}
-                                                    className={`flex-1 py-3 rounded-xl items-center border ${calf.sex === 'F' ? 'bg-rose-50 dark:bg-rose-900/10 border-rose-500' : 'bg-slate-50 dark:bg-slate-800 border-transparent'}`}
-                                                >
-                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'F' ? 'text-rose-500' : 'text-slate-400 dark:text-slate-500'}`}>Female</Text>
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                    onPress={() => updateCalf(idx, 'sex', 'M')}
-                                                    className={`flex-1 py-3 rounded-xl items-center border ${calf.sex === 'M' ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-500' : 'bg-slate-50 dark:bg-slate-800 border-transparent'}`}
-                                                >
-                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'M' ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>Male</Text>
-                                                </TouchableOpacity>
+                        ) : (
+                            <View className="gap-y-4 mb-4">
+                                {calves.map((calf, idx) => (
+                                    <View
+                                        key={idx}
+                                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm"
+                                    >
+                                        {/* Card Header Row */}
+                                        <View className="flex-row items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+                                            <View className="flex-row items-center gap-2">
+                                                <View className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50">
+                                                    <Text className="text-emerald-800 dark:text-emerald-300 font-outfit-bold text-xs">
+                                                        Calf #{idx + 1}
+                                                    </Text>
+                                                </View>
+                                                <Text className="text-slate-800 dark:text-white font-outfit-bold text-sm">
+                                                    {calf.isLiving !== false ? 'Living Calf' : 'Stillborn'}
+                                                </Text>
                                             </View>
+                                            {calves.length > 1 && (
+                                                <TouchableOpacity
+                                                    onPress={() => removeCalf(idx)}
+                                                    className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40"
+                                                >
+                                                    <X size={15} color={colors.error || '#e11d48'} />
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
 
-                                        <View>
-                                            <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Calf Color</Text>
-                                            <View className="flex-row flex-wrap gap-2 mb-2">
-                                                {CALF_COLOR_OPTIONS.map((color) => (
+                                        {/* Mixed outcome: Living vs Stillborn toggle */}
+                                        {outcome === 'mixed' && (
+                                            <View className="mb-4">
+                                                <Text className="text-slate-500 dark:text-slate-400 font-outfit-bold text-xs uppercase tracking-wider mb-1.5 ml-1">
+                                                    Status / Vitality
+                                                </Text>
+                                                <View className="flex-row gap-2">
+                                                    {([[true, 'Living'], [false, 'Stillborn']] as const).map(([val, label]) => {
+                                                        const active = calf.isLiving !== false === val;
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={String(val)}
+                                                                onPress={() => updateCalf(idx, 'isLiving', val)}
+                                                                className={`flex-1 py-2.5 rounded-xl items-center border ${
+                                                                    active
+                                                                        ? val
+                                                                            ? 'bg-emerald-600 border-emerald-600'
+                                                                            : 'bg-slate-700 border-slate-700'
+                                                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                                                }`}
+                                                            >
+                                                                <Text className={`font-outfit-bold text-xs ${active ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>
+                                                                    {label}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        );
+                                                    })}
+                                                </View>
+                                            </View>
+                                        )}
+
+                                        {/* Calf Details Form Controls */}
+                                        <View className="gap-4">
+                                            {/* Gender / Sex */}
+                                            <View>
+                                                <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold uppercase tracking-wider mb-1.5 ml-1">
+                                                    Gender / Sex
+                                                </Text>
+                                                <View className="flex-row gap-2">
                                                     <TouchableOpacity
-                                                        key={color}
-                                                        onPress={() => {
-                                                            updateCalf(idx, 'color', color);
-                                                            updateCalf(idx, 'isCustomColor', false);
-                                                        }}
-                                                        className={`px-3 py-2 rounded-xl border ${
-                                                            calf.color === color && !calf.isCustomColor
-                                                                ? 'bg-emerald-600 border-transparent'
+                                                        onPress={() => updateCalf(idx, 'sex', 'F')}
+                                                        className={`flex-1 py-2.5 rounded-xl items-center border ${
+                                                            calf.sex === 'F'
+                                                                ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-400 dark:border-rose-800'
                                                                 : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                                                         }`}
                                                     >
-                                                        <Text className={`font-outfit-black text-[10px] ${
-                                                            calf.color === color && !calf.isCustomColor
-                                                                ? 'text-white'
-                                                                : 'text-slate-500 dark:text-slate-400'
+                                                        <Text className={`text-xs font-outfit-bold ${
+                                                            calf.sex === 'F' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'
                                                         }`}>
-                                                            {color}
+                                                            Female
                                                         </Text>
                                                     </TouchableOpacity>
-                                                ))}
-                                                <TouchableOpacity
-                                                    onPress={() => {
-                                                        updateCalf(idx, 'isCustomColor', true);
-                                                        if (CALF_COLOR_OPTIONS.includes(calf.color)) {
-                                                            updateCalf(idx, 'color', '');
-                                                        }
-                                                    }}
-                                                    className={`px-3 py-2 rounded-xl border ${
-                                                        calf.isCustomColor
-                                                            ? 'bg-emerald-600 border-transparent'
-                                                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                                                    }`}
-                                                >
-                                                    <Text className={`font-outfit-black text-[10px] ${
-                                                        calf.isCustomColor ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-                                                    }`}>
-                                                        Other
+                                                    <TouchableOpacity
+                                                        onPress={() => updateCalf(idx, 'sex', 'M')}
+                                                        className={`flex-1 py-2.5 rounded-xl items-center border ${
+                                                            calf.sex === 'M'
+                                                                ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-400 dark:border-blue-800'
+                                                                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                                        }`}
+                                                    >
+                                                        <Text className={`text-xs font-outfit-bold ${
+                                                            calf.sex === 'M' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+                                                        }`}>
+                                                            Male
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+
+                                            {/* Ear Tag & Brand Mark */}
+                                            <View className="flex-row gap-3">
+                                                <View className="flex-1">
+                                                    <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold uppercase tracking-wider mb-1.5 ml-1">
+                                                        Ear Tag / ID No.
                                                     </Text>
-                                                </TouchableOpacity>
-                                            </View>
-                                            {calf.isCustomColor && (
-                                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center">
-                                                    <TextInput
-                                                        className="text-slate-800 dark:text-white font-outfit-medium text-[13px] flex-1"
-                                                        value={calf.color}
-                                                        onChangeText={(v) => updateCalf(idx, 'color', v)}
-                                                        placeholder="Describe color..."
-                                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                    />
+                                                    <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5">
+                                                        <TextInput
+                                                            className="text-slate-800 dark:text-white font-outfit-bold text-sm uppercase"
+                                                            placeholder="CALF-XXXX"
+                                                            placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                                            value={calf.earTag}
+                                                            onChangeText={(v) => updateCalf(idx, 'earTag', v)}
+                                                        />
+                                                    </View>
+                                                    {calf.isLiving !== false && (
+                                                        <View className="mt-1.5">
+                                                            <EarTagGenerator
+                                                                farmerName={farmerName}
+                                                                existingEarTags={[
+                                                                    ...farmerEarTags,
+                                                                    ...calves.slice(0, idx).map((item) => item.earTag),
+                                                                ]}
+                                                                onGenerate={(tag) => updateCalf(idx, 'earTag', tag)}
+                                                                isDark={isDark}
+                                                            />
+                                                        </View>
+                                                    )}
                                                 </View>
-                                            )}
-                                        </View>
+                                                <View className="flex-1">
+                                                    <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold uppercase tracking-wider mb-1.5 ml-1">
+                                                        Brand Mark
+                                                    </Text>
+                                                    <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5">
+                                                        <TextInput
+                                                            className="text-slate-800 dark:text-white font-outfit-medium text-sm"
+                                                            placeholder="Optional"
+                                                            placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                                            value={calf.brand}
+                                                            onChangeText={(v) => updateCalf(idx, 'brand', v)}
+                                                        />
+                                                    </View>
+                                                </View>
+                                            </View>
 
-                                        <View className="flex-row gap-4">
-                                            <View className="flex-1">
-                                                <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Ear Tag / ID No.</Text>
-                                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center">
-                                                    <TextInput
-                                                        className="text-slate-800 dark:text-white font-outfit-black text-[13px] uppercase flex-1"
-                                                        placeholder="CALF-XXXX"
-                                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                        value={calf.earTag}
-                                                        onChangeText={(v) => updateCalf(idx, 'earTag', v)}
-                                                    />
-                                                </View>
-                                                {calf.isLiving !== false && <View className="mt-2 ml-1">
-                                                    <EarTagGenerator
-                                                        farmerName={farmerName}
-                                                        animalCount={farmerAnimalCount + idx}
-                                                        onGenerate={(tag) => updateCalf(idx, 'earTag', tag)}
-                                                        isDark={isDark}
-                                                    />
-                                                </View>}
-                                            </View>
-                                            <View className="flex-1">
-                                                <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-2 ml-1 text-slate-500 dark:text-slate-400">Brand Mark</Text>
-                                                <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex-row items-center">
-                                                    <TextInput
-                                                        className="text-slate-800 dark:text-white font-outfit-bold text-[13px] flex-1"
-                                                        placeholder="Optional"
-                                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                        value={calf.brand}
-                                                        onChangeText={(v) => updateCalf(idx, 'brand', v)}
-                                                    />
-                                                </View>
-                                            </View>
-                                        </View>
-
-                                        {/* Calf Image Picker */}
-                                        {calf.isLiving !== false && <View className="mt-2">
-                                            <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Calf Image / Photo (Optional)</Text>
-                                            {calf.imageUri ? (
-                                                <View
-                                                    style={{
-                                                        borderRadius: 12,
-                                                        overflow: "hidden",
-                                                        borderWidth: 1,
-                                                        borderColor: isDark ? "#334155" : "#f1f5f9",
-                                                        position: "relative",
-                                                    }}
-                                                >
-                                                    <Image
-                                                        source={{ uri: calf.imageUri }}
-                                                        style={{ width: "100%", height: 128 }}
-                                                        resizeMode="cover"
-                                                    />
+                                            {/* Calf Color */}
+                                            <View>
+                                                <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold uppercase tracking-wider mb-1.5 ml-1">
+                                                    Calf Color
+                                                </Text>
+                                                <View className="flex-row flex-wrap gap-1.5 mb-2">
+                                                    {CALF_COLOR_OPTIONS.map((c) => {
+                                                        const isSelected = calf.color === c && !calf.isCustomColor;
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={c}
+                                                                onPress={() => {
+                                                                    updateCalf(idx, 'color', c);
+                                                                    updateCalf(idx, 'isCustomColor', false);
+                                                                }}
+                                                                className={`px-3 py-1.5 rounded-lg border ${
+                                                                    isSelected
+                                                                        ? 'bg-emerald-600 border-emerald-600'
+                                                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                                                }`}
+                                                            >
+                                                                <Text className={`font-outfit-semibold text-xs ${
+                                                                    isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                                                                }`}>
+                                                                    {c}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        );
+                                                    })}
                                                     <TouchableOpacity
-                                                        onPress={() => removeCalfImage(idx)}
-                                                        style={{
-                                                            position: "absolute",
-                                                            top: 8,
-                                                            right: 8,
-                                                            padding: 8,
-                                                            backgroundColor: "rgba(0,0,0,0.6)",
-                                                            borderRadius: 999,
+                                                        onPress={() => {
+                                                            updateCalf(idx, 'isCustomColor', true);
+                                                            if (CALF_COLOR_OPTIONS.includes(calf.color)) {
+                                                                updateCalf(idx, 'color', '');
+                                                            }
                                                         }}
+                                                        className={`px-3 py-1.5 rounded-lg border ${
+                                                            calf.isCustomColor
+                                                                ? 'bg-emerald-600 border-emerald-600'
+                                                                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                                        }`}
                                                     >
-                                                        <X size={14} color="white" />
+                                                        <Text className={`font-outfit-semibold text-xs ${
+                                                            calf.isCustomColor ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                                                        }`}>
+                                                            Other
+                                                        </Text>
                                                     </TouchableOpacity>
                                                 </View>
-                                            ) : (
-                                                <View className="flex-row gap-2">
-                                                    <TouchableOpacity
-                                                        onPress={() => handleSelectCalfPhoto(idx, "camera")}
-                                                        className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
-                                                    >
-                                                        <Camera size={14} color={isDark ? '#34d399' : '#00643B'} />
-                                                        <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-600 dark:text-slate-300 text-[10px]">Take Photo</Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleSelectCalfPhoto(idx, "library")}
-                                                        className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
-                                                    >
-                                                        <ImageIcon size={14} color={isDark ? '#34d399' : '#00643B'} />
-                                                        <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-600 dark:text-slate-300 text-[10px]">Gallery</Text>
-                                                    </TouchableOpacity>
+                                                {calf.isCustomColor && (
+                                                    <View className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5">
+                                                        <TextInput
+                                                            className="text-slate-800 dark:text-white font-outfit-medium text-xs"
+                                                            value={calf.color}
+                                                            onChangeText={(v) => updateCalf(idx, 'color', v)}
+                                                            placeholder="Describe color..."
+                                                            placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                                        />
+                                                    </View>
+                                                )}
+                                            </View>
+
+                                            {/* Calf Photo */}
+                                            {calf.isLiving !== false && (
+                                                <View>
+                                                    <Text className="text-slate-500 dark:text-slate-400 text-xs font-outfit-bold uppercase tracking-wider mb-1.5 ml-1">
+                                                        Calf Photo (Optional)
+                                                    </Text>
+                                                    {calf.imageUri ? (
+                                                        <View
+                                                            style={{
+                                                                borderRadius: 12,
+                                                                overflow: "hidden",
+                                                                borderWidth: 1,
+                                                                borderColor: isDark ? "#334155" : "#e2e8f0",
+                                                                position: "relative",
+                                                            }}
+                                                        >
+                                                            <Image
+                                                                source={{ uri: calf.imageUri }}
+                                                                style={{ width: "100%", height: 130 }}
+                                                                resizeMode="cover"
+                                                            />
+                                                            <TouchableOpacity
+                                                                onPress={() => removeCalfImage(idx)}
+                                                                style={{
+                                                                    position: "absolute",
+                                                                    top: 8,
+                                                                    right: 8,
+                                                                    padding: 6,
+                                                                    backgroundColor: "rgba(0,0,0,0.6)",
+                                                                    borderRadius: 999,
+                                                                }}
+                                                            >
+                                                                <X size={14} color="white" />
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    ) : (
+                                                        <View className="flex-row gap-2">
+                                                            <TouchableOpacity
+                                                                onPress={() => handleSelectCalfPhoto(idx, "camera")}
+                                                                className="flex-1 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5"
+                                                            >
+                                                                <Camera size={14} color={isDark ? '#34d399' : '#00643B'} />
+                                                                <Text className="text-slate-700 dark:text-slate-300 font-outfit-semibold text-xs">Take Photo</Text>
+                                                            </TouchableOpacity>
+                                                            <TouchableOpacity
+                                                                onPress={() => handleSelectCalfPhoto(idx, "library")}
+                                                                className="flex-1 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5"
+                                                            >
+                                                                <ImageIcon size={14} color={isDark ? '#34d399' : '#00643B'} />
+                                                                <Text className="text-slate-700 dark:text-slate-300 font-outfit-semibold text-xs">Gallery</Text>
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    )}
                                                 </View>
                                             )}
-                                        </View>}
+                                        </View>
                                     </View>
-                                </View>
-                            ))}
-                            {calves.length < 5 && (
-                                <TouchableOpacity
-                                    onPress={addCalf}
-                                    className="bg-white dark:bg-slate-900 border-2 border-dashed border-emerald-200 dark:border-emerald-900/50 rounded-2xl p-4 items-center justify-center flex-row gap-2"
-                                >
-                                    <View className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-900/20 items-center justify-center">
-                                        <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-black text-lg">+</Text>
-                                    </View>
-                                    <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-sm">Add Another Calf</Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>}
+                                ))}
 
-                        <TechnicianFormSection title="Technical Notes">
+                                {calves.length < 5 && (
+                                    <TouchableOpacity
+                                        onPress={addCalf}
+                                        className="border-2 border-dashed border-emerald-300 dark:border-emerald-800/60 rounded-xl p-3.5 items-center justify-center flex-row gap-2 bg-emerald-50/40 dark:bg-emerald-950/20"
+                                    >
+                                        <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-bold text-sm">
+                                            + Add Another Calf
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Technical Notes Section */}
+                        <TechnicianFormSection
+                            title="Technical Notes"
+                            description="Add observations, delivery conditions, or clinical details."
+                        >
                             <TextInput
-                                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 h-32 text-slate-800 dark:text-white font-outfit-medium"
+                                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 h-28 text-slate-800 dark:text-white font-outfit-medium text-sm"
                                 multiline
                                 textAlignVertical="top"
                                 placeholder="Observations, complications, etc..."
@@ -1221,7 +1427,7 @@ export default function RecordCalfDropScreen() {
 
                         {submissionStatusMessage ? (
                             <View
-                                className="mb-3 rounded-2xl border px-4 py-3"
+                                className="mb-3 rounded-xl border px-4 py-3"
                                 style={{ backgroundColor: isDark ? colors.background : '#eff6ff', borderColor: colors.border }}
                             >
                                 <Text
@@ -1233,6 +1439,7 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : null}
 
+                        {/* Real-time Mixed Delivery Validation Alert */}
                         {outcome === 'mixed' && isMixedInvalid && (
                             <View
                                 className="mb-3 p-3 rounded-2xl border flex-row items-center gap-2.5"
@@ -1251,6 +1458,7 @@ export default function RecordCalfDropScreen() {
                             </View>
                         )}
 
+                        {/* Save Button */}
                         <Button
                             size="lg"
                             className={`mb-4 ${isMixedInvalid ? 'opacity-60' : ''}`}
@@ -1348,6 +1556,35 @@ export default function RecordCalfDropScreen() {
               />
             </TechnicianPickerSheet>
 
+            {showDatePicker && (
+                <DateTimePicker
+                    value={tempDate}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    maximumDate={new Date()}
+                    onChange={(event, selectedDate) => {
+                        if (Platform.OS === "android") {
+                            if (event.type === "set" && selectedDate) {
+                                setShowDatePicker(false);
+                                setTempDate(selectedDate);
+                                const year = selectedDate.getFullYear();
+                                const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                                const day = String(selectedDate.getDate()).padStart(2, "0");
+                                setDate(`${year}-${month}-${day}`);
+                            } else if (event.type === "dismissed") {
+                                setShowDatePicker(false);
+                            }
+                        } else if (Platform.OS === "ios" && selectedDate) {
+                            setTempDate(selectedDate);
+                            const year = selectedDate.getFullYear();
+                            const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                            const day = String(selectedDate.getDate()).padStart(2, "0");
+                            setDate(`${year}-${month}-${day}`);
+                        }
+                    }}
+                />
+            )}
+
             <ConfirmationModal
               visible={confirmSubmitVisible}
               onClose={() => setConfirmSubmitVisible(false)}
@@ -1364,42 +1601,112 @@ export default function RecordCalfDropScreen() {
     );
 }
 
-function RecordCalfDropSkeleton({ onBack }: { onBack: () => void }) {
-    const { isDark } = useTheme();
+function RecordCalfDropSkeleton({ onBack, motherTag }: { onBack: () => void; motherTag?: string }) {
+    const { colors } = useTheme();
 
     return (
-        <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
-            <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
-                <TouchableOpacity onPress={onBack} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
-                    <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
-                </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                    <Skeleton width="60%" height={20} radius={6} />
-                    <Skeleton width="35%" height={12} radius={4} style={{ marginTop: 6 }} />
-                </View>
-            </View>
+        <ScreenLayout edges={[]}>
+            <AppPageHeader
+                title="Record Calving / Offspring"
+                onBack={onBack}
+                rightAction={motherTag ? (
+                    <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 11, color: colors.textSecondary }}>
+                        Mother #{motherTag}
+                    </Text>
+                ) : undefined}
+            />
 
-            <ScrollView className="flex-1 px-6 pt-6" showsVerticalScrollIndicator={false}>
-                <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
-                    <Skeleton width="40%" height={16} radius={6} style={{ marginBottom: 16 }} />
-                    <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-5 border border-emerald-100 dark:border-slate-700">
-                        <Skeleton width="50%" height={16} radius={4} />
-                        <Skeleton width="35%" height={12} radius={4} style={{ marginTop: 8 }} />
-                        <Skeleton width="70%" height={12} radius={4} style={{ marginTop: 12 }} />
-                        <Skeleton width="65%" height={12} radius={4} style={{ marginTop: 6 }} />
-                        <Skeleton width="75%" height={12} radius={4} style={{ marginTop: 6 }} />
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ padding: 16, paddingBottom: 72, gap: 14 }}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Top Info Banner Skeleton */}
+                <View className="bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 flex-row items-center gap-3">
+                    <Skeleton width={20} height={20} radius={10} />
+                    <View style={{ flex: 1, gap: 6 }}>
+                        <Skeleton width="88%" height={14} radius={4} />
+                        <Skeleton width="55%" height={12} radius={4} />
                     </View>
-                    <Skeleton width="30%" height={12} radius={4} style={{ marginBottom: 8 }} />
-                    <Skeleton width="100%" height={48} radius={16} style={{ marginBottom: 16 }} />
-                    <Skeleton width="30%" height={12} radius={4} style={{ marginBottom: 8 }} />
-                    <Skeleton width="100%" height={48} radius={16} />
                 </View>
 
-                <View className="bg-white dark:bg-slate-900 p-6 rounded-[32px] mb-8 border border-slate-100 dark:border-slate-800">
-                    <Skeleton width="50%" height={18} radius={6} style={{ marginBottom: 16 }} />
-                    <Skeleton width="100%" height={140} radius={20} />
+                {/* Confirmed Pregnancy Reference Card Skeleton */}
+                <View className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
+                    {/* Cow Header */}
+                    <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <View style={{ gap: 6 }}>
+                            <Skeleton width={130} height={18} radius={4} />
+                            <Skeleton width={80} height={12} radius={4} />
+                        </View>
+                        <Skeleton width={74} height={24} radius={12} />
+                    </View>
+                    {/* Timing Rows */}
+                    <View style={{ gap: 10, marginTop: 12 }}>
+                        <View className="flex-row justify-between">
+                            <Skeleton width={110} height={13} radius={4} />
+                            <Skeleton width={80} height={13} radius={4} />
+                        </View>
+                        <View className="flex-row justify-between">
+                            <Skeleton width={75} height={13} radius={4} />
+                            <Skeleton width={80} height={13} radius={4} />
+                        </View>
+                        <View className="flex-row justify-between">
+                            <Skeleton width={115} height={13} radius={4} />
+                            <Skeleton width={90} height={13} radius={4} />
+                        </View>
+                        <View className="flex-row justify-between">
+                            <Skeleton width={125} height={13} radius={4} />
+                            <Skeleton width={70} height={13} radius={4} />
+                        </View>
+                    </View>
+                    {/* Readiness Badge */}
+                    <View className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <Skeleton width="100%" height={32} radius={8} />
+                    </View>
+                </View>
+
+                {/* Calving Details Section Skeleton */}
+                <View className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
+                    <Skeleton width={110} height={16} radius={4} />
+                    <Skeleton width={190} height={12} radius={4} style={{ marginTop: 6, marginBottom: 14 }} />
+
+                    <Skeleton width={75} height={11} radius={4} style={{ marginBottom: 6 }} />
+                    <Skeleton width="100%" height={46} radius={12} style={{ marginBottom: 14 }} />
+
+                    <Skeleton width={95} height={11} radius={4} style={{ marginBottom: 6 }} />
+                    <View className="flex-row flex-wrap gap-2 mb-4">
+                        <Skeleton width="48%" height={56} radius={12} />
+                        <Skeleton width="48%" height={56} radius={12} />
+                        <Skeleton width="48%" height={56} radius={12} />
+                        <Skeleton width="48%" height={56} radius={12} />
+                    </View>
+
+                    <Skeleton width={90} height={11} radius={4} style={{ marginBottom: 6 }} />
+                    <View className="flex-row gap-2">
+                        <Skeleton width={68} height={34} radius={12} />
+                        <Skeleton width={68} height={34} radius={12} />
+                        <Skeleton width={68} height={34} radius={12} />
+                        <Skeleton width={68} height={34} radius={12} />
+                    </View>
+                </View>
+
+                {/* Offspring Details Section Skeleton */}
+                <View className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
+                    <View className="flex-row justify-between items-center mb-4">
+                        <Skeleton width={80} height={20} radius={6} />
+                        <Skeleton width={22} height={22} radius={11} />
+                    </View>
+                    <Skeleton width={70} height={11} radius={4} style={{ marginBottom: 6 }} />
+                    <View className="flex-row gap-2 mb-4">
+                        <Skeleton width="48%" height={40} radius={12} />
+                        <Skeleton width="48%" height={40} radius={12} />
+                    </View>
+                    <View className="flex-row gap-3">
+                        <Skeleton width="48%" height={44} radius={12} />
+                        <Skeleton width="48%" height={44} radius={12} />
+                    </View>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </ScreenLayout>
     );
 }

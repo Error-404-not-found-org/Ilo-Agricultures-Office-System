@@ -546,30 +546,29 @@ test("H4 Farmer AI lifecycle and combined request filters", async (t) => {
       "Scheduled",
       "In Progress",
       "Completed",
-      "Pending Cancellation",
     ]) {
       assert.match(myRequestsCode, new RegExp(`label: "${label}"`));
     }
     assert.doesNotMatch(myRequestsCode, /label: "Approved"/);
     assert.doesNotMatch(myRequestsCode, /label: "Resolved"/);
     assert.equal(
-      presentation.mapFarmerRequestFilterStatus("ai", "completed"),
+      presentation.getFarmerRequestFilterQuery("ai", "completed").status,
       "done",
     );
     assert.equal(
-      presentation.mapFarmerRequestFilterStatus("health", "completed"),
+      presentation.getFarmerRequestFilterQuery("health", "completed").status,
       "resolved",
     );
-    assert.equal(
-      presentation.mapFarmerRequestFilterStatus("ai", "in-progress"),
-      "all",
+    assert.deepEqual(
+      presentation.getFarmerRequestFilterQuery("ai", "in-progress"),
+      { statusGroup: "in_progress" },
     );
-    assert.match(myRequestsCode, /\["in-progress", "in_progress"\]/);
+    assert.doesNotMatch(myRequestsCode, /label: "Pending Cancellation"/);
   });
 
   await t.test("legacy accepted records remain readable under All", () => {
     assert.equal(
-      presentation.mapFarmerRequestFilterStatus("ai", "all"),
+      presentation.getFarmerRequestFilterQuery("ai", "all").status,
       "all",
     );
     assert.equal(
@@ -653,11 +652,12 @@ test("H4 Farmer official Health record presentation", async (t) => {
     const details = mapHealthMedicalRecordDetails(
       {
         type: "Check-up",
+        note: "Private technician observation",
         details: {
           diagnosis: "Mild dehydration",
           treatment: "Oral fluids",
+          advice: "Keep water available",
         },
-        note: "Keep water available",
       },
       { technicianId: { name: "Tech Ana" } },
     );
@@ -670,6 +670,33 @@ test("H4 Farmer official Health record presentation", async (t) => {
     assert.equal(details.symptoms, undefined);
     assert.equal(details.urgency, undefined);
     assert.equal(details.farmerNotes, undefined);
+  });
+
+  await t.test("scheduled AI details show non-empty preparation guidance only", () => {
+    assert.match(aiDetailCode, /farmerPreparationNote/);
+    assert.match(aiDetailCode, /label="Before the Visit"/);
+    assert.match(
+      aiDetailCode,
+      /visitSchedule && farmerPreparationNote \? \(/,
+    );
+    assert.doesNotMatch(aiDetailCode, /label="Technician Note"[\s\S]*farmerPreparationNote/);
+  });
+
+  await t.test("Farmer Health advice never falls back to private or synthetic notes", () => {
+    const privateNote = mapHealthMedicalRecordDetails({
+      type: "Treatment",
+      note: "Private technician observation",
+      healthRequestId: { resolutionNotes: "Internal resolution context" },
+      details: { diagnosis: "Mild dehydration" },
+    });
+    const syntheticNote = mapHealthMedicalRecordDetails({
+      type: "Treatment",
+      note: "Resolved through health request queue.",
+      details: { diagnosis: "Mild dehydration" },
+    });
+
+    assert.equal(privateNote.advice, undefined);
+    assert.equal(syntheticNote.advice, undefined);
   });
 
   await t.test("official Health records are enriched without relabeling General Notes", async () => {

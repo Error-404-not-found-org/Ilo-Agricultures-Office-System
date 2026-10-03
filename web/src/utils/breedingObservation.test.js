@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatObservationValue,
   formatSubmittedAt,
   formatTaskSummary,
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
   isFarmerBreedingObservationPendingReview,
   normalizeFarmerObservation,
-  BREEDING_OBSERVATION_LABELS,
-  BREEDING_OBSERVATION_SIGN_LABELS,
 } from "./breedingObservation";
 
 describe("breedingObservation utilities", () => {
@@ -33,7 +30,10 @@ describe("breedingObservation utilities", () => {
       expect(normalized.hasObservation).toBe(true);
       expect(normalized.reportType).toBe("return_to_heat");
       expect(normalized.reportedAt).toBe("2026-09-07T04:40:00.000Z");
-      expect(normalized.signs).toEqual(["mucus_discharge", "mounting_behavior"]);
+      expect(normalized.signs).toEqual([
+        "mucus_discharge",
+        "mounting_behavior",
+      ]);
       expect(normalized.notes).toBe("Cow was restless and mounting others");
       expect(normalized.evidencePhotos).toHaveLength(2);
       expect(normalized.evidencePhotos[0]).toBe(
@@ -63,7 +63,9 @@ describe("breedingObservation utilities", () => {
       expect(normalized.reportType).toBe("return_to_heat");
       expect(normalized.signs).toEqual(["mucus_discharge"]);
       expect(normalized.notes).toBe("");
-      expect(normalized.evidencePhotos).toEqual(["https://example.com/photo.jpg"]);
+      expect(normalized.evidencePhotos).toEqual([
+        "https://example.com/photo.jpg",
+      ]);
     });
 
     it("normalizes legacy metadata / farmerObservation structures", () => {
@@ -104,15 +106,26 @@ describe("breedingObservation utilities", () => {
       expect(normalized.hasObservation).toBe(false);
       expect(normalized.reportType).toBeNull();
     });
+
+    it("does not infer an observation from human-facing summary text", () => {
+      expect(isFarmerBreedingObservationPendingReview({
+        workflowType: "BreedingFollowUp",
+        summary: "Breeding observation: return to heat",
+      })).toBe(false);
+    });
   });
 
   describe("getBreedingObservationLabel", () => {
     it("maps return_to_heat to Showing signs of heat", () => {
-      expect(getBreedingObservationLabel("return_to_heat")).toBe("Showing signs of heat");
+      expect(getBreedingObservationLabel("return_to_heat")).toBe(
+        "Showing signs of heat",
+      );
     });
 
     it("maps possible_pregnancy to No signs observed", () => {
-      expect(getBreedingObservationLabel("possible_pregnancy")).toBe("No signs observed");
+      expect(getBreedingObservationLabel("possible_pregnancy")).toBe(
+        "No signs observed",
+      );
     });
 
     it("maps unsure to I'm not sure", () => {
@@ -121,22 +134,38 @@ describe("breedingObservation utilities", () => {
 
     it("falls back gracefully for null or unknown values", () => {
       expect(getBreedingObservationLabel(null)).toBe("Breeding observation");
-      expect(getBreedingObservationLabel("custom_observation")).toBe("Custom Observation");
+      expect(getBreedingObservationLabel("custom_observation")).toBe(
+        "Custom Observation",
+      );
     });
   });
 
   describe("getBreedingObservationSignLabel", () => {
     it("maps known sign tokens to human-facing labels", () => {
-      expect(getBreedingObservationSignLabel("mucus_discharge")).toBe("Clear mucus discharge");
-      expect(getBreedingObservationSignLabel("mounting_behavior")).toBe("Mounting other cattle");
-      expect(getBreedingObservationSignLabel("standing_heat")).toBe("Stands when mounted");
-      expect(getBreedingObservationSignLabel("restlessness")).toBe("Restless / more active than usual");
-      expect(getBreedingObservationSignLabel("vulvar_swelling")).toBe("Vulva looks swollen or red");
-      expect(getBreedingObservationSignLabel("vocalization")).toBe("More vocal than usual");
+      expect(getBreedingObservationSignLabel("mucus_discharge")).toBe(
+        "Clear mucus discharge",
+      );
+      expect(getBreedingObservationSignLabel("mounting_behavior")).toBe(
+        "Mounting other cattle",
+      );
+      expect(getBreedingObservationSignLabel("standing_heat")).toBe(
+        "Stands when mounted",
+      );
+      expect(getBreedingObservationSignLabel("restlessness")).toBe(
+        "Restless / more active than usual",
+      );
+      expect(getBreedingObservationSignLabel("vulvar_swelling")).toBe(
+        "Vulva looks swollen or red",
+      );
+      expect(getBreedingObservationSignLabel("vocalization")).toBe(
+        "More vocal than usual",
+      );
     });
 
     it("handles formatting fallback for unknown signs", () => {
-      expect(getBreedingObservationSignLabel("tail_swishing")).toBe("Tail Swishing");
+      expect(getBreedingObservationSignLabel("tail_swishing")).toBe(
+        "Tail Swishing",
+      );
       expect(getBreedingObservationSignLabel("")).toBe("");
     });
   });

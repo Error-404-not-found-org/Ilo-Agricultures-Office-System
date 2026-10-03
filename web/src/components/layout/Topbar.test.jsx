@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Topbar from "./Topbar";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("@clerk/clerk-react", () => ({
   useUser: () => ({
@@ -31,9 +32,9 @@ describe("Admin Topbar theme controls", () => {
 
   it("orders Theme, Refresh, and Notifications without changing header size", () => {
     render(
-      <Topbar title="Admin Portal" subtitle="Municipal operations">
+      <MemoryRouter><Topbar title="Admin Portal" subtitle="Municipal operations">
         <button type="button">Refresh</button>
-      </Topbar>,
+      </Topbar></MemoryRouter>,
     );
 
     const theme = screen.getByRole("button", { name: "Switch to dark mode" });
@@ -53,7 +54,7 @@ describe("Admin Topbar theme controls", () => {
   });
 
   it("switches and persists the centralized Admin theme immediately", () => {
-    render(<Topbar title="Admin Portal" />);
+    render(<MemoryRouter><Topbar title="Admin Portal" /></MemoryRouter>);
 
     const toggle = screen.getByRole("button", {
       name: "Switch to dark mode",

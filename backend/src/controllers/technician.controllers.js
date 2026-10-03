@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 import cloudinary from "../config/cloudinary.js";
-import { Animal } from "../models/animal.model.js";
+import { Animal, ANIMAL_EAR_TAG_MAX_LENGTH } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
@@ -58,6 +58,8 @@ import {
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { AI_STATUS, normalizeAIStatus } from "../domain/status-vocabulary.js";
+import { getHealthVisitAvailability } from "../domain/health-visit-availability.js";
+import { getAIVisitAvailability } from "../domain/ai-visit-availability.js";
 import {
   assertTechnicianEligibleForNewRequest,
   buildNewRequestDispatchFilter,
@@ -71,11 +73,15 @@ import {
   buildActiveAIWorkFilter,
   buildActiveHealthWorkFilter,
   buildActiveStandaloneTaskFilter,
+  buildAICompletedInRangeFilter,
   buildCompletedAIWorkFilter,
   buildCompletedHealthWorkFilter,
   buildCompletedStandaloneTaskFilter,
+  getManilaDayBounds,
+  getManilaMonthBounds,
 } from "../services/technician-workload-summary.service.js";
 import { getAIRequestPhotos } from "../domain/ai-request-attachments.js";
+import { resolveAnimalContext } from "../services/animal-resolution.service.js";
 
 const combineMongoFilters = (baseFilter, ...conditions) => {
   const { $and: baseAnd = [], ...base } = baseFilter;
@@ -196,16 +202,13 @@ export const getTechnicianDashboardData = async (req, res) => {
       isFull && includeFutureDateBoundTasks === "true";
 
     const now = new Date();
-    const PHT_OFFSET = 8 * 60 * 60 * 1000;
-    const todayStart = new Date(now.getTime() + PHT_OFFSET);
-    todayStart.setUTCHours(0, 0, 0, 0);
-    todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
-    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const { start: todayStart, end: todayEnd } = getManilaDayBounds(now);
 
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { start: monthStart, end: nextMonthStart } =
+      getManilaMonthBounds(now);
 
     const isAdmin = req.user?.role === "admin";
     const aiDispatch = isAdmin
@@ -317,12 +320,13 @@ export const getTechnicianDashboardData = async (req, res) => {
       ]),
       // 6. Total Completed Today
       Promise.all([
-        Insemination.countDocuments({
-          ...buildCompletedAIWorkFilter({
+        Insemination.countDocuments(
+          buildAICompletedInRangeFilter({
             technicianId: isAdmin ? null : req.user._id,
+            start: todayStart,
+            end: todayEnd,
           }),
-          updatedAt: { $gte: todayStart, $lt: todayEnd },
-        }),
+        ),
         HealthRequest.countDocuments(
           combineMongoFilters(
             buildCompletedHealthWorkFilter({
@@ -457,7 +461,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       ]),
       // 7. Total AI Month
       Insemination.countDocuments({
-        inseminationDate: { $gte: monthStart },
+        inseminationDate: { $gte: monthStart, $lt: nextMonthStart },
         ...assigneeFilterAI,
       }),
       Pregnancy.countDocuments({
@@ -579,6 +583,55 @@ export const getTechnicianDashboardData = async (req, res) => {
 
     const pendingRequests = [];
     const agendaItems = [];
+    const agendaHealthRequestIds = new Set();
+
+    const taskDateContextIds = scheduledTasks.reduce(
+      (result, taskDoc) => {
+        const relatedId =
+          taskDoc.metadata?.inseminationId ||
+          (taskDoc.relatedRecordType === "insemination"
+            ? taskDoc.relatedRecordId
+            : null);
+        const pregnancyId =
+          taskDoc.metadata?.pregnancyId ||
+          (taskDoc.relatedRecordType === "pregnancy"
+            ? taskDoc.relatedRecordId
+            : null);
+        if (relatedId) result.inseminationIds.add(String(relatedId));
+        if (pregnancyId) result.pregnancyIds.add(String(pregnancyId));
+        return result;
+      },
+      { inseminationIds: new Set(), pregnancyIds: new Set() },
+    );
+    const [reportInseminations, schedulePregnancies] = await Promise.all([
+      taskDateContextIds.inseminationIds.size
+        ? Insemination.find({
+            _id: { $in: [...taskDateContextIds.inseminationIds] },
+          })
+            .select("farmerOutcomeReportedAt")
+            .lean()
+        : [],
+      taskDateContextIds.pregnancyIds.size
+        ? Pregnancy.find({
+            _id: { $in: [...taskDateContextIds.pregnancyIds] },
+            deletedAt: null,
+          })
+            .select("targetCalvingDate expectedCalvingDate")
+            .lean()
+        : [],
+    ]);
+    const reportTimeByInseminationId = new Map(
+      reportInseminations.map((record) => [
+        String(record._id),
+        record.farmerOutcomeReportedAt || null,
+      ]),
+    );
+    const expectedCalvingByPregnancyId = new Map(
+      schedulePregnancies.map((record) => [
+        String(record._id),
+        record.targetCalvingDate || record.expectedCalvingDate || null,
+      ]),
+    );
 
     // Process Inseminations
     inseminations.forEach((ins) => {
@@ -643,6 +696,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         sentTime: formatTime(ins.createdAt),
         createdAt: ins.createdAt,
         raw: ins,
+        dateKind: "scheduled_visit",
+        scheduledAt: ins.scheduledDate || null,
       };
 
       const assignedToMeAI =
@@ -776,6 +831,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         sentTime: formatTime(healthRequest.createdAt),
         createdAt: healthRequest.createdAt,
         raw: healthRequest,
+        dateKind: "scheduled_visit",
+        scheduledAt: healthRequest.scheduledDate || null,
       };
 
       const assignedToMeHealth =
@@ -849,12 +906,39 @@ export const getTechnicianDashboardData = async (req, res) => {
           assignedToMeHealth
         ) {
           agendaItems.push(item);
+          agendaHealthRequestIds.add(String(healthRequest._id));
         }
       }
     });
 
     // Process scheduled technician tasks / general visits
     scheduledTasks.forEach((taskDoc) => {
+      const isDistinctWorkflowTask = [
+        "AI",
+        "PD",
+        "CD",
+        "Calving",
+        "BreedingFollowUp",
+      ].includes(taskDoc.taskType);
+      const isHealthExecutionTask =
+        !isDistinctWorkflowTask &&
+        (taskDoc.relatedRecordType === "health" ||
+          ["Health", "Treatment", "Vaccination", "Deworming"].includes(
+            taskDoc.taskType,
+          ));
+      const linkedHealthRequestIds = [
+        taskDoc.relatedRecordType === "health" ? taskDoc.relatedRecordId : null,
+        taskDoc.metadata?.healthRequestId,
+      ];
+      if (
+        isHealthExecutionTask &&
+        linkedHealthRequestIds.some(
+          (id) => id && agendaHealthRequestIds.has(String(id)),
+        )
+      ) {
+        return;
+      }
+
       const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
       const isOverdue =
         ["Pending", "In Progress"].includes(taskDoc.status) &&
@@ -874,9 +958,65 @@ export const getTechnicianDashboardData = async (req, res) => {
         return null;
       };
 
+      const sourceType = taskDoc.sourceType || "manual";
+      const metadata = taskDoc.metadata || {};
+      const normalizedTaskType = String(taskDoc.taskType || "").toLowerCase();
+      const isReturnToHeatReport =
+        sourceType === "farmer_requested_verification" &&
+        metadata.reportType === "return_to_heat";
+      const isPregnancyLossReport =
+        sourceType === "farmer_pregnancy_loss_report";
+      const linkedInseminationId =
+        metadata.inseminationId ||
+        (taskDoc.relatedRecordType === "insemination"
+          ? taskDoc.relatedRecordId
+          : null);
+      const linkedPregnancyId =
+        metadata.pregnancyId ||
+        (taskDoc.relatedRecordType === "pregnancy"
+          ? taskDoc.relatedRecordId
+          : null);
+      const reportedAt = isPregnancyLossReport
+        ? metadata.reportedAt || null
+        : isReturnToHeatReport && linkedInseminationId
+          ? reportTimeByInseminationId.get(String(linkedInseminationId)) || null
+          : null;
+      const expectedAt = ["cd", "calving"].includes(normalizedTaskType)
+        ? expectedCalvingByPregnancyId.get(String(linkedPregnancyId)) || null
+        : null;
+      const isScheduledVisit =
+        Boolean(metadata.visitPeriod) ||
+        (["client_profile", "task_scheduler"].includes(sourceType) &&
+          !["pd", "cd", "calving", "breedingfollowup"].includes(
+            normalizedTaskType,
+          ));
+      const dateKind =
+        isPregnancyLossReport || isReturnToHeatReport
+          ? "farmer_report"
+          : isScheduledVisit
+            ? "scheduled_visit"
+            : normalizedTaskType === "pd"
+              ? "readiness"
+              : ["cd", "calving"].includes(normalizedTaskType)
+                ? "expected_event"
+                : normalizedTaskType === "breedingfollowup" &&
+                    sourceType === "automatic_breeding_followup"
+                  ? "deadline"
+                  : "deadline";
+
       const item = {
         id: taskDoc._id,
         taskId: taskDoc._id,
+        workflowType: ["cd", "calving"].includes(normalizedTaskType)
+          ? "Calving"
+          : normalizedTaskType === "pd"
+            ? "PD"
+            : "StandaloneTask",
+        allowedAction:
+          ["cd", "calving", "pd"].includes(normalizedTaskType) &&
+          ["Pending", "In Progress"].includes(taskDoc.status)
+            ? "RECORD_SERVICE"
+            : null,
         dueDate: taskDoc.dueDate || null,
         type: "task",
         taskType: taskDoc.taskType || "Other",
@@ -886,6 +1026,12 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         visitPeriod: taskDoc.metadata?.visitPeriod || null,
         farmer: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerContext: taskDoc.farmerId
+          ? {
+              id: String(taskDoc.farmerId?._id || taskDoc.farmerId),
+              name: taskDoc.farmerId?.name || "Unknown Farmer",
+            }
+          : null,
         farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
         farmerPhone:
           taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
@@ -904,14 +1050,42 @@ export const getTechnicianDashboardData = async (req, res) => {
         navigationTarget: getFarmLocationTarget(taskDoc.farmerId),
         farmLocation: taskDoc.farmerId?.farmLocation || null,
         animalId: firstAnimal || null,
+        animal: firstAnimal
+          ? {
+              id: String(firstAnimal?._id || firstAnimal),
+              name: firstAnimal?.animalId || firstAnimal?.earTag || "Unknown",
+              earTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
+            }
+          : null,
         animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
         preferredTime: formatTime(itemDisplayDate),
         task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
         urgent:
           taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
         overdue: isOverdue,
+        dateKind,
+        ...(dateKind === "scheduled_visit"
+          ? { scheduledAt: taskDoc.dueDate || null }
+          : {}),
+        ...(dateKind === "readiness"
+          ? { readyFrom: taskDoc.dueDate || null }
+          : {}),
+        ...(dateKind === "expected_event" ? { expectedAt } : {}),
+        ...(dateKind === "farmer_report" ? { reportedAt } : {}),
+        ...(dateKind === "deadline" ? { dueAt: taskDoc.dueDate || null } : {}),
         sentTime: formatTime(taskDoc.createdAt),
         raw: taskDoc,
+        context: {
+          pregnancyId: linkedPregnancyId
+            ? String(linkedPregnancyId?._id || linkedPregnancyId)
+            : null,
+          animalId: firstAnimal
+            ? String(firstAnimal?._id || firstAnimal)
+            : null,
+          farmerId: taskDoc.farmerId
+            ? String(taskDoc.farmerId?._id || taskDoc.farmerId)
+            : null,
+        },
       };
 
       const isDateToday = (d) => {
@@ -1396,7 +1570,6 @@ export const walkInInsemination = async (req, res) => {
         inviteExistingUnclaimed: false,
         allowClaimedExisting: true,
         redirectUrl: getFarmerInvitationRedirectUrl(),
-        isVerified: true,
       });
       farmer = farmerResolution.farmer;
     }
@@ -1406,26 +1579,17 @@ export const walkInInsemination = async (req, res) => {
     }
 
     // 2. Resolve or Create Animal
-    let animal;
-    if (bodyAnimalId) {
-      animal = await Animal.findById(bodyAnimalId);
-    } else if (animalDetails?.earTag) {
-      animal = await Animal.findOne({ earTag: animalDetails.earTag });
-    } else if (animalDetails?.animalId) {
-      animal = await Animal.findOne({ animalId: animalDetails.animalId });
-    }
+    const animal = await resolveAnimalContext({
+      animalId: bodyAnimalId,
+      farmerId: farmer._id,
+      earTag: animalDetails?.earTag,
+    });
 
     if (!animal) {
       return res.status(400).json({
         code: "ANIMAL_SELECTION_REQUIRED",
         message:
           "Select an existing animal before recording AI. Historical or incomplete animal records must be entered through an authorized historical-record workflow.",
-      });
-    }
-    if (String(animal.farmerId) !== String(farmer._id)) {
-      return res.status(400).json({
-        code: "ANIMAL_FARMER_MISMATCH",
-        message: "The selected animal does not belong to the selected farmer.",
       });
     }
 
@@ -1449,7 +1613,7 @@ export const walkInInsemination = async (req, res) => {
       return res.status(400).json({
         code: "HISTORICAL_AI_WORKFLOW_REQUIRED",
         message:
-          "The Record AI form is for a current field service. Older AI records require an authorized historical-record workflow.",
+          "This AI record is from an earlier date. Please use Add Past Record.",
       });
     }
 
@@ -1479,10 +1643,7 @@ export const walkInInsemination = async (req, res) => {
           },
         });
       } catch (inngestErr) {
-        console.error(
-          "[walkInInsemination INNGEST ERROR]",
-          inngestErr.message,
-        );
+        console.error("[walkInInsemination INNGEST ERROR]", inngestErr.message);
       }
     }
 
@@ -1559,25 +1720,16 @@ export const previousInsemination = async (req, res) => {
       return res.status(404).json({ message: "Farmer not found." });
     }
 
-    let animal;
-    if (bodyAnimalId) {
-      animal = await Animal.findById(bodyAnimalId);
-    } else if (animalDetails?.earTag) {
-      animal = await Animal.findOne({ earTag: animalDetails.earTag });
-    } else if (animalDetails?.animalId) {
-      animal = await Animal.findOne({ animalId: animalDetails.animalId });
-    }
+    const animal = await resolveAnimalContext({
+      animalId: bodyAnimalId,
+      farmerId: farmer._id,
+      earTag: animalDetails?.earTag,
+    });
 
     if (!animal) {
       return res.status(400).json({
         code: "ANIMAL_SELECTION_REQUIRED",
         message: "Select an existing animal before recording previous AI.",
-      });
-    }
-    if (String(animal.farmerId) !== String(farmer._id)) {
-      return res.status(400).json({
-        code: "ANIMAL_FARMER_MISMATCH",
-        message: "The selected animal does not belong to the selected farmer.",
       });
     }
 
@@ -1811,15 +1963,18 @@ export const registerFarmer = async (req, res) => {
     const { firstName, lastName, phoneNumber, email, address } = req.body;
 
     // 1. Validation
-    if (!firstName || !lastName || !phoneNumber) {
+    if (!firstName || !lastName) {
       return res.status(400).json({
-        message: "First name, last name, and phone number are required.",
+        message: "First name and last name are required.",
       });
     }
 
     const resolution = await resolveOrCreateAssistedFarmer({
       email,
-      phoneNumber,
+      phoneNumber:
+        typeof phoneNumber === "string" && phoneNumber.trim()
+          ? phoneNumber
+          : undefined,
       name: `${firstName} ${lastName}`.trim(),
       address: {
         street: address?.street || "",
@@ -1832,8 +1987,6 @@ export const registerFarmer = async (req, res) => {
       inviteExistingUnclaimed: true,
       allowClaimedExisting: false,
       redirectUrl: getFarmerInvitationRedirectUrl(),
-      expiresInDays: 1,
-      isVerified: false,
     });
 
     res.status(resolution.reused ? 200 : 201).json({
@@ -2275,6 +2428,12 @@ export const walkInLivestock = async (req, res) => {
         message: "Missing required animal details (Tag, Species, Breed).",
       });
     }
+    if (String(earTag).trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
 
     // Handle Image Upload if base64
     let finalImageUrl = imageUrl;
@@ -2306,7 +2465,10 @@ export const walkInLivestock = async (req, res) => {
       });
     }
 
-    const existing = await Animal.findOne({ earTag });
+    const existing = await resolveAnimalContext({
+      farmerId: farmer._id,
+      earTag,
+    });
     if (existing) {
       return res
         .status(400)
@@ -2354,9 +2516,14 @@ export const walkInLivestock = async (req, res) => {
       .status(201)
       .json({ message: "Livestock registered successfully", animal });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to register livestock", error: error.message });
+    const duplicate = error?.code === 11000;
+    res.status(duplicate ? 400 : error.status || 500).json({
+      message: duplicate
+        ? "An active animal with this ear tag already exists for the selected Farmer."
+        : "Failed to register livestock",
+      code: duplicate ? "DUPLICATE_FARMER_EAR_TAG" : error.code,
+      error: error.message,
+    });
   }
 };
 
@@ -2445,23 +2612,6 @@ export const getDashboardRegistry = async (req, res) => {
     res.status(200).json(formatted);
   } catch (error) {
     res.status(500).json({ message: "Error fetching registry" });
-  }
-};
-
-export const toggleFarmerVerification = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const farmer = await User.findById(id);
-    if (!farmer || farmer.role !== "farmer")
-      return res.status(404).json({ message: "Farmer not found" });
-    farmer.isVerified = !farmer.isVerified;
-    await farmer.save();
-    res.status(200).json({
-      message: `Farmer ${farmer.isVerified ? "Verified" : "Unverified"} successfully`,
-      isVerified: farmer.isVerified,
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to update verification status" });
   }
 };
 
@@ -3505,10 +3655,7 @@ export const getTechnicianRequests = async (req, res) => {
         : type === "breeding_verification"
           ? { taskType: "PD" }
           : {
-              $or: [
-                { taskType: "PD" },
-                pregnancyLossTaskFilter,
-              ],
+              $or: [{ taskType: "PD" }, pregnancyLossTaskFilter],
             };
     const taskAndFilters = [];
     const technician = req.user.role === "technician" ? req.user : null;
@@ -3558,7 +3705,15 @@ export const getTechnicianRequests = async (req, res) => {
       taskAndFilters.push({
         $or: [
           // Manual or farmer-requested: show immediately
-          { sourceType: { $in: ["manual", "farmer_requested_verification", "farmer_pregnancy_loss_report"] } },
+          {
+            sourceType: {
+              $in: [
+                "manual",
+                "farmer_requested_verification",
+                "farmer_pregnancy_loss_report",
+              ],
+            },
+          },
           // Automatic follow-ups: only show when dueDate has arrived
           { sourceType: "automatic_pd_followup", dueDate: { $lte: now } },
           // Legacy tasks (no sourceType): show immediately
@@ -3814,12 +3969,10 @@ export const getTechnicianRequests = async (req, res) => {
     const fetchHealth = type === "all" || type === "health" || !type;
     const fetchPregnancyChecks =
       includeOperationalTasks !== "false" &&
-      (
-        type === "all" ||
+      (type === "all" ||
         type === "breeding_verification" ||
         type === "pregnancy_loss_review" ||
-        !type
-      );
+        !type);
     const sortByVal = sortBy || "newest";
     const boundedMerge = sortByVal !== "distance";
     const candidateLimit = skip + limit;
@@ -4101,28 +4254,18 @@ export const getTechnicianRequests = async (req, res) => {
           serviceType: "Artificial Insemination",
           requestKind,
           attemptNumber: rec.attemptNumber || 1,
-          previousAttemptId: previousAttemptContext,
           previousAttemptOutcome: previousAttempt?.outcome || null,
           previousAttemptVerified,
           status: rec.status,
           allowedAction,
           actionLabel,
           farmer: farmer.name || "Unknown Farmer",
-          farmerId: farmer._id || farmer,
           farmerImageUrl:
             farmer.imageUrl ||
             farmer.avatarUrl ||
             farmer.profilePicture ||
             farmer.avatar ||
             "",
-          farmerPhone: farmer.phoneNumber || "",
-          phone: farmer.phone || null,
-          farmerDetails: {
-            id: farmer._id || null,
-            name: farmer.name || "Unknown Farmer",
-            phone: farmer.phoneNumber || "",
-            location: formatAddress(farmer.address),
-          },
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -4134,14 +4277,6 @@ export const getTechnicianRequests = async (req, res) => {
           earTag: rec.animalId?.earTag || "",
           breed: rec.animalId?.breed || "",
           species: rec.animalId?.species || "",
-          location: formatAddress(farmer.address),
-          locationLabel:
-            barangay && city
-              ? `${barangay}, ${city}`
-              : formatAddress(farmer.address) || "Unknown Location",
-          hasFarmPin,
-          distanceKm,
-          farmPinStatus: hasFarmPin ? "available" : "missing",
           municipality: city,
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
@@ -4155,7 +4290,6 @@ export const getTechnicianRequests = async (req, res) => {
             count: attachmentUrls.length,
           },
           createdAt: rec.createdAt,
-          raw: rec,
         };
       }
 
@@ -4283,21 +4417,12 @@ export const getTechnicianRequests = async (req, res) => {
           requestType: rec.requestType || "health",
           status: rec.status,
           farmer: farmer.name || "Unknown Farmer",
-          farmerId: farmer._id || farmer,
           farmerImageUrl:
             farmer.imageUrl ||
             farmer.avatarUrl ||
             farmer.profilePicture ||
             farmer.avatar ||
             "",
-          farmerPhone: farmer.phoneNumber || "",
-          phone: farmer.phone || null,
-          farmerDetails: {
-            id: farmer._id || null,
-            name: farmer.name || "Unknown Farmer",
-            phone: farmer.phoneNumber || "",
-            location: formatAddress(farmer.address),
-          },
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -4312,14 +4437,6 @@ export const getTechnicianRequests = async (req, res) => {
           earTag: rec.animalId?.earTag || "",
           breed: rec.animalId?.breed || "",
           species: rec.animalId?.species || "",
-          location: formatAddress(farmer.address),
-          locationLabel:
-            barangay && city
-              ? `${barangay}, ${city}`
-              : formatAddress(farmer.address) || "Unknown Location",
-          hasFarmPin,
-          distanceKm,
-          farmPinStatus: hasFarmPin ? "available" : "missing",
           municipality: city,
           barangay: barangay,
           preferredDate: rec.preferredDate || rec.createdAt,
@@ -4330,7 +4447,6 @@ export const getTechnicianRequests = async (req, res) => {
             count: attachmentUrls.length,
           },
           createdAt: rec.createdAt,
-          raw: rec,
         };
       }
 
@@ -4481,32 +4597,32 @@ export const getTechnicianRequests = async (req, res) => {
             }
           : linkedObservation
             ? {
-              reportType: linkedObservation.farmerOutcomeReport || null,
-              reportedAt: linkedObservation.farmerOutcomeReportedAt || null,
-              signs: Array.isArray(linkedObservation.farmerObservationSigns)
-                ? linkedObservation.farmerObservationSigns
-                : [],
-              notes: linkedObservation.farmerObservationNotes || "",
-              evidencePhotos: Array.isArray(linkedObservation.evidencePhotos)
-                ? linkedObservation.evidencePhotos.filter(Boolean)
-                : [],
-              verificationRequested: Boolean(
-                linkedObservation.verificationRequested,
-              ),
-              verificationStatus:
-                linkedObservation.verificationStatus || "not_requested",
-            }
-          : task.sourceType === "farmer_requested_verification"
-            ? {
-                reportType: task.metadata?.reportType || null,
-                reportedAt: null,
-                signs: [],
-                notes: "",
-                evidencePhotos: [],
-                verificationRequested: true,
-                verificationStatus: "pending",
+                reportType: linkedObservation.farmerOutcomeReport || null,
+                reportedAt: linkedObservation.farmerOutcomeReportedAt || null,
+                signs: Array.isArray(linkedObservation.farmerObservationSigns)
+                  ? linkedObservation.farmerObservationSigns
+                  : [],
+                notes: linkedObservation.farmerObservationNotes || "",
+                evidencePhotos: Array.isArray(linkedObservation.evidencePhotos)
+                  ? linkedObservation.evidencePhotos.filter(Boolean)
+                  : [],
+                verificationRequested: Boolean(
+                  linkedObservation.verificationRequested,
+                ),
+                verificationStatus:
+                  linkedObservation.verificationStatus || "not_requested",
               }
-            : null,
+            : task.sourceType === "farmer_requested_verification"
+              ? {
+                  reportType: task.metadata?.reportType || null,
+                  reportedAt: null,
+                  signs: [],
+                  notes: "",
+                  evidencePhotos: [],
+                  verificationRequested: true,
+                  verificationStatus: "pending",
+                }
+              : null,
         raw: task,
       };
     });
@@ -5437,6 +5553,7 @@ export const getWorkQueue = async (req, res) => {
       let allowedAction = null;
       let actionLabel = null;
       let stateIssue = null;
+      let workTiming = null;
       if (canonicalStatus === AI_STATUS.PENDING) {
         actionLabel = "Schedule review required";
         stateIssue = scheduleDate
@@ -5449,8 +5566,12 @@ export const getWorkQueue = async (req, res) => {
         allowedAction = "RECORD_SERVICE";
         actionLabel = "Continue Service";
       } else if (canonicalStatus === AI_STATUS.SCHEDULED) {
-        allowedAction = "RECORD_SERVICE";
-        actionLabel = "Record Insemination";
+        const availability = getAIVisitAvailability({
+          scheduledDate: scheduleDate,
+        });
+        allowedAction = availability?.allowedAction || "VIEW_DETAILS";
+        actionLabel = availability?.actionLabel || "View Scheduled Visit";
+        workTiming = availability?.workTiming || null;
       } else if (canonicalStatus === AI_STATUS.DONE) {
         allowedAction = "VIEW_RECORD";
         actionLabel = "View Record";
@@ -5476,6 +5597,7 @@ export const getWorkQueue = async (req, res) => {
         status: canonicalStatus,
         allowedAction,
         actionLabel,
+        workTiming,
         stateIssue,
         title: "Artificial Insemination",
         summary: `Attempt ${ins.attemptNumber || 1}`,
@@ -5563,6 +5685,7 @@ export const getWorkQueue = async (req, res) => {
       let allowedAction = null;
       let actionLabel = null;
       let stateIssue = null;
+      let workTiming = null;
       if (
         ["pending", "triaged", "assigned", "approved"].includes(healthStatus)
       ) {
@@ -5574,8 +5697,12 @@ export const getWorkQueue = async (req, res) => {
           Boolean(scheduleDate) &&
           ["morning", "afternoon"].includes(String(req.visitPeriod || ""));
         if (hasCanonicalFarmVisit) {
-          allowedAction = "START_SERVICE";
-          actionLabel = "Start Visit";
+          const availability = getHealthVisitAvailability({
+            scheduledDate: scheduleDate,
+          });
+          allowedAction = availability?.allowedAction || "VIEW_DETAILS";
+          actionLabel = availability?.actionLabel || "Review Request";
+          workTiming = availability?.workTiming || null;
         } else {
           allowedAction = "VIEW_DETAILS";
           actionLabel = "Review Request";
@@ -5604,6 +5731,7 @@ export const getWorkQueue = async (req, res) => {
         medicalRecordId,
         allowedAction,
         actionLabel,
+        workTiming,
         stateIssue,
         title: req.requestType || "Health Assistance",
         summary: req.handlingMethod
@@ -5763,9 +5891,9 @@ export const getWorkQueue = async (req, res) => {
             ? "Pregnancy Loss Review"
             : wType === "BreedingFollowUp"
               ? "Breeding Follow-up"
-            : wType === "Calving"
-              ? "Calving Assistance"
-              : taskDoc.taskType || "Task";
+              : wType === "Calving"
+                ? "Calving Assistance"
+                : taskDoc.taskType || "Task";
 
       const item = {
         id: taskId,

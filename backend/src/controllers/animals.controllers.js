@@ -1,5 +1,5 @@
 import { User } from "../models/user.model.js";
-import { Animal } from "../models/animal.model.js";
+import { Animal, ANIMAL_EAR_TAG_MAX_LENGTH } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
@@ -33,6 +33,30 @@ import { filterAnimalWorkForViewer } from "../domain/animal-work-visibility.js";
 import { assertPregnancyMutationAuthority } from "../policies/pregnancy-mutation.policy.js";
 import { buildInseminationIdMatch } from "../services/breeding-observation-followup.service.js";
 import { buildFarmerAIRequest } from "../domain/ai-request-presentation.js";
+import { getManilaMonthUtcRange } from "../domain/service-date-time.js";
+
+export const buildAnimalDirectoryMetricQueries = (
+  query,
+  now = new Date(),
+) => {
+  const month = getManilaMonthUtcRange(now);
+  return {
+    animalsFound: query,
+    inseminated: {
+      $and: [query, { reproductiveStatus: "Inseminated" }],
+    },
+    pregnant: {
+      $and: [query, { reproductiveStatus: "Pregnant" }],
+    },
+    expectedCalvingThisMonth: {
+      $and: [
+        query,
+        { reproductiveStatus: "Pregnant" },
+        { expectedCalvingDate: { $gte: month.start, $lt: month.end } },
+      ],
+    },
+  };
+};
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -60,6 +84,12 @@ export const registerAnimal = async (req, res) => {
     if (!species)
       return res.status(400).json({ message: "Species is required." });
     if (!breed) return res.status(400).json({ message: "Breed is required." });
+    if (String(earTag || "").trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
 
     const farmer = await User.findById(farmerId);
     if (!farmer) return res.status(404).json({ message: "Farmer not found." });
@@ -242,9 +272,17 @@ export const getAllAnimals = async (req, res) => {
         .limit(limitNum)
         .lean();
 
-      const [total, cattleCount, pregnantCount, availableCount] =
+      const metricQueries = buildAnimalDirectoryMetricQueries(query);
+      const [
+        total,
+        cattleCount,
+        pregnantCount,
+        availableCount,
+        inseminatedCount,
+        expectedCalvingThisMonthCount,
+      ] =
         await Promise.all([
-          Animal.countDocuments(query),
+          Animal.countDocuments(metricQueries.animalsFound),
           Animal.countDocuments({
             $and: [
               query,
@@ -270,6 +308,8 @@ export const getAllAnimals = async (req, res) => {
               { reproductiveStatus: reproductiveStatusQuery("Normal") },
             ],
           }),
+          Animal.countDocuments(metricQueries.inseminated),
+          Animal.countDocuments(metricQueries.expectedCalvingThisMonth),
         ]);
 
       res.status(200).json({
@@ -285,6 +325,12 @@ export const getAllAnimals = async (req, res) => {
           cattle: cattleCount,
           pregnant: pregnantCount,
           available: availableCount,
+        },
+        metrics: {
+          animalsFound: total,
+          inseminated: inseminatedCount,
+          pregnant: pregnantCount,
+          expectedCalvingThisMonth: expectedCalvingThisMonthCount,
         },
       });
     } else {
@@ -398,6 +444,7 @@ export const getAnimalById = async (req, res) => {
       });
     }
     assertAnimalAccess(req.user, animal);
+
     const visibleWork = filterAnimalWorkForViewer(
       {
         inseminations: inseminationsList,
@@ -511,6 +558,13 @@ export const updateAnimalWizard = async (req, res) => {
   try {
     const { id } = req.params;
     const payload = req.body;
+
+    if (String(payload.earTag || "").trim().length > ANIMAL_EAR_TAG_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Ear tag must be ${ANIMAL_EAR_TAG_MAX_LENGTH} characters or fewer.`,
+        code: "ANIMAL_EAR_TAG_TOO_LONG",
+      });
+    }
 
     const lifecycleFields = [
       "aiDate",

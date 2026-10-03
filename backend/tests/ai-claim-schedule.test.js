@@ -218,6 +218,44 @@ test("AI claim schedule accepts afternoon", async (t) => {
   assert.equal(recorder.body.request.visitPeriod, "afternoon");
 });
 
+test("AI claim schedule stores a trimmed optional Farmer Preparation Note", async (t) => {
+  const state = installHarness(t);
+  const recorder = createResponseRecorder();
+
+  await claimAndScheduleAIRequest(
+    createRequest({
+      body: { farmerPreparationNote: "  Keep the cow secured.  " },
+    }),
+    recorder.response,
+  );
+
+  assert.equal(recorder.statusCode, 200);
+  assert.equal(
+    state.updates[0].$set.farmerPreparationNote,
+    "Keep the cow secured.",
+  );
+  assert.equal(recorder.body.request.farmerPreparationNote, "Keep the cow secured.");
+});
+
+test("AI claim schedule accepts an omitted preparation note", async (t) => {
+  const withoutNote = installHarness(t);
+  const firstRecorder = createResponseRecorder();
+  await claimAndScheduleAIRequest(createRequest(), firstRecorder.response);
+  assert.equal(firstRecorder.statusCode, 200);
+  assert.equal(withoutNote.updates[0].$set.farmerPreparationNote, "");
+});
+
+test("AI claim schedule rejects preparation notes over 500 characters", async (t) => {
+  installHarness(t);
+  const secondRecorder = createResponseRecorder();
+  await claimAndScheduleAIRequest(
+    createRequest({ body: { farmerPreparationNote: "x".repeat(501) } }),
+    secondRecorder.response,
+  );
+  assert.equal(secondRecorder.statusCode, 400);
+  assert.equal(secondRecorder.body.code, "FARMER_PREPARATION_NOTE_TOO_LONG");
+});
+
 test("re-insemination scheduling notification preserves attempt context", async (t) => {
   const state = installHarness(t, {
     request: {

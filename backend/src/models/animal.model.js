@@ -5,6 +5,8 @@ import {
   normalizeAnimalReproductiveStatus,
 } from "../domain/status-vocabulary.js";
 
+export const ANIMAL_EAR_TAG_MAX_LENGTH = 20;
+
 const AnimalSchema = new mongoose.Schema(
   {
     farmerId: {
@@ -13,7 +15,11 @@ const AnimalSchema = new mongoose.Schema(
       required: true,
     },
     animalId: { type: String, required: true },
-    earTag: { type: String, trim: true },
+    earTag: {
+      type: String,
+      trim: true,
+      maxlength: [ANIMAL_EAR_TAG_MAX_LENGTH, "Ear tag must be 20 characters or fewer."],
+    },
     normalizedEarTag: { type: String, select: false },
     brand: { type: String },
 

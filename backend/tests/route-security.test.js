@@ -54,6 +54,20 @@ test("Route Security: cleanup routes are admin-only", () => {
   assert.match(source, /router\.post\("\/cleanup-execute",\s*requireRole\(\["admin"\]\)/);
 });
 
+test("Route Security: Technician Farmer archive has a Technician-only role guard", () => {
+  const source = routeFile("user.routes.js");
+  assert.match(
+    source,
+    /router\.patch\("\/:id\/technician-archive",\s*protectedRoute,\s*requireRole\(\["technician"\]\),\s*archiveFarmerByTechnician\)/,
+  );
+  const technician = runRoleGuard(["technician"], "technician");
+  const admin = runRoleGuard(["technician"], "admin");
+  const farmer = runRoleGuard(["technician"], "farmer");
+  assert.equal(technician.nextCalled, true);
+  assert.equal(admin.statusCode, 403);
+  assert.equal(farmer.statusCode, 403);
+});
+
 test("Route Security: admin can access task endpoints", () => {
   const allowed = runRoleGuard(["admin", "technician"], "admin");
   assert.equal(allowed.nextCalled, true);

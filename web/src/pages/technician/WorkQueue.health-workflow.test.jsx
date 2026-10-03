@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  info: vi.fn(),
 }));
 
 vi.mock("../../lib/axios", () => ({
@@ -25,7 +26,7 @@ vi.mock("sonner", () => ({
   toast: {
     success: mocks.success,
     error: mocks.error,
-    info: vi.fn(),
+    info: mocks.info,
   },
 }));
 
@@ -43,19 +44,37 @@ vi.mock("../../components/dialogs/HealthRequestActionModal", () => ({
         data-workflow-id={task?.workflowId}
         data-start-service={startServiceOnOpen ? "true" : "false"}
       >
-        <button type="button" onClick={onClose}>Close Health</button>
+        <span>{task?.allowedAction}</span>
+        <button type="button" onClick={onClose}>
+          Close Health
+        </button>
       </div>
     ) : null,
 }));
 
 vi.mock("../../components/dialogs/AIServiceModal", () => ({
   default: ({ isOpen, workflowId, onClose, onSuccess }) =>
-    isOpen ? <div role="dialog" aria-label={`AI ${workflowId}`}><button type="button" onClick={onClose}>Close AI</button><button type="button" onClick={onSuccess}>Complete AI</button></div> : null,
+    isOpen ? (
+      <div role="dialog" aria-label={`AI ${workflowId}`}>
+        <button type="button" onClick={onClose}>
+          Close AI
+        </button>
+        <button type="button" onClick={onSuccess}>
+          Complete AI
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("../../components/dialogs/PregnancyDiagnosisModal", () => ({
   default: ({ isOpen, taskId, onClose }) =>
-    isOpen ? <div role="dialog" aria-label={`Pregnancy ${taskId}`}><button type="button" onClick={onClose}>Close Pregnancy</button></div> : null,
+    isOpen ? (
+      <div role="dialog" aria-label={`Pregnancy ${taskId}`}>
+        <button type="button" onClick={onClose}>
+          Close Pregnancy
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("../../components/dialogs/RecordCalvingModal", () => ({
@@ -66,7 +85,9 @@ vi.mock("../../components/dialogs/RecordCalvingModal", () => ({
         aria-label={`Calving ${taskId}`}
         data-pregnancy-id={pregnancyData?._id}
       >
-        <button type="button" onClick={onClose}>Close Calving</button>
+        <button type="button" onClick={onClose}>
+          Close Calving
+        </button>
       </div>
     ) : null,
 }));
@@ -96,7 +117,9 @@ const baseTask = {
   schedule: { date: "2026-08-31", visitPeriod: "afternoon" },
 };
 
-const renderWorkQueue = (initialEntry = "/technician/requests?section=myWork") => {
+const renderWorkQueue = (
+  initialEntry = "/technician/requests?section=myWork",
+) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -142,7 +165,24 @@ const renderQueue = (tasks, { taskDetailsById = {} } = {}) => {
 const LocationProbe = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  return <><output data-testid="technician-location">{location.pathname}{location.search}</output><button type="button" onClick={() => navigate(`/technician/requests?section=myWork&taskId=${ids.pregnancyTask}`)}>Open next deep link</button></>;
+  return (
+    <>
+      <output data-testid="technician-location">
+        {location.pathname}
+        {location.search}
+      </output>
+      <button
+        type="button"
+        onClick={() =>
+          navigate(
+            `/technician/requests?section=myWork&taskId=${ids.pregnancyTask}`,
+          )
+        }
+      >
+        Open next deep link
+      </button>
+    </>
+  );
 };
 
 describe("Work Queue owned Health workflow", () => {
@@ -169,7 +209,11 @@ describe("Work Queue owned Health workflow", () => {
     ]);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Complete Visit" }),
+      await screen.findByRole(
+        "button",
+        { name: "Complete Visit" },
+        { timeout: 5000 },
+      ),
     );
 
     const dialog = screen.getByRole("dialog", {
@@ -181,7 +225,53 @@ describe("Work Queue owned Health workflow", () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
-  it("opens scheduled Health through the same request-linked action system", async () => {
+  it.each(["morning", "afternoon"])(
+    "opens today's %s Health visit without starting it or showing generic details",
+    async (visitPeriod) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-29T01:00:00.000Z"));
+      try {
+        renderQueue([
+          {
+            ...baseTask,
+            id: ids.health,
+            workflowId: ids.health,
+            workflowType: "Health",
+            type: "health",
+            taskType: "Health",
+            status: "scheduled",
+            displayStatus: "scheduled",
+            serviceType: "Health Assistance",
+            handlingMethod: "farm_visit",
+            scheduledDate: "2026-09-29",
+            schedule: { date: "2026-09-29", visitPeriod },
+            timing: { kind: "scheduled_visit", date: "2026-09-29", visitPeriod },
+            allowedAction: "START_SERVICE",
+            actionLabel: "Start Visit",
+            raw: { _id: ids.health, status: "scheduled", handlingMethod: "farm_visit" },
+          },
+        ]);
+
+        fireEvent.click(
+          await screen.findByRole("button", { name: "View Scheduled Visit" }),
+        );
+
+        const dialog = screen.getByRole("dialog", {
+          name: "Owned Health request",
+        });
+        expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
+        expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
+        expect(dialog.getAttribute("data-start-service")).toBe("false");
+        expect(screen.getAllByRole("dialog")).toHaveLength(1);
+        expect(mocks.patch).not.toHaveBeenCalled();
+        expect(mocks.post).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("opens a future scheduled Health visit as read-only details", async () => {
     renderQueue([
       {
         ...baseTask,
@@ -193,24 +283,26 @@ describe("Work Queue owned Health workflow", () => {
         status: "scheduled",
         displayStatus: "scheduled",
         serviceType: "Health Assistance",
-        allowedAction: "START_SERVICE",
-        actionLabel: "Start Visit",
+        scheduledDate: "2099-12-01T04:00:00.000Z",
+        schedule: {
+          date: "2099-12-01T04:00:00.000Z",
+          visitPeriod: "afternoon",
+        },
+        allowedAction: "VIEW_DETAILS",
+        actionLabel: "View Scheduled Visit",
+        workTiming: "upcoming",
         raw: { _id: ids.health, status: "scheduled" },
       },
     ]);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Record Health Assistance" }),
+      await screen.findByRole("button", { name: "View Scheduled Visit" }),
     );
 
-    const dialog = screen.getByRole("dialog", {
-      name: "Owned Health request",
-    });
-    expect(dialog.getAttribute("data-request-id")).toBe(ids.health);
-    expect(dialog.getAttribute("data-workflow-id")).toBe(ids.health);
-    expect(dialog.getAttribute("data-start-service")).toBe("true");
+    const dialog = screen.getByRole("dialog", { name: "Owned Health request" });
+    expect(dialog.getAttribute("data-start-service")).toBe("false");
+    expect(screen.getByText("VIEW_DETAILS")).toBeTruthy();
     expect(mocks.patch).not.toHaveBeenCalled();
-    expect(mocks.post).not.toHaveBeenCalled();
   });
 
   it("preserves the existing AI, Pregnancy, and Calving record actions", async () => {
@@ -256,6 +348,11 @@ describe("Work Queue owned Health workflow", () => {
         raw: { _id: ids.calvingTask, taskType: "Calving" },
       },
     ]);
+
+    expect(await screen.findByText("Pregnancy Check")).toBeTruthy();
+    expect(screen.getByText("Expected Calving")).toBeTruthy();
+    expect(screen.queryByText("Pregnancy Diagnosis")).toBeNull();
+    expect(screen.queryByText("Calving Assistance")).toBeNull();
 
     fireEvent.click(await screen.findByRole("button", { name: "Record AI" }));
     expect(screen.getByRole("dialog", { name: `AI ${ids.ai}` })).toBeTruthy();
@@ -539,16 +636,260 @@ describe("My Work Schedule deep links", () => {
   const renderDeepLink = ({ parameter, id, target }) => {
     mocks.get.mockImplementation((_url, config) =>
       Promise.resolve({
-        data: config?.params?.[parameter] === id
-          ? { ...empty, data: target ? [target] : [], pagination: { ...empty.pagination, total: target ? 1 : 0 } }
-          : empty,
+        data:
+          config?.params?.[parameter] === id
+            ? {
+                ...empty,
+                data: target ? [target] : [],
+                pagination: { ...empty.pagination, total: target ? 1 : 0 },
+              }
+            : empty,
       }),
     );
     renderWorkQueue(`/technician/requests?section=myWork&${parameter}=${id}`);
   };
 
+  it("reports an accessible cancelled Health request from an old notification", async () => {
+    mocks.error.mockClear();
+    mocks.info.mockClear();
+    mocks.get.mockImplementation((url, config) => {
+      if (url === `/health-request/${ids.health}`) {
+        return Promise.resolve({ data: { data: { _id: ids.health, status: "cancelled", cancellationStatus: "approved", assignedTechnicianId: "technician-1" } } });
+      }
+      return Promise.resolve({ data: config?.params?.requestId === ids.health ? { ...empty, pagination: { ...empty.pagination, limit: 1 } } : empty });
+    });
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("This Health request has already been cancelled."));
+    expect(mocks.error).not.toHaveBeenCalledWith("This work item is unavailable or is not assigned to you.");
+    expect(screen.queryByRole("dialog", { name: "Owned Health request" })).toBeNull();
+    expect(screen.getByTestId("technician-location")).toHaveTextContent("section=myWork");
+    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("requestId="));
+  });
+
+  it("renders canonical lifecycle semantics through the actual My Work card path", async () => {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    renderQueue([
+      {
+        ...baseTask,
+        id: "return-to-heat",
+        taskId: "return-to-heat",
+        workflowType: "BreedingFollowUp",
+        taskType: "BreedingFollowUp",
+        serviceType: "Breeding Follow-up",
+        title: "Breeding Follow-up",
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: `${today}T02:00:00.000Z`,
+        schedule: { date: `${today}T02:00:00.000Z`, visitPeriod: null },
+        timing: { kind: "due", date: `${today}T02:00:00.000Z` },
+        allowedAction: "RECORD_BREEDING_OBSERVATION",
+        actionLabel: "Record Follow-up",
+        summary: "Farmer reported a return to heat for this animal.",
+        raw: {
+          sourceType: "farmer_requested_verification",
+          dueDate: `${today}T02:00:00.000Z`,
+          metadata: { reportType: "return_to_heat" },
+        },
+      },
+      {
+        ...baseTask,
+        id: "pregnancy-check",
+        taskId: "pregnancy-check",
+        workflowType: "PregnancyDiagnosis",
+        taskType: "Other",
+        serviceType: "Pregnancy Diagnosis",
+        title: "Pregnancy Diagnosis",
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: today,
+        schedule: { date: today, visitPeriod: null },
+        timing: { kind: "due", date: today },
+        allowedAction: "RECORD_SERVICE",
+        actionLabel: "Record Pregnancy Check",
+        raw: { taskType: "PD", dueDate: today },
+      },
+      {
+        ...baseTask,
+        id: "expected-calving",
+        taskId: "expected-calving",
+        workflowType: "CalvingAssistance",
+        taskType: "Other",
+        serviceType: "Calving Assistance",
+        title: "Calving Assistance",
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: today,
+        schedule: { date: today, visitPeriod: null },
+        timing: { kind: "due", date: today },
+        allowedAction: "RECORD_SERVICE",
+        actionLabel: "Record Calving",
+        raw: { taskType: "CD", dueDate: today },
+      },
+    ]);
+
+    expect(await screen.findByText("Breeding Follow-up")).toBeTruthy();
+    expect(await screen.findByText("Needs review")).toBeTruthy();
+    expect(screen.getByText("Return to heat reported")).toBeTruthy();
+    expect(screen.getByText("Reported today")).toBeTruthy();
+    expect(screen.getByText("Pregnancy Check")).toBeTruthy();
+    expect(screen.getAllByText("Ready for check").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Record Pregnancy Check" })).toBeTruthy();
+
+    expect(screen.getByText("Expected Calving")).toBeTruthy();
+    expect(screen.getByText("Expected today")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Record Calving" })).toBeTruthy();
+
+    expect(screen.queryByText("Pregnancy Diagnosis")).toBeNull();
+    expect(screen.queryByText("Calving Assistance")).toBeNull();
+    expect(screen.queryByText("Due Today")).toBeNull();
+    expect(screen.getAllByText("Timing")).toHaveLength(3);
+  });
+
+  it("suppresses automatic Pregnancy Check supporting text by source type only", async () => {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const generatedSummary =
+      "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.";
+    const genuineInstruction =
+      "Bring the portable ultrasound and review the animal history.";
+
+    renderQueue([
+      {
+        ...baseTask,
+        id: ids.pregnancyTask,
+        taskId: ids.pregnancyTask,
+        workflowType: "PD",
+        taskType: "PD",
+        serviceType: "Pregnancy Diagnosis",
+        title: "Pregnancy Diagnosis",
+        sourceType: "automatic_pd_followup",
+        summary: generatedSummary,
+        status: "Pending",
+        displayStatus: "Pending",
+        dueDate: today,
+        schedule: { date: today, visitPeriod: null },
+        timing: { kind: "due", date: today },
+        allowedAction: "RECORD_SERVICE",
+        actionLabel: "Record Pregnancy Check",
+        raw: {
+          taskType: "PD",
+          sourceType: "automatic_pd_followup",
+          dueDate: today,
+          metadata: { workflowStage: "initial_confirmation" },
+        },
+      },
+      {
+        ...baseTask,
+        id: "manual-instruction",
+        taskId: "manual-instruction",
+        workflowType: "Other",
+        taskType: "Other",
+        serviceType: "Other",
+        sourceType: "manual_task",
+        summary: genuineInstruction,
+        allowedAction: "VIEW_DETAILS",
+        actionLabel: "View Details",
+        raw: { taskType: "Other", sourceType: "manual_task" },
+      },
+    ]);
+
+    expect(await screen.findByText("Pregnancy Check")).toBeTruthy();
+    expect(screen.getAllByText("Ready for check").length).toBeGreaterThan(0);
+    expect(screen.queryByText(generatedSummary)).toBeNull();
+    expect(screen.getByText(genuineInstruction)).toBeTruthy();
+  });
+
+  it("uses the same semantic suppression in the My Work detail drawer", async () => {
+    const generatedSummary =
+      "Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #02AT.";
+    renderQueue([
+      {
+        ...baseTask,
+        id: ids.pregnancyTask,
+        taskId: ids.pregnancyTask,
+        workflowType: "PD",
+        taskType: "PD",
+        serviceType: "Pregnancy Diagnosis",
+        sourceType: "automatic_pd_followup",
+        summary: generatedSummary,
+        allowedAction: "VIEW_DETAILS",
+        actionLabel: "View Details",
+        raw: {
+          taskType: "PD",
+          sourceType: "automatic_pd_followup",
+          dueDate: baseTask.displayDate,
+        },
+      },
+    ]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View Details" }));
+
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText(generatedSummary)).toBeNull();
+    expect(screen.queryByText("Service information")).toBeNull();
+  });
+
+  it("retains the protected unavailable message for an unowned Health request", async () => {
+    mocks.error.mockClear();
+    mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`
+      ? Promise.reject({ response: { status: 403 } })
+      : Promise.resolve({ data: empty }));
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+    expect(screen.queryByRole("dialog", { name: "Owned Health request" })).toBeNull();
+  });
+
+  it("opens an active Health request after its cancellation was rejected without review actions", async () => {
+    mocks.get.mockClear();
+    const target = {
+      ...baseTask,
+      id: ids.health,
+      workflowId: ids.health,
+      workflowType: "Health",
+      type: "health",
+      allowedAction: "VIEW_DETAILS",
+      status: "scheduled",
+      raw: { _id: ids.health, status: "scheduled", cancellationStatus: "rejected" },
+    };
+    renderDeepLink({ parameter: "requestId", id: ids.health, target });
+    expect(await screen.findByRole("dialog", { name: "Owned Health request" })).toHaveAttribute("data-request-id", ids.health);
+    expect(mocks.get).not.toHaveBeenCalledWith(`/health-request/${ids.health}`);
+  });
+
+  it("keeps a nonexistent Health request unavailable", async () => {
+    mocks.error.mockClear();
+    mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`
+      ? Promise.reject({ response: { status: 404 } })
+      : Promise.resolve({ data: empty }));
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+  });
+
+  it("does not identify an unassigned cancelled Health request as the Technician's handled work", async () => {
+    mocks.error.mockClear();
+    mocks.info.mockClear();
+    mocks.get.mockImplementation((url) => url === `/health-request/${ids.health}`
+      ? Promise.resolve({ data: { data: { _id: ids.health, status: "cancelled", cancellationStatus: "approved" } } })
+      : Promise.resolve({ data: empty }));
+    renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.health}`);
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
+    expect(mocks.info).not.toHaveBeenCalledWith("This Health request has already been cancelled.");
+  });
+
   const futureTask = (overrides = {}) => ({
     ...baseTask,
+    status: "scheduled",
+    displayStatus: "scheduled",
     schedule: { date: "2099-10-11", visitPeriod: null },
     timing: { kind: "due", date: "2099-10-11", visitPeriod: null },
     location: "Poblacion, Oton",
@@ -564,35 +905,83 @@ describe("My Work Schedule deep links", () => {
     }).format(new Date());
 
   it.each([
-    ["AI", "requestId", ids.ai, { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } }],
-    ["Health", "requestId", ids.health, { ...baseTask, id: ids.health, workflowId: ids.health, taskId: ids.healthTask, workflowType: "Health", type: "health", allowedAction: "RECORD_SERVICE", raw: { _id: ids.health } }],
-    ["Pregnancy", "taskId", ids.pregnancyTask, { ...baseTask, id: ids.pregnancyTask, taskId: ids.pregnancyTask, workflowType: "PD", type: "task", allowedAction: "RECORD_SERVICE", raw: { _id: ids.pregnancyTask, taskType: "PD" } }],
-    ["Calving", "taskId", ids.calvingTask, { ...baseTask, id: ids.calvingTask, taskId: ids.calvingTask, workflowType: "Calving", type: "task", allowedAction: "RECORD_SERVICE", context: { pregnancyId: "507f1f77bcf86cd799439091" }, raw: { _id: ids.calvingTask, taskType: "CD" } }],
-  ])("resolves an off-page %s target through the owner-scoped lookup", async (label, parameter, id, target) => {
-    renderDeepLink({ parameter, id, target });
-    expect(await screen.findByRole("dialog", { name: new RegExp(label) })).toBeTruthy();
-    expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
-      params: expect.objectContaining({ [parameter]: id, limit: 1, workState: "active" }),
-    });
-  });
-
-  it.each([
     [
       "AI",
       "requestId",
       ids.ai,
       {
+        ...baseTask,
         id: ids.ai,
         workflowId: ids.ai,
         taskId: ids.aiTask,
         workflowType: "AI",
         type: "insemination",
-        serviceType: "Artificial Insemination",
         allowedAction: "RECORD_SERVICE",
-        timing: { kind: "scheduled_visit", date: "2099-10-11", visitPeriod: "morning" },
-        schedule: { date: "2099-10-11", visitPeriod: "morning" },
+        raw: { _id: ids.ai },
       },
     ],
+    [
+      "Health",
+      "requestId",
+      ids.health,
+      {
+        ...baseTask,
+        id: ids.health,
+        workflowId: ids.health,
+        taskId: ids.healthTask,
+        workflowType: "Health",
+        type: "health",
+        allowedAction: "RECORD_SERVICE",
+        raw: { _id: ids.health },
+      },
+    ],
+    [
+      "Pregnancy",
+      "taskId",
+      ids.pregnancyTask,
+      {
+        ...baseTask,
+        id: ids.pregnancyTask,
+        taskId: ids.pregnancyTask,
+        workflowType: "PD",
+        type: "task",
+        allowedAction: "RECORD_SERVICE",
+        raw: { _id: ids.pregnancyTask, taskType: "PD" },
+      },
+    ],
+    [
+      "Calving",
+      "taskId",
+      ids.calvingTask,
+      {
+        ...baseTask,
+        id: ids.calvingTask,
+        taskId: ids.calvingTask,
+        workflowType: "Calving",
+        type: "task",
+        allowedAction: "RECORD_SERVICE",
+        context: { pregnancyId: "507f1f77bcf86cd799439091" },
+        raw: { _id: ids.calvingTask, taskType: "CD" },
+      },
+    ],
+  ])(
+    "resolves an off-page %s target through the owner-scoped lookup",
+    async (label, parameter, id, target) => {
+      renderDeepLink({ parameter, id, target });
+      expect(
+        await screen.findByRole("dialog", { name: new RegExp(label) }),
+      ).toBeTruthy();
+      expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
+        params: expect.objectContaining({
+          [parameter]: id,
+          limit: 1,
+          workState: "active",
+        }),
+      });
+    },
+  );
+
+  it.each([
     [
       "Health",
       "requestId",
@@ -604,8 +993,14 @@ describe("My Work Schedule deep links", () => {
         workflowType: "Health",
         type: "health",
         serviceType: "Health Assistance",
-        allowedAction: "START_SERVICE",
-        timing: { kind: "scheduled_visit", date: "2099-10-11", visitPeriod: "afternoon" },
+        allowedAction: "VIEW_DETAILS",
+        actionLabel: "View Scheduled Visit",
+        workTiming: "upcoming",
+        timing: {
+          kind: "scheduled_visit",
+          date: "2099-10-11",
+          visitPeriod: "afternoon",
+        },
         schedule: { date: "2099-10-11", visitPeriod: "afternoon" },
       },
     ],
@@ -636,56 +1031,121 @@ describe("My Work Schedule deep links", () => {
         context: { pregnancyId: "507f1f77bcf86cd799439091" },
       },
     ],
-  ])("opens future %s work as read-only context instead of execution", async (label, parameter, id, details) => {
-    const target = futureTask({
-      ...details,
-      title: details.serviceType,
-      farmer: { name: "Test Farmer", location: "Poblacion, Oton" },
-      animal: { name: "Test Animal", earTag: "TEST-1" },
-    });
-    renderDeepLink({ parameter, id, target });
+  ])(
+    "opens future %s work as read-only context instead of execution",
+    async (label, parameter, id, details) => {
+      const target = futureTask({
+        ...details,
+        title: details.serviceType,
+        farmer: { name: "Test Farmer", location: "Poblacion, Oton" },
+        animal: { name: "Test Animal", earTag: "TEST-1" },
+      });
+      renderDeepLink({ parameter, id, target });
 
-    const dialog = await screen.findByRole("dialog", {
-      name: details.serviceType,
-    });
-    expect(dialog).toHaveTextContent(/Upcoming|Scheduled/i);
-    expect(dialog).toHaveTextContent("Test Farmer");
-    expect(dialog).toHaveTextContent("Test Animal");
-    expect(dialog).toHaveTextContent("Poblacion, Oton");
-    const actionDialogName =
-      label === "Health"
-        ? "Owned Health request"
-        : new RegExp("^" + label + " " + id);
-    expect(
-      screen.queryByRole("dialog", { name: actionDialogName }),
-    ).toBeNull();
-  });
+      const dialog = await screen.findByRole("dialog", {
+        name: label === "Health" ? "Owned Health request" : details.serviceType,
+      });
+      if (label !== "Health") {
+        expect(dialog).toHaveTextContent(/Upcoming|Scheduled/i);
+        expect(dialog).toHaveTextContent("Test Farmer");
+        expect(dialog).toHaveTextContent("Test Animal");
+        expect(dialog).toHaveTextContent("Poblacion, Oton");
+      } else {
+        expect(dialog.getAttribute("data-start-service")).toBe("false");
+      }
+      const actionDialogName =
+        label === "Health"
+          ? "Owned Health request"
+          : new RegExp("^" + label + " " + id);
+      if (label !== "Health") {
+        expect(
+          screen.queryByRole("dialog", { name: actionDialogName }),
+        ).toBeNull();
+      }
+    },
+  );
 
   it.each([
-    ["AI", "requestId", ids.ai, { workflowType: "AI", type: "insemination", serviceType: "Artificial Insemination", workflowId: ids.ai, taskId: ids.aiTask, allowedAction: "RECORD_SERVICE" }],
-    ["Health", "requestId", ids.health, { workflowType: "Health", type: "health", serviceType: "Health Assistance", workflowId: ids.health, taskId: ids.healthTask, allowedAction: "START_SERVICE" }],
-    ["Pregnancy", "taskId", ids.pregnancyTask, { workflowType: "PD", type: "task", serviceType: "Pregnancy Diagnosis", taskId: ids.pregnancyTask, allowedAction: "RECORD_SERVICE" }],
-    ["Calving", "taskId", ids.calvingTask, { workflowType: "Calving", type: "task", serviceType: "Calving Assistance", taskId: ids.calvingTask, allowedAction: "RECORD_SERVICE", context: { pregnancyId: "507f1f77bcf86cd799439091" } }],
-  ])("opens due %s work through its canonical action", async (label, parameter, id, details) => {
-    const today = dueTodayKey();
-    const target = {
-      ...baseTask,
-      ...details,
-      id,
-      timing: {
-        kind: details.type === "task" ? "due" : "scheduled_visit",
-        date: today,
-        visitPeriod: details.type === "task" ? null : "morning",
+    [
+      "AI",
+      "requestId",
+      ids.ai,
+      {
+        workflowType: "AI",
+        type: "insemination",
+        serviceType: "Artificial Insemination",
+        workflowId: ids.ai,
+        taskId: ids.aiTask,
+        allowedAction: "RECORD_SERVICE",
       },
-      schedule: {
-        date: today,
-        visitPeriod: details.type === "task" ? null : "morning",
+    ],
+    [
+      "Health",
+      "requestId",
+      ids.health,
+      {
+        workflowType: "Health",
+        type: "health",
+        serviceType: "Health Assistance",
+        workflowId: ids.health,
+        taskId: ids.healthTask,
+        allowedAction: "START_SERVICE",
       },
-      raw: { _id: id, taskType: details.workflowType === "Calving" ? "CD" : details.workflowType },
-    };
-    renderDeepLink({ parameter, id, target });
-    expect(await screen.findByRole("dialog", { name: new RegExp(label) })).toBeTruthy();
-  });
+    ],
+    [
+      "Pregnancy",
+      "taskId",
+      ids.pregnancyTask,
+      {
+        workflowType: "PD",
+        type: "task",
+        serviceType: "Pregnancy Diagnosis",
+        taskId: ids.pregnancyTask,
+        allowedAction: "RECORD_SERVICE",
+      },
+    ],
+    [
+      "Calving",
+      "taskId",
+      ids.calvingTask,
+      {
+        workflowType: "Calving",
+        type: "task",
+        serviceType: "Calving Assistance",
+        taskId: ids.calvingTask,
+        allowedAction: "RECORD_SERVICE",
+        context: { pregnancyId: "507f1f77bcf86cd799439091" },
+      },
+    ],
+  ])(
+    "opens due %s work through its canonical action",
+    async (label, parameter, id, details) => {
+      const today = dueTodayKey();
+      const target = {
+        ...baseTask,
+        ...details,
+        id,
+        timing: {
+          kind: details.type === "task" ? "due" : "scheduled_visit",
+          date: today,
+          visitPeriod: details.type === "task" ? null : "morning",
+        },
+        schedule: {
+          date: today,
+          visitPeriod: details.type === "task" ? null : "morning",
+        },
+        raw: {
+          _id: id,
+          taskType:
+            details.workflowType === "Calving" ? "CD" : details.workflowType,
+        },
+      };
+      renderDeepLink({ parameter, id, target });
+      expect(
+        await screen.findByRole("dialog", { name: new RegExp(label) }),
+      ).toBeTruthy();
+    },
+  );
 
   it("keeps overdue Schedule work actionable", async () => {
     const target = {
@@ -700,7 +1160,9 @@ describe("My Work Schedule deep links", () => {
       raw: { _id: ids.pregnancyTask, taskType: "PD" },
     };
     renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
-    expect(await screen.findByRole("dialog", { name: /Pregnancy/ })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: /Pregnancy/ }),
+    ).toBeTruthy();
   });
 
   it("clears an upcoming preview deep link when its backdrop closes", async () => {
@@ -716,7 +1178,9 @@ describe("My Work Schedule deep links", () => {
     renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
     fireEvent.click(await screen.findByRole("button", { name: "Close" }));
     await waitFor(() =>
-      expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="),
+      expect(
+        screen.getByTestId("technician-location").textContent,
+      ).not.toContain("taskId="),
     );
   });
 
@@ -733,54 +1197,154 @@ describe("My Work Schedule deep links", () => {
     renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target });
     fireEvent.click(await screen.findByRole("button", { name: "Close" }));
     await waitFor(() =>
-      expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="),
+      expect(
+        screen.getByTestId("technician-location").textContent,
+      ).not.toContain("taskId="),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open next deep link" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open next deep link" }),
+    );
     expect(
       await screen.findByRole("dialog", { name: "Pregnancy Diagnosis" }),
     ).toHaveTextContent(/Upcoming/i);
   });
 
   it("clears the identifier when the opened workflow closes", async () => {
-    const target = { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } };
+    const target = {
+      ...baseTask,
+      id: ids.ai,
+      workflowId: ids.ai,
+      taskId: ids.aiTask,
+      workflowType: "AI",
+      type: "insemination",
+      allowedAction: "RECORD_SERVICE",
+      raw: { _id: ids.ai },
+    };
     renderDeepLink({ parameter: "requestId", id: ids.ai, target });
     fireEvent.click(await screen.findByRole("button", { name: "Close AI" }));
-    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("requestId="));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("technician-location").textContent,
+      ).not.toContain("requestId="),
+    );
   });
 
   it("clears the identifier after successful completion", async () => {
-    const target = { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } };
+    const target = {
+      ...baseTask,
+      id: ids.ai,
+      workflowId: ids.ai,
+      taskId: ids.aiTask,
+      workflowType: "AI",
+      type: "insemination",
+      allowedAction: "RECORD_SERVICE",
+      raw: { _id: ids.ai },
+    };
     renderDeepLink({ parameter: "requestId", id: ids.ai, target });
     fireEvent.click(await screen.findByRole("button", { name: "Complete AI" }));
-    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("requestId="));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("technician-location").textContent,
+      ).not.toContain("requestId="),
+    );
   });
 
   it("fails closed and clears an unavailable or foreign identifier", async () => {
-    renderDeepLink({ parameter: "taskId", id: ids.pregnancyTask, target: null });
-    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("This work item is unavailable or is not assigned to you."));
-    await waitFor(() => expect(screen.getByTestId("technician-location").textContent).not.toContain("taskId="));
+    renderDeepLink({
+      parameter: "taskId",
+      id: ids.pregnancyTask,
+      target: null,
+    });
+    await waitFor(() =>
+      expect(mocks.error).toHaveBeenCalledWith(
+        "This work item is unavailable or is not assigned to you.",
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("technician-location").textContent,
+      ).not.toContain("taskId="),
+    );
   });
 
   it("can open a different deep link immediately after closing the first", async () => {
-    const aiTarget = { ...baseTask, id: ids.ai, workflowId: ids.ai, taskId: ids.aiTask, workflowType: "AI", type: "insemination", allowedAction: "RECORD_SERVICE", raw: { _id: ids.ai } };
-    const pregnancyTarget = { ...baseTask, id: ids.pregnancyTask, taskId: ids.pregnancyTask, workflowType: "PD", type: "task", allowedAction: "RECORD_SERVICE", raw: { _id: ids.pregnancyTask, taskType: "PD" } };
+    const aiTarget = {
+      ...baseTask,
+      id: ids.ai,
+      workflowId: ids.ai,
+      taskId: ids.aiTask,
+      workflowType: "AI",
+      type: "insemination",
+      allowedAction: "RECORD_SERVICE",
+      raw: { _id: ids.ai },
+    };
+    const pregnancyTarget = {
+      ...baseTask,
+      id: ids.pregnancyTask,
+      taskId: ids.pregnancyTask,
+      workflowType: "PD",
+      type: "task",
+      allowedAction: "RECORD_SERVICE",
+      raw: { _id: ids.pregnancyTask, taskType: "PD" },
+    };
     mocks.get.mockImplementation((_url, config) => {
-      const target = config?.params?.requestId === ids.ai
-        ? aiTarget
-        : config?.params?.taskId === ids.pregnancyTask
-          ? pregnancyTarget
-          : null;
-      return Promise.resolve({ data: { data: target ? [target] : [], pagination: { page: 1, limit: 1, total: target ? 1 : 0, totalPages: 1 }, counts: empty.counts } });
+      const target =
+        config?.params?.requestId === ids.ai
+          ? aiTarget
+          : config?.params?.taskId === ids.pregnancyTask
+            ? pregnancyTarget
+            : null;
+      return Promise.resolve({
+        data: {
+          data: target ? [target] : [],
+          pagination: {
+            page: 1,
+            limit: 1,
+            total: target ? 1 : 0,
+            totalPages: 1,
+          },
+          counts: empty.counts,
+        },
+      });
     });
     renderWorkQueue(`/technician/requests?section=myWork&requestId=${ids.ai}`);
     fireEvent.click(await screen.findByRole("button", { name: "Close AI" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open next deep link" }));
-    expect(await screen.findByRole("dialog", { name: new RegExp("Pregnancy") })).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open next deep link" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: new RegExp("Pregnancy") }),
+    ).toBeTruthy();
   });
 });
 
 describe("My Work canonical server data", () => {
+  it.each(["scheduled", "in-progress"])(
+    "renders the Health request type as Sick or Injured Animal for %s work",
+    async (status) => {
+      renderQueue([
+        {
+          ...baseTask,
+          id: `${ids.health}-${status}`,
+          workflowId: ids.health,
+          workflowType: "Health",
+          type: "health",
+          title: "disease",
+          serviceType: "disease",
+          requestType: "disease",
+          status,
+          displayStatus: status,
+          allowedAction:
+            status === "scheduled" ? "VIEW_DETAILS" : "START_SERVICE",
+        },
+      ]);
+
+      expect(await screen.findByText("Sick or Injured Animal")).toBeTruthy();
+      expect(screen.queryByText(/^disease$/i)).toBeNull();
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.patch.mockResolvedValue({ data: {} });
@@ -814,7 +1378,9 @@ describe("My Work canonical server data", () => {
   it("uses backend pagination and totals for actionable My Work", async () => {
     renderWorkQueue();
 
-    expect(await screen.findByRole("heading", { name: "My Work" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "My Work" }),
+    ).toBeTruthy();
     await waitFor(() =>
       expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
         params: {
@@ -847,9 +1413,7 @@ describe("My Work canonical server data", () => {
   });
 
   it("treats legacy completed URLs as active My Work without exposing old tabs", async () => {
-    renderWorkQueue(
-      "/technician/requests?section=myWork&workState=completed",
-    );
+    renderWorkQueue("/technician/requests?section=myWork&workState=completed");
 
     await waitFor(() =>
       expect(mocks.get).toHaveBeenCalledWith("/technician/work-queue", {
@@ -911,7 +1475,8 @@ describe("My Work canonical server data", () => {
     const search = screen.getByLabelText("Search My Work");
     const serviceType = screen.getByLabelText("Service type");
     expect(
-      search.compareDocumentPosition(serviceType) & Node.DOCUMENT_POSITION_FOLLOWING,
+      search.compareDocumentPosition(serviceType) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

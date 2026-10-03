@@ -2,6 +2,8 @@ import React from "react";
 import { View, ScrollView, StatusBar, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlertTriangle } from "lucide-react-native";
+import * as Application from "expo-application";
+import { getInstalledVersionLabel } from "@/features/update/utils/installedVersion";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useFarmerProfile } from "../hooks/useFarmerProfile";
 import ProfileHeader from "../components/ProfileHeader";
@@ -39,7 +41,9 @@ export const FarmerProfileScreen = () => {
     phoneOtpCooldown,
     phoneOtpRemainingSeconds,
     phoneError,
-    setPhoneError,
+    phoneFeedbackTitle,
+    phoneFeedbackKind,
+    clearPhoneFeedback,
     hasPhoneNumber,
     hasVerifiedPhone,
     isChangingPhoneNumber,
@@ -145,7 +149,7 @@ export const FarmerProfileScreen = () => {
             marginBottom: 40,
           }}
         >
-          {t("versionInfo")}
+          {getInstalledVersionLabel(t("versionInfo"), Application.nativeApplicationVersion)}
         </Text>
       </ScrollView>
 
@@ -165,7 +169,9 @@ export const FarmerProfileScreen = () => {
         phoneOtpCooldown={phoneOtpCooldown}
         phoneOtpRemainingSeconds={phoneOtpRemainingSeconds}
         phoneError={phoneError}
-        onClearPhoneError={() => setPhoneError("")}
+        phoneFeedbackTitle={phoneFeedbackTitle}
+        phoneFeedbackKind={phoneFeedbackKind}
+        onClearPhoneError={clearPhoneFeedback}
         hasPhoneNumber={hasPhoneNumber}
         hasVerifiedPhone={hasVerifiedPhone}
         isChangingPhoneNumber={isChangingPhoneNumber}

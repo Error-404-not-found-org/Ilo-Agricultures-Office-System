@@ -2,14 +2,17 @@ import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  Baby,
   CalendarCheck,
   CalendarDays,
   CheckCircle,
+  HeartCrack,
+  HeartPulse,
   MapPin,
   PawPrint,
-  Sparkles,
   Stethoscope,
   Syringe,
+  User,
   UserPlus,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -27,6 +30,7 @@ import {
   formatPlannedSchedule,
   getScheduleEntityKind,
 } from "../../utils/technicianSchedulePresentation";
+import { getLifecycleTaskPresentation } from "../../utils/technicianLifecyclePresentation";
 
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
@@ -117,20 +121,29 @@ function QuickAction({
 function getShiftBadgeStyle(slotText) {
   const slot = String(slotText || "").toLowerCase();
   if (slot.includes("morning")) {
-    return "bg-amber-500 text-white border-amber-500 dark:bg-amber-400 dark:border-amber-400 font-bold";
+    return "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold";
   }
   if (slot.includes("afternoon")) {
-    return "bg-sky-600 text-white border-sky-600 dark:bg-sky-500 dark:border-sky-500 font-bold";
+    return "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 font-bold";
   }
   if (slot.includes("evening")) {
-    return "bg-indigo-600 text-white border-indigo-600 dark:bg-indigo-500 dark:border-indigo-500 font-bold";
+    return "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 font-bold";
   }
-  return "bg-slate-700 text-white border-slate-700 dark:bg-slate-600 dark:border-slate-600 font-bold";
+  return "bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/30 font-bold";
 }
+
 function getWorkTypeStyle(item = {}) {
-  const kind = String(
-    item.type || item.workflowType || item.taskType || "",
-  ).toLowerCase();
+  const kind = [
+    item.type,
+    item.workflowType,
+    item.taskType,
+    item.sourceType,
+    item.raw?.taskType,
+    item.raw?.sourceType,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   const label = String(item.scheduleLabel || "").toLowerCase();
 
   if (kind.includes("ai") || kind.includes("insem") || label.includes("ai")) {
@@ -140,7 +153,34 @@ function getWorkTypeStyle(item = {}) {
       iconClass:
         "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
       badgeClass:
-        "bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-500 dark:border-emerald-500 font-bold",
+        "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold",
+    };
+  }
+  if (
+    kind.includes("farmer_pregnancy_loss_report") ||
+    label.includes("pregnancy loss")
+  ) {
+    return {
+      icon: HeartCrack,
+      badgeText: "Pregnancy Loss Review",
+      iconClass:
+        "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
+      badgeClass:
+        "bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 font-bold",
+    };
+  }
+  if (
+    kind.includes("breeding") ||
+    kind.includes("follow") ||
+    label.includes("breeding follow")
+  ) {
+    return {
+      icon: CalendarCheck,
+      badgeText: "Breeding Follow-up",
+      iconClass:
+        "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20",
+      badgeClass:
+        "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 font-bold",
     };
   }
   if (
@@ -149,12 +189,12 @@ function getWorkTypeStyle(item = {}) {
     label.includes("pregnancy")
   ) {
     return {
-      icon: CheckCircle,
+      icon: HeartPulse,
       badgeText: "Pregnancy Check",
       iconClass:
-        "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20",
+        "bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20",
       badgeClass:
-        "bg-purple-600 text-white border-purple-600 dark:bg-purple-500 dark:border-purple-500 font-bold",
+        "bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30 font-bold",
     };
   }
   if (
@@ -163,12 +203,12 @@ function getWorkTypeStyle(item = {}) {
     label.includes("calving")
   ) {
     return {
-      icon: Sparkles,
-      badgeText: "Calving Due",
+      icon: Baby,
+      badgeText: "Expected Calving",
       iconClass:
-        "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+        "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20",
       badgeClass:
-        "bg-amber-500 text-white border-amber-500 dark:bg-amber-400 dark:border-amber-400 font-bold",
+        "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 font-bold",
     };
   }
   if (kind.includes("health") || label.includes("health")) {
@@ -176,9 +216,9 @@ function getWorkTypeStyle(item = {}) {
       icon: Stethoscope,
       badgeText: "Health Visit",
       iconClass:
-        "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
+        "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
       badgeClass:
-        "bg-rose-600 text-white border-rose-600 dark:bg-rose-500 dark:border-rose-500 font-bold",
+        "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold",
     };
   }
   return {
@@ -186,7 +226,7 @@ function getWorkTypeStyle(item = {}) {
     badgeText: "Task",
     iconClass: "bg-primary/10 text-primary border border-primary/20",
     badgeClass:
-      "bg-slate-700 text-white border-slate-700 dark:bg-slate-600 dark:border-slate-600 font-bold",
+      "bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/30 font-bold",
   };
 }
 
@@ -380,6 +420,7 @@ export default function Dashboard() {
                 <div className="space-y-3 p-4 sm:p-5">
                   {todayWork.map((item) => {
                     const target = item.navigationTarget;
+                    const lifecycle = getLifecycleTaskPresentation(item);
                     const workStyle = getWorkTypeStyle(item);
                     const WorkIcon = workStyle.icon;
                     const slotText = getDashboardScheduleSlot(item);
@@ -413,14 +454,36 @@ export default function Dashboard() {
                       );
 
                     const isInProgressAI = isAI && isInProgress;
-                    const plannedSchedule = formatPlannedSchedule(item);
+                    const titleText = isInProgressAI
+                      ? "Artificial Insemination"
+                      : item.scheduleLabel;
+                    const plannedSchedule = lifecycle
+                      ? null
+                      : formatPlannedSchedule(item);
                     const displayedLocation =
                       formatDashboardFarmerLocation(item);
+
+                    const lifecycleBadgeClass = (() => {
+                      if (!lifecycle?.actionState) return workStyle.badgeClass;
+                      const state = String(
+                        lifecycle.actionState,
+                      ).toLowerCase();
+                      if (state.includes("ready")) {
+                        return "bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30 font-bold";
+                      }
+                      if (state.includes("review")) {
+                        return "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 font-bold";
+                      }
+                      if (state.includes("scheduled")) {
+                        return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold";
+                      }
+                      return "badge-info font-bold";
+                    })();
 
                     return (
                       <article
                         key={String(item.taskId || item.workflowId || item.id)}
-                        className="group flex flex-col gap-4 rounded-xl border-2 border-primary/10 bg-base-200 p-4 shadow-sm transition-all hover:border-primary/30 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-5"
+                        className="group flex flex-col gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs transition-all hover:border-primary/40 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-5"
                       >
                         {/* Left: Icon and main info */}
                         <div className="flex items-start gap-3.5 min-w-0 sm:flex-1">
@@ -437,18 +500,15 @@ export default function Dashboard() {
                             {/* Badges row */}
                             <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                               {isInProgressAI ? (
-                                <>
-                                  <span className="badge badge-soft badge-sm font-bold badge-info">
-                                    In Progress
-                                  </span>
-                                  <h3 className="inline-flex">
-                                    <span
-                                      className={`badge badge-soft badge-sm ${workStyle.badgeClass}`}
-                                    >
-                                      Artificial Insemination
-                                    </span>
-                                  </h3>
-                                </>
+                                <span className="badge badge-soft badge-sm font-bold badge-info">
+                                  In Progress
+                                </span>
+                              ) : lifecycle ? (
+                                <span
+                                  className={`badge badge-soft badge-sm font-bold ${lifecycleBadgeClass}`}
+                                >
+                                  {lifecycle.actionState || lifecycle.timing}
+                                </span>
                               ) : (
                                 <>
                                   <span
@@ -470,25 +530,37 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            {/* Title (for non-in-progress AI workflows) */}
-                            {!isInProgressAI && (
-                              <h3 className="text-sm sm:text-base font-bold text-base-content truncate group-hover:text-primary transition-colors">
-                                {item.scheduleLabel}
-                              </h3>
+                            {/* Title (standardized across all items) */}
+                            <h3 className="text-sm sm:text-base font-bold text-base-content truncate group-hover:text-primary transition-colors">
+                              {titleText}
+                            </h3>
+
+                            {lifecycle?.context && (
+                              <p className="mt-1 text-xs text-base-content/70">
+                                {lifecycle.context}
+                              </p>
                             )}
 
-                            {/* Farmer and location */}
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-base-content/65">
-                              <span className="font-medium text-base-content/85 truncate">
-                                {item.farmer ||
-                                  item.farmerName ||
-                                  "Farmer not recorded"}
+                            {/* Farmer, Location, and Schedule Metadata */}
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70">
+                              <span className="flex items-center gap-1.5 font-semibold text-base-content/90 truncate">
+                                <User
+                                  size={13}
+                                  className="shrink-0 text-base-content/40"
+                                  aria-hidden="true"
+                                />
+                                <span className="truncate">
+                                  {item.farmer ||
+                                    item.farmerName ||
+                                    "Farmer not recorded"}
+                                </span>
                               </span>
+
                               {displayedLocation && (
-                                <span className="flex items-center gap-1 text-base-content/50 truncate">
+                                <span className="flex items-center gap-1 text-base-content/60 truncate">
                                   <MapPin
-                                    size={12}
-                                    className="shrink-0"
+                                    size={13}
+                                    className="shrink-0 text-base-content/40"
                                     aria-hidden="true"
                                   />
                                   <span className="truncate">
@@ -496,19 +568,31 @@ export default function Dashboard() {
                                   </span>
                                 </span>
                               )}
-                            </div>
 
-                            {/* Planned schedule */}
-                            {plannedSchedule && (
-                              <div className="mt-1 flex items-center gap-1 text-xs text-base-content/65">
-                                <CalendarDays
-                                  size={12}
-                                  className="shrink-0"
-                                  aria-hidden="true"
-                                />
-                                <span>Planned: {plannedSchedule}</span>
-                              </div>
-                            )}
+                              {(plannedSchedule ||
+                                (lifecycle?.detail &&
+                                  !lifecycle?.context?.includes(
+                                    lifecycle.detail,
+                                  )) ||
+                                (!lifecycle?.actionState &&
+                                  lifecycle?.date &&
+                                  !lifecycle?.context?.includes(
+                                    lifecycle.date,
+                                  ))) && (
+                                <span className="flex items-center gap-1 text-base-content/60 truncate">
+                                  <CalendarDays
+                                    size={13}
+                                    className="shrink-0 text-base-content/40"
+                                    aria-hidden="true"
+                                  />
+                                  <span>
+                                    {lifecycle
+                                      ? lifecycle.detail || lifecycle.date
+                                      : `Planned: ${plannedSchedule}`}
+                                  </span>
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -517,7 +601,7 @@ export default function Dashboard() {
                           <div className="shrink-0 self-end sm:self-center">
                             <Link
                               to={`${target.path}${target.search || ""}`}
-                              className="btn btn-sm btn-outline btn-primary gap-1.5 font-semibold group/btn hover:btn-primary transition-all"
+                              className="btn btn-sm btn-primary gap-1.5 font-semibold shadow-xs hover:shadow transition-all group/btn"
                               aria-label={`${target.label}: ${item.scheduleLabel}`}
                             >
                               <span>{target.label}</span>

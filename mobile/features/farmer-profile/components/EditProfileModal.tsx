@@ -45,6 +45,8 @@ interface EditProfileModalProps {
   phoneOtpCooldown?: number;
   phoneOtpRemainingSeconds?: number;
   phoneError?: string;
+  phoneFeedbackTitle?: string;
+  phoneFeedbackKind?: "error" | "info";
   onClearPhoneError?: () => void;
   hasPhoneNumber?: boolean;
   hasVerifiedPhone?: boolean;
@@ -144,6 +146,8 @@ const EditProfileModal = ({
   phoneOtpCooldown = 0,
   phoneOtpRemainingSeconds = 0,
   phoneError = "",
+  phoneFeedbackTitle = "",
+  phoneFeedbackKind = "info",
   onClearPhoneError,
   hasPhoneNumber = false,
   hasVerifiedPhone = false,
@@ -440,33 +444,33 @@ const EditProfileModal = ({
                             <Animated.View
                               accessibilityRole="alert"
                               accessibilityLiveRegion={
-                                phoneError ? "assertive" : "polite"
+                                phoneFeedbackKind === "error" ? "assertive" : "polite"
                               }
                               accessibilityLabel={
-                                phoneError
+                                phoneFeedbackKind === "error"
                                   ? `Phone verification error: ${phoneError}`
                                   : `Verification code sent to ${formData.phoneNumber}`
                               }
                               className="flex-row items-start gap-3 rounded-xl border p-3 mb-4"
                               style={{
                                 opacity: feedbackOpacity,
-                                backgroundColor: phoneError
+                                backgroundColor: phoneFeedbackKind === "error"
                                   ? colors.errorContainer
                                   : colors.infoContainer,
-                                borderColor: phoneError
+                                borderColor: phoneFeedbackKind === "error"
                                   ? colors.errorBorder
                                   : colors.infoBorder,
                               }}
                             >
                               <MaterialCommunityIcons
                                 name={
-                                  phoneError
+                                  phoneFeedbackKind === "error"
                                     ? "alert-circle-outline"
                                     : "message-check-outline"
                                 }
                                 size={20}
                                 color={
-                                  phoneError
+                                  phoneFeedbackKind === "error"
                                     ? colors.errorForeground
                                     : colors.infoForeground
                                 }
@@ -475,21 +479,19 @@ const EditProfileModal = ({
                                 <Text
                                   style={{
                                     fontFamily: "Outfit_600SemiBold",
-                                    color: phoneError
+                                    color: phoneFeedbackKind === "error"
                                       ? colors.errorForeground
                                       : colors.infoForeground,
                                     fontSize: 14,
                                     lineHeight: 20,
                                   }}
                                 >
-                                  {phoneError
-                                    ? "Phone verification unsuccessful"
-                                    : "Verification code sent"}
+                                  {phoneFeedbackTitle || "Verification code sent"}
                                 </Text>
                                 <Text
                                   style={{
                                     fontFamily: "Outfit_400Regular",
-                                    color: phoneError
+                                    color: phoneFeedbackKind === "error"
                                       ? colors.errorForeground
                                       : colors.textSecondary,
                                     fontSize: 13,
@@ -497,7 +499,9 @@ const EditProfileModal = ({
                                   }}
                                 >
                                   {phoneError ||
-                                    `Enter the code sent to ${maskedPhoneNumber}.`}
+                                    (phoneFeedbackTitle === "New verification code sent"
+                                      ? `A new code was sent to ${maskedPhoneNumber}. Previous verification codes will no longer work.`
+                                      : `Enter the code sent to ${maskedPhoneNumber}. SMS delivery may take a few minutes depending on your network.`)}
                                 </Text>
                               </View>
                             </Animated.View>

@@ -99,6 +99,27 @@ test("Continue Tracking uses the breed gestation window", () => {
   );
 });
 
+test("Continue Tracking remains open for the entire expected-calving day in Manila", () => {
+  const eventDate = "2025-12-12T19:14:00.000Z";
+
+  assert.doesNotThrow(() =>
+    assertPreviousAICanContinueTracking({
+      eventDate,
+      now: "2026-09-22T15:59:59.999Z",
+      species: "Cattle",
+    }),
+  );
+  assert.throws(
+    () =>
+      assertPreviousAICanContinueTracking({
+        eventDate,
+        now: "2026-09-22T16:00:00.000Z",
+        species: "Cattle",
+      }),
+    (error) => error.code === "PREVIOUS_AI_TRACKING_WINDOW_CLOSED",
+  );
+});
+
 test("history-only records cannot become current attempts or receive outcomes", () => {
   assert.deepEqual(CURRENT_AI_ATTEMPT_QUERY, {
     entryMode: { $ne: "history_only" },

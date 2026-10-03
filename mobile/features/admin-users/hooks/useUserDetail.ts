@@ -5,7 +5,6 @@ import { toast } from "sonner-native";
 import {
   suspendUser,
   reactivateUser,
-  verifyUser,
   resetPassword,
   updateRole,
   deleteUser,
@@ -76,22 +75,6 @@ export const useUserDetail = (userId: string) => {
     }
   };
 
-  const handleVerify = async () => {
-    if (!canManageUser()) return;
-    setActionLoading(true);
-    try {
-      await verifyUser(api, userId);
-      toast.success("Account marked as verified.");
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to verify account.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handleResetPassword = async (): Promise<string | null> => {
     if (!canManageUser()) return null;
     setActionLoading(true);
@@ -128,12 +111,12 @@ export const useUserDetail = (userId: string) => {
     setActionLoading(true);
     try {
       await deleteUser(api, userId);
-      toast.success("User deleted successfully.");
+      toast.success("Profile archived.");
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       queryClient.invalidateQueries({ queryKey: ["admin-technicians-list"] });
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to delete user.");
+      toast.error(err.response?.data?.message || "Failed to archive profile.");
     } finally {
       setActionLoading(false);
     }
@@ -147,7 +130,6 @@ export const useUserDetail = (userId: string) => {
     actionLoading,
     handleSuspend,
     handleReactivate,
-    handleVerify,
     handleResetPassword,
     handleUpdateRole,
     handleDelete,

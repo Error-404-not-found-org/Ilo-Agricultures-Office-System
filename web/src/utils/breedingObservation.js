@@ -74,10 +74,7 @@ export function getBreedingObservationLabel(reportType) {
 export function getBreedingObservationSignLabel(sign) {
   if (!sign) return "";
   const key = String(sign).toLowerCase().trim();
-  return (
-    BREEDING_OBSERVATION_SIGN_LABELS[key] ||
-    formatObservationValue(sign)
-  );
+  return BREEDING_OBSERVATION_SIGN_LABELS[key] || formatObservationValue(sign);
 }
 
 export function formatSubmittedAt(value) {
@@ -106,7 +103,9 @@ export function formatTaskSummary(summary) {
     .replace(/\bunsure\b/gi, "Unsure");
 
   // Replace sign tokens
-  for (const [token, label] of Object.entries(BREEDING_OBSERVATION_SIGN_LABELS)) {
+  for (const [token, label] of Object.entries(
+    BREEDING_OBSERVATION_SIGN_LABELS,
+  )) {
     const regex = new RegExp(`\\b${token}\\b`, "gi");
     formatted = formatted.replace(regex, label);
   }
@@ -183,16 +182,18 @@ export function normalizeFarmerObservation(request) {
     [];
   const evidencePhotos = Array.isArray(photosRaw)
     ? photosRaw
-        .filter((photo) => Boolean(typeof photo === "string" ? photo.trim() : photo))
+        .filter((photo) =>
+          Boolean(typeof photo === "string" ? photo.trim() : photo),
+        )
         .map((photo) => (typeof photo === "string" ? photo.trim() : photo))
     : [];
 
   const verificationRequested = Boolean(
     insemination?.verificationRequested ??
-      source.verificationRequested ??
-      (raw.sourceType === "farmer_requested_verification" ||
-        raw.taskType === "BreedingFollowUp" ||
-        Boolean(reportType)),
+    source.verificationRequested ??
+    (raw.sourceType === "farmer_requested_verification" ||
+      raw.taskType === "BreedingFollowUp" ||
+      Boolean(reportType)),
   );
 
   const verificationStatus =
@@ -204,9 +205,9 @@ export function normalizeFarmerObservation(request) {
 
   const hasObservation = Boolean(
     reportType ||
-      signs.length > 0 ||
-      notes.length > 0 ||
-      evidencePhotos.length > 0,
+    signs.length > 0 ||
+    notes.length > 0 ||
+    evidencePhotos.length > 0,
   );
 
   return {
@@ -225,8 +226,19 @@ export function normalizeFarmerObservation(request) {
 export function isFarmerBreedingObservationPendingReview(item) {
   if (!item) return false;
   const raw = item.raw || item;
-  const status = String(item.status || item.displayStatus || raw.status || "").toLowerCase();
-  if (["completed", "done", "resolved", "cancelled", "canceled", "rejected"].includes(status)) {
+  const status = String(
+    item.status || item.displayStatus || raw.status || "",
+  ).toLowerCase();
+  if (
+    [
+      "completed",
+      "done",
+      "resolved",
+      "cancelled",
+      "canceled",
+      "rejected",
+    ].includes(status)
+  ) {
     return false;
   }
 
@@ -241,14 +253,13 @@ export function isFarmerBreedingObservationPendingReview(item) {
 
   const hasFarmerReport = Boolean(
     item.context?.reportType ||
-      raw.metadata?.reportType ||
-      item.metadata?.reportType ||
-      raw.sourceType === "farmer_requested_verification" ||
-      item.sourceType === "farmer_requested_verification" ||
-      raw.farmerOutcomeReport ||
-      raw.insemination?.farmerOutcomeReport ||
-      item.insemination?.farmerOutcomeReport ||
-      (typeof item.summary === "string" && item.summary.includes("Breeding observation:"))
+    raw.metadata?.reportType ||
+    item.metadata?.reportType ||
+    raw.sourceType === "farmer_requested_verification" ||
+    item.sourceType === "farmer_requested_verification" ||
+    raw.farmerOutcomeReport ||
+    raw.insemination?.farmerOutcomeReport ||
+    item.insemination?.farmerOutcomeReport,
   );
 
   return hasFarmerReport;

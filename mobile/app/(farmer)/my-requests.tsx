@@ -35,8 +35,9 @@ import { FarmerRequestHeader } from "@/features/farmer-requests/components/Farme
 import {
   formatVisitSchedule,
   getRequestText,
+  getFarmerHealthStatusLabel,
   getFarmerRequestListStatusLabel,
-  mapFarmerRequestFilterStatus,
+  getFarmerRequestFilterQuery,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 type MyRequestsProps = {
@@ -79,9 +80,12 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
   } = useQuery({
     queryKey: ["farmer", "ai-requests", page, status],
     queryFn: async () => {
-      const aiStatus = mapFarmerRequestFilterStatus("ai", status);
+      const filter = getFarmerRequestFilterQuery("ai", status);
+      const filterQuery = filter.statusGroup
+        ? `statusGroup=${filter.statusGroup}`
+        : `status=${filter.status}`;
       const res = await api.get(
-        `/ai-request/my?page=${page}&limit=10&status=${aiStatus}`,
+        `/ai-request/my?page=${page}&limit=10&${filterQuery}`,
       );
       return res.data;
     },
@@ -95,10 +99,13 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
   } = useQuery({
     queryKey: ["farmer", "health-requests", page, status],
     queryFn: async () => {
-      const healthStatus = mapFarmerRequestFilterStatus("health", status);
+      const filter = getFarmerRequestFilterQuery("health", status);
+      const filterQuery = filter.statusGroup
+        ? `statusGroup=${filter.statusGroup}`
+        : `status=${filter.status}`;
 
       const res = await api.get(
-        `/health-request/my?page=${page}&limit=10&status=${healthStatus}`,
+        `/health-request/my?page=${page}&limit=10&${filterQuery}`,
       );
       return res.data;
     },
@@ -167,7 +174,6 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
     { label: "Scheduled", value: "scheduled" },
     { label: "In Progress", value: "in-progress" },
     { label: "Completed", value: "completed" },
-    { label: "Pending Cancellation", value: "pending_cancellation" },
   ];
 
   const handleDelete = (
@@ -403,10 +409,7 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
             const isHealth = req.type === "health";
             const isPendingCancellation =
               req.cancellationStatus === "requested";
-            const displayedStatus = isPendingCancellation
-              ? "pending_cancellation"
-              : req.status;
-            const statusStyle = getStatusColor(displayedStatus);
+            const statusStyle = getStatusColor(req.status);
             const canCancelDirectly =
               ["pending", "approved"].includes(req.status) &&
               !isPendingCancellation;
@@ -423,8 +426,9 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
               req.preferredDate,
               null,
             );
-            const requestStatusLabel =
-              getFarmerRequestListStatusLabel(displayedStatus);
+            const requestStatusLabel = isHealth
+              ? getFarmerHealthStatusLabel(req.status, req.handlingMethod)
+              : getFarmerRequestListStatusLabel(req.status);
             const animalImage = getRequestText(req.animalId?.imageUrl);
             const animalIdentity = getRequestText(
               req.animalId?.earTag || req.animalId?.animalId,
@@ -455,16 +459,6 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
                 req.approvedBy?.name ||
                 req.technicianId?.name,
             );
-            // Filter for pending_cancellation tab
-            if (status === "pending_cancellation" && !isPendingCancellation)
-              return null;
-            if (
-              status === "in-progress" &&
-              !["in-progress", "in_progress"].includes(req.status)
-            ) {
-              return null;
-            }
-
             return (
               <View
                 key={`${req.type}-${req._id}`}
@@ -729,7 +723,7 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
                         className="text-[11px] font-black uppercase tracking-wider"
                         style={{ color: isDark ? "#fbbf24" : "#92400E" }}
                       >
-                        Pending Cancellation
+                        Cancellation Requested
                       </Text>
                       {req.cancellationReason ? (
                         <Text

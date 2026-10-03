@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 import { TASK_STATUS } from "../domain/status-vocabulary.js";
+import {
+  AUTOMATIC_EXPECTED_CALVING_INDEX,
+  automaticExpectedCalvingIndexOptions,
+} from "../domain/expected-calving-task-index.js";
 
 const TaskSchema = new mongoose.Schema(
   {
@@ -69,6 +73,7 @@ const TaskSchema = new mongoose.Schema(
         "task_scheduler",
         "automatic_pd_followup",
         "automatic_breeding_followup",
+        "automatic_expected_calving",
         "farmer_requested_verification",
         "farmer_pregnancy_loss_report",
       ],
@@ -134,6 +139,12 @@ TaskSchema.index(
     },
     name: "uniq_open_pregnancy_follow_up_task",
   },
+);
+// Immutable provenance prevents a completed task from being recreated after
+// Record Calving relinks relatedRecordId from the Pregnancy to the Calving.
+TaskSchema.index(
+  AUTOMATIC_EXPECTED_CALVING_INDEX.key,
+  automaticExpectedCalvingIndexOptions(),
 );
 
 export const Task = mongoose.model("Task", TaskSchema);

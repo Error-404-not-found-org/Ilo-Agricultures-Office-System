@@ -15,7 +15,7 @@ const transitions = {
     pending: ["approved", "scheduled", "rejected", "cancelled"],
     approved: ["scheduled", "rejected", "cancelled"],
     scheduled: ["scheduled", "in-progress", "cancelled"],
-    "in-progress": ["scheduled", "done", "cancelled"],
+    "in-progress": ["done", "cancelled"],
     done: [], rejected: [], cancelled: [],
   },
   health: {

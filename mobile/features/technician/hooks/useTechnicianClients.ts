@@ -3,6 +3,7 @@ import { useApi } from "@/lib/api";
 import {
   getAssignedFarmers,
   getFarmerDetail,
+  archiveFarmerProfile,
   updateFarmerProfile,
   registerFarmer,
   UpdateFarmerPayload,
@@ -47,10 +48,19 @@ export const useTechnicianClients = (id?: string) => {
     },
   });
 
+  const archiveClientMutation = useMutation({
+    mutationFn: (farmerId: string) => archiveFarmerProfile(api, farmerId),
+    onSuccess: (_, farmerId) => {
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.details(farmerId) });
+    },
+  });
+
   return {
     clientsQuery,
     clientDetailsQuery,
     updateClientMutation,
     registerClientMutation,
+    archiveClientMutation,
   };
 };

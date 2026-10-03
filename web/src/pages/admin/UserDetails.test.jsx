@@ -129,7 +129,9 @@ describe("Admin generic User Details", () => {
     expect(screen.getByText("technician@example.com")).toBeInTheDocument();
     expect(screen.queryByText("farmer@example.com")).not.toBeInTheDocument();
     expect(screen.getAllByText("Profile Claimed").length).toBeGreaterThan(0);
-    expect(screen.getByText("AI, HEALTH")).toBeInTheDocument();
+    expect(
+      screen.getByText("Artificial Insemination, Health"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Oton")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Dispatch profile" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Technician service history" })).toBeInTheDocument();

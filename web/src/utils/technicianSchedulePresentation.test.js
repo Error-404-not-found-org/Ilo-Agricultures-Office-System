@@ -6,6 +6,7 @@ import {
   getScheduleNavigationTarget,
   getScheduleTimingState,
   getScheduleWorkLabel,
+  getPhilippineDateKey,
   isFutureSchedule,
 } from "./technicianSchedulePresentation";
 
@@ -15,7 +16,8 @@ const visit = (overrides = {}) => ({
   id: "ai-1",
   type: "insemination",
   status: "scheduled",
-  scheduledDate: "2026-09-03T00:00:00.000Z",
+  dateKind: "scheduled_visit",
+  scheduledAt: "2026-09-03T00:00:00.000Z",
   visitPeriod: "morning",
   ...overrides,
 });
@@ -26,12 +28,18 @@ const task = (overrides = {}) => ({
   type: "task",
   taskType: "PD",
   status: "Pending",
-  dueDate: "2026-09-03T00:00:00.000Z",
+  dateKind: "readiness",
+  readyFrom: "2026-09-03T00:00:00.000Z",
   ...overrides,
 });
 
 describe("technician Schedule presentation", () => {
-  it("uses scheduledDate and visitPeriod for AI without legacy exact time", () => {
+  it("maps UTC rollover timestamps to the Manila calendar day", () => {
+    expect(getPhilippineDateKey("2026-09-15T16:30:00.000Z")).toBe(
+      "2026-09-16",
+    );
+  });
+  it("uses canonical scheduledAt and visitPeriod for AI", () => {
     const [item] = buildScheduleItems(
       [visit({ time: "10:30 AM", preferredDate: "2026-10-10" })],
       NOW,
@@ -54,7 +62,7 @@ describe("technician Schedule presentation", () => {
       ],
       NOW,
     );
-    expect(item.scheduleLabel).toBe("Scheduled Health Farm Visit");
+    expect(item.scheduleLabel).toBe("Scheduled Health Visit");
     expect(item.periodLabel).toBe("Afternoon");
   });
 
@@ -70,23 +78,102 @@ describe("technician Schedule presentation", () => {
     },
   );
 
-  it("uses dueDate and due wording for Pregnancy work", () => {
-    const [item] = buildScheduleItems(
-      [task({ displayDate: "2026-10-10", time: "2:15 PM" })],
-      NOW,
-    );
-    expect(item.scheduleDate).toBe("2026-09-03T00:00:00.000Z");
-    expect(item.scheduleLabel).toBe("Pregnancy Check Due");
-    expect(item.periodLabel).toBeNull();
+  it.each([
+    ["2026-09-03T00:00:00.000Z", "Upcoming", "Check from Sep 3, 2026"],
+    ["2026-09-02T00:00:00.000Z", "Ready for check", null],
+    ["2026-09-01T00:00:00.000Z", "Ready for check", "Since Sep 1, 2026"],
+  ])("presents Pregnancy Check readiness without deadline wording", (readyFrom, statusLabel, timingLabel) => {
+    const [item] = buildScheduleItems([task({ readyFrom })], NOW);
+    expect(item).toMatchObject({
+      dateKind: "readiness",
+      scheduleLabel: "Pregnancy Check",
+      statusLabel,
+      timingLabel,
+      dateLabel: "Ready from",
+      sectionKind: "ready_follow_up",
+    });
+    expect(`${item.statusLabel} ${item.timingLabel || ""}`).not.toMatch(/due|overdue/i);
   });
 
-  it("uses dueDate and due wording for Calving work", () => {
+  it("presents Continue Tracking historical PD with the same readiness semantics", () => {
+    const [item] = buildScheduleItems([task({
+      readyFrom: "2026-05-01T08:00:00.000Z",
+      sourceType: "automatic_pd_followup",
+      raw: { taskType: "PD", sourceType: "automatic_pd_followup", metadata: { workflowStage: "initial_confirmation", previousRecordEntry: true } },
+    })], new Date("2026-09-21T04:00:00.000Z"));
+    expect(item).toMatchObject({ scheduleLabel: "Pregnancy Check", statusLabel: "Ready for check", timingLabel: "Since May 1, 2026", dateKind: "readiness" });
+    expect(`${item.statusLabel} ${item.timingLabel}`).not.toMatch(/\b(?:due|overdue)\b/i);
+  });
+
+  it("presents Expected Calving as an expected event", () => {
     const [item] = buildScheduleItems(
-      [task({ taskType: "CD", dueDate: "2026-09-04T00:00:00.000Z" })],
+      [task({ taskType: "CD", dateKind: "expected_event", expectedAt: "2026-09-04T00:00:00.000Z" })],
       NOW,
     );
-    expect(item.scheduleLabel).toBe("Calving Due");
-    expect(item.scheduleDate).toBe("2026-09-04T00:00:00.000Z");
+    expect(item).toMatchObject({
+      dateKind: "expected_event",
+      scheduleLabel: "Expected Calving",
+      scheduleDate: "2026-09-04T00:00:00.000Z",
+      statusLabel: "Expected",
+      timingLabel: "Expected Sep 4, 2026",
+      dateLabel: "Expected calving date",
+      sectionKind: "expected_event",
+    });
+  });
+
+  it("uses report semantics and authoritative report timestamps", () => {
+    const items = buildScheduleItems([
+      task({
+        id: "heat-report",
+        taskType: "BreedingFollowUp",
+        sourceType: "farmer_requested_verification",
+        dateKind: "farmer_report",
+        reportedAt: "2026-09-02T01:00:00.000Z",
+        raw: { metadata: { reportType: "return_to_heat" } },
+      }),
+      task({
+        id: "loss-report",
+        taskType: "BreedingFollowUp",
+        sourceType: "farmer_pregnancy_loss_report",
+        dateKind: "farmer_report",
+        reportedAt: "2026-09-01T01:00:00.000Z",
+      }),
+    ], NOW);
+    expect(items[0]).toMatchObject({ statusLabel: "Needs review", timingLabel: "Reported Sep 1, 2026", dateKind: "farmer_report" });
+    expect(items[1]).toMatchObject({ statusLabel: "Needs review", timingLabel: "Reported today", dateKind: "farmer_report" });
+    expect(items.map((item) => `${item.statusLabel} ${item.timingLabel}`).join(" ")).not.toMatch(/due|overdue/i);
+  });
+
+  it("keeps only automatic Breeding Follow-up as a deadline", () => {
+    const [item] = buildScheduleItems([
+      task({ taskType: "BreedingFollowUp", sourceType: "automatic_breeding_followup", dateKind: "deadline", dueAt: "2026-09-01T00:00:00.000Z" }),
+    ], NOW);
+    expect(item).toMatchObject({ dateKind: "deadline", statusLabel: "Overdue", timingLabel: "Overdue", sectionKind: "deadline" });
+  });
+
+  it("does not borrow dueDate when a canonical semantic date is missing", () => {
+    const [item] = buildScheduleItems([
+      task({ dateKind: "readiness", readyFrom: null, dueDate: "2026-08-01T00:00:00.000Z" }),
+    ], NOW);
+    expect(item).toMatchObject({
+      dateKind: "readiness",
+      statusLabel: "Timing unavailable",
+      timingLabel: null,
+      scheduleDate: null,
+    });
+    expect(`${item.statusLabel} ${item.timingLabel || ""}`).not.toMatch(/due|overdue/i);
+  });
+
+  it("presents scheduled visits with date and period", () => {
+    const [item] = buildScheduleItems([visit()], NOW);
+    expect(item).toMatchObject({ dateKind: "scheduled_visit", statusLabel: "Scheduled", timingLabel: "Scheduled Sep 3, 2026 · Morning", dateLabel: "Scheduled visit", sectionKind: "scheduled_visit" });
+  });
+
+  it("gives a Pregnancy Check appointment precedence over readiness wording", () => {
+    const [item] = buildScheduleItems([
+      task({ dateKind: "scheduled_visit", readyFrom: undefined, scheduledAt: "2026-09-03T00:00:00.000Z", raw: { taskType: "PD", metadata: { visitPeriod: "afternoon" } } }),
+    ], NOW);
+    expect(item).toMatchObject({ scheduleLabel: "Pregnancy Check", dateKind: "scheduled_visit", statusLabel: "Scheduled", timingLabel: "Scheduled Sep 3, 2026 · Afternoon" });
   });
 
   it.each([
@@ -137,14 +224,14 @@ describe("technician Schedule presentation", () => {
       id: "health-overdue",
       type: "health",
       handlingMethod: "farm_visit",
-      scheduledDate: "2026-09-01T00:00:00.000Z",
+      scheduledAt: "2026-09-01T00:00:00.000Z",
       urgent: false,
     });
     const urgentFuture = visit({
       id: "health-urgent",
       type: "health",
       handlingMethod: "farm_visit",
-      scheduledDate: "2026-09-04T00:00:00.000Z",
+      scheduledAt: "2026-09-04T00:00:00.000Z",
       urgent: true,
     });
     expect(getScheduleTimingState(overdue, NOW)).toBe("overdue");
@@ -154,7 +241,7 @@ describe("technician Schedule presentation", () => {
   it("keeps due work distinct from upcoming work", () => {
     expect(
       getScheduleTimingState(
-        task({ dueDate: "2026-09-02T01:00:00.000Z" }),
+        task({ readyFrom: "2026-09-02T01:00:00.000Z" }),
         NOW,
       ),
     ).toBe("due");

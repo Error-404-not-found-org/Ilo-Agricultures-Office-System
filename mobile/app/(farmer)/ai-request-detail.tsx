@@ -48,6 +48,7 @@ import {
   getFarmerAINextStepMessage,
   getFarmerAIProgressIndex,
   getFarmerAIStatusLabel,
+  getFarmerAIVisitGuidance,
   getRequestList,
   getRequestText,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
@@ -357,7 +358,7 @@ export default function AiRequestDetailScreen() {
     request.inseminationDate,
     (date) => format(date, "MMM d, yyyy 'at' h:mm a"),
   );
-  const technicianNote = getRequestText(request.technicianNote);
+  const visitGuidance = getFarmerAIVisitGuidance(request);
   const hasRecordedObservation = Boolean(request.farmerOutcomeReport);
   const observationReadiness = getFarmerBreedingObservationReadiness(request);
   const observationLabel = getBreedingObservationLabel(
@@ -605,6 +606,14 @@ export default function AiRequestDetailScreen() {
             value={visitSchedule || preferredDate || "Not scheduled yet"}
             isLast={!inseminationDate}
           />
+          {visitSchedule && visitGuidance ? (
+            <View className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+              <RequestDetailField
+                label={visitGuidance.label}
+                value={visitGuidance.value}
+              />
+            </View>
+          ) : null}
           {inseminationDate ? (
             <RequestDetailRow
               icon={<CheckCircle2 size={17} color={colors.primary} />}
@@ -614,36 +623,22 @@ export default function AiRequestDetailScreen() {
             />
           ) : null}
 
-          {technicianNote || hasRecordedObservation ? (
+          {hasRecordedObservation ? (
             <View className="pt-4 gap-4">
-              {technicianNote ? (
-                <RequestDetailField
-                  label="Technician note"
-                  value={technicianNote}
-                />
-              ) : null}
-              {hasRecordedObservation ? (
-                <RequestDetailField
-                  label="Farmer observation"
-                  value={[
-                    observationLabel,
-                    observationSigns.length
-                      ? observationSigns.join(", ")
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                />
-              ) : null}
-              {hasRecordedObservation ? (
-                <RequestDetailNotice message="This is a farmer observation, not an official pregnancy diagnosis. A technician pregnancy check is still required." />
-              ) : null}
+              <RequestDetailField
+                label="Farmer observation"
+                value={[
+                  observationLabel,
+                  observationSigns.length
+                    ? observationSigns.join(", ")
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+              <RequestDetailNotice message="This is a farmer observation, not an official pregnancy diagnosis. A technician pregnancy check is still required." />
             </View>
-          ) : (
-            <View className="mt-3">
-              <RequestDetailNotice message="Technician service notes are not yet available." />
-            </View>
-          )}
+          ) : null}
         </RequestDetailCard>
 
         {/* Canonical farmer-observation entry point */}

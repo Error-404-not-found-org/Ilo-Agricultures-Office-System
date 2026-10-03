@@ -21,11 +21,11 @@ export function getFarmerHealthRequestDetailSections(request: {
   const resolved = ["resolved", "done", "completed"].includes(status);
 
   if (resolved && ["advice", "office_pickup"].includes(handlingMethod)) {
-    return ["response", "original_request"];
+    return ["response", "original_request", "progress"];
   }
 
   if (status === "scheduled") {
-    return ["scheduled_visit", "original_request"];
+    return ["scheduled_visit", "original_request", "progress"];
   }
 
   if (resolved && request.medicalRecordId) {

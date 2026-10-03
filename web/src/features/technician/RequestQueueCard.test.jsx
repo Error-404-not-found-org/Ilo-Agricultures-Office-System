@@ -34,7 +34,7 @@ const handlers = () => ({
 });
 
 describe("Technician Request card", () => {
-  it("presents an available AI request and opens canonical claim scheduling", () => {
+  it("presents an available AI request and opens review before claiming", () => {
     const actions = handlers();
     render(
       <RequestQueueCard
@@ -52,8 +52,9 @@ describe("Technician Request card", () => {
     expect(screen.getByLabelText("2 Farmer request photos")).toBeInTheDocument();
     expect(screen.queryByText(/request-1/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Claim & Schedule" }));
-    expect(actions.onSchedule).toHaveBeenCalledWith(baseRequest);
+    fireEvent.click(screen.getByRole("button", { name: "Review Request" }));
+    expect(actions.onOpen).toHaveBeenCalledWith(baseRequest);
+    expect(actions.onSchedule).not.toHaveBeenCalled();
     expect(actions.onClaim).not.toHaveBeenCalled();
   });
 
@@ -64,7 +65,7 @@ describe("Technician Request card", () => {
       workflowType: "Health",
       type: "health",
       serviceType: "health",
-      urgency: "urgent",
+      urgency: "high",
       attachments: { count: 1, urls: ["health-photo"] },
     };
     render(
@@ -80,8 +81,9 @@ describe("Technician Request card", () => {
 
     expect(screen.getByText("Health Request")).toBeInTheDocument();
     expect(screen.getByText("Urgent")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Claim Request" }));
-    expect(actions.onClaim).toHaveBeenCalledWith(healthRequest);
+    fireEvent.click(screen.getByRole("button", { name: "Review Request" }));
+    expect(actions.onOpen).toHaveBeenCalledWith(healthRequest);
+    expect(actions.onClaim).not.toHaveBeenCalled();
   });
 
   it("shows Mine as Claimed by You with View Request and cancellation", () => {

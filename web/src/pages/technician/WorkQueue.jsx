@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useEffectEvent, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
+  CalendarCheck,
   CalendarDays,
   MapPin,
   Search,
@@ -11,18 +12,26 @@ import {
   PawPrint,
   CheckCircle2,
   AlertCircle,
-  AlertTriangle,
-  Info,
   HelpCircle,
   PhoneOff,
   MessageSquare,
   Phone,
+  Clock,
+  Info,
+  Activity,
+  HeartPulse,
+  Stethoscope,
+  Syringe,
+  Baby,
+  HeartCrack,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
 import { ui } from "../../components/ui/uiClasses";
 import Topbar from "../../components/layout/Topbar";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
+import AIScheduledVisitModal from "../../components/dialogs/AIScheduledVisitModal";
 import HealthRequestActionModal from "../../components/dialogs/HealthRequestActionModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
@@ -37,8 +46,13 @@ import {
   normalizeServiceType,
   normalizeWorkflowStatus,
   getWorkflowStatusPresentation,
+  formatHealthRequestType,
 } from "../../utils/requestWorkPresentation";
 import { isFutureSchedule } from "../../utils/technicianSchedulePresentation";
+import {
+  getLifecycleTaskPresentation,
+  getTaskSupportingText,
+} from "../../utils/technicianLifecyclePresentation";
 import ImagePreviewModal from "../../components/ui/ImagePreviewModal";
 import { imagePreviewUrl } from "../../components/ui/imagePreviewUrl";
 import {
@@ -60,6 +74,13 @@ const toTitleCase = (str) => {
 };
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+
+const isScheduledHealthFarmVisit = (task) =>
+  String(task?.workflowType || "").toLowerCase() === "health" &&
+  String(task?.status || "").toLowerCase() === "scheduled" &&
+  (task?.handlingMethod || task?.raw?.handlingMethod) === "farm_visit" &&
+  Boolean(task?.schedule?.date || task?.scheduledDate) &&
+  Boolean(task?.schedule?.visitPeriod || task?.visitPeriod);
 
 const formatRecordDate = (value) => {
   if (!value) return "Not recorded";
@@ -118,10 +139,7 @@ const getOfficialRecordIdentity = (task) => {
     };
   }
 
-  if (
-    task.workflowType === "Calving" &&
-    isMongoId(task.context?.calvingId)
-  ) {
+  if (task.workflowType === "Calving" && isMongoId(task.context?.calvingId)) {
     return {
       animalId,
       recordKind: "calving",
@@ -130,6 +148,105 @@ const getOfficialRecordIdentity = (task) => {
   }
 
   return null;
+};
+
+const formatFollowUpLocation = (farmer, fallback = "Location not provided") => {
+  if (!farmer) return fallback;
+  if (typeof farmer === "string") return farmer.trim() || fallback;
+  if (farmer.location) return String(farmer.location).trim();
+  if (farmer.barangay) {
+    return [farmer.barangay, farmer.municipality || farmer.city]
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (farmer.address) {
+    if (typeof farmer.address === "string")
+      return farmer.address.trim() || fallback;
+    if (farmer.address.barangay) {
+      return [
+        farmer.address.barangay,
+        farmer.address.municipality || farmer.address.city,
+      ]
+        .filter(Boolean)
+        .join(", ");
+    }
+  }
+  return fallback;
+};
+
+const getWorkItemTheme = (task, serviceType, lifecycle) => {
+  const isLoss =
+    lifecycle?.title === "Pregnancy Loss Review" ||
+    task.sourceType === "farmer_pregnancy_loss_report" ||
+    task.allowedAction === "REVIEW_PREGNANCY_LOSS";
+  if (isLoss) {
+    return {
+      icon: HeartCrack,
+      iconClass:
+        "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
+      badgeClass:
+        "bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30",
+    };
+  }
+  const isBreedingFollowUp =
+    lifecycle?.title === "Breeding Follow-up" ||
+    task.workflowType === "BreedingFollowUp" ||
+    task.taskType === "BreedingFollowUp" ||
+    task.allowedAction === "RECORD_BREEDING_OBSERVATION";
+  if (isBreedingFollowUp) {
+    return {
+      icon: CalendarCheck,
+      iconClass:
+        "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20",
+      badgeClass:
+        "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30",
+    };
+  }
+  if (
+    serviceType === "pregnancy" ||
+    lifecycle?.title?.toLowerCase().includes("pregnancy")
+  ) {
+    return {
+      icon: HeartPulse,
+      iconClass:
+        "bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20",
+      badgeClass:
+        "bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30",
+    };
+  }
+  if (serviceType === "health") {
+    return {
+      icon: Stethoscope,
+      iconClass:
+        "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+      badgeClass:
+        "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30",
+    };
+  }
+  if (serviceType === "ai") {
+    return {
+      icon: Syringe,
+      iconClass:
+        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+      badgeClass:
+        "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30",
+    };
+  }
+  if (serviceType === "calving") {
+    return {
+      icon: Baby,
+      iconClass:
+        "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20",
+      badgeClass:
+        "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30",
+    };
+  }
+  return {
+    icon: CalendarDays,
+    iconClass: "bg-primary/10 text-primary border border-primary/20",
+    badgeClass:
+      "bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/30",
+  };
 };
 
 export default function WorkQueue({ embedded = false }) {
@@ -144,7 +261,8 @@ export default function WorkQueue({ embedded = false }) {
     () => searchParams.get("typeFilter") || "all",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
-  const [startHealthServiceOnOpen, setStartHealthServiceOnOpen] = useState(false);
+  const [startHealthServiceOnOpen, setStartHealthServiceOnOpen] =
+    useState(false);
   const [selectedWorkDetails, setSelectedWorkDetails] = useState(null);
   const [breedingFollowUp, setBreedingFollowUp] = useState(null);
   const [pregnancyLossReviewTask, setPregnancyLossReviewTask] = useState(null);
@@ -155,9 +273,14 @@ export default function WorkQueue({ embedded = false }) {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [previewImage, setPreviewImage] = useState(null);
-  const [earlyStartConfirmTask, setEarlyStartConfirmTask] = useState(null);
-  const [isStartingEarly, setIsStartingEarly] = useState(false);
+  const [scheduledAIVisit, setScheduledAIVisit] = useState(null);
+  const [isStartingAI, setIsStartingAI] = useState(false);
   const itemsPerPage = 8;
+
+  const selectedWorkSupportingText = getTaskSupportingText(
+    selectedWorkDetails,
+    "No additional service details recorded.",
+  );
 
   const handleCloseModal = () => {
     setSelectedTaskWrapper(null);
@@ -165,8 +288,8 @@ export default function WorkQueue({ embedded = false }) {
     setSelectedWorkDetails(null);
     setBreedingFollowUp(null);
     setPregnancyLossReviewTask(null);
+    setScheduledAIVisit(null);
     setPreviewImage(null);
-    setEarlyStartConfirmTask(null);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -174,9 +297,10 @@ export default function WorkQueue({ embedded = false }) {
         next.delete("requestId");
         return next;
       },
-      { replace: true }
+      { replace: true },
     );
   };
+
   const formatRelativeSchedule = (value) => {
     if (!value) return "No date recorded";
     const targetDate = new Date(value);
@@ -269,17 +393,31 @@ export default function WorkQueue({ embedded = false }) {
     },
   });
 
+  const handledHealthLinkQuery = useQuery({
+    queryKey: [
+      "technician",
+      "health-request",
+      "handled-deep-link",
+      deepLinkRequestId,
+    ],
+    enabled:
+      Boolean(deepLinkRequestId) &&
+      deepLinkQuery.isSuccess &&
+      !deepLinkQuery.data,
+    retry: false,
+    queryFn: async () => {
+      const response = await axiosInstance.get(
+        `/health-request/${encodeURIComponent(deepLinkRequestId)}`,
+      );
+      return response.data?.data || response.data?.request || response.data;
+    },
+  });
+
   const breedingFollowUpTaskId =
     breedingFollowUp?.taskId || breedingFollowUp?.id || null;
   const breedingFollowUpDetailsQuery = useQuery({
-    queryKey: [
-      "technician",
-      "tasks",
-      "detail",
-      breedingFollowUpTaskId || "",
-    ],
-    enabled:
-      Boolean(breedingFollowUp) && isMongoId(breedingFollowUpTaskId),
+    queryKey: ["technician", "tasks", "detail", breedingFollowUpTaskId || ""],
+    enabled: Boolean(breedingFollowUp) && isMongoId(breedingFollowUpTaskId),
     queryFn: async () => {
       const response = await axiosInstance.get(
         `/tasks/${encodeURIComponent(breedingFollowUpTaskId)}`,
@@ -313,6 +451,48 @@ export default function WorkQueue({ embedded = false }) {
       breedingFollowUpDetails ||
       breedingFollowUp,
   );
+
+  const breedingFollowUpFarmerName =
+    (typeof breedingFollowUpFarmer?.name === "string" &&
+      breedingFollowUpFarmer.name.trim()) ||
+    (typeof breedingFollowUpFarmer?.fullName === "string" &&
+      breedingFollowUpFarmer.fullName.trim()) ||
+    [breedingFollowUpFarmer?.firstName, breedingFollowUpFarmer?.lastName]
+      .filter((p) => typeof p === "string" && p.trim().length > 0)
+      .join(" ") ||
+    breedingFollowUp?.farmerName ||
+    "Farmer";
+
+  const breedingFollowUpFarmerPhone =
+    (typeof breedingFollowUpFarmer?.phoneNumber === "string" &&
+      breedingFollowUpFarmer.phoneNumber.trim()) ||
+    (typeof breedingFollowUpFarmer?.phone === "string" &&
+      breedingFollowUpFarmer.phone.trim()) ||
+    (typeof breedingFollowUpFarmer?.contactNumber === "string" &&
+      breedingFollowUpFarmer.contactNumber.trim()) ||
+    null;
+
+  const breedingFollowUpAnimalName =
+    (typeof breedingFollowUpAnimal?.name === "string" &&
+      breedingFollowUpAnimal.name.trim()) ||
+    "";
+  const breedingFollowUpAnimalEarTag =
+    (typeof breedingFollowUpAnimal?.earTag === "string" &&
+      breedingFollowUpAnimal.earTag.trim()) ||
+    (typeof breedingFollowUpAnimal?.tag === "string" &&
+      breedingFollowUpAnimal.tag.trim()) ||
+    "";
+  const breedingFollowUpAnimalDisplayName =
+    breedingFollowUpAnimalName && breedingFollowUpAnimalEarTag
+      ? `${breedingFollowUpAnimalName} (${breedingFollowUpAnimalEarTag})`
+      : breedingFollowUpAnimalEarTag
+        ? `Tag ${breedingFollowUpAnimalEarTag}`
+        : breedingFollowUpAnimalName || "Unknown Animal";
+
+  const breedingFollowUpReproductiveStatus =
+    (typeof breedingFollowUpAnimal?.reproductiveStatus === "string" &&
+      breedingFollowUpAnimal.reproductiveStatus.trim()) ||
+    "";
 
   const completeMutation = useMutation({
     mutationFn: (taskId) =>
@@ -384,28 +564,24 @@ export default function WorkQueue({ embedded = false }) {
     }
   };
 
-  const handleConfirmStartEarly = async () => {
-    if (!earlyStartConfirmTask || isStartingEarly) return;
-    const task = earlyStartConfirmTask;
+  const handleStartAIService = async (task) => {
+    if (isStartingAI) return;
     const workflowId = task.workflowId || task.id;
     if (!isMongoId(workflowId)) {
       toast.error("This AI work item has an invalid workflow identifier.");
       return;
     }
 
-    setIsStartingEarly(true);
+    setIsStartingAI(true);
     try {
       const response = await axiosInstance.patch(
         `/ai-request/${encodeURIComponent(workflowId)}/status`,
         {
           status: "in-progress",
-          earlyStartConfirmed: true,
         },
       );
 
       queryClient.invalidateQueries({ queryKey: ["technician"] });
-      setEarlyStartConfirmTask(null);
-
       const updatedRequest = response.data?.request || response.data || {};
       const updatedStartedAt =
         updatedRequest.serviceStartedAt || new Date().toISOString();
@@ -423,10 +599,10 @@ export default function WorkQueue({ embedded = false }) {
       setSelectedTaskWrapper(inProgressTask);
     } catch (error) {
       const message =
-        error.response?.data?.message || "Failed to start AI service early.";
+        error.response?.data?.message || "Failed to start AI service.";
       toast.error(message);
     } finally {
-      setIsStartingEarly(false);
+      setIsStartingAI(false);
     }
   };
 
@@ -451,7 +627,13 @@ export default function WorkQueue({ embedded = false }) {
       task.schedule?.visitPeriod ||
       task.timing?.visitPeriod ||
       task.raw?.visitPeriod;
-    const isFuture = isFutureSchedule(scheduledDate, visitPeriod);
+    const isAI =
+      task.workflowType === "AI" ||
+      task.type === "insemination" ||
+      task.type === "ai";
+    const isFuture = isAI
+      ? task.workTiming === "upcoming"
+      : isFutureSchedule(scheduledDate, visitPeriod);
     const readiness = getTaskReadiness(task.raw || task);
     const normalizedTaskStatus = String(task.status || "")
       .toLowerCase()
@@ -478,7 +660,19 @@ export default function WorkQueue({ embedded = false }) {
         task.allowedAction === "RECORD_SERVICE");
 
     if (isScheduledAI && isFuture && !isInProgress) {
-      setEarlyStartConfirmTask(task);
+      setScheduledAIVisit(task);
+      return;
+    }
+
+    if (
+      String(task.workflowType || "").toLowerCase() === "health" &&
+      !isTerminal &&
+      (task.allowedAction === "VIEW_DETAILS" ||
+        (isScheduledHealthFarmVisit(task) &&
+          task.allowedAction === "START_SERVICE"))
+    ) {
+      setStartHealthServiceOnOpen(false);
+      setSelectedTaskWrapper(task);
       return;
     }
 
@@ -502,6 +696,13 @@ export default function WorkQueue({ embedded = false }) {
           );
           return;
         }
+        if (
+          task.workflowType === "AI" &&
+          normalizedTaskStatus === "scheduled"
+        ) {
+          void handleStartAIService(task);
+          return;
+        }
         if (task.workflowType === "Health") {
           setStartHealthServiceOnOpen(startHealthService);
         }
@@ -517,8 +718,7 @@ export default function WorkQueue({ embedded = false }) {
         setStartHealthServiceOnOpen(startHealthService);
         setSelectedTaskWrapper(task);
         return;
-      case "VIEW_RECORD":
-      {
+      case "VIEW_RECORD": {
         const record = getOfficialRecordIdentity(task);
         if (record) {
           navigate(
@@ -537,8 +737,15 @@ export default function WorkQueue({ embedded = false }) {
       case "VIEW_RESPONSE":
         setSelectedWorkDetails(task);
         return;
-      case "VIEW_DETAILS":
-      {
+      case "VIEW_DETAILS": {
+        if (
+          String(task.workflowType || "").toLowerCase() === "health" &&
+          !isTerminal
+        ) {
+          setStartHealthServiceOnOpen(false);
+          setSelectedTaskWrapper(task);
+          return;
+        }
         const record = getOfficialRecordIdentity(task);
         if (record) {
           navigate(
@@ -618,11 +825,19 @@ export default function WorkQueue({ embedded = false }) {
 
   const firedDeepLinkIdentifier = useRef(null);
   const currentIdentifier = deepLinkTaskId || deepLinkRequestId;
+  const openDeepLinkedTask = useEffectEvent((target) => openTask(target));
 
   useEffect(() => {
     if (!hasDeepLink) {
       firedDeepLinkIdentifier.current = null;
-    } else if (deepLinkQuery.isSuccess && firedDeepLinkIdentifier.current !== currentIdentifier) {
+    } else if (
+      deepLinkQuery.isSuccess &&
+      (deepLinkQuery.data ||
+        !deepLinkRequestId ||
+        handledHealthLinkQuery.isSuccess ||
+        handledHealthLinkQuery.isError) &&
+      firedDeepLinkIdentifier.current !== currentIdentifier
+    ) {
       firedDeepLinkIdentifier.current = currentIdentifier;
       const target = deepLinkQuery.data;
       if (target) {
@@ -631,13 +846,31 @@ export default function WorkQueue({ embedded = false }) {
           !selectedWorkDetails &&
           !breedingFollowUp &&
           !pregnancyLossReviewTask &&
-          !earlyStartConfirmTask
+          !scheduledAIVisit
         ) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          openTask(target);
+          queueMicrotask(() => openDeepLinkedTask(target));
         }
       } else {
-        toast.error("This work item is unavailable or is not assigned to you.");
+        const handledRequest = handledHealthLinkQuery.data;
+        const assignedHealthRequest = Boolean(
+          handledRequest?.handledBy || handledRequest?.assignedTechnicianId,
+        );
+        if (
+          assignedHealthRequest &&
+          handledRequest?.status === "cancelled" &&
+          handledRequest?.cancellationStatus === "approved"
+        ) {
+          toast.info("This Health request has already been cancelled.");
+        } else if (
+          assignedHealthRequest &&
+          handledRequest?.cancellationStatus === "rejected"
+        ) {
+          toast.info("This cancellation request has already been handled.");
+        } else {
+          toast.error(
+            "This work item is unavailable or is not assigned to you.",
+          );
+        }
         setSearchParams(
           (prev) => {
             const next = new URLSearchParams(prev);
@@ -645,7 +878,7 @@ export default function WorkQueue({ embedded = false }) {
             next.delete("requestId");
             return next;
           },
-          { replace: true }
+          { replace: true },
         );
       }
     }
@@ -653,13 +886,16 @@ export default function WorkQueue({ embedded = false }) {
     hasDeepLink,
     deepLinkQuery.isSuccess,
     deepLinkQuery.data,
-    toast,
+    deepLinkRequestId,
+    handledHealthLinkQuery.isSuccess,
+    handledHealthLinkQuery.isError,
+    handledHealthLinkQuery.data,
     setSearchParams,
     selectedTaskWrapper,
     selectedWorkDetails,
     breedingFollowUp,
     pregnancyLossReviewTask,
-    earlyStartConfirmTask,
+    scheduledAIVisit,
     currentIdentifier,
   ]);
 
@@ -792,12 +1028,29 @@ export default function WorkQueue({ embedded = false }) {
               <>
                 <div className="space-y-3" aria-label="My Work items">
                   {tasks.map((task) => {
+                    const lifecycle = getLifecycleTaskPresentation(task);
+                    const supportingText = getTaskSupportingText(task);
                     const workflowStatus = normalizeWorkflowStatus(task);
                     const statusPresentation =
                       getWorkflowStatusPresentation(workflowStatus);
                     const serviceType = normalizeServiceType(task);
                     const servicePresentation =
                       getServicePresentation(serviceType);
+                    const healthRequestType =
+                      task.requestType || task.raw?.requestType;
+                    const isLoss =
+                      task.sourceType === "farmer_pregnancy_loss_report" ||
+                      task.raw?.sourceType === "farmer_pregnancy_loss_report" ||
+                      task.allowedAction === "REVIEW_PREGNANCY_LOSS" ||
+                      lifecycle?.title === "Pregnancy Loss Review";
+                    const taskLabel =
+                      serviceType === "health" && healthRequestType
+                        ? formatHealthRequestType(healthRequestType)
+                        : isLoss && task.title
+                          ? task.title
+                          : lifecycle?.title ||
+                            task.title ||
+                            servicePresentation.label;
                     const readiness = getTaskReadiness(task.raw || task);
                     const actionDisabled =
                       !readiness.ready ||
@@ -814,8 +1067,13 @@ export default function WorkQueue({ embedded = false }) {
                       date: task.schedule?.date || task.displayDate || null,
                       visitPeriod: task.schedule?.visitPeriod || null,
                     };
-                    const timingLabel =
-                      timing.kind === "scheduled_visit"
+                    const timingLabel = lifecycle
+                      ? lifecycle.detail ||
+                        lifecycle.timing ||
+                        (lifecycle.actionState === "Ready for check"
+                          ? lifecycle.actionState
+                          : null)
+                      : timing.kind === "scheduled_visit"
                         ? formatCanonicalVisitSchedule({
                             date: timing.date,
                             visitPeriod: timing.visitPeriod,
@@ -823,149 +1081,181 @@ export default function WorkQueue({ embedded = false }) {
                         : timing.kind === "completed"
                           ? `Completed ${formatRecordDate(timing.date)}`
                           : `Due ${formatRelativeSchedule(timing.date)}`;
-                    const isHealthFarmVisitScheduled =
-                      task.workflowType === "Health" &&
-                      (task.status === "scheduled" ||
-                        task.allowedAction === "START_SERVICE");
-                    const primaryActionLabel = isHealthFarmVisitScheduled
-                      ? "Record Health Assistance"
+                    const isScheduledHealthVisit = isScheduledHealthFarmVisit(task);
+                    const primaryActionLabel = isScheduledHealthVisit
+                      ? "View Scheduled Visit"
                       : task.actionLabel || getTaskPrimaryActionLabel(task);
+                    const theme = getWorkItemTheme(
+                      task,
+                      serviceType,
+                      lifecycle,
+                    );
+                    const ItemIcon = theme.icon;
                     return (
                       <article
                         key={task.id}
                         className="rounded-box border border-base-300 bg-base-100 p-4 transition-colors hover:border-base-content/25 sm:p-5"
                       >
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(13rem,.8fr)_auto] lg:items-center">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="badge badge-sm badge-primary badge-soft">
-                                {task.title || servicePresentation.label}
-                              </span>
-                              <span
-                                className={`badge badge-sm border ${statusPresentation.badgeClass}`}
-                              >
-                                {statusPresentation.label}
-                              </span>
-                              {task.urgent ? (
-                                <span className="badge badge-sm badge-error badge-outline">
-                                  Urgent
+                          {/* Left: Themed Leading Icon + Information */}
+                          <div className="flex items-start gap-3.5 min-w-0">
+                            {/* Themed Icon Container */}
+                            <div
+                              className={`flex size-11 sm:size-12 shrink-0 items-center justify-center rounded-xl ${theme.iconClass}`}
+                              aria-hidden="true"
+                            >
+                              <ItemIcon size={22} />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              {/* Badges Row */}
+                              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                                <span className="badge badge-sm badge-ghost border-base-300 text-xs font-semibold text-base-content/70">
+                                  {servicePresentation.label}
                                 </span>
+                                {(!lifecycle || lifecycle.actionState) && (
+                                  <span
+                                    className={`badge badge-sm font-bold border ${theme.badgeClass}`}
+                                  >
+                                    {lifecycle?.actionState ||
+                                      statusPresentation.label}
+                                  </span>
+                                )}
+                                {task.urgent ? (
+                                  <span className="badge badge-sm badge-error badge-outline font-bold">
+                                    Urgent
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {/* Title / Headline */}
+                              <h3 className="text-sm sm:text-base font-bold text-base-content leading-snug">
+                                {taskLabel}
+                              </h3>
+
+                              {/* Context note (e.g. Recommended time for pregnancy diagnosis reached) */}
+                              {lifecycle?.context && (
+                                <p className="mt-1 text-xs text-base-content/70 font-medium">
+                                  {lifecycle.context}
+                                </p>
+                              )}
+
+                              {/* Farmer and Animal Metadata Row */}
+                              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70">
+                                {/* Farmer name */}
+                                {farmerId ? (
+                                  <button
+                                    type="button"
+                                    className="group/farmer flex items-center gap-1.5 font-semibold text-base-content/90 hover:text-primary transition-colors cursor-pointer"
+                                    onClick={() =>
+                                      navigate(
+                                        `/technician/farmers/${farmerId}`,
+                                      )
+                                    }
+                                  >
+                                    <User
+                                      size={13}
+                                      className="shrink-0 text-base-content/40 group-hover/farmer:text-primary transition-colors"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="truncate">
+                                      {toTitleCase(
+                                        task.farmer?.name ||
+                                          task.farmerName ||
+                                          "Farmer not recorded",
+                                      )}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <span className="flex items-center gap-1.5 font-semibold text-base-content/90">
+                                    <User
+                                      size={13}
+                                      className="shrink-0 text-base-content/40"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="truncate">
+                                      {toTitleCase(
+                                        task.farmer?.name ||
+                                          task.farmerName ||
+                                          "Farmer not recorded",
+                                      )}
+                                    </span>
+                                  </span>
+                                )}
+
+                                {/* Animal info — clickable with paw icon */}
+                                {animalId ? (
+                                  <button
+                                    type="button"
+                                    className="group/animal flex items-center gap-1 text-base-content/75 hover:text-primary transition-colors cursor-pointer"
+                                    onClick={() =>
+                                      navigate(
+                                        `/technician/animals/${animalId}`,
+                                      )
+                                    }
+                                  >
+                                    <PawPrint
+                                      size={12}
+                                      className="shrink-0 text-base-content/40 group-hover/animal:text-primary transition-colors"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="font-mono font-bold">
+                                      Tag{" "}
+                                      {animalReference !== "Not recorded"
+                                        ? animalReference
+                                        : "Unknown"}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-base-content/75">
+                                    <PawPrint
+                                      size={12}
+                                      className="shrink-0 text-base-content/40"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="font-mono font-bold">
+                                      Tag{" "}
+                                      {animalReference !== "Not recorded"
+                                        ? animalReference
+                                        : "Unknown"}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {supportingText ? (
+                                <p className="mt-2 line-clamp-2 text-xs text-base-content/55">
+                                  {formatTaskSummary(supportingText)}
+                                </p>
                               ) : null}
                             </div>
-                            {/* Farmer name — clickable with avatar */}
-                            {farmerId ? (
-                              <button
-                                type="button"
-                                className="group mt-2 flex items-center gap-1.5 text-left"
-                                onClick={() =>
-                                  navigate(`/technician/farmers/${farmerId}`)
-                                }
-                              >
-                                <div className="relative flex cursor-pointer h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-[9px] font-bold uppercase text-primary">
-                                  {task.farmer?.imageUrl && (
-                                    <img
-                                      src={task.farmer.imageUrl}
-                                      alt=""
-                                      className="absolute inset-0 z-10 h-full w-full object-cover"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = "none";
-                                      }}
-                                    />
-                                  )}
-                                  <span className="z-0">
-                                    {(
-                                      task.farmer?.name ||
-                                      task.farmerName ||
-                                      "F"
-                                    ).charAt(0)}
-                                  </span>
-                                </div>
-                                <h3 className="text-sm font-bold cursor-pointer text-base-content transition-colors group-hover:text-primary">
-                                  {toTitleCase(
-                                    task.farmer?.name ||
-                                      task.farmerName ||
-                                      "Farmer not recorded",
-                                  )}
-                                </h3>
-                              </button>
-                            ) : (
-                              <h3 className="mt-2 text-sm font-bold text-base-content">
-                                {toTitleCase(
-                                  task.farmer?.name ||
-                                    task.farmerName ||
-                                    "Farmer not recorded",
-                                )}
-                              </h3>
-                            )}
-
-                            {/* Animal info — clickable with paw icon */}
-                            {animalId ? (
-                              <button
-                                type="button"
-                                className="group mt-1 flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs text-base-content/60"
-                                onClick={() =>
-                                  navigate(`/technician/animals/${animalId}`)
-                                }
-                              >
-                                <PawPrint
-                                  size={11}
-                                  className="shrink-0 text-base-content/40 transition-colors group-hover:text-primary"
-                                  aria-hidden="true"
-                                />
-                                <span className="font-medium text-base-content/75 transition-colors group-hover:text-primary">
-                                  Tag {animalReference !== "Not recorded" ? animalReference : "Unknown"}
-                                </span>
-                              </button>
-                            ) : (
-                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-base-content/60">
-                                <span className="font-medium text-base-content/75">
-                                  Tag {animalReference !== "Not recorded" ? animalReference : "Unknown"}
-                                </span>
-                              </div>
-                            )}
-
-                            {task.summary ? (
-                              <div className="mt-2 space-y-2">
-                                {task.summary.match(/(Contact the.*)/i) ? (
-                                  <>
-                                    <p className="line-clamp-2 text-xs text-base-content/55">
-                                      {formatTaskSummary(
-                                        task.summary.split(/(Contact the.*)/i)[0],
-                                      )}
-                                    </p>
-                                    <div className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-bold text-primary">
-                                      {task.summary.match(/(Contact the.*)/i)[0]}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <p className="line-clamp-2 text-xs text-base-content/55">
-                                    {formatTaskSummary(task.summary)}
-                                  </p>
-                                )}
-                              </div>
-                            ) : null}
                           </div>
 
+                          {/* Middle: Timing & Location */}
                           <dl className="grid gap-2 text-sm">
-                            <div>
-                              <dt className="text-xs font-semibold text-base-content/50">
-                                {timing.kind === "scheduled_visit"
-                                  ? "Visit"
-                                  : timing.kind === "completed"
-                                    ? "Completed"
-                                    : "Due"}
-                              </dt>
-                              <dd
-                                className={`mt-0.5 flex items-center gap-2 font-semibold ${
-                                  workflowStatus === "overdue"
-                                    ? "text-error"
-                                    : "text-base-content"
-                                }`}
-                              >
-                                <CalendarDays size={15} aria-hidden="true" />
-                                {timingLabel}
-                              </dd>
-                            </div>
+                            {timingLabel ? (
+                              <div>
+                                <dt className="text-xs font-semibold text-base-content/50">
+                                  {timing.kind === "scheduled_visit"
+                                    ? "Visit"
+                                    : timing.kind === "completed"
+                                      ? "Completed"
+                                      : lifecycle
+                                        ? "Timing"
+                                        : "Due"}
+                                </dt>
+                                <dd
+                                  className={`mt-0.5 flex items-center gap-2 font-semibold ${
+                                    workflowStatus === "overdue"
+                                      ? "text-error"
+                                      : "text-base-content"
+                                  }`}
+                                >
+                                  <CalendarDays size={15} aria-hidden="true" />
+                                  {timingLabel}
+                                </dd>
+                              </div>
+                            ) : null}
                             <div>
                               <dt className="text-xs font-semibold text-base-content/50">
                                 Location
@@ -977,6 +1267,7 @@ export default function WorkQueue({ embedded = false }) {
                             </div>
                           </dl>
 
+                          {/* Right: Primary CTA Action */}
                           <div className="flex flex-wrap items-center gap-2 lg:max-w-72 lg:justify-end">
                             {task.allowedAction ? (
                               <div
@@ -991,10 +1282,10 @@ export default function WorkQueue({ embedded = false }) {
                               >
                                 <button
                                   type="button"
-                                  className="btn btn-primary btn-sm"
+                                  className="btn btn-primary btn-sm shadow-xs hover:shadow transition-all"
                                   disabled={actionDisabled}
                                   onClick={() =>
-                                    openTask(task, { startHealthService: true })
+                                    openTask(task, { startHealthService: !isScheduledHealthVisit })
                                   }
                                 >
                                   {primaryActionLabel}
@@ -1105,12 +1396,14 @@ export default function WorkQueue({ embedded = false }) {
       <HealthRequestActionModal
         isOpen={
           Boolean(selectedTaskWrapper) &&
-          selectedTaskWrapper?.workflowType === "Health"
+          String(selectedTaskWrapper?.workflowType || "").toLowerCase() ===
+            "health"
         }
         onClose={handleCloseModal}
         startServiceOnOpen={startHealthServiceOnOpen}
         task={
-          selectedTaskWrapper?.workflowType === "Health"
+          String(selectedTaskWrapper?.workflowType || "").toLowerCase() ===
+          "health"
             ? {
                 ...selectedTaskWrapper,
                 id: selectedTaskWrapper.workflowId,
@@ -1152,59 +1445,20 @@ export default function WorkQueue({ embedded = false }) {
           queryClient.invalidateQueries({ queryKey: ["technician"] });
         }}
       />
-      {earlyStartConfirmTask && (
-        <Modal
-          isOpen={Boolean(earlyStartConfirmTask)}
-          onClose={() => {
-            if (!isStartingEarly) {
-              setEarlyStartConfirmTask(null);
-            }
+      {scheduledAIVisit ? (
+        <AIScheduledVisitModal
+          key={scheduledAIVisit.workflowId || scheduledAIVisit.id}
+          task={scheduledAIVisit}
+          isOpen
+          onClose={() => setScheduledAIVisit(null)}
+          onRescheduled={() => {
+            setScheduledAIVisit(null);
+            queryClient.invalidateQueries({ queryKey: ["technician"] });
           }}
-          title="Start service early?"
-          subtitle="Confirm early service start"
-          size="md"
-          icon={<AlertTriangle className="text-warning h-5 w-5" />}
-          actions={
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isStartingEarly) {
-                    setEarlyStartConfirmTask(null);
-                  }
-                }}
-                disabled={isStartingEarly}
-                className="btn btn-sm btn-ghost text-base-content/70"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmStartEarly}
-                disabled={isStartingEarly}
-                className={`btn btn-sm btn-primary font-bold gap-1.5 ${isStartingEarly ? "loading" : ""}`}
-              >
-                {isStartingEarly ? (
-                  <span className="loading loading-spinner loading-xs" />
-                ) : null}
-                Start Early
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4 py-1">
-            <div className="alert alert-warning/15 border-warning/30 text-sm text-base-content/80 flex items-start gap-3 rounded-2xl py-3.5 px-4">
-              <Info className="h-5 w-5 shrink-0 text-warning mt-0.5" />
-              <p className="leading-relaxed">
-                This AI service is scheduled for a future visit. Are you sure you want
-                to start the service now?
-              </p>
-            </div>
-          </div>
-        </Modal>
-      )}
+        />
+      ) : null}
       <Modal
-        isOpen={Boolean(selectedWorkDetails)}
+        isOpen={Boolean(selectedWorkDetails) && !selectedTaskWrapper}
         onClose={handleCloseModal}
         title={
           selectedWorkDetails?.title ||
@@ -1269,35 +1523,38 @@ export default function WorkQueue({ embedded = false }) {
               <div>
                 <p className="text-xs text-base-content/55">Location</p>
                 <p className="font-semibold">
-                  {selectedWorkDetails.location || selectedWorkDetails.farmer?.location || "Location not recorded"}
+                  {selectedWorkDetails.location ||
+                    selectedWorkDetails.farmer?.location ||
+                    "Location not recorded"}
                 </p>
               </div>
             </div>
-            <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
-              <p className="text-xs text-base-content/55">
-                Service information
-              </p>
-              <p className="font-semibold">
-                {formatTaskSummary(selectedWorkDetails.summary) ||
-                  "No additional service details recorded."}
-              </p>
-              {selectedWorkDetails.context?.sireBreed && (
+            {selectedWorkSupportingText && (
+              <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
+                <p className="text-xs text-base-content/55">
+                  Service information
+                </p>
+                <p className="font-semibold">
+                  {formatTaskSummary(selectedWorkSupportingText)}
+                </p>
+                {selectedWorkDetails.context?.sireBreed && (
                 <p className="mt-1 text-base-content/70">
                   Sire: {selectedWorkDetails.context.sireBreed}
                   {selectedWorkDetails.context.sireCode
                     ? ` · ${selectedWorkDetails.context.sireCode}`
                     : ""}
                 </p>
-              )}
-              {selectedWorkDetails.context?.handlingMethod && (
+                )}
+                {selectedWorkDetails.context?.handlingMethod && (
                 <p className="mt-1 text-base-content/70">
                   Handling:{" "}
                   {String(
                     selectedWorkDetails.context.handlingMethod,
                   ).replaceAll("_", " ")}
                 </p>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1307,14 +1564,15 @@ export default function WorkQueue({ embedded = false }) {
         title={
           breedingFollowUpStep === "overview"
             ? "Breeding Follow-up"
-            : "Record breeding follow-up"
+            : "Record Breeding Follow-up"
         }
         subtitle={
           breedingFollowUpStep === "overview"
-            ? undefined
+            ? "Review farmer observation and record breeding outcome"
             : "Record the technician's current observation for this AI attempt."
         }
-        size="md"
+        size="xl"
+        icon={<Activity className="text-primary h-5 w-5" />}
         actions={
           breedingFollowUpStep === "overview" ? (
             <>
@@ -1330,7 +1588,7 @@ export default function WorkQueue({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-primary font-semibold"
                 onClick={() => setBreedingFollowUpStep("form")}
               >
                 Record Follow-up
@@ -1347,7 +1605,7 @@ export default function WorkQueue({ embedded = false }) {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-primary font-semibold"
                 disabled={breedingFollowUpMutation.isPending}
                 onClick={() =>
                   breedingFollowUpMutation.mutate({
@@ -1365,9 +1623,12 @@ export default function WorkQueue({ embedded = false }) {
         }
       >
         {breedingFollowUpStep === "overview" ? (
-          <div className="space-y-4">
+          <div className="space-y-4 py-1">
             {breedingFollowUpDetailsQuery.isError ? (
-              <div className="alert alert-error" role="alert">
+              <div
+                className="alert alert-error text-xs rounded-2xl"
+                role="alert"
+              >
                 <AlertCircle size={18} aria-hidden="true" />
                 <span>Could not load the breeding record details.</span>
                 <button
@@ -1380,78 +1641,155 @@ export default function WorkQueue({ embedded = false }) {
               </div>
             ) : null}
 
-            {/* Breeding Reference */}
-            <div className="rounded-xl border border-base-300 p-4">
-              <h3 className="font-bold text-primary mb-3">
-                Breeding Reference
-              </h3>
+            {/* Soft Guidance Banner (matching PregnancyLossReviewModal palette) */}
+            <div className="alert alert-info/15 border-info/30 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4">
+              <Info className="h-4 w-4 shrink-0 text-info mt-0.5" />
               <div>
-                <h4 className="text-lg font-bold text-base-content">
-                  {breedingFollowUpAnimal?.name ||
-                    (breedingFollowUpAnimal?.earTag
-                      ? `Tag ${breedingFollowUpAnimal.earTag}`
-                      : "Unknown Animal")}
-                </h4>
-                <p className="text-sm text-base-content/60">
-                  {[
-                    breedingFollowUpAnimal?.species,
-                    breedingFollowUpAnimal?.breed,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "No breed info"}
+                <p className="font-bold text-base-content">
+                  Day-21 Return-to-Heat Monitoring
                 </p>
-              </div>
-
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-base-content/60">Date Inseminated</span>
-                  <span className="font-medium text-base-content">
-                    {breedingFollowUpInsemination?.inseminationDate
-                      ? formatInseminationDate(
-                          breedingFollowUpInsemination.inseminationDate,
-                        )
-                      : breedingFollowUpUnavailableLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-base-content/60">Attempt</span>
-                  <span className="font-medium text-base-content">
-                    {breedingFollowUpInsemination?.attemptNumber != null
-                      ? `#${breedingFollowUpInsemination.attemptNumber}`
-                      : breedingFollowUpUnavailableLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-base-content/60">Sire</span>
-                  <span className="font-medium text-base-content">
-                    {breedingFollowUpSire ||
-                      breedingFollowUpUnavailableLabel}
-                  </span>
-                </div>
+                <p className="mt-0.5 leading-relaxed text-base-content/75">
+                  Review the farmer's observation to determine if return-to-heat
+                  occurred or if pregnancy monitoring will proceed.
+                </p>
               </div>
             </div>
 
-            {/* Farmer Update */}
-            <div className="rounded-xl border border-base-300 p-4">
-              <div className="flex items-center justify-between gap-2 mb-3">
+            {/* Animal & Farmer Cards Grid (matching PregnancyLossReviewModal) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Breeding Reference */}
+              <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+                  Breeding Reference
+                </span>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-bold text-sm text-base-content">
+                      {breedingFollowUpAnimalDisplayName}
+                    </h4>
+                    <p className="text-xs text-base-content/70 mt-0.5">
+                      {[
+                        breedingFollowUpAnimal?.species,
+                        breedingFollowUpAnimal?.breed,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "No breed info"}
+                    </p>
+                  </div>
+                  {breedingFollowUpReproductiveStatus ? (
+                    <span className="badge badge-success badge-sm font-semibold">
+                      {breedingFollowUpReproductiveStatus}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center text-base-content/70">
+                    <span>Date Inseminated</span>
+                    <span className="font-semibold text-base-content">
+                      {breedingFollowUpInsemination?.inseminationDate
+                        ? formatInseminationDate(
+                            breedingFollowUpInsemination.inseminationDate,
+                          )
+                        : breedingFollowUpUnavailableLabel}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-base-content/70">
+                    <span>Attempt</span>
+                    <span className="font-semibold text-base-content">
+                      {breedingFollowUpInsemination?.attemptNumber != null
+                        ? `#${breedingFollowUpInsemination.attemptNumber}`
+                        : breedingFollowUpUnavailableLabel}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-base-content/70">
+                    <span>Sire</span>
+                    <span className="font-semibold text-base-content">
+                      {breedingFollowUpSire || breedingFollowUpUnavailableLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reporting Farmer */}
+              <div className="bg-base-200/50 border border-base-300 rounded-2xl p-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block mb-2">
+                  Reporting Farmer
+                </span>
+                <div className="flex items-start gap-3">
+                  {breedingFollowUpFarmer?.imageUrl ? (
+                    <div className="avatar">
+                      <div className="h-10 w-10 rounded-full">
+                        <img
+                          src={breedingFollowUpFarmer.imageUrl}
+                          alt={`${breedingFollowUpFarmerName} profile`}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="avatar avatar-placeholder">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 text-primary">
+                        <span className="text-sm font-semibold">
+                          {breedingFollowUpFarmerName
+                            ? breedingFollowUpFarmerName.charAt(0).toUpperCase()
+                            : "F"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-sm text-base-content truncate">
+                      {breedingFollowUpFarmerName}
+                    </h4>
+                    <p className="text-xs text-base-content/70 mt-0.5 truncate">
+                      {formatFollowUpLocation(
+                        breedingFollowUpFarmer,
+                        "Location not provided",
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {breedingFollowUpFarmerPhone ? (
+                  <a
+                    href={`tel:${breedingFollowUpFarmerPhone}`}
+                    className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold mt-3 hover:underline"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {breedingFollowUpFarmerPhone}
+                  </a>
+                ) : (
+                  <p className="text-xs text-base-content/50 mt-3 italic">
+                    No phone number available
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Farmer Observation / Update Section (matching PregnancyLossReviewModal) */}
+            <div className="border border-base-300 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-primary text-sm uppercase tracking-wide">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
                     Farmer Update
-                  </h3>
+                  </span>
                   {farmerObservation.hasObservation ? (
-                    <span className="badge badge-sm badge-info badge-soft font-semibold">
+                    <span className="badge badge-info badge-sm font-semibold">
                       Needs review
                     </span>
                   ) : null}
                 </div>
-                {farmerObservation.hasObservation && farmerObservation.reportedAt ? (
-                  <span className="text-xs text-base-content/60">
+                {farmerObservation.hasObservation &&
+                farmerObservation.reportedAt ? (
+                  <span className="text-[11px] text-base-content/60 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
                     Submitted {formatSubmittedAt(farmerObservation.reportedAt)}
                   </span>
                 ) : null}
               </div>
 
-              {breedingFollowUpDetailsQuery.isLoading && !farmerObservation.hasObservation ? (
+              {breedingFollowUpDetailsQuery.isLoading &&
+              !farmerObservation.hasObservation ? (
                 <div className="flex items-center justify-center py-6 text-xs text-base-content/50">
                   <span className="loading loading-spinner loading-sm mr-2" />
                   Loading farmer update…
@@ -1459,17 +1797,19 @@ export default function WorkQueue({ embedded = false }) {
               ) : farmerObservation.hasObservation ? (
                 <div className="space-y-3">
                   {farmerObservation.reportType ? (
-                    <h4 className="text-base font-bold text-base-content">
-                      {getBreedingObservationLabel(farmerObservation.reportType)}
+                    <h4 className="text-sm font-bold text-base-content">
+                      {getBreedingObservationLabel(
+                        farmerObservation.reportType,
+                      )}
                     </h4>
                   ) : null}
 
                   {farmerObservation.signs.length > 0 ? (
                     <div>
-                      <span className="text-xs font-semibold text-base-content/60 block mb-1">
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
                         Signs observed:
                       </span>
-                      <ul className="list-disc list-inside space-y-1 text-sm text-base-content">
+                      <ul className="list-disc list-inside space-y-1 text-xs text-base-content font-medium">
                         {farmerObservation.signs.map((sign) => (
                           <li key={sign} className="font-medium">
                             {getBreedingObservationSignLabel(sign)}
@@ -1481,10 +1821,10 @@ export default function WorkQueue({ embedded = false }) {
 
                   {farmerObservation.notes ? (
                     <div>
-                      <span className="text-xs font-semibold text-base-content/60 block mb-1">
-                        Notes:
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1">
+                        Farmer Notes / Description:
                       </span>
-                      <p className="text-xs text-base-content/80 whitespace-pre-wrap bg-base-200/50 rounded-lg p-2.5">
+                      <p className="bg-base-100 border border-base-200 rounded-xl p-3 text-xs leading-relaxed text-base-content font-medium whitespace-pre-wrap">
                         {farmerObservation.notes}
                       </p>
                     </div>
@@ -1492,35 +1832,38 @@ export default function WorkQueue({ embedded = false }) {
 
                   {farmerObservation.evidencePhotos.length > 0 ? (
                     <div>
-                      <span className="text-xs font-semibold text-base-content/60 block mb-1.5">
-                        Supporting photos:
+                      <span className="text-[10px] font-semibold uppercase text-base-content/60 block mb-1.5">
+                        Supporting Photos (
+                        {farmerObservation.evidencePhotos.length})
                       </span>
-                      <div className="flex flex-wrap gap-2">
-                        {farmerObservation.evidencePhotos.map((photo, index) => {
-                          const url = imagePreviewUrl(photo);
-                          return (
-                            <button
-                              key={url || index}
-                              type="button"
-                              className="relative h-16 w-16 overflow-hidden rounded-lg border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
-                              onClick={() => setPreviewImage(photo)}
-                              aria-label={`View supporting photo ${index + 1}`}
-                            >
-                              <img
-                                src={url}
-                                alt={`Supporting photo ${index + 1}`}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                            </button>
-                          );
-                        })}
+                      <div className="flex flex-wrap gap-2.5">
+                        {farmerObservation.evidencePhotos.map(
+                          (photo, index) => {
+                            const url = imagePreviewUrl(photo);
+                            return (
+                              <button
+                                key={url || index}
+                                type="button"
+                                className="relative h-20 w-20 rounded-xl overflow-hidden border border-base-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
+                                onClick={() => setPreviewImage(photo)}
+                                aria-label={`View supporting photo ${index + 1}`}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Supporting photo ${index + 1}`}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            );
+                          },
+                        )}
                       </div>
                     </div>
                   ) : null}
                 </div>
               ) : (
-                <div className="text-center py-4">
+                <div className="text-center py-6 bg-base-200/30 rounded-xl border border-dashed border-base-300">
                   <MessageSquare
                     className="mx-auto text-base-content/30 mb-2"
                     size={24}
@@ -1528,72 +1871,22 @@ export default function WorkQueue({ embedded = false }) {
                   <h4 className="font-bold text-base-content text-sm">
                     No farmer update received
                   </h4>
-                  <p className="text-xs text-base-content/60 mt-1 max-w-70 mx-auto">
+                  <p className="text-xs text-base-content/60 mt-1 max-w-xs mx-auto">
                     Contact the farmer to ask whether the animal showed signs of
                     returning to heat.
                   </p>
                 </div>
               )}
             </div>
-
-            {/* Farmer Contact */}
-            <div className="rounded-xl border border-base-300 p-4">
-              <h3 className="font-bold text-primary mb-3">Farmer Contact</h3>
-              <div className="flex items-center gap-3">
-                {breedingFollowUpFarmer?.imageUrl ? (
-                  <div className="avatar">
-                    <div className="h-10 w-10 rounded-full">
-                      <img
-                        src={breedingFollowUpFarmer.imageUrl}
-                        alt={`${breedingFollowUpFarmer.name || "Farmer"} profile`}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="avatar avatar-placeholder">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 text-primary">
-                      <span className="text-sm font-semibold">
-                        {breedingFollowUpFarmer?.name
-                          ? breedingFollowUpFarmer.name.charAt(0).toUpperCase()
-                          : "F"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <h4 className="font-bold text-base-content text-sm">
-                    {breedingFollowUpFarmer?.name ||
-                      breedingFollowUp?.farmerName ||
-                      "Unknown Farmer"}
-                  </h4>
-                  <p className="text-xs text-base-content/60">
-                    {breedingFollowUpFarmer?.phoneNumber ||
-                      breedingFollowUpFarmer?.phone ||
-                      "No phone number available"}
-                  </p>
-                </div>
-              </div>
-              <a
-                href={
-                  breedingFollowUpFarmer?.phoneNumber ||
-                  breedingFollowUpFarmer?.phone
-                    ? `tel:${breedingFollowUpFarmer.phoneNumber || breedingFollowUpFarmer.phone}`
-                    : undefined
-                }
-                className={`btn btn-outline btn-primary w-full mt-4 ${!breedingFollowUpFarmer?.phoneNumber && !breedingFollowUpFarmer?.phone ? "btn-disabled" : ""}`}
-              >
-                <Phone size={16} />
-                Call Farmer
-              </a>
-            </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <label className="form-control">
-              <div className="text-sm font-bold text-base-content mb-2">
+          /* Form Step */
+          <div className="space-y-4 py-1">
+            <div className="border border-base-300 rounded-2xl p-4 space-y-4">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary block">
                 Follow-up Outcome
-              </div>
-              <div className="grid gap-3">
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() =>
@@ -1602,20 +1895,20 @@ export default function WorkQueue({ embedded = false }) {
                       reportType: "possible_pregnancy",
                     }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "possible_pregnancy"
-                      ? "border-primary bg-primary/5"
+                      ? "border-primary bg-primary/5 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <CheckCircle2 size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <CheckCircle2 size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
                       No heat noticed
                     </h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       No heat signs were reported. Pregnancy still requires
                       professional confirmation.
                     </p>
@@ -1630,20 +1923,20 @@ export default function WorkQueue({ embedded = false }) {
                       reportType: "return_to_heat",
                     }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "return_to_heat"
-                      ? "border-error bg-error/5"
+                      ? "border-error bg-error/5 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error/10 text-error">
-                    <AlertCircle size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-error/10 text-error">
+                    <AlertCircle size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
                       Returned to heat
                     </h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       Return-to-heat signs were observed or reported.
                     </p>
                   </div>
@@ -1654,18 +1947,20 @@ export default function WorkQueue({ embedded = false }) {
                   onClick={() =>
                     setFollowUpDraft((c) => ({ ...c, reportType: "unsure" }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "unsure"
-                      ? "border-warning bg-warning/5"
+                      ? "border-warning bg-warning/5 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
-                    <HelpCircle size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
+                    <HelpCircle size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">Not sure</h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
+                      Not sure
+                    </h4>
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       Unable to determine whether the animal returned to heat.
                     </p>
                   </div>
@@ -1679,26 +1974,41 @@ export default function WorkQueue({ embedded = false }) {
                       reportType: "unable_to_contact",
                     }))
                   }
-                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                     followUpDraft.reportType === "unable_to_contact"
-                      ? "border-base-content/30 bg-base-200"
+                      ? "border-base-content/30 bg-base-200 shadow-sm"
                       : "border-base-300 bg-base-100 hover:border-base-content/20"
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content/60">
-                    <PhoneOff size={20} />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-base-300 text-base-content/60">
+                    <PhoneOff size={18} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base-content">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-base-content">
                       Unable to contact farmer
                     </h4>
-                    <p className="mt-1 text-xs text-base-content/70">
+                    <p className="mt-0.5 text-xs text-base-content/70 leading-relaxed">
                       No reproductive observation will be recorded.
                     </p>
                   </div>
                 </button>
               </div>
-            </label>
+
+              <div>
+                <label className="label-text text-xs font-semibold text-base-content/80 block mb-1">
+                  Technician Notes (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={followUpDraft.notes}
+                  onChange={(e) =>
+                    setFollowUpDraft((c) => ({ ...c, notes: e.target.value }))
+                  }
+                  placeholder="Enter your observations, examination findings, or follow-up notes..."
+                  className="textarea textarea-bordered w-full text-xs font-medium placeholder:text-base-content/40 focus:outline-primary rounded-xl"
+                />
+              </div>
+            </div>
           </div>
         )}
       </Modal>

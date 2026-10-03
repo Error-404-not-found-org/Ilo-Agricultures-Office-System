@@ -342,6 +342,7 @@ CLIENT_URL=http://localhost:5173
 IPROG_SMS_ENABLED=false
 IPROG_SMS_API_TOKEN=your_iprogsms_token
 IPROG_SMS_BASE_URL=https://www.iprogsms.com/api/v1
+OTP_HASH_SECRET=generate-a-long-random-secret-for-otp-hmac
 ```
 
 ### Web Configuration (`web/.env`)

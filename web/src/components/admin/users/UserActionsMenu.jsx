@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import {
-  BadgeCheck,
   Eye,
+  Archive,
   MoreVertical,
   UserRoundCheck,
   UserX,
@@ -57,22 +57,6 @@ export default function UserActionsMenu({
             </Link>
           </li>
         )}
-        {!user?.isVerified && (
-          <li role="none">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={(event) => {
-                closeMenu(event);
-                onAction("verify", user);
-              }}
-              className="text-xs font-bold"
-            >
-              <BadgeCheck size={14} aria-hidden="true" />
-              Verify
-            </button>
-          </li>
-        )}
         {isSuspended ? (
           <li role="none">
             <button
@@ -101,6 +85,22 @@ export default function UserActionsMenu({
             >
               <UserX size={14} aria-hidden="true" />
               Suspend
+            </button>
+          </li>
+        )}
+        {user?.role === "farmer" && (
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(event) => {
+                closeMenu(event);
+                onAction("archive", user);
+              }}
+              className="text-xs font-bold"
+            >
+              <Archive size={14} aria-hidden="true" />
+              Archive Farmer
             </button>
           </li>
         )}

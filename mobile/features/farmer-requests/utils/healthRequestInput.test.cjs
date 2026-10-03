@@ -66,6 +66,7 @@ test("Health Concern observations and Preventive Care without signs remain valid
       assistanceRequested: "health_concern",
       observedSigns: ["weakness"],
       farmerDescription: "",
+      photoCount: 1,
     }),
     null,
   );
@@ -74,8 +75,21 @@ test("Health Concern observations and Preventive Care without signs remain valid
       assistanceRequested: "preventive_care",
       observedSigns: [],
       farmerDescription: "",
+      photoCount: 1,
     }),
     null,
+  );
+});
+
+test("Farmer Health Request requires at least one supporting photo", () => {
+  assert.equal(
+    input.getHealthRequestInputValidationMessage({
+      assistanceRequested: "health_concern",
+      observedSigns: ["diarrhea"],
+      farmerDescription: "Started this morning.",
+      photoCount: 0,
+    }),
+    "Please attach at least one photo of the animal.",
   );
 });
 

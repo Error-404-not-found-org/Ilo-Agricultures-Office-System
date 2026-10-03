@@ -1,6 +1,8 @@
 export const PREGNANCY_DIAGNOSIS_UI = {
   PAGE_1: {
     SECTION_ANIMAL_FARMER: "Animal & Farmer",
+    SECTION_ANIMAL_READINESS: "Animal & Readiness",
+    SECTION_FARMER_LOCATION: "Farmer & Location",
     SECTION_BREEDING_REFERENCE: "Breeding Reference",
     SECTION_DIAGNOSIS_WINDOW: "DIAGNOSIS WINDOW",
     SECTION_FARMER_UPDATE: "FARMER UPDATE",
@@ -10,6 +12,8 @@ export const PREGNANCY_DIAGNOSIS_UI = {
       LAST_INSEMINATION: "Last insemination",
       ATTEMPT: "Attempt",
       SIRE: "Sire",
+      SIRE_BREED: "Sire breed",
+      SIRE_CODE: "Sire code",
     },
   },
   PAGE_2: {

@@ -7,6 +7,7 @@ import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
 import { useRouter } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
+import { getSafeClerkErrorDiagnostic, isClerkBannedError, setSuspendedAccount } from '@/features/auth/utils/suspendedAccount';
 
 const AuthScreen = () => {
 
@@ -49,11 +50,15 @@ const AuthScreen = () => {
           console.warn("⚠️ Sync failed:", syncErr);
         }
       } else {
+        if (__DEV__) console.info('[Auth diagnostic] Password sign-in returned non-complete status:', completeSignIn.status);
         toast.error("Login Incomplete", { description: "Additional verification required." });
       }
     } catch (err: any) {
-      // Use warn instead of error to avoid intrusive console overlays on some mobile devs
-      console.warn("Login attempt failed:", err.message || "Invalid credentials");
+      if (__DEV__) console.info('[Auth diagnostic] Password sign-in error:', getSafeClerkErrorDiagnostic(err));
+      if (isClerkBannedError(err)) {
+        setSuspendedAccount();
+        return;
+      }
       
       const errorMessage = err.errors?.[0]?.message || "Invalid credentials";
       const errorCode = err.errors?.[0]?.code;

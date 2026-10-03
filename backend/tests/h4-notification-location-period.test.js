@@ -245,7 +245,7 @@ test("AI status-update notification carries the normalized visit period", async 
     animalId: { _id: existing.animalId, earTag: "CB-014" },
   };
   let notification;
-  Insemination.findById = async () => existing;
+  Insemination.findById = () => populatedQuery(existing);
   Insemination.findOneAndUpdate = (_filter, update) => {
     Object.assign(updated, update.$set);
     return populatedQuery(updated);

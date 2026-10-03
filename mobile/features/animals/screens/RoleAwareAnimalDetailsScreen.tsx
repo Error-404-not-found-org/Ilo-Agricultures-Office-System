@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   Calendar,
   ChevronRight,
@@ -49,13 +49,13 @@ import { technicianKeys } from "@/lib/queryKeys";
 import { getTechnicianWorkQueue } from "@/features/technician/services/tasks.service";
 import { useTheme } from "@/lib/theme";
 import {
-  getBreedingObservationLabel,
   getBreedingObservationSignLabel,
   getBreedingObservationPresentation,
   getFarmerBreedingObservationReadiness,
   canOfferFarmerReInsemination,
   isBreedingObservationAwaitingReview,
 } from "@/features/breeding/utils/breedingObservationPresentation";
+import type { BreedingObservationAttempt } from "@/features/breeding/utils/breedingObservationPresentation";
 import {
   getAIEligibility,
   hasEligibleBreedingAttemptForPD,
@@ -65,6 +65,7 @@ import {
   isHistoryOnlyInsemination,
   resolveCurrentPostpartumRecovery,
 } from "@/features/breeding/utils/reproductiveCyclePresentation";
+import { getReproductiveGuidance } from "@/features/breeding/utils/reproductiveGuidance";
 import type {
   AIRequest,
   Animal,
@@ -88,7 +89,7 @@ type AnimalOwner = Partial<Farmer> & {
 
 type AnimalDetailsData = Omit<Animal, "farmerId" | "inseminations"> & {
   farmerId?: string | AnimalOwner;
-  inseminations?: AIRequest[];
+  inseminations?: (AIRequest & BreedingObservationAttempt)[];
   healthRecords?: HealthRequest[];
   healthRequests?: HealthRequest[];
   bloodline?: string;
@@ -417,6 +418,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   const { colors, isDark } = useTheme();
   const [showAllRecords, setShowAllRecords] = useState(false);
   const animalQuery = useAnimalDetailsQuery(id);
+  const refetchAnimal = animalQuery.refetch;
   const animal = animalQuery.data as AnimalDetailsData | undefined;
   const api = useApi();
   const bootstrapUser = queryClient.getQueryData<{
@@ -437,6 +439,12 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
   });
 
   const recordsQuery = useAnimalRecords({ animalId: id, limit: 10 });
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refetchAnimal();
+    }, [refetchAnimal]),
+  );
 
   const services = useMemo(() => getServices(animal), [animal]);
   const activeServices = useMemo(
@@ -581,6 +589,15 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
     ["Inseminated", "Likely Pregnant", "In Heat"].includes(
       animal.reproductiveStatus || "",
     );
+  const reproductiveGuidance = getReproductiveGuidance({
+    reproductiveStatus: animal.reproductiveStatus,
+    pregnancyReadiness: latestAi?.item?.pregnancyReadiness,
+    canGiveBreedingUpdate:
+      hasBreedingObservationContext && observationReadiness.isAvailable,
+    breedingObservationDescription: observationReadiness.isAvailable
+      ? "Have you noticed signs of heat?"
+      : observationReadiness.message,
+  });
   const hasPregnancyTrackerData = Boolean(
     validInseminations.length > 0 ||
     animal.lastInseminationDate ||
@@ -1104,6 +1121,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
 
             {role === "farmer" &&
             hasBreedingObservationContext &&
+            reproductiveGuidance &&
             !latestObservation &&
             latestAi?.item?._id ? (
               <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
@@ -1169,18 +1187,24 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       textRole="title"
                       style={{ marginBottom: 4 }}
                     >
-                      Heat-return monitoring
+                      {reproductiveGuidance.title}
                     </Text>
+                    {reproductiveGuidance.statusLabel ? (
+                      <Text
+                        textRole="bodyStrong"
+                        style={{ marginBottom: 4 }}
+                      >
+                        {reproductiveGuidance.statusLabel}
+                      </Text>
+                    ) : null}
                     <Text
                       textRole="body"
                       color="secondary"
                       style={{ marginBottom: 12 }}
                     >
-                      {observationReadiness.isAvailable
-                        ? "Have you noticed signs of heat?"
-                        : observationReadiness.message}
+                      {reproductiveGuidance.description}
                     </Text>
-                    {observationReadiness.isAvailable ? (
+                    {reproductiveGuidance.action === "give_update" ? (
                       <Button
                         label="Give Update"
                         onPress={() =>
@@ -2172,7 +2196,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
               <Button
                 variant="outline"
                 onPress={() =>
-                  router.push("/(farmer)/report-sickness" as never)
+                  router.push({
+                    pathname: "/(farmer)/report-sickness",
+                    params: { animalId: animal._id },
+                  } as never)
                 }
                 style={{ flex: 1, borderRadius: 14, minHeight: 46 }}
               >

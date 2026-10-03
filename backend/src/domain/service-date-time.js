@@ -47,6 +47,19 @@ export const toManilaDateKey = (value) => {
   return `${year}-${month}-${day}`;
 };
 
+export const getManilaMonthUtcRange = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const manilaDate = new Date(date.getTime() + MANILA_OFFSET_MS);
+  const year = manilaDate.getUTCFullYear();
+  const month = manilaDate.getUTCMonth();
+  return {
+    start: new Date(Date.UTC(year, month, 1) - MANILA_OFFSET_MS),
+    end: new Date(Date.UTC(year, month + 1, 1) - MANILA_OFFSET_MS),
+  };
+};
+
 const manilaTimeKey = (value) => {
   const parts = new Intl.DateTimeFormat("en-PH", {
     hour: "2-digit",

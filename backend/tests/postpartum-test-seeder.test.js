@@ -35,4 +35,5 @@ test("postpartum test seeder builds recovering and recovered fixtures", () => {
     result.recoveredEligibility.effectiveReproductiveStatus,
     "In Heat",
   );
+  assert.ok(animals.every((animal) => animal.earTag.length <= 20));
 });

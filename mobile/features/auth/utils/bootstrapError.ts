@@ -59,8 +59,9 @@ export const getBootstrapErrorPresentation = (
 
   if (code === "ACCOUNT_SUSPENDED") {
     return signOutPresentation(
-      "Account Unavailable",
-      "This account has been suspended. Contact the Ilo Agriculture Office if you need help.",
+      "Account suspended",
+      "Your BreedSmart account has been suspended. Please contact the Municipal Agriculture Office for assistance.",
+      "Sign out",
     );
   }
 

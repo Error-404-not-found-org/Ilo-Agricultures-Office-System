@@ -7,6 +7,9 @@ import { Insemination } from "../src/models/insemination.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { Task } from "../src/models/task.model.js";
 import { Config } from "../src/models/config.model.js";
+import { Animal, ANIMAL_EAR_TAG_MAX_LENGTH } from "../src/models/animal.model.js";
+import { resolveRequestLocation } from "../src/domain/geographic/municipalityResolver.js";
+import { buildNewRequestDispatchFilter } from "../src/services/dispatch-eligibility.service.js";
 import { getBreedingMilestones } from "../src/controllers/user.controllers.js";
 import { selectNeedsAttention } from "../../mobile/features/farmer-dashboard/utils/farmerDashboard.transforms.ts";
 import { CUSTOM_DNS_SERVERS, configureCustomDns } from "../src/config/custom-dns.js";
@@ -17,12 +20,14 @@ import {
 import {
   HEALTH_SCENARIO_NAMES,
   REPRODUCTIVE_SCENARIO_NAMES,
+  SCENARIO_REGISTRY,
   SCENARIO_NAMES,
   SCENARIO_ALIASES,
   applySeedPlan,
   assertDevelopmentEnvironment,
   assertRequiredSchemaPath,
   assertRequiredSchemas,
+  assertScenario02DispatchReady,
   assertSeedBatchAvailable,
   buildReproductionLifecyclePlan,
   cleanupSingleScenario,
@@ -30,6 +35,7 @@ import {
   connectDevelopmentDatabase as connectSeedDatabase,
   hasRequiredSchemaPath,
   parseSeedArgs,
+  resolveScenarioRange,
   resolveScenarioName,
   resolveSeedUsers,
   validateSeedPlan,
@@ -37,6 +43,7 @@ import {
 import {
   buildCleanupOperations,
   cleanupFromManifest,
+  discoverDerivedCleanupIds,
   connectDevelopmentDatabase as connectCleanupDatabase,
   loadManifest,
   validateManifest,
@@ -217,6 +224,181 @@ test("Reproduction seeder: scenario identifiers, ear tags, and chronology are va
       assert.ok(calving.date >= pregnancy.pregnancyDiagnosis.date);
     }
   }
+});
+
+test("Reproduction seeder: registry assigns stable production-valid tags to all 23 scenarios", () => {
+  const plan = buildPlan();
+  assert.equal(SCENARIO_REGISTRY.length, 23);
+  assert.deepEqual(
+    plan.scenarios.map((scenario) => scenario.earTag),
+    Array.from({ length: 23 }, (_, index) => `OT-${String(index + 1).padStart(3, "0")}`),
+  );
+  assert.ok(plan.collections.animals.every((animal) => animal.earTag.length <= ANIMAL_EAR_TAG_MAX_LENGTH));
+  assert.ok(plan.scenarios.every((scenario) => scenario.seedIdentity?.family === "reproduction-lifecycle"));
+  assert.ok(plan.scenarios.every((scenario) => scenario.seedIdentity?.key));
+});
+
+test("Reproduction seeder: inclusive scenario ranges preserve OT ear tags", () => {
+  const args = parseSeedArgs(["--scenarioRange=OT-009:OT-014"]);
+  assert.deepEqual(args.scenarioRange, [
+    "RC26-09-CALVING-DUE",
+    "RC26-10-CALVING-OVERDUE",
+    "RC26-11-POSTPARTUM",
+    "RC26-12-STILLBIRTH",
+    "RC26-13-ABORTION",
+    "RC26-14-MIXED",
+  ]);
+
+  const range = resolveScenarioRange("OT-009:OT-014");
+  assert.equal(range.length, 6);
+
+  const plan = buildReproductionLifecyclePlan({
+    farmer: { _id: new mongoose.Types.ObjectId(), email: "farmer@example.test" },
+    technician: {
+      _id: new mongoose.Types.ObjectId(),
+      email: "technician@example.test",
+      role: "technician",
+      status: "active",
+      deletedAt: null,
+    },
+    now: new Date("2026-07-17T00:00:00.000Z"),
+    seedBatch: "repro-range-123456",
+    scenarioRange: range,
+  });
+
+  assert.deepEqual(
+    plan.scenarios.map((scenario) => scenario.earTag),
+    ["OT-009", "OT-010", "OT-011", "OT-012", "OT-013", "OT-014"],
+  );
+  assert.deepEqual(
+    plan.scenarios.map((scenario) => scenario.scenario),
+    range,
+  );
+});
+
+test("OT-002 pending AI has the same dispatch municipality required by Technician Open Requests", () => {
+  const farmer = {
+    _id: new mongoose.Types.ObjectId(),
+    email: "farmer@example.test",
+    address: { city: "Oton", province: "Iloilo", barangay: "Bita Sur" },
+  };
+  const location = resolveRequestLocation(farmer);
+  assert.ok(location.municipalityCode);
+  const technician = {
+    _id: new mongoose.Types.ObjectId(), role: "technician", status: "active",
+    isVerified: true, deletedAt: null,
+    dispatchProfile: {
+      acceptsNewRequests: true, availabilityStatus: "available",
+      serviceCapabilities: ["AI"],
+      serviceMunicipalities: [{ municipalityCode: location.municipalityCode }],
+    },
+  };
+  const plan = buildReproductionLifecyclePlan({
+    farmer, technician, now: new Date("2026-07-17T00:00:00.000Z"),
+    seedBatch: "repro-ot002-dispatch", scenarioName: "OT-002",
+  });
+  const request = plan.scenarios[0].inseminations[0];
+  const { filter, readiness } = buildNewRequestDispatchFilter({ technician, requestType: "AI" });
+  assert.equal(readiness.eligible, true);
+  assert.equal(request.status, "pending");
+  assert.equal(request.approvedBy, undefined);
+  assert.equal(request.technicianId, undefined);
+  assert.equal(request.deletedAt, null);
+  assert.equal(request.dispatch.location.municipalityCode, location.municipalityCode);
+  assert.ok(filter["dispatch.location.municipalityCode"].$in.includes(request.dispatch.location.municipalityCode));
+  assert.doesNotThrow(() => assertScenario02DispatchReady({ farmer, technician, scenarioName: "OT-002" }));
+  assert.throws(
+    () => assertScenario02DispatchReady({ farmer: { ...farmer, address: {} }, technician, scenarioName: "OT-002" }),
+    /dispatch municipality/,
+  );
+  assert.throws(
+    () => assertScenario02DispatchReady({
+      farmer,
+      technician: { ...technician, dispatchProfile: { ...technician.dispatchProfile, acceptsNewRequests: false } },
+      scenarioName: "OT-002",
+    }),
+    /NOT_ACCEPTING_REQUESTS/,
+  );
+});
+
+test("OT-002 and OT-016 pending Farmer requests do not invent a legacy preferred visit date", () => {
+  const base = buildPlan();
+  const plan = buildReproductionLifecyclePlan({
+    farmer: { ...base.farmer, address: { city: "Oton", province: "Iloilo", barangay: "Bita Sur" } },
+    technician: base.technician,
+    now: base.now,
+    seedBatch: "repro-pending-parity",
+  });
+  for (const number of [2, 16]) {
+    const scenario = plan.scenarios[number - 1];
+    const request = scenario.inseminations.find((item) => item.status === "pending");
+    assert.ok(request);
+    assert.equal(request.preferredDate, undefined);
+    assert.equal(request.scheduledDate, undefined);
+    assert.equal(request.visitPeriod, undefined);
+    assert.equal(request.technicianId, undefined);
+    assert.equal(request.approvedBy, undefined);
+  }
+  const firstRequest = plan.scenarios[1].inseminations[0];
+  const repeatRequest = plan.scenarios[15].inseminations.find((item) => item.status === "pending");
+  assert.equal(firstRequest.attemptNumber, 1);
+  assert.equal(repeatRequest.attemptNumber, 2);
+  assert.equal(String(repeatRequest.previousAttemptId), String(plan.scenarios[15].inseminations[0]._id));
+  assert.equal(repeatRequest.dispatch?.location?.municipalityCode, firstRequest.dispatch?.location?.municipalityCode);
+  assert.ok(repeatRequest.dispatch.location.municipalityCode);
+});
+
+test("Reproduction seeder: single and full fixtures can coexist for one Farmer", () => {
+  const full = buildPlan();
+  const single = buildReproductionLifecyclePlan({
+    farmer: full.farmer, technician: full.technician,
+    now: full.now, seedBatch: "repro-single", scenarioName: "heat-check",
+  });
+  assert.equal(single.scenarios[0].earTag, "OT-S023");
+  assert.ok(!full.collections.animals.some((animal) => animal.earTag === single.scenarios[0].earTag));
+});
+
+test("Reproduction seeder: Health request fixtures use the current structured contract", () => {
+  const plan = buildPlan();
+  for (const number of [18, 19, 20, 21]) {
+    const request = plan.scenarios[number - 1].healthRequests[0];
+    assert.equal(request.requestDetails.version, 1);
+    assert.equal(request.requestDetails.assistanceRequested, "health_concern");
+    assert.ok(request.requestDetails.observedSigns.length > 0);
+    assert.ok(request.requestDetails.farmerDescription);
+  }
+  const scheduled = plan.scenarios[18].healthRequests[0];
+  assert.equal(scheduled.requestType, "disease");
+  assert.deepEqual(scheduled.requestDetails.observedSigns, ["wound_or_injury", "swelling"]);
+  for (const number of [19, 20, 21]) {
+    assert.equal(plan.scenarios[number - 1].healthRequests[0].handlingMethod, "farm_visit");
+  }
+  assert.equal(plan.scenarios[21].healthRequests.length, 0);
+});
+
+test("Pregnancy Check seed tasks carry the runtime initial-confirmation stage", () => {
+  const plan = buildPlan();
+  const task = plan.scenarios[6].tasks.find((item) => item.sourceType === "automatic_pd_followup");
+  assert.equal(task.metadata.workflowStage, "initial_confirmation");
+  assert.equal(task.metadata.policyVersion, LEGACY_PREGNANCY_POLICY_VERSION);
+  assert.equal(String(task.metadata.animalId), String(plan.scenarios[6].motherId));
+});
+
+test("Animal model applies the normal ear-tag maximum to seed-looking values", async () => {
+  const common = {
+    farmerId: new mongoose.Types.ObjectId(),
+    animalId: "animal-seed-validation",
+    species: "Beef Cattle",
+    breed: "Angus",
+  };
+  await assert.rejects(
+    new Animal({ ...common, earTag: "RC26-THIS-VERY-LONG-TAG" }).validate(),
+    /20 characters or fewer/i,
+  );
+  await assert.rejects(
+    new Animal({ ...common, animalId: "animal-dev-validation", earTag: "DEV-THIS-VERY-LONG-TAG" }).validate(),
+    /20 characters or fewer/i,
+  );
 });
 
 test("Reproduction seeder: an existing pregnancy cannot retain an open initial diagnosis task", () => {
@@ -528,6 +710,58 @@ test("Reproduction cleanup: executor never broadens manifest filters", async () 
   assert.ok(calls.every((filter) => Object.keys(filter).length === 1 && Array.isArray(filter._id.$in)));
 });
 
+test("Reproduction cleanup: discovers post-seed pregnancy-loss artifacts through seeded relationships", async () => {
+  const manifest = buildManifest();
+  const reportId = new mongoose.Types.ObjectId();
+  const reviewTaskId = new mongoose.Types.ObjectId();
+  const notificationId = new mongoose.Types.ObjectId();
+  const query = (rows) => ({ select: () => ({ lean: async () => rows }) });
+  const models = {
+    PregnancyLossReport: {
+      find: () => query([{ _id: reportId }]),
+    },
+    Task: { find: () => query([{ _id: reviewTaskId }]) },
+    Notification: { find: () => query([{ _id: notificationId }]) },
+    AnimalTimelineEvent: { find: () => query([]) },
+    AuditLog: { find: () => query([]) },
+  };
+  const discovered = await discoverDerivedCleanupIds({ manifest, models });
+  assert.deepEqual(discovered.PregnancyLossReport.map(String), [String(reportId)]);
+  assert.deepEqual(discovered.Task.map(String), [String(reviewTaskId)]);
+  assert.deepEqual(discovered.Notification.map(String), [String(notificationId)]);
+});
+
+test("Full cleanup removes a post-seed loss review and calving without touching another Farmer", async () => {
+  const manifest = buildManifest();
+  const reportId = new mongoose.Types.ObjectId();
+  const calvingId = new mongoose.Types.ObjectId();
+  const reviewTaskId = new mongoose.Types.ObjectId();
+  const otherFarmerTaskId = new mongoose.Types.ObjectId();
+  const deleted = new Map();
+  const query = (rows) => ({ select: () => ({ lean: async () => rows }) });
+  const collection = (name, rows = []) => ({
+    find: () => query(rows),
+    deleteMany: async (filter) => {
+      deleted.set(name, filter._id.$in.map(String));
+      return { deletedCount: filter._id.$in.length };
+    },
+  });
+  const models = {
+    Animal: collection("Animal"), Insemination: collection("Insemination"),
+    Pregnancy: collection("Pregnancy"), Calving: collection("Calving", [{ _id: calvingId }]),
+    HealthRequest: collection("HealthRequest"), MedicalRecord: collection("MedicalRecord"),
+    PregnancyLossReport: collection("PregnancyLossReport", [{ _id: reportId }]),
+    Task: collection("Task", [{ _id: reviewTaskId }]),
+    Notification: collection("Notification"), AnimalTimelineEvent: collection("AnimalTimelineEvent"),
+    AuditLog: collection("AuditLog"),
+  };
+  await cleanupFromManifest({ manifest, models });
+  assert.ok(deleted.get("PregnancyLossReport").includes(String(reportId)));
+  assert.ok(deleted.get("Calving").includes(String(calvingId)));
+  assert.ok(deleted.get("Task").includes(String(reviewTaskId)));
+  assert.ok(!deleted.get("Task").includes(String(otherFarmerTaskId)));
+});
+
 test("Reproduction cleanup: missing and malformed manifests are refused", async () => {
   await assert.rejects(loadManifest(""), /manifest=.*required/i);
   await assert.rejects(loadManifest("missing.json", async () => { throw new Error("ENOENT"); }), /could not be read/i);
@@ -684,6 +918,7 @@ test("Reproduction seeder: single scenario cleanup scopes deletion strictly to s
   const models = {
     Animal: {
       find: (filter) => {
+        if (filter.motherId) return [];
         findFilters.Animal = filter;
         return candidateAnimals.filter((a) =>
           filter.earTag?.$regex ? filter.earTag.$regex.test(a.earTag) : true,
@@ -778,6 +1013,35 @@ test("Reproduction seeder: single scenario cleanup scopes deletion strictly to s
     { pregnancyId: { $in: [] } },
     { inseminationId: { $in: [] } },
   ]);
+});
+
+test("Single-scenario cleanup uses internal identity and removes linked offspring", async () => {
+  const farmerId = new mongoose.Types.ObjectId();
+  const motherId = new mongoose.Types.ObjectId();
+  const calfId = new mongoose.Types.ObjectId();
+  const fullBatchId = new mongoose.Types.ObjectId();
+  const deleted = {};
+  const empty = { find: () => [], deleteMany: async () => ({ deletedCount: 0 }) };
+  const models = Object.fromEntries([
+    "Insemination", "Pregnancy", "HealthRequest", "Notification", "AuditLog",
+    "AnimalTimelineEvent", "Task", "MedicalRecord", "Calving", "PregnancyLossReport",
+  ].map((name) => [name, empty]));
+  models.AuditLog = {
+    find: (filter) => filter.action === "seed_fixture_created" ? [{ entityId: motherId }] : [],
+    deleteMany: async () => ({ deletedCount: 0 }),
+  };
+  models.Animal = {
+    find: (filter) => {
+      if (filter._id) return [{ _id: motherId, earTag: "OT-S011" }];
+      if (filter.motherId) return [{ _id: calfId, earTag: "OT-S011-C1" }];
+      return [];
+    },
+    deleteMany: async (filter) => { deleted.Animal = filter._id.$in; return { deletedCount: filter._id.$in.length }; },
+  };
+  const result = await cleanupSingleScenario({ farmerId, scenarioName: "11_POSTPARTUM", models });
+  assert.deepEqual(deleted.Animal.map(String), [String(motherId), String(calfId)]);
+  assert.ok(!deleted.Animal.some((value) => String(value) === String(fullBatchId)));
+  assert.equal(result.deletedCount, 2);
 });
 
 test("Reproduction seeder: RC26-23-HEAT-CHECK provides pre-observation Day 21 fixture deriving heat_check milestone and mobile Breeding Update", async (t) => {

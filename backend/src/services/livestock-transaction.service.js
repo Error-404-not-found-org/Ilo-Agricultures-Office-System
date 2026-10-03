@@ -41,6 +41,7 @@ import {
   assertPregnancyMutationAuthority,
 } from "../policies/pregnancy-mutation.policy.js";
 import { ensurePostAICompletionFollowUps } from "./post-ai-followup.service.js";
+import { getAIVisitAvailability } from "../domain/ai-visit-availability.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -1031,6 +1032,45 @@ export const recordTechnicianAIService = async ({
     }
 
     let task = null;
+    let requestInsemination = null;
+
+    if (requestId) {
+      requestInsemination = await Insemination.findById(requestId).session(session);
+      if (!requestInsemination) {
+        throw new AppError("Insemination request not found.", {
+          status: 404,
+          code: "AI_REQUEST_NOT_FOUND",
+        });
+      }
+      assertOwnedAIRequestContext({
+        insemination: requestInsemination,
+        actorId,
+        farmerId,
+        animalId,
+      });
+
+      if (requestInsemination.status === "scheduled") {
+        const availability = getAIVisitAvailability({
+          scheduledDate: requestInsemination.scheduledDate,
+        });
+        if (availability?.workTiming === "upcoming") {
+          throw new AppError(
+            "This AI visit is scheduled for a future date. Reschedule the visit to today before starting the service.",
+            { status: 409, code: "AI_VISIT_NOT_DUE" },
+          );
+        }
+      }
+
+      if (
+        requestInsemination.status !== "done" &&
+        requestInsemination.status !== "in-progress"
+      ) {
+        throw new AppError(
+          "Start the scheduled AI service before recording its completion.",
+          { status: 409, code: "AI_SERVICE_NOT_STARTED" },
+        );
+      }
+    }
 
     // 1. Authoritative Task Acquisition & Reservation
     if (taskId) {
@@ -1204,13 +1244,7 @@ export const recordTechnicianAIService = async ({
 
     if (requestId) {
       // Request-Linked Path
-      insemination = await Insemination.findById(requestId).session(session);
-      if (!insemination) {
-        throw new AppError("Insemination request not found.", {
-          status: 404,
-          code: "AI_REQUEST_NOT_FOUND",
-        });
-      }
+      insemination = requestInsemination;
 
       // Check if the request is already complete
 

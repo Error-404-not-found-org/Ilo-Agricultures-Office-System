@@ -111,6 +111,25 @@ const chooseTomorrowAndMorning = () => {
 };
 
 describe("Unified AI Request modal", () => {
+  it("reviews a candidate using only coarse location and without pre-claim contact details", () => {
+    renderModal({
+      initialRequest: {
+        id: "candidate-ai",
+        workflowId: "507f1f77bcf86cd799439001",
+        workflowType: "AI",
+        allowedAction: "CLAIM_AND_SCHEDULE",
+        status: "pending",
+        farmer: "Maria Santos",
+        animalTag: "EAR-17",
+        location: "Poblacion, Oton",
+        raw: null,
+      },
+    });
+
+    expect(screen.getByText("Poblacion, Oton")).toBeInTheDocument();
+    expect(screen.getByText("Contact details available after claim")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /call|phone/i })).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     mocks.patch.mockReset();
     mocks.success.mockReset();
@@ -320,6 +339,22 @@ describe("Unified AI Request modal", () => {
       });
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("submits a trimmed optional Farmer Preparation Note", async () => {
+    mocks.patch.mockResolvedValue({ data: { request: { status: "scheduled" } } });
+    renderModal({ initialView: "schedule" });
+    chooseTomorrowAndMorning();
+
+    fireEvent.change(screen.getByLabelText("Farmer Preparation Note"), {
+      target: { value: "  Keep the cow secured.  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce());
+    expect(mocks.patch.mock.calls[0][1]).toMatchObject({
+      farmerPreparationNote: "Keep the cow secured.",
+    });
   });
 
   it("requires current-period confirmation and sends the canonical acknowledgement", async () => {

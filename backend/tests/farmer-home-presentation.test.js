@@ -76,6 +76,14 @@ test("Needs Attention contains Farmer actions and ranks overdue, today, then act
   assert.deepEqual(lowerPriority.map((item) => item.urgency), ["actionable"]);
 });
 
+test("Farmer milestones use Manila calendar days for expected-calving timing", () => {
+  const controller = source("backend/src/controllers/user.controllers.js");
+  assert.match(
+    controller,
+    /differenceInManilaCalendarDays\(\s*p\.targetCalvingDate,\s*now,?\s*\)/,
+  );
+});
+
 test("Future pregnancy checks remain in details instead of Farmer Needs Attention", () => {
   const items = selectNeedsAttention([
     { type: "pd_check", title: "Preg-Check Due", daysLeft: 19, date: "2026-08-06" },
@@ -144,6 +152,6 @@ test("Farmer cattle cards show one status and preserve responsive 320, 360, and 
     1,
   );
   assert.match(card, /animal\.reproductiveStatus === "Likely Pregnant"/);
-  assert.match(card, /"Possible pregnancy"/);
+  assert.match(card, /"No return to heat observed"/);
   assert.match(card, /accessibilityLabel=\{`\$\{fullIdentifier\}/);
 });

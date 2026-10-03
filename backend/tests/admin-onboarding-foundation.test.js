@@ -1,3 +1,4 @@
+import "./stable-clerk-client.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -188,10 +189,12 @@ test("Technician GET /api/user forces Farmer scope and a narrow projection", asy
   const originals = {
     userFind: User.find,
     userCount: User.countDocuments,
+    userAggregate: User.aggregate,
   };
   t.after(() => {
     User.find = originals.userFind;
     User.countDocuments = originals.userCount;
+    User.aggregate = originals.userAggregate;
   });
 
   let capturedQuery;
@@ -203,6 +206,7 @@ test("Technician GET /api/user forces Farmer scope and a narrow projection", asy
     });
   };
   User.countDocuments = async () => 0;
+  User.aggregate = async () => [];
 
   const recorder = responseRecorder();
   await getUsers(

@@ -1,4 +1,4 @@
-import { SignUp, UserButton, useAuth } from "@clerk/clerk-react";
+import { SignUp, UserButton, useAuth, useClerk } from "@clerk/clerk-react";
 import {
   CheckCircle2,
   Download,
@@ -25,6 +25,7 @@ const APP_DOWNLOAD_QR_URL = getDownloadQrUrl();
 
 export default function DownloadApp() {
   const { getToken, isLoaded, isSignedIn, userId, sessionId } = useAuth();
+  const { signOut } = useClerk();
   const [searchParams] = useSearchParams();
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState(null);
@@ -80,7 +81,9 @@ export default function DownloadApp() {
         if (finished) return;
         const status = error.response?.status;
         const payload = error.response?.data;
-        if (status === 401) {
+        if (payload?.code === "ACCOUNT_SUSPENDED") {
+          publish({ state: "suspended" });
+        } else if (status === 401) {
           publish({ state: "auth", message: "Your sign-in could not be verified. Try again, or use the account menu to sign out and sign in again." });
         } else if (!error.response || status >= 500 || status === 408 || status === 429 || payload?.retryable === true) {
           publish({ state: "temporary", message: TEMPORARY_MESSAGE });
@@ -106,6 +109,20 @@ export default function DownloadApp() {
 
   const showStatus = !isLoaded || isSignedIn;
   const failed = ["temporary", "auth", "account", "not-farmer"].includes(current.state);
+
+  if (current.state === "suspended") {
+    return (
+      <AuthShell
+        context="Official BreedSmart App"
+        title="Account suspended"
+        description="Your BreedSmart account has been suspended. Please contact the Municipal Agriculture Office for assistance."
+      >
+        <button type="button" className="btn btn-block" onClick={() => void signOut()}>
+          Sign out
+        </button>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell

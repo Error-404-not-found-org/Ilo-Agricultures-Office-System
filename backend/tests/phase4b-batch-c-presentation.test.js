@@ -78,7 +78,7 @@ test("calendar requires real request schedules and presents Manila dayparts", ()
   const scheduled = {
     id: "request-scheduled",
     type: "health",
-    scheduledDate: "2026-08-28",
+    scheduledAt: "2026-08-28T00:00:00.000Z",
     visitPeriod: "morning",
   };
   const date = calendar.getCalendarVisitDate(scheduled);

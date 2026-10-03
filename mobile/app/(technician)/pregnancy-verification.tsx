@@ -18,35 +18,29 @@ import {
   Info,
   CheckCircle,
   Check,
-  FileText,
   Heart,
-  CalendarCheck,
 } from "lucide-react-native";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
-import { generatePregnancyTimeline, TimelineMilestones } from "@/lib/cattleCore";
-import { useQueryClient } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/Skeleton";
 import {
-  getBreedingObservationLabel,
-  getBreedingObservationSignLabel,
-} from "@/features/breeding/utils/breedingObservationPresentation";
+  generatePregnancyTimeline,
+  type TimelineMilestones,
+} from "@/lib/cattleCore";
+import { useQueryClient } from "@tanstack/react-query";
 import { technicianKeys } from "@/lib/queryKeys";
 import {
   buildPregnancyContinuationPayload,
   isPregnancyContinuationStage,
   CANONICAL_PREGNANCY_DIAGNOSIS_OUTCOMES,
   getVisibleDiagnosticMethodOptions,
-  formatDiagnosticMethodLabel,
   type PregnancyContinuationResult,
   type TechnicianBreedingVerificationResult,
 } from "@/features/breeding/utils/technicianBreedingVerification";
 import { FarmerPregnancyReportCard } from "@/features/breeding/components/FarmerPregnancyReportCard";
-import {
-  PREGNANCY_DIAGNOSIS_UI,
-  formatDaysSinceInsemination,
-} from "@/features/breeding/utils/pregnancyDiagnosisPresentation";
+import { PREGNANCY_DIAGNOSIS_UI } from "@/features/breeding/utils/pregnancyDiagnosisPresentation";
 import type { WorkQueueResponse } from "@/features/technician-requests/types/technicianRequests.types";
 
 export default function PregnancyVerificationScreen() {
@@ -63,7 +57,7 @@ export default function PregnancyVerificationScreen() {
 
   const [task, setTask] = useState<any>(null);
   const [insem, setInsem] = useState<any>(null);
-  const [milestones, setMilestones] = useState<TimelineMilestones | null>(null);
+  const [, setMilestones] = useState<TimelineMilestones | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -259,9 +253,10 @@ export default function PregnancyVerificationScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={isDark ? "#10b981" : "#00643B"} />
-      </View>
+      <PregnancyVerificationSkeleton
+        onBack={() => router.back()}
+        isContinuation={isContinuationWorkflow}
+      />
     );
   }
 
@@ -616,15 +611,11 @@ export default function PregnancyVerificationScreen() {
                       style={[
                         styles.pillBtn,
                         {
-                          borderColor: isSelected
-                            ? isDark
-                              ? "#10b981"
-                              : "#00643B"
+                          borderColor: checkMethod === method.methodCode
+                            ? (isDark ? "#047857" : "#00643B")
                             : colors.border,
-                          backgroundColor: isSelected
-                            ? isDark
-                              ? "rgba(16,185,129,0.15)"
-                              : "#ecfdf5"
+                          backgroundColor: checkMethod === method.methodCode
+                            ? (isDark ? "#047857" : "#00643B")
                             : colors.card,
                           borderWidth: isSelected ? 2 : 1,
                           opacity:
@@ -640,17 +631,13 @@ export default function PregnancyVerificationScreen() {
                     >
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                         {isSelected && (
-                          <Check size={14} color={isDark ? "#34d399" : "#00643B"} />
+                          <Check size={14} color="#fff" />
                         )}
                         <Text
                           style={[
                             styles.pillText,
                             {
-                              color: isSelected
-                                ? isDark
-                                  ? "#34d399"
-                                  : "#00643B"
-                                : colors.textPrimary,
+                              color: checkMethod === method.methodCode ? "#fff" : colors.textPrimary,
                               fontFamily: isSelected
                                 ? "Outfit_700Bold"
                                 : "Outfit_500Medium",
@@ -1048,3 +1035,138 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
+function PregnancyVerificationSkeleton({
+  onBack,
+  isContinuation,
+}: {
+  onBack: () => void;
+  isContinuation?: boolean;
+}) {
+  const { colors, isDark } = useTheme();
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={[styles.backBtn, { backgroundColor: isDark ? colors.card : "#f8fafc" }]}
+        >
+          <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          {isContinuation
+            ? PREGNANCY_DIAGNOSIS_UI.PAGE_2.HEADER_CONTINUATION
+            : PREGNANCY_DIAGNOSIS_UI.PAGE_2.HEADER_INITIAL}
+        </Text>
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+        {/* Animal & Breeding Reference Card Skeleton */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: 20,
+              padding: 16,
+              marginBottom: 16,
+            },
+          ]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Skeleton shape="circle" height={44} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width="45%" height={18} radius={4} />
+              <Skeleton width="60%" height={13} radius={4} />
+            </View>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 16,
+              marginTop: 14,
+              paddingTop: 14,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}
+          >
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width="65%" height={10} radius={3} />
+              <Skeleton width="80%" height={15} radius={4} />
+              <Skeleton width="50%" height={12} radius={4} />
+            </View>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width="65%" height={10} radius={3} />
+              <Skeleton width="80%" height={15} radius={4} />
+              <Skeleton width="90%" height={12} radius={4} />
+            </View>
+          </View>
+        </View>
+
+        {/* Farmer Context Card Skeleton */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: 20,
+              padding: 16,
+              marginBottom: 20,
+            },
+          ]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Skeleton shape="circle" height={20} />
+            <Skeleton width="45%" height={15} radius={4} />
+          </View>
+          <Skeleton width="85%" height={13} radius={4} style={{ marginBottom: 6 }} />
+          <Skeleton width="60%" height={13} radius={4} />
+        </View>
+
+        {/* Section Title Skeleton */}
+        <Skeleton width="55%" height={18} radius={4} style={{ marginBottom: 16, marginTop: 4 }} />
+
+        {/* Outcome Selection Skeleton */}
+        <Skeleton width="45%" height={14} radius={4} style={{ marginBottom: 12 }} />
+        {isContinuation ? (
+          <View style={[styles.segmentedControl, { marginBottom: 20 }]}>
+            <Skeleton width="31%" height={44} radius={14} />
+            <Skeleton width="31%" height={44} radius={14} />
+            <Skeleton width="31%" height={44} radius={14} />
+          </View>
+        ) : (
+          <View style={styles.grid2x2}>
+            <Skeleton width="48%" height={64} radius={14} />
+            <Skeleton width="48%" height={64} radius={14} />
+            <Skeleton width="48%" height={64} radius={14} />
+            <Skeleton width="48%" height={64} radius={14} />
+          </View>
+        )}
+
+        {/* Diagnosis Method Skeleton */}
+        {!isContinuation && (
+          <>
+            <Skeleton width="40%" height={14} radius={4} style={{ marginTop: 8, marginBottom: 10 }} />
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
+              <Skeleton width="31%" height={40} radius={12} />
+              <Skeleton width="31%" height={40} radius={12} />
+              <Skeleton width="31%" height={40} radius={12} />
+            </View>
+          </>
+        )}
+
+        {/* Notes Input Skeleton */}
+        <Skeleton width="30%" height={14} radius={4} style={{ marginBottom: 8 }} />
+        <Skeleton width="100%" height={70} radius={14} style={{ marginBottom: 24 }} />
+
+        {/* Submit Button Skeleton */}
+        <Skeleton width="100%" height={52} radius={16} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

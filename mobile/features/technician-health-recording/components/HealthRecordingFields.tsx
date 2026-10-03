@@ -15,7 +15,6 @@ interface HealthRecordingFieldsProps {
     withdrawalPeriodDays: string;
     advice: string;
     followUpDate: Date | null;
-    resolutionNotes?: string;
   };
   onDiagnosisChange: (value: string) => void;
   onTreatmentChange: (value: string) => void;
@@ -23,7 +22,6 @@ interface HealthRecordingFieldsProps {
   onDosageChange: (value: string) => void;
   onWithdrawalPeriodDaysChange: (value: string) => void;
   onAdviceChange: (value: string) => void;
-  onResolutionNotesChange?: (value: string) => void;
   disabled?: boolean;
 }
 
@@ -53,7 +51,6 @@ export function HealthRecordingFields({
   onDosageChange,
   onWithdrawalPeriodDaysChange,
   onAdviceChange,
-  onResolutionNotesChange,
   disabled = false,
 }: HealthRecordingFieldsProps) {
   const { colors } = useTheme();
@@ -148,6 +145,7 @@ export function HealthRecordingFields({
           style={[inputStyle, { minHeight: 90, paddingTop: 14 }]}
         />
       </View>
+
     </View>
   );
 }

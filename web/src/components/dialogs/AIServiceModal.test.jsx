@@ -285,7 +285,7 @@ describe("request-linked AI recording modal", () => {
       });
       expect(
         screen.queryByText(
-          "Use the authorized historical-record workflow for an older AI service.",
+          "This AI record is from an earlier date. Please use Add Past Record.",
         ),
       ).not.toBeInTheDocument();
     } finally {
@@ -453,7 +453,7 @@ describe("request-linked AI recording modal", () => {
 
       expect(
         await screen.findByText(
-          "Use the authorized historical-record workflow for an older AI service.",
+          "This AI record is from an earlier date. Please use Add Past Record.",
         ),
       ).toBeInTheDocument();
       expect(mocks.post).not.toHaveBeenCalled();
@@ -490,6 +490,37 @@ describe("request-linked AI recording modal", () => {
     });
     expect(payload).not.toHaveProperty("requestId");
     expect(payload).not.toHaveProperty("taskId");
+  });
+
+  it("shows the tracking-window error from its backend code", async () => {
+    mocks.post.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          code: "PREVIOUS_AI_TRACKING_WINDOW_CLOSED",
+          message:
+            "A newer reproductive event already defines the current cycle. Save this AI as History Only instead.",
+        },
+      },
+    });
+    renderDirectModal();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Add Past Record" }));
+    fireEvent.click(screen.getByRole("radio", { name: /continue tracking/i }));
+    setPerformedAt("2025-12-13", "03:14");
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: "Add past record" }));
+
+    expect(
+      await screen.findByText(
+        "This insemination date is outside the active tracking window. Save it as History Only instead.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "A newer reproductive event already defines the current cycle. Save this AI as History Only instead.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps an active AI request linked to Requests for Record AI Now", async () => {

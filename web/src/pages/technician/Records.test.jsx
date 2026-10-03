@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +21,7 @@ vi.mock("../../components/layout/Topbar", () => ({
 }));
 
 import TechnicianRecords from "./Records";
+import { resolveRecordsDateFilter } from "../../utils/recordsDateFilter";
 
 const LocationProbe = () => {
   const location = useLocation();
@@ -83,9 +84,9 @@ const records = [
     source: {
       pregnancyDiagnosis: {
         date: "2025-04-01T00:00:00.000Z",
-        result: "Pregnant",
-        checkMethod: "palpation"
-      }
+        result: "Pregnant"
+      },
+      confirmation: { methodCode: "clinical_examination" }
     }
   },
   {
@@ -154,7 +155,7 @@ const detailById = {
     details: {
       serviceDate: "2025-04-01T00:00:00.000Z",
       outcome: "Pregnant",
-      diagnosticMethod: "palpation",
+      diagnosticMethod: "clinical_examination",
       relatedAttempt: 1,
     },
   },
@@ -196,7 +197,20 @@ describe("Technician records", () => {
     mocks.get.mockImplementation((url) => {
       if (url === "/animals/records") {
         return Promise.resolve({
-          data: { data: records, page: 1, limit: 10, total: 4, totalPages: 1 },
+          data: {
+            data: records,
+            page: 1,
+            limit: 10,
+            total: 4,
+            totalPages: 1,
+            summary: {
+              all: 4,
+              insemination: 1,
+              health: 1,
+              pregnancy: 1,
+              calving: 1,
+            },
+          },
         });
       }
       const recordId = String(url).split("/").at(-1);
@@ -273,7 +287,7 @@ describe("Technician records", () => {
     expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
 
     // Verify cell content
-    expect(await screen.findByText("palpation")).toBeInTheDocument();
+    expect(await screen.findByText("Visual Assessment")).toBeInTheDocument();
   });
 
   it("loads CALVING filter columns correctly", async () => {
@@ -457,23 +471,421 @@ describe("Technician records", () => {
     expect(screen.queryByText("1")).toBeNull();
   });
 
-  it("renders hybrid action column with primary button and kebab menu, opening canonical detail from kebab", async () => {
+  it("renders one clear view action per record row", async () => {
     renderRecords();
 
-    // Primary buttons exist (awaited after data loads)
     const primaryViewButtons = await screen.findAllByRole("button", { name: "View record" });
-    expect(primaryViewButtons.length).toBeGreaterThan(0);
+    expect(primaryViewButtons).toHaveLength(records.length);
+    expect(screen.queryAllByRole("button", { name: /More actions for/i })).toHaveLength(0);
 
-    // Kebab triggers exist
-    const kebabTriggers = screen.getAllByRole("button", { name: /More actions for/i });
-    expect(kebabTriggers.length).toBe(primaryViewButtons.length);
-
-    // Clicking kebab menuitem invokes the existing canonical record detail
-    const kebabItems = screen.getAllByRole("menuitem", { name: "View record", hidden: true });
-    fireEvent.click(kebabItems[0]);
-
+    fireEvent.click(primaryViewButtons[0]);
     expect(await screen.findByText("Sire code")).toBeInTheDocument();
-    expect(screen.getByTestId("location-search")).toHaveTextContent("recordId=" + ids.ai);
+  });
+
+  it("defaults to All time without sending date restrictions", async () => {
+    renderRecords();
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    expect(screen.getByLabelText("Date")).toHaveValue("all");
+    expect(screen.queryByLabelText("Month")).toBeNull();
+    expect(screen.queryByLabelText("From")).toBeNull();
+    expect(screen.queryByLabelText("To")).toBeNull();
+    expect(screen.queryByText("Date mode")).toBeNull();
+    expect(mocks.get).toHaveBeenCalledWith("/animals/records", {
+      params: { page: 1, limit: 10 },
+    });
+  });
+
+  it.each([
+    ["this-month", { fromDate: "2026-09-01", toDate: "2026-09-30" }],
+    ["last-month", { fromDate: "2026-08-01", toDate: "2026-08-31" }],
+    ["last-30-days", { fromDate: "2026-08-23", toDate: "2026-09-21" }],
+  ])("resolves %s with Manila calendar boundaries", (datePreset, expected) => {
+    const params = new URLSearchParams(`datePreset=${datePreset}`);
+    expect(
+      resolveRecordsDateFilter(params, new Date("2026-09-21T04:00:00.000Z")),
+    ).toMatchObject({ preset: datePreset, ...expected });
+  });
+
+  it("persists presets in the URL and resets pagination", async () => {
+    renderRecords("/technician/records?page=4&type=health");
+    await screen.findByRole("table", { name: "Technician finished activity" });
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "last-month" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-search")).toHaveTextContent(
+        "datePreset=last-month",
+      );
+      expect(screen.getByTestId("location-search")).toHaveTextContent("page=1");
+    });
+  });
+
+  it("combines a preset with service type and search in the records request", async () => {
+    const { fromDate, toDate } = resolveRecordsDateFilter(
+      new URLSearchParams("datePreset=last-month"),
+    );
+    renderRecords(
+      "/technician/records?datePreset=last-month&type=health&search=OT-009&page=2",
+    );
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    expect(mocks.get).toHaveBeenCalledWith("/animals/records", {
+      params: {
+        page: 2,
+        limit: 10,
+        type: "health",
+        search: "OT-009",
+        fromDate,
+        toDate,
+      },
+    });
+  });
+
+  it("uses the active preset response for full-dataset metrics", async () => {
+    mocks.get.mockImplementation((url, options) => {
+      if (url === "/animals/records") {
+        const filtered = Boolean(options?.params?.fromDate);
+        return Promise.resolve({
+          data: {
+            data: filtered ? records.slice(0, 1) : records,
+            page: 1,
+            limit: 10,
+            total: filtered ? 1 : 4,
+            totalPages: 1,
+            summary: filtered
+              ? { all: 1, insemination: 1, health: 0, pregnancy: 0, calving: 0 }
+              : { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+
+    renderRecords("/technician/records?datePreset=this-month");
+
+    const metrics = await screen.findByRole("region", {
+      name: "Official record metrics",
+    });
+    await waitFor(() =>
+      expect(within(metrics).getByText("All Records").closest(".card")).toHaveTextContent("1"),
+    );
+  });
+
+  it("shows only the month picker for Select month", async () => {
+    renderRecords();
+    await screen.findByRole("table", { name: "Technician finished activity" });
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "select-month" },
+    });
+
+    expect(await screen.findByLabelText("Month")).toBeInTheDocument();
+    expect(screen.queryByLabelText("From")).toBeNull();
+    expect(screen.queryByLabelText("To")).toBeNull();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("month=");
+  });
+
+  it("shows only From and To fields for Custom range", async () => {
+    renderRecords();
+    await screen.findByRole("table", { name: "Technician finished activity" });
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "custom" },
+    });
+
+    expect(await screen.findByLabelText("From")).toBeInTheDocument();
+    expect(screen.getByLabelText("To")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Month")).toBeNull();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("fromDate=");
+    expect(screen.getByTestId("location-search")).toHaveTextContent("toDate=");
+  });
+
+  it("persists a selected month and sends Manila calendar boundaries", async () => {
+    renderRecords("/technician/records?month=2026-09");
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    expect(screen.getByLabelText("Date")).toHaveValue("select-month");
+    expect(screen.getByLabelText("Month")).toHaveValue("2026-09");
+    expect(mocks.get).toHaveBeenCalledWith("/animals/records", {
+      params: {
+        page: 1,
+        limit: 10,
+        fromDate: "2026-09-01",
+        toDate: "2026-09-30",
+      },
+    });
+  });
+
+  it("does not render the redundant period, service type, and record count summary", async () => {
+    renderRecords("/technician/records?month=2026-09");
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    const metrics = screen.getByRole("region", { name: "Official record metrics" });
+    await waitFor(() =>
+      expect(within(metrics).getByText("All Records").closest(".card")).toHaveTextContent("4"),
+    );
+    expect(
+      screen.queryByText("September 2026 · All service types · 4 records"),
+    ).toBeNull();
+  });
+
+  it("renders metric values as passive summary cards labeled All Records", async () => {
+    renderRecords("/technician/records?month=2026-09");
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    const metrics = screen.getByRole("region", { name: "Official record metrics" });
+
+    expect(within(metrics).queryAllByRole("button")).toHaveLength(0);
+    await waitFor(() => {
+      expect(within(metrics).getByText("All Records").closest(".card")).toHaveTextContent("4");
+      expect(within(metrics).getByText("Insemination").closest(".card")).toHaveTextContent("1");
+      expect(within(metrics).getByText("Health").closest(".card")).toHaveTextContent("1");
+      expect(within(metrics).getByText("Pregnancy").closest(".card")).toHaveTextContent("1");
+      expect(within(metrics).getByText("Calving").closest(".card")).toHaveTextContent("1");
+    });
+    expect(within(metrics).getByText("All Records").closest(".card")).toHaveClass(
+      "border-l-4",
+      "border-l-primary",
+    );
+    expect(within(metrics).getByText("Insemination").closest(".card")).toHaveClass(
+      "border-l-4",
+      "border-l-secondary",
+    );
+    expect(within(metrics).getByText("Health").closest(".card")).toHaveClass(
+      "border-l-4",
+      "border-l-success",
+    );
+    expect(within(metrics).getByText("Pregnancy").closest(".card")).toHaveClass(
+      "border-l-4",
+      "border-l-warning",
+    );
+    expect(within(metrics).getByText("Calving").closest(".card")).toHaveClass(
+      "border-l-4",
+      "border-l-info",
+    );
+    expect(within(metrics).queryAllByText("September 2026")).toHaveLength(0);
+    expect(within(metrics).queryByText("All Activity")).toBeNull();
+  });
+
+  it("keeps metric cards passive and uses only the service dropdown for filtering", async () => {
+    renderRecords("/technician/records?month=2026-09&type=health&page=3");
+
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    const metrics = screen.getByRole("region", { name: "Official record metrics" });
+    const inseminationMetric = within(metrics).getByText("Insemination").closest(".card");
+    const serviceFilter = screen.getByLabelText("Filter records by type");
+
+    expect(inseminationMetric).toHaveClass("card");
+    expect(inseminationMetric.tagName).toBe("DIV");
+    expect(serviceFilter).toHaveValue("health");
+    fireEvent.click(inseminationMetric);
+
+    expect(serviceFilter).toHaveValue("health");
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?month=2026-09&type=health&page=3",
+    );
+
+    expect(screen.queryByLabelText("Report service type")).toBeNull();
+    fireEvent.change(serviceFilter, {
+      target: { value: "pregnancy" },
+    });
+
+    await waitFor(() => {
+      const location = screen.getByTestId("location-search");
+      expect(location).toHaveTextContent("month=2026-09");
+      expect(location).toHaveTextContent("type=pregnancy");
+      expect(location).toHaveTextContent("page=1");
+    });
+  });
+
+  it("shows a contextual empty state with a clear filters action", async () => {
+    mocks.get.mockImplementation((url) => {
+      if (url === "/animals/records") {
+        return Promise.resolve({
+          data: {
+            data: [],
+            page: 1,
+            limit: 10,
+            total: 0,
+            totalPages: 1,
+            summary: { all: 0, insemination: 0, health: 0, pregnancy: 0, calving: 0 },
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+
+    renderRecords("/technician/records?month=2026-09&type=health");
+
+    expect(await screen.findByText("No Health records found for September 2026.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear filters" })).toBeInTheDocument();
+  });
+
+  it("uses a familiar empty state for This month", async () => {
+    mocks.get.mockResolvedValue({
+      data: {
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        totalPages: 1,
+        summary: { all: 0, insemination: 0, health: 0, pregnancy: 0, calving: 0 },
+      },
+    });
+
+    renderRecords("/technician/records?datePreset=this-month");
+
+    expect(await screen.findByText("No records found this month.")).toBeInTheDocument();
+  });
+
+  it("retries the current query without clearing its filters", async () => {
+    let attempts = 0;
+    mocks.get.mockImplementation((url) => {
+      if (url === "/animals/records") {
+        attempts += 1;
+        if (attempts === 1) return Promise.reject(new Error("network"));
+        return Promise.resolve({
+          data: {
+            data: records,
+            page: 1,
+            limit: 10,
+            total: 4,
+            totalPages: 1,
+            summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+
+    renderRecords("/technician/records?month=2026-09&type=health");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("table", { name: "Technician finished activity" })).toBeInTheDocument();
+    expect(attempts).toBe(2);
+    expect(screen.getByTestId("location-search")).toHaveTextContent("month=2026-09&type=health");
+  });
+
+  it("downloads the full report using the current period and service filter", async () => {
+    mocks.get.mockImplementation((url) => {
+      if (url === "/animals/records/export") {
+        return Promise.resolve({ data: new Blob(["csv"], { type: "text/csv" }) });
+      }
+      if (url === "/animals/records") {
+        return Promise.resolve({
+          data: {
+            data: records,
+            page: 1,
+            limit: 10,
+            total: 4,
+            totalPages: 1,
+            summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    renderRecords("/technician/records?month=2026-09");
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    fireEvent.change(screen.getByLabelText("Filter records by type"), {
+      target: { value: "health" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith("/animals/records/export", {
+        params: {
+          type: "health",
+          fromDate: "2026-09-01",
+          toDate: "2026-09-30",
+        },
+        responseType: "blob",
+      }),
+    );
+  });
+
+  it("exports all service types when the Records filter is All service types", async () => {
+    mocks.get.mockImplementation((url) => {
+      if (url === "/animals/records/export") {
+        return Promise.resolve({ data: new Blob(["csv"], { type: "text/csv" }) });
+      }
+      if (url === "/animals/records") {
+        return Promise.resolve({
+          data: {
+            data: records,
+            page: 1,
+            limit: 10,
+            total: 4,
+            totalPages: 1,
+            summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    renderRecords("/technician/records?month=2026-09");
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    expect(screen.getByLabelText("Filter records by type")).toHaveDisplayValue(
+      "All service types",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith("/animals/records/export", {
+        params: {
+          fromDate: "2026-09-01",
+          toDate: "2026-09-30",
+        },
+        responseType: "blob",
+      }),
+    );
+  });
+
+  it("exports all matching records using the active Last 30 days preset", async () => {
+    const { fromDate, toDate } = resolveRecordsDateFilter(
+      new URLSearchParams("datePreset=last-30-days"),
+    );
+    mocks.get.mockImplementation((url) => {
+      if (url === "/animals/records/export") {
+        return Promise.resolve({ data: new Blob(["csv"], { type: "text/csv" }) });
+      }
+      return Promise.resolve({
+        data: {
+          data: records,
+          page: 1,
+          limit: 10,
+          total: 4,
+          totalPages: 1,
+          summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
+        },
+      });
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-30-days");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    renderRecords("/technician/records?datePreset=last-30-days&type=pregnancy");
+    await screen.findByRole("table", { name: "Technician finished activity" });
+    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith("/animals/records/export", {
+        params: {
+          type: "pregnancy",
+          fromDate,
+          toDate,
+        },
+        responseType: "blob",
+      }),
+    );
   });
 });
 

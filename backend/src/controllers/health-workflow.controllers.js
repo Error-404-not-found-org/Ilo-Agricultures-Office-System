@@ -347,10 +347,7 @@ export const buildTechnicianCandidateHealthDetail = (request) => {
     farmerId: {
       _id: farmer._id,
       name: safeText(farmer.name),
-      phoneNumber: safeText(farmer.phoneNumber),
       imageUrl: safeText(farmer.imageUrl),
-      address: farmer.address || null,
-      farmLocation: farmer.farmLocation || null,
     },
   };
 };
