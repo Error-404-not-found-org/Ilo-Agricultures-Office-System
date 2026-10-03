@@ -15,6 +15,7 @@ import {
   Mail,
   ChevronDown,
   AlertCircle,
+  AlertOctagon,
   Check,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -159,6 +160,7 @@ const WalkInHealthModal = ({
     setSelectedFarmerId("");
     setSelectedAnimalId("");
     setFieldErrors((current) => ({ ...current, farmer: null, animal: null }));
+    setSubmissionError("");
     setTimeout(() => setIsDropdownOpen(true), 0);
   };
 
@@ -358,6 +360,7 @@ const WalkInHealthModal = ({
       if (!selectedAnimalId) nextErrors.animal = "Select an animal.";
       if (Object.keys(nextErrors).length > 0) {
         setFieldErrors(nextErrors);
+        setSubmissionError(!selectedFarmerId ? "Please select a registered farmer to proceed." : "Please select an animal to proceed.");
         return;
       }
       const farmer =
@@ -470,6 +473,7 @@ const WalkInHealthModal = ({
 
     if (Object.keys(nextErrors).length > 0) {
       setFieldErrors(nextErrors);
+      setSubmissionError(nextErrors.diagnosis || nextErrors.withdrawalPeriodDays || nextErrors.preferredDate || "Please fill in all required fields marked with an asterisk (*).");
       return;
     }
 
@@ -535,8 +539,12 @@ const WalkInHealthModal = ({
           {/* SCROLLABLE CONTENT */}
           <div className="overflow-y-auto flex-1 custom-scrollbar px-5 pb-32 pt-5 space-y-5 bg-base-100">
             {submissionError && (
-              <div role="alert" className="alert alert-error alert-soft">
-                <span>{submissionError}</span>
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl border-l-4 border-error bg-error/10 py-2.5 px-3.5 text-xs text-error">
+                <AlertOctagon className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-bold mr-1">Record failed:</span>
+                  <span className="leading-relaxed font-medium break-words">{submissionError}</span>
+                </div>
               </div>
             )}
             {/* TOGGLES */}
@@ -637,6 +645,7 @@ const WalkInHealthModal = ({
                               setSelectedFarmerId("");
                               setSelectedAnimalId("");
                               setFieldErrors((current) => ({ ...current, farmer: null, animal: null }));
+                              setSubmissionError("");
                               setIsDropdownOpen(true);
                             }}
                             onFocus={() => setIsDropdownOpen(true)}
@@ -722,6 +731,7 @@ const WalkInHealthModal = ({
                                     setSearchFarmer(farmer.name);
                                     setIsDropdownOpen(false);
                                     setFieldErrors((current) => ({ ...current, farmer: null, animal: null }));
+                                    setSubmissionError("");
                                   }}
                                 >
                                   <UserAvatar
@@ -760,6 +770,7 @@ const WalkInHealthModal = ({
                         )}
                       </div>
                     )}
+                    {fieldErrors.farmer && <span className="mt-1 block text-xs font-medium text-error" role="alert">{fieldErrors.farmer}</span>}
                   </fieldset>
 
                   <fieldset className="fieldset">
@@ -912,6 +923,7 @@ const WalkInHealthModal = ({
                                     setSelectedAnimalId(animal._id);
                                     setIsAnimalDropdownOpen(false);
                                     setFieldErrors((current) => ({ ...current, animal: null }));
+                                    setSubmissionError("");
                                   }}
                                   className={`flex w-full items-center justify-between gap-3 rounded-field px-3 py-2.5 text-left transition-all ${
                                     isSelected
@@ -990,6 +1002,7 @@ const WalkInHealthModal = ({
                         )}
                       </div>
                     )}
+                    {fieldErrors.animal && <span className="mt-1 block text-xs font-medium text-error" role="alert">{fieldErrors.animal}</span>}
                   </fieldset>
                 </div>
               </section>

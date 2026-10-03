@@ -7,6 +7,7 @@ export default function Input({
   type = "text",
   placeholder = "",
   error = "",
+  hasError = false,
   hint = "",
   className = "",
   icon: Icon,
@@ -14,6 +15,7 @@ export default function Input({
   id,
   ...props
 }) {
+  const isInvalid = Boolean(error || hasError);
   const generatedId = useId();
   const inputId = id || `input-${generatedId.replaceAll(":", "")}`;
   const hintId = hint ? `${inputId}-hint` : undefined;
@@ -42,13 +44,13 @@ export default function Input({
           placeholder={placeholder}
           {...props}
           required={required}
-          aria-invalid={Boolean(error)}
+          aria-invalid={isInvalid}
           aria-describedby={describedBy}
           className={`input input-bordered w-full bg-base-100 text-sm text-base-content placeholder:text-base-content/60 focus:outline-none focus:border-primary focus-visible:outline-none focus-visible:border-primary ${
             Icon ? "pl-11" : ""
           } ${
-            error
-              ? "input-error"
+            isInvalid
+              ? "input-error border-error"
               : ""
           }`}
         />

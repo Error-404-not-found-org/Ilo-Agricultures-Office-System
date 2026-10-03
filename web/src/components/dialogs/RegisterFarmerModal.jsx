@@ -4,6 +4,7 @@ import {
   Loader2,
   BadgeCheck,
   Info,
+  AlertOctagon,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -36,6 +37,7 @@ const RegisterFarmerModal = ({
   const toast = useToast();
 
   const [selectedDistrict, setSelectedDistrict] = useState("");
+  const [formError, setFormError] = useState("");
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -99,10 +101,11 @@ const RegisterFarmerModal = ({
         queryClient.invalidateQueries({ queryKey: ["farmers", "list"] }),
       ]);
       onSuccess?.(result?.user || result?.data || result);
+      setFormError("");
       onClose();
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || (farmer ? "Failed to update profile." : "Registration failed."));
+      setFormError(error.response?.data?.message || (farmer ? "Failed to update profile." : "Registration failed."));
     },
   });
 
@@ -146,10 +149,16 @@ const RegisterFarmerModal = ({
 
   if (!isOpen) return null;
 
+  const handleClose = () => {
+    setFormError("");
+    onClose();
+  };
+
   const handleNameChange = (e, field) => {
+    if (formError) setFormError("");
     const value = e.target.value.replace(/[^a-zA-Z\sñÑ-]/g, "");
     if (value.length <= 50) {
-      setFormData({ ...formData, [field]: value });
+      setFormData((prev) => ({ ...prev, [field]: value }));
     }
   };
 
@@ -157,26 +166,27 @@ const RegisterFarmerModal = ({
     event?.preventDefault();
     if (mutation.isPending) return;
     if (!formData.firstName.trim()) {
-      return toast.error("First name is required.");
+      return setFormError("First name is required.");
     }
     if (!formData.lastName.trim()) {
-      return toast.error("Last name is required.");
+      return setFormError("Last name is required.");
     }
     if (formData.phoneNumber && formData.phoneNumber.length < 11) {
-      return toast.error("Phone number must be exactly 11 digits.");
+      return setFormError("Phone number must be exactly 11 digits.");
     }
     if (formData.phoneNumber && !formData.phoneNumber.startsWith("09")) {
-      return toast.error("Phone number must start with 09.");
+      return setFormError("Phone number must start with 09.");
     }
     if (!formData.barangay) {
-      return toast.error("Barangay is required.");
+      return setFormError("Barangay is required.");
     }
     if (!formData.city.trim()) {
-      return toast.error("Municipality is required.");
+      return setFormError("Municipality is required.");
     }
     if (formData.city === "Iloilo City" && !selectedDistrict) {
-      return toast.error("Please select the Iloilo City district.");
+      return setFormError("Please select the Iloilo City district.");
     }
+    setFormError("");
     mutation.mutate(formData);
   };
   const toTitleCase = (str) => {
@@ -189,12 +199,13 @@ const RegisterFarmerModal = ({
   };
 
   const cityOptions = Object.keys(iloiloPsgc).map((city) => ({ value: city, label: city }));
+  const isEmailError = Boolean(formError) && /email|clerk|account/i.test(formError);
   const districtOptions = Object.keys(ILOILO_CITY_BARANGAYS_BY_DISTRICT).map((district) => ({ value: district, label: district }));
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={() => !mutation.isPending && onClose()}
+      onClose={() => !mutation.isPending && handleClose()}
       closeOnEscape
       title={farmer ? "Edit Farmer" : "Add New Farmer"}
       subtitle={farmer ? "Update the farmer's contact and location details." : "Register a new farmer to the system."}
@@ -205,7 +216,7 @@ const RegisterFarmerModal = ({
         <>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={mutation.isPending}
             className="btn btn-ghost btn-sm text-base-content/70 cursor-pointer"
           >
@@ -248,6 +259,16 @@ const RegisterFarmerModal = ({
           </div>
         </div>
 
+        {formError && (
+          <div role="alert" className="flex items-start gap-2.5 rounded-xl border-l-4 border-error bg-error/10 py-2.5 px-3.5 text-xs text-error">
+            <AlertOctagon className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span className="font-bold mr-1">{farmer ? "Unable to update profile:" : "Registration failed:"}</span>
+              <span className="leading-relaxed font-medium break-words">{formError}</span>
+            </div>
+          </div>
+        )}
+
         {/* Personal Details Section */}
         <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
           <div className="flex items-center justify-between mb-1">
@@ -259,8 +280,8 @@ const RegisterFarmerModal = ({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
             <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
-            <Input id="farmer-phone" label="Contact number (optional)" type="tel" value={formData.phoneNumber} onChange={(event) => { const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData({ ...formData, phoneNumber: value }); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Optional. Needed if the Farmer will use the BreedSmart mobile app." placeholder="e.g. 09123456789" />
-            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
+            <Input id="farmer-phone" label="Contact number (optional)" type="tel" value={formData.phoneNumber} onChange={(event) => { if (formError) setFormError(""); const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData((prev) => ({ ...prev, phoneNumber: value })); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Optional. Needed if the Farmer will use the BreedSmart mobile app." placeholder="e.g. 09123456789" />
+            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} hasError={isEmailError} onChange={(event) => { if (formError) setFormError(""); setFormData((prev) => ({ ...prev, email: event.target.value })); }} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
           </div>
         </fieldset>
 
@@ -273,9 +294,9 @@ const RegisterFarmerModal = ({
           </div>
           <legend className="sr-only">Location information</legend>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { const city = event.target.value; setFormData({ ...formData, city, barangay: "" }); setSelectedDistrict(""); }} />
-            {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { setSelectedDistrict(event.target.value); setFormData({ ...formData, barangay: "" }); }} />}
-            <Select id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => setFormData({ ...formData, barangay: event.target.value })} options={targetBarangays.map((barangay) => ({ value: toTitleCase(barangay), label: toTitleCase(barangay) }))} placeholder="Select a barangay" />
+            <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { if (formError) setFormError(""); const city = event.target.value; setFormData((prev) => ({ ...prev, city, barangay: "" })); setSelectedDistrict(""); }} />
+            {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { if (formError) setFormError(""); setSelectedDistrict(event.target.value); setFormData((prev) => ({ ...prev, barangay: "" })); }} />}
+            <Select id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => { if (formError) setFormError(""); setFormData((prev) => ({ ...prev, barangay: event.target.value })); }} options={targetBarangays.map((barangay) => ({ value: toTitleCase(barangay), label: toTitleCase(barangay) }))} placeholder="Select a barangay" />
           </div>
         </fieldset>
       </form>

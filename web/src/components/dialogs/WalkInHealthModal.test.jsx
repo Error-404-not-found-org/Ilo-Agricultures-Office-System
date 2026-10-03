@@ -36,6 +36,9 @@ describe("Web direct Health recording", () => {
 
   it("keeps backend errors inline and success feedback global", () => {
     expect(source).toContain('role="alert"');
+    expect(source).toContain('border-l-4 border-error bg-error/10');
+    expect(source).toContain("{fieldErrors.farmer}");
+    expect(source).toContain("{fieldErrors.animal}");
     expect(source).toContain("setSubmissionError(");
     expect(source).not.toContain("toast.error(");
     expect(source).toContain("toast.success(");
@@ -52,5 +55,11 @@ describe("Web direct Health recording", () => {
     expect(source).not.toContain("Phone number and Ear Tag are required.");
     expect(source).toContain("Contact Number (Optional)");
     expect(source).toContain("delete submissionData.phoneNumber");
+  });
+
+  it("preserves optional treatment and technician notes while showing errors inline", () => {
+    expect(source).toContain("Treatment provided (optional)");
+    expect(source).toContain("Resolution / technician notes (optional)");
+    expect(source).not.toContain('nextErrors.treatment = "Enter the treatment provided."');
   });
 });

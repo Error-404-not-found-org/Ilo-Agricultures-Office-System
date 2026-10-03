@@ -4,6 +4,7 @@ import {
   X,
   CheckCircle,
   AlertCircle,
+  AlertOctagon,
   Sparkles,
   Calendar,
   Search,
@@ -1138,11 +1139,14 @@ const PregnancyDiagnosisModal = ({
 
             {fieldErrors.form && (
               <div
-                className="alert alert-error/15 border-error/30 text-xs text-error flex items-start gap-3 rounded-2xl py-3 px-4"
                 role="alert"
+                className="flex items-start gap-2.5 rounded-xl border-l-4 border-error bg-error/10 py-2.5 px-3.5 text-xs text-error animate-in fade-in duration-200"
               >
-                <AlertCircle className="h-4 w-4 shrink-0 text-error mt-0.5" />
-                <span className="font-semibold">{fieldErrors.form}</span>
+                <AlertOctagon className="h-4 w-4 shrink-0 text-error mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-bold mr-1">Diagnosis failed:</span>
+                  <span className="leading-relaxed font-medium break-words text-error">{fieldErrors.form}</span>
+                </div>
               </div>
             )}
 
@@ -1201,6 +1205,7 @@ const PregnancyDiagnosisModal = ({
                           setFieldErrors((current) => ({
                             ...current,
                             result: null,
+                          form: null,
                             followUpDate: null,
                           }));
                         }}
@@ -1261,6 +1266,7 @@ const PregnancyDiagnosisModal = ({
                           setFieldErrors((current) => ({
                             ...current,
                             result: null,
+                          form: null,
                             followUpDate: null,
                           }));
                         }}
@@ -1310,6 +1316,7 @@ const PregnancyDiagnosisModal = ({
                               setFieldErrors((current) => ({
                                 ...current,
                                 result: null,
+                                form: null,
                                 followUpDate: null,
                               }));
                             }}
@@ -1345,6 +1352,7 @@ const PregnancyDiagnosisModal = ({
                               setFieldErrors((current) => ({
                                 ...current,
                                 result: null,
+                                form: null,
                               }));
                             }}
                             className={`group flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition-all cursor-pointer ${
@@ -1382,6 +1390,7 @@ const PregnancyDiagnosisModal = ({
                             setFieldErrors((current) => ({
                               ...current,
                               result: null,
+                              form: null,
                             }));
                           }}
                           className={`col-span-1 sm:col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl border transition-all cursor-pointer text-xs ${
@@ -1433,6 +1442,7 @@ const PregnancyDiagnosisModal = ({
                               setFieldErrors((current) => ({
                                 ...current,
                                 diagnosticMethod: null,
+                                form: null,
                               }));
                             }}
                             title={method.reason || `Select ${method.label}`}

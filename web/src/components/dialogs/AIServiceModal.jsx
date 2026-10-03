@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertCircle,
+  AlertOctagon,
   BadgeCheck,
   Calendar,
   CalendarClock,
@@ -1899,10 +1900,13 @@ const AIServiceModal = ({
               {submissionError ? (
                 <div
                   role="alert"
-                  className="alert alert-error/15 border-error/40 text-xs text-base-content/80 flex items-start gap-3 rounded-2xl py-3 px-4"
+                  className="flex items-start gap-2.5 rounded-xl border-l-4 border-error bg-error/10 py-2.5 px-3.5 text-xs text-error animate-in fade-in duration-200"
                 >
-                  <AlertCircle className="h-4 w-4 shrink-0 text-error mt-0.5" />
-                  <span>{submissionError}</span>
+                  <AlertOctagon className="h-4 w-4 shrink-0 text-error mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-bold mr-1">Insemination failed:</span>
+                    <span className="leading-relaxed font-medium break-words text-error">{submissionError}</span>
+                  </div>
                 </div>
               ) : isPastRecord ? (
                 <div

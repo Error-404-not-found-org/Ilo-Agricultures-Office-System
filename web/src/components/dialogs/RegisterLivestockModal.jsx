@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { BadgeCheck, Loader2, PawPrint, Upload, Search, X, AlertCircle, Sparkles } from "lucide-react";
+import { BadgeCheck, Loader2, PawPrint, Upload, Search, X, AlertCircle, AlertOctagon, Sparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -412,10 +412,13 @@ const RegisterLivestockModal = ({
         {formError && (
           <div
             role="alert"
-            className="alert alert-error alert-soft text-xs font-semibold flex items-center gap-2 md:col-span-2"
+            className="flex items-start gap-2.5 rounded-xl border-l-4 border-error bg-error/10 py-2.5 px-3.5 text-xs text-error md:col-span-2"
           >
-            <AlertCircle size={16} className="shrink-0" />
-            <span>{formError}</span>
+            <AlertOctagon className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span className="font-bold mr-1">{livestock ? "Unable to update livestock:" : "Registration failed:"}</span>
+              <span className="leading-relaxed font-medium break-words">{formError}</span>
+            </div>
           </div>
         )}
 
