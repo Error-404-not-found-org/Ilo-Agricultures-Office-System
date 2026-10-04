@@ -176,4 +176,44 @@ describe("Admin assisted Farmer creation", () => {
     expect(toast.error).not.toHaveBeenCalled();
     expect(axiosInstance.post).not.toHaveBeenCalled();
   });
+
+  it("reviews a possible duplicate and creates separately only after explicit confirmation", async () => {
+    const onViewExistingFarmer = vi.fn();
+    axiosInstance.post.mockRejectedValueOnce({ response: { status: 409, data: {
+      code: "POSSIBLE_DUPLICATE_FARMER",
+      possibleMatches: [{ id: "farmer-existing", name: "Nelmar Buenafe", barangay: "Abilay Sur", maskedPhone: "•••• 1231" }],
+    } } });
+    renderModal({ onViewExistingFarmer });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: /First name/ })).toHaveValue(""));
+    fireEvent.change(screen.getByRole("textbox", { name: /First name/ }), { target: { value: "Nelmar" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Last name/ }), { target: { value: "Buenafe" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Barangay/ }), { target: { value: "Abilay Sur" } });
+    fireEvent.submit(document.getElementById("register-farmer-form"));
+
+    expect(await screen.findByText("Possible existing Farmer found")).toBeInTheDocument();
+    expect(screen.getByText("•••• 1231")).toBeInTheDocument();
+    expect(axiosInstance.post).toHaveBeenCalledTimes(1);
+    expect(axiosInstance.post.mock.calls[0][1]).not.toHaveProperty("confirmSeparateFarmer");
+    fireEvent.click(screen.getByRole("button", { name: "Create Separate Farmer" }));
+    await waitFor(() => expect(axiosInstance.post).toHaveBeenCalledTimes(2));
+    expect(axiosInstance.post.mock.calls[1][1].confirmSeparateFarmer).toBe(true);
+    expect(onViewExistingFarmer).not.toHaveBeenCalled();
+  });
+
+  it("opens a possible existing Farmer without submitting an override", async () => {
+    const onViewExistingFarmer = vi.fn();
+    axiosInstance.post.mockRejectedValueOnce({ response: { status: 409, data: {
+      code: "POSSIBLE_DUPLICATE_FARMER",
+      possibleMatches: [{ id: "farmer-existing", name: "Nelmar Buenafe", barangay: "Abilay Sur" }],
+    } } });
+    renderModal({ onViewExistingFarmer });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: /First name/ })).toHaveValue(""));
+    fireEvent.change(screen.getByRole("textbox", { name: /First name/ }), { target: { value: "Nelmar" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Last name/ }), { target: { value: "Buenafe" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Barangay/ }), { target: { value: "Abilay Sur" } });
+    fireEvent.submit(document.getElementById("register-farmer-form"));
+    fireEvent.click(await screen.findByRole("button", { name: "View Existing Farmer" }));
+    expect(onViewExistingFarmer).toHaveBeenCalledWith("farmer-existing");
+    expect(axiosInstance.post).toHaveBeenCalledTimes(1);
+  });
 });

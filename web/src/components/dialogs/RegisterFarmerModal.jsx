@@ -32,12 +32,14 @@ const RegisterFarmerModal = ({
   farmer = null,
   createEndpoint = "/technician/register-farmer",
   createRole,
+  onViewExistingFarmer,
 }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const [formError, setFormError] = useState("");
+  const [possibleMatches, setPossibleMatches] = useState(null);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -85,6 +87,7 @@ const RegisterFarmerModal = ({
           ...farmerData,
           ...(phoneNumber ? { phoneNumber } : {}),
           ...(createRole ? { role: createRole } : {}),
+          ...(data.confirmSeparateFarmer ? { confirmSeparateFarmer: true } : {}),
           address: {
             barangay: finalBarangay,
             city: data.city,
@@ -102,9 +105,18 @@ const RegisterFarmerModal = ({
       ]);
       onSuccess?.(result?.user || result?.data || result);
       setFormError("");
+      setPossibleMatches(null);
       onClose();
     },
     onError: (error) => {
+      if (error.response?.data?.code === "POSSIBLE_DUPLICATE_FARMER" &&
+          Array.isArray(error.response.data.possibleMatches) &&
+          error.response.data.possibleMatches.length > 0) {
+        setPossibleMatches(error.response.data.possibleMatches);
+        setFormError("");
+        return;
+      }
+      setPossibleMatches(null);
       setFormError(error.response?.data?.message || (farmer ? "Failed to update profile." : "Registration failed."));
     },
   });
@@ -151,11 +163,15 @@ const RegisterFarmerModal = ({
 
   const handleClose = () => {
     setFormError("");
+    setPossibleMatches(null);
     onClose();
   };
 
+  const clearPossibleMatches = () => setPossibleMatches(null);
+
   const handleNameChange = (e, field) => {
     if (formError) setFormError("");
+    clearPossibleMatches();
     const value = e.target.value.replace(/[^a-zA-Z\sñÑ-]/g, "");
     if (value.length <= 50) {
       setFormData((prev) => ({ ...prev, [field]: value }));
@@ -269,6 +285,30 @@ const RegisterFarmerModal = ({
           </div>
         )}
 
+        {possibleMatches && (
+          <div role="alert" className="alert alert-warning alert-soft items-start">
+            <div className="w-full space-y-3">
+              <p className="font-bold">Possible existing Farmer found</p>
+              <p className="text-sm">Review the existing profile before creating a separate Farmer. Matching names and barangays do not prove the Farmers are the same person.</p>
+              {possibleMatches.map((match) => (
+                <div key={match.id} className="rounded-box border border-base-300 bg-base-100 p-3 text-sm">
+                  <p className="font-semibold">{match.name}</p>
+                  <p>Barangay: {match.barangay}</p>
+                  {match.maskedPhone && <p>{match.maskedPhone}</p>}
+                  <button type="button" className="btn btn-sm mt-2" onClick={() => {
+                    onViewExistingFarmer?.(match.id);
+                    handleClose();
+                  }}>View Existing Farmer</button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-sm btn-warning" disabled={mutation.isPending}
+                onClick={() => mutation.mutate({ ...formData, confirmSeparateFarmer: true })}>
+                Create Separate Farmer
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Personal Details Section */}
         <fieldset className="bg-base-200/50 border border-base-300 rounded-2xl p-4 sm:p-5 space-y-3">
           <div className="flex items-center justify-between mb-1">
@@ -280,8 +320,8 @@ const RegisterFarmerModal = ({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
             <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
-            <Input id="farmer-phone" label="Contact number (optional)" type="tel" value={formData.phoneNumber} onChange={(event) => { if (formError) setFormError(""); const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData((prev) => ({ ...prev, phoneNumber: value })); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Optional. Needed if the Farmer will use the BreedSmart mobile app." placeholder="e.g. 09123456789" />
-            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} hasError={isEmailError} onChange={(event) => { if (formError) setFormError(""); setFormData((prev) => ({ ...prev, email: event.target.value })); }} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
+            <Input id="farmer-phone" label="Contact number (optional)" type="tel" value={formData.phoneNumber} onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData((prev) => ({ ...prev, phoneNumber: value })); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Optional. Needed if the Farmer will use the BreedSmart mobile app." placeholder="e.g. 09123456789" />
+            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} hasError={isEmailError} onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); setFormData((prev) => ({ ...prev, email: event.target.value })); }} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
           </div>
         </fieldset>
 
@@ -294,9 +334,9 @@ const RegisterFarmerModal = ({
           </div>
           <legend className="sr-only">Location information</legend>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { if (formError) setFormError(""); const city = event.target.value; setFormData((prev) => ({ ...prev, city, barangay: "" })); setSelectedDistrict(""); }} />
-            {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { if (formError) setFormError(""); setSelectedDistrict(event.target.value); setFormData((prev) => ({ ...prev, barangay: "" })); }} />}
-            <Select id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => { if (formError) setFormError(""); setFormData((prev) => ({ ...prev, barangay: event.target.value })); }} options={targetBarangays.map((barangay) => ({ value: toTitleCase(barangay), label: toTitleCase(barangay) }))} placeholder="Select a barangay" />
+            <Select id="farmer-city" label="Municipality or city" required value={formData.city || "Oton"} options={cityOptions} placeholder="" onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); const city = event.target.value; setFormData((prev) => ({ ...prev, city, barangay: "" })); setSelectedDistrict(""); }} />
+            {formData.city === "Iloilo City" && <Select id="farmer-district" label="District" required value={selectedDistrict} options={districtOptions} placeholder="Select district" onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); setSelectedDistrict(event.target.value); setFormData((prev) => ({ ...prev, barangay: "" })); }} />}
+            <Select id="farmer-barangay" label="Barangay" required value={formData.barangay ? toTitleCase(formData.barangay) : ""} onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); setFormData((prev) => ({ ...prev, barangay: event.target.value })); }} options={targetBarangays.map((barangay) => ({ value: toTitleCase(barangay), label: toTitleCase(barangay) }))} placeholder="Select a barangay" />
           </div>
         </fieldset>
       </form>

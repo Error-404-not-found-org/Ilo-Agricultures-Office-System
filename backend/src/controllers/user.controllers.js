@@ -829,6 +829,7 @@ export const createInvitedUser = async (req, res) => {
       address,
       imageUrl,
       role,
+      confirmSeparateFarmer,
     } = req.body;
 
     const requesterRole = req.user?.role;
@@ -870,6 +871,8 @@ export const createInvitedUser = async (req, res) => {
         invitationMode: email ? "required" : "none",
         inviteExistingUnclaimed: true,
         allowClaimedExisting: false,
+        requirePossibleDuplicateReview: true,
+        confirmSeparateFarmer: confirmSeparateFarmer === true,
         redirectUrl: getFarmerInvitationRedirectUrl(),
         isVerified: false,
       });
@@ -949,6 +952,7 @@ export const createInvitedUser = async (req, res) => {
     res.status(status).json({
       message,
       code: err.code,
+      ...(err.code === "POSSIBLE_DUPLICATE_FARMER" ? { possibleMatches: err.details?.possibleMatches } : {}),
       clerkError: !!err.clerkError,
     });
   }

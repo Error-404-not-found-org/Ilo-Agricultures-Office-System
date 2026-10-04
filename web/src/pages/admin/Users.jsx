@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -71,6 +71,7 @@ function useNarrowDirectoryViewport() {
 
 export default function Users() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedRole = String(searchParams.get("role") || "").toLowerCase();
   const requestedView = String(searchParams.get("view") || "").toLowerCase();
@@ -592,6 +593,7 @@ export default function Users() {
         }
         createEndpoint="/admin/create-user"
         createRole="farmer"
+        onViewExistingFarmer={(farmerId) => navigate(`/admin/users/${encodeURIComponent(farmerId)}`)}
       />
       <TechnicianInviteDialog
         open={isInviteDialogOpen}

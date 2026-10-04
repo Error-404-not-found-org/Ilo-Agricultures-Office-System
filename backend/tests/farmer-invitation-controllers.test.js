@@ -1,5 +1,5 @@
 import "./stable-clerk-client.js";
-import test, { afterEach } from "node:test";
+import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { ENV } from "../src/config/env.js";
@@ -13,6 +13,7 @@ import { registerFarmer } from "../src/controllers/technician.controllers.js";
 
 const originals = {
   userFindOne: User.findOne,
+  userFind: User.find,
   userFindById: User.findById,
   userCreate: User.create,
   userFindOneAndUpdate: User.findOneAndUpdate,
@@ -21,8 +22,13 @@ const originals = {
   revokeInvitation: clerkClient.invitations.revokeInvitation,
 };
 
+beforeEach(() => {
+  User.find = () => ({ select: () => ({ lean: async () => [] }) });
+});
+
 afterEach(() => {
   User.findOne = originals.userFindOne;
+  User.find = originals.userFind;
   User.findById = originals.userFindById;
   User.create = originals.userCreate;
   User.findOneAndUpdate = originals.userFindOneAndUpdate;
@@ -222,6 +228,30 @@ test("registerFarmer fresh path normalizes identity and creates exactly one prof
     ENV.FARMER_INVITATION_REDIRECT_URL,
   );
   assert.equal(recorder.body.invitationSent, true);
+});
+
+test("Technician and Admin assisted creation both return limited possible matches without creating a Farmer", async () => {
+  User.findOne = async () => null;
+  User.find = () => ({ select: () => ({ lean: async () => [{
+    _id: "farmer-existing", name: "Nelmar Buenafe",
+    address: { barangay: "Abilay Sur" }, phoneNumber: "09131231231",
+  }] }) });
+  let created = 0;
+  User.create = async () => { created += 1; };
+  for (const controller of [registerFarmer, createInvitedUser]) {
+    const recorder = responseRecorder();
+    await controller(request({
+      firstName: "Nelmar", lastName: "Buenafe", role: "farmer",
+      address: { barangay: "Abilay Sur", city: "Oton" },
+    }), recorder.response);
+    assert.equal(recorder.statusCode, 409);
+    assert.equal(recorder.body.code, "POSSIBLE_DUPLICATE_FARMER");
+    assert.deepEqual(recorder.body.possibleMatches, [{
+      id: "farmer-existing", name: "Nelmar Buenafe", barangay: "Abilay Sur",
+      maskedPhone: "•••• 1231",
+    }]);
+  }
+  assert.equal(created, 0);
 });
 
 test("registerFarmer creates a Farmer without a phone and stores no phone sentinel", async () => {

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
+  Archive,
   Beef,
   ChevronLeft,
   ChevronRight,
@@ -63,7 +64,7 @@ const ACCESS_STATUS = {
   blocked: { label: "Blocked", className: "badge-error badge-soft" },
 };
 
-function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvitation, onCancelInvitation, invitationPending }) {
+function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvitation, onCancelInvitation, onArchive, invitationPending }) {
   const instanceId = useId().replace(/:/g, "-");
   const menuId = `farmer-actions-${farmer.id}-${instanceId}`;
   const anchorName = `--${menuId}`;
@@ -100,6 +101,9 @@ function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal,
       onClick: () => onCancelInvitation(farmer),
       disabled: invitationPending,
     });
+  }
+  if (farmer.canTechnicianArchive) {
+    actions.push({ label: "Archive Farmer", icon: Archive, onClick: onArchive, disabled: invitationPending });
   }
 
   return (
@@ -144,7 +148,7 @@ function FarmerActionsMenu({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal,
   );
 }
 
-function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvitation, onCancelInvitation, invitationPending }) {
+function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvitation, onCancelInvitation, onArchive, invitationPending }) {
   const access = ACCESS_STATUS[farmer.appAccountStatus] || ACCESS_STATUS.profile_only;
   return (
     <article className="card card-sm card-border bg-base-100">
@@ -194,6 +198,7 @@ function FarmerCard({ farmer, onOpen, onEdit, onViewAnimals, onAddAnimal, onInvi
             onAddAnimal={onAddAnimal}
           onInvitation={onInvitation}
           onCancelInvitation={onCancelInvitation}
+          onArchive={onArchive}
             invitationPending={invitationPending}
           />
         </div>
@@ -213,6 +218,8 @@ export default function FarmersDirectory() {
   const [invitationFeedback, setInvitationFeedback] = useState(null);
   const [farmerToCancelInvitation, setFarmerToCancelInvitation] = useState(null);
   const [cancelInvitationError, setCancelInvitationError] = useState("");
+  const [farmerToArchive, setFarmerToArchive] = useState(null);
+  const [archiveError, setArchiveError] = useState("");
 
   const searchQuery = searchParams.get("search") || "";
   const barangayFilter = searchParams.get("barangay") || "";
@@ -296,6 +303,7 @@ export default function FarmersDirectory() {
           animals: Number.isFinite(animalCount) ? animalCount : null,
           imageUrl: farmer.imageUrl || farmer.profileImage || null,
           appAccountStatus: farmer.appAccountStatus,
+          canTechnicianArchive: farmer.canTechnicianArchive === true,
           email: farmer.email || "",
         };
       }),
@@ -383,6 +391,23 @@ export default function FarmersDirectory() {
   const requestInvitationCancellation = (farmer) => {
     setCancelInvitationError("");
     setFarmerToCancelInvitation(farmer);
+  };
+  const archiveFarmerMutation = useMutation({
+    mutationFn: async (farmer) => (await axiosInstance.patch(`/user/${farmer.id}/technician-archive`)).data,
+    onSuccess: () => {
+      setFarmerToArchive(null);
+      setArchiveError("");
+      toast.success("Farmer archived");
+      queryClient.invalidateQueries({ queryKey: ["technician", "farmers"] });
+      if (farmers.length === 1 && currentPage > 1) setCurrentPage(currentPage - 1);
+    },
+    onError: (error) => {
+      setArchiveError(error.response?.data?.message || "This Farmer could not be archived. Refresh and try again.");
+    },
+  });
+  const requestArchive = (farmer) => {
+    setArchiveError("");
+    setFarmerToArchive(farmer);
   };
   const clearFilters = () =>
     setSearchParams(new URLSearchParams(), { replace: true });
@@ -588,6 +613,7 @@ export default function FarmersDirectory() {
                       onAddAnimal={addAnimal}
                       onInvitation={handleInvitation}
                       onCancelInvitation={requestInvitationCancellation}
+                      onArchive={requestArchive}
                       invitationPending={invitationMutation.isPending || cancelInvitationMutation.isPending}
                     />
                   ))}
@@ -663,6 +689,7 @@ export default function FarmersDirectory() {
                                 onAddAnimal={addAnimal}
                                 onInvitation={handleInvitation}
                                 onCancelInvitation={requestInvitationCancellation}
+                                onArchive={requestArchive}
                                 invitationPending={invitationMutation.isPending || cancelInvitationMutation.isPending}
                               />
                             </div>
@@ -722,6 +749,7 @@ export default function FarmersDirectory() {
           setIsRegisterFarmerOpen(false);
           setSelectedFarmerForEdit(null);
         }}
+        onViewExistingFarmer={(farmerId) => navigate(`/technician/farmers/${encodeURIComponent(farmerId)}`)}
       />
       <RegisterLivestockModal
         isOpen={Boolean(selectedFarmerForAnimal)}
@@ -761,6 +789,25 @@ export default function FarmersDirectory() {
                 onClick={() => cancelInvitationMutation.mutate(farmerToCancelInvitation)}
               >
                 {cancelInvitationMutation.isPending ? "Cancelling…" : "Cancel Invitation"}
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
+      {farmerToArchive && (
+        <dialog open className="modal" aria-labelledby="archive-farmer-title">
+          <div className="modal-box max-w-md">
+            <h2 id="archive-farmer-title" className="text-lg font-bold">Archive Farmer?</h2>
+            <p className="mt-2 text-sm text-base-content/70">
+              {farmerToArchive.name} will be removed from the active Farmer directory. Existing livestock and service records will be preserved. Technicians can archive only profiles not connected to a BreedSmart app account.
+            </p>
+            {archiveError && <div role="alert" className="alert alert-error mt-4 text-sm">{archiveError}</div>}
+            <div className="modal-action">
+              <button type="button" className="btn" disabled={archiveFarmerMutation.isPending}
+                onClick={() => { setFarmerToArchive(null); setArchiveError(""); }}>Cancel</button>
+              <button type="button" className="btn btn-error" disabled={archiveFarmerMutation.isPending}
+                onClick={() => archiveFarmerMutation.mutate(farmerToArchive)}>
+                {archiveFarmerMutation.isPending ? "Archiving…" : "Archive Farmer"}
               </button>
             </div>
           </div>

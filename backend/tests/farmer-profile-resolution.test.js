@@ -13,6 +13,7 @@ import {
 
 const originals = {
   findOne: User.findOne,
+  find: User.find,
   create: User.create,
   update: User.findOneAndUpdate,
   createInvitation: clerkClient.invitations.createInvitation,
@@ -23,6 +24,7 @@ beforeEach(() => { User.findOneAndUpdate = async () => ({}); });
 
 afterEach(() => {
   User.findOne = originals.findOne;
+  User.find = originals.find;
   User.create = originals.create;
   User.findOneAndUpdate = originals.update;
   clerkClient.invitations.createInvitation = originals.createInvitation;
@@ -236,6 +238,80 @@ test("phone formatting differences resolve through normalizedPhoneNumber", async
   assert.equal(result.farmer, existing);
   assert.equal(result.matchedBy, "phone");
   assert.match(JSON.stringify(phoneQuery), /\+639171234567/);
+});
+
+test("assisted registration warns before invitation or creation for whitespace/case-equivalent name and barangay", async () => {
+  User.findOne = async () => null;
+  User.find = () => ({ select: () => ({ lean: async () => [farmer({
+    _id: "existing-farmer",
+    name: "  NELMAR   BUENAFE ",
+    address: { barangay: " Abilay   Sur " },
+    phoneNumber: "09131231231",
+  })] }) });
+  let created = 0;
+  User.create = async () => { created += 1; };
+  let invited = 0;
+  clerkClient.invitations.createInvitation = async () => { invited += 1; };
+
+  await assert.rejects(
+    resolveOrCreateAssistedFarmer({
+      name: "Nelmar Buenafe", address: { barangay: "Abilay Sur" },
+      phoneNumber: "09313482582", source: "register-farmer",
+      requirePossibleDuplicateReview: true,
+    }),
+    (error) => error.status === 409 &&
+      error.code === "POSSIBLE_DUPLICATE_FARMER" &&
+      error.details.possibleMatches[0].id === "existing-farmer" &&
+      error.details.possibleMatches[0].maskedPhone === "•••• 1231" &&
+      !Object.hasOwn(error.details.possibleMatches[0], "phoneNumber"),
+  );
+  assert.equal(created, 0);
+  assert.equal(invited, 0);
+});
+
+test("explicit separate confirmation permits a same-name Farmer; different names and barangays need none", async () => {
+  User.findOne = async () => null;
+  User.find = (query) => ({ select: () => ({ lean: async () =>
+    query.name.$regex.test("Nelmar Buenafe") &&
+    query["address.barangay"].$regex.test("Abilay Sur")
+      ? [farmer({ _id: "existing-farmer", name: "Nelmar Buenafe",
+        address: { barangay: "Abilay Sur" } })]
+      : [] }) });
+  const created = [];
+  User.create = async (payload) => {
+    created.push(payload);
+    return farmer({ _id: `new-${created.length}`, ...payload });
+  };
+  const base = { name: "Nelmar Buenafe", address: { barangay: "Abilay Sur" },
+    source: "register-farmer", requirePossibleDuplicateReview: true };
+  await resolveOrCreateAssistedFarmer({ ...base, confirmSeparateFarmer: true });
+  await resolveOrCreateAssistedFarmer({ ...base, name: "Other Farmer" });
+  await resolveOrCreateAssistedFarmer({ ...base, address: { barangay: "Poblacion" } });
+  assert.equal(created.length, 3);
+});
+
+test("exact phone identity wins over name review and never creates a second profile", async () => {
+  const existing = farmer({ _id: "existing-phone", normalizedPhoneNumber: "+639171234567" });
+  User.findOne = async (query) => queryKind(query) === "phone" ? existing : null;
+  User.find = () => { throw new Error("Name review must not run for an exact identity"); };
+  User.create = async () => { throw new Error("Duplicate profile must not be created"); };
+  const result = await resolveOrCreateAssistedFarmer({
+    name: "Nelmar Buenafe", phoneNumber: "09171234567",
+    address: { barangay: "Abilay Sur" }, requirePossibleDuplicateReview: true,
+  });
+  assert.equal(result.reused, true);
+  assert.equal(result.farmer, existing);
+});
+
+test("clinical walk-in creation does not perform the assisted-registration name review", async () => {
+  User.findOne = async () => null;
+  User.find = () => { throw new Error("Walk-in must not run name review"); };
+  User.create = async (payload) => farmer({ _id: "walk-in-new", ...payload });
+  const result = await resolveOrCreateAssistedFarmer({
+    name: "Nelmar Buenafe", address: { barangay: "Abilay Sur" },
+    source: "walk-in-health", invitationMode: "none",
+  });
+  assert.equal(result.created, true);
 });
 
 test("different email and phone matches return FARMER_IDENTITY_CONFLICT without merging", async () => {

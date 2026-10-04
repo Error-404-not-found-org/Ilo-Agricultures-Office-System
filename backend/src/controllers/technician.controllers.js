@@ -1960,7 +1960,7 @@ export const getAnimalHistory = async (req, res) => {
 
 export const registerFarmer = async (req, res) => {
   try {
-    const { firstName, lastName, phoneNumber, email, address } = req.body;
+    const { firstName, lastName, phoneNumber, email, address, confirmSeparateFarmer } = req.body;
 
     // 1. Validation
     if (!firstName || !lastName) {
@@ -1986,6 +1986,8 @@ export const registerFarmer = async (req, res) => {
       invitationMode: email ? "required" : "none",
       inviteExistingUnclaimed: true,
       allowClaimedExisting: false,
+      requirePossibleDuplicateReview: true,
+      confirmSeparateFarmer: confirmSeparateFarmer === true,
       redirectUrl: getFarmerInvitationRedirectUrl(),
     });
 
@@ -2007,6 +2009,7 @@ export const registerFarmer = async (req, res) => {
         error.message ||
         "An internal error occurred during farmer registration.",
       code: error.code,
+      ...(error.code === "POSSIBLE_DUPLICATE_FARMER" ? { possibleMatches: error.details?.possibleMatches } : {}),
     });
   }
 };

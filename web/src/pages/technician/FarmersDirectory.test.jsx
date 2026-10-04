@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   delete: vi.fn(),
+  patch: vi.fn(),
   toastSuccess: vi.fn(),
 }));
 
@@ -15,7 +16,7 @@ vi.mock("../../contexts/ToastContext", () => ({
 }));
 
 vi.mock("../../lib/axios", () => ({
-  default: { get: mocks.get, post: mocks.post, delete: mocks.delete },
+  default: { get: mocks.get, post: mocks.post, delete: mocks.delete, patch: mocks.patch },
 }));
 
 vi.mock("../../components/layout/Topbar", () => ({
@@ -430,5 +431,43 @@ describe("Technician Farmers directory", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The invitation service is unavailable.",
     );
+  });
+
+  it("archives an eligible Farmer only after confirmation and refreshes the active directory", async () => {
+    mocks.get.mockResolvedValueOnce(page({ data: [{ ...farmer, canTechnicianArchive: true }] }))
+      .mockResolvedValue(page({ data: [], total: 0 }));
+    mocks.patch.mockResolvedValue({ data: { message: "Farmer archived" } });
+    renderDirectory();
+    await screen.findAllByText("Maria Santos");
+    fireEvent.click(screen.getAllByRole("menuitem", { name: "Archive Farmer", hidden: true })[0]);
+    const dialog = screen.getByRole("dialog", { name: "Archive Farmer?" });
+    expect(within(dialog).getByText(/livestock and service records will be preserved/i)).toBeInTheDocument();
+    expect(mocks.patch).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive Farmer" }));
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(`/user/${farmer._id}/technician-archive`));
+    expect(await screen.findByText("No farmers found")).toBeInTheDocument();
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Technician archive for a connected Farmer", async () => {
+    mocks.get.mockResolvedValueOnce(page({ data: [{ ...farmer, canTechnicianArchive: false, appAccountStatus: "connected" }] }));
+    renderDirectory();
+    await screen.findAllByText("Maria Santos");
+    expect(screen.queryByRole("menuitem", { name: "Archive Farmer", hidden: true })).toBeNull();
+  });
+
+  it("keeps an eligible Farmer visible and shows one inline error if archive is rejected", async () => {
+    mocks.get.mockResolvedValue(page({ data: [{ ...farmer, canTechnicianArchive: true }] }));
+    mocks.patch.mockRejectedValueOnce({ response: { data: {
+      message: "This Farmer can no longer be archived by a Technician.",
+    } } });
+    renderDirectory();
+    await screen.findAllByText("Maria Santos");
+    fireEvent.click(screen.getAllByRole("menuitem", { name: "Archive Farmer", hidden: true })[0]);
+    const dialog = screen.getByRole("dialog", { name: "Archive Farmer?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive Farmer" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("can no longer be archived");
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Maria Santos").length).toBeGreaterThan(0);
   });
 });

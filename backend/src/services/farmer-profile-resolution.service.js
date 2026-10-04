@@ -16,6 +16,33 @@ export const normalizeFarmerEmail = (value) => {
   return normalized || undefined;
 };
 
+const normalizeReviewText = (value) =>
+  String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+
+const reviewRegex = (value) => {
+  const words = normalizeReviewText(value).split(" ");
+  return new RegExp(`^\\s*${words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+")}\\s*$`, "i");
+};
+
+const findPossibleDuplicateFarmers = async ({ name, barangay }) => {
+  if (!normalizeReviewText(name) || !normalizeReviewText(barangay)) return [];
+  const matches = await User.find({
+    role: "farmer",
+    deletedAt: null,
+    name: { $regex: reviewRegex(name) },
+    "address.barangay": { $regex: reviewRegex(barangay) },
+  }).select("_id name address.barangay phoneNumber").lean();
+  return matches.map((match) => {
+    const digits = String(match.phoneNumber || "").replace(/\D/g, "");
+    return {
+      id: String(match._id),
+      name: match.name,
+      barangay: match.address?.barangay || "",
+      maskedPhone: digits ? `•••• ${digits.slice(-4)}` : null,
+    };
+  });
+};
+
 export const normalizeFarmerPhone = (value) => {
   if (value === undefined || value === null || String(value).trim() === "") {
     return {
@@ -144,8 +171,23 @@ export const resolveOrCreateAssistedFarmer = async ({
   invitationMode = "none",
   inviteExistingUnclaimed = false,
   allowClaimedExisting = false,
+  requirePossibleDuplicateReview = false,
+  confirmSeparateFarmer = false,
 }) => {
   const identity = await resolveFarmerIdentity({ email, phoneNumber });
+  if (identity.classification === "fresh" && requirePossibleDuplicateReview && !confirmSeparateFarmer) {
+    const possibleMatches = await findPossibleDuplicateFarmers({
+      name,
+      barangay: address?.barangay,
+    });
+    if (possibleMatches.length) {
+      throw new AppError("A Farmer with this name and barangay may already exist. Review the profile before creating a separate Farmer.", {
+        status: 409,
+        code: "POSSIBLE_DUPLICATE_FARMER",
+        details: { possibleMatches },
+      });
+    }
+  }
   let shouldAttachInvitedEmail = false;
   if (
     identity.farmer &&
