@@ -10,6 +10,8 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
   Text,
+  Pressable,
+  StyleSheet,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React from "react";
@@ -40,6 +42,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Theme system and UI components
 import { useTheme } from "@/lib/theme";
+import { Button } from "@/components/ui/Button";
 import { useApi } from "@/lib/api";
 import { signOutWithPushCleanup } from "@/lib/notifications";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -731,7 +734,10 @@ const TechnicianProfile = () => {
       <Modal
         visible={editMode !== null}
         transparent
-        animationType="slide"
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setEditMode(null)}
       >
         <KeyboardAvoidingView
@@ -741,23 +747,34 @@ const TechnicianProfile = () => {
           <View
             style={{
               flex: 1,
-              backgroundColor: "rgba(0,0,0,0.5)",
+              backgroundColor: colors.modalBackdrop,
               justifyContent: "center",
-              paddingHorizontal: 22,
+              alignItems: "center",
+              paddingHorizontal: 20,
+              paddingTop: Math.max(insets.top, 20),
+              paddingBottom: Math.max(insets.bottom, 20),
             }}
           >
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={(e) => e.stopPropagation()}
+            <Pressable
+              accessible={false}
+              onPress={() => setEditMode(null)}
+              style={StyleSheet.absoluteFill}
+            />
+
+            <View
+              accessibilityViewIsModal
               style={{
+                width: "100%",
+                maxWidth: 420,
                 backgroundColor: colors.card,
-                borderRadius: 28,
+                borderRadius: 24,
                 padding: 24,
                 paddingBottom: Math.max(insets.bottom, 24),
-                shadowColor: "#000",
-                shadowOpacity: 0.18,
-                shadowRadius: 20,
-                elevation: 10,
+                shadowColor: "#0f172a",
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.16,
+                shadowRadius: 16,
+                elevation: 8,
               }}
             >
               <View
@@ -765,22 +782,54 @@ const TechnicianProfile = () => {
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 24,
+                  marginBottom: 20,
                 }}
               >
-                <Text
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.tint,
+                    }}
+                  >
+                    {editMode === "phone" ? (
+                      <Phone size={22} color={isDark ? colors.primary : "#00643B"} />
+                    ) : (
+                      <MapPin size={22} color={isDark ? colors.primary : "#00643B"} />
+                    )}
+                  </View>
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                      fontSize: 18,
+                      color: colors.textPrimary,
+                      flex: 1,
+                    }}
+                  >
+                    {editMode === "phone"
+                      ? "Edit Phone Number"
+                      : "Edit Service Barangay"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setEditMode(null)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close edit modal"
                   style={{
-                    fontFamily: "Outfit_900Black",
-                    fontSize: 20,
-                    color: colors.textPrimary,
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9",
                   }}
                 >
-                  {editMode === "phone"
-                    ? "Edit Phone Number"
-                    : "Edit Service Barangay"}
-                </Text>
-                <TouchableOpacity onPress={() => setEditMode(null)}>
-                  <X size={24} color={colors.textMuted} />
+                  <X size={18} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
 
@@ -893,37 +942,32 @@ const TechnicianProfile = () => {
                   </View>
                 )}
 
-                {/* Save Button */}
-                <TouchableOpacity
-                  onPress={handleUpdate}
-                  disabled={mutation.isPending}
-                  activeOpacity={0.8}
+                {/* Actions: Cancel & Save Changes */}
+                <View
                   style={{
-                    backgroundColor: isDark ? colors.primary : "#00643B",
-                    borderRadius: 16,
-                    paddingVertical: 16,
-                    alignItems: "center",
-                    justifyContent: "center",
+                    flexDirection: "row",
+                    gap: 12,
                     marginTop: 16,
-                    opacity: mutation.isPending ? 0.6 : 1,
                   }}
                 >
-                  {mutation.isPending ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text
-                      style={{
-                        color: "#fff",
-                        fontSize: 16,
-                        fontFamily: "Outfit_700Bold",
-                      }}
-                    >
-                      Save Changes
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                  <Button
+                    variant="outline"
+                    label="Cancel"
+                    disabled={mutation.isPending}
+                    onPress={() => setEditMode(null)}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="default"
+                    label="Save Changes"
+                    loading={mutation.isPending}
+                    disabled={mutation.isPending}
+                    onPress={handleUpdate}
+                    className="flex-1"
+                  />
+                </View>
               </View>
-            </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -933,42 +977,84 @@ const TechnicianProfile = () => {
         visible={selectModal.visible}
         transparent
         animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() =>
           setSelectModal({ ...selectModal, visible: false })
         }
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => setSelectModal({ ...selectModal, visible: false })}
+        <View
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
+            backgroundColor: colors.modalBackdrop,
             justifyContent: "center",
             alignItems: "center",
-            padding: 24,
+            paddingHorizontal: 20,
+            paddingTop: Math.max(insets.top, 20),
+            paddingBottom: Math.max(insets.bottom, 20),
           }}
         >
+          <Pressable
+            accessible={false}
+            onPress={() => setSelectModal({ ...selectModal, visible: false })}
+            style={StyleSheet.absoluteFill}
+          />
+
           <View
+            accessibilityViewIsModal
             style={{
               width: "100%",
-              maxHeight: "60%",
+              maxWidth: 420,
+              maxHeight: "70%",
               backgroundColor: colors.card,
-              borderRadius: 28,
+              borderRadius: 24,
               padding: 24,
               borderWidth: 1,
               borderColor: colors.border,
+              shadowColor: "#0f172a",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.16,
+              shadowRadius: 16,
+              elevation: 8,
             }}
           >
-            <Text
+            <View
               style={{
-                fontFamily: "Outfit_900Black",
-                fontSize: 18,
-                color: colors.textPrimary,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: 16,
               }}
             >
-              {selectModal.title}
-            </Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_800ExtraBold",
+                  fontSize: 18,
+                  color: colors.textPrimary,
+                  flex: 1,
+                }}
+              >
+                {selectModal.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelectModal({ ...selectModal, visible: false })}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close select options"
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9",
+                }}
+              >
+                <X size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
             <ScrollView showsVerticalScrollIndicator={false}>
               {selectModal.options.map((opt, idx) => (
                 <TouchableOpacity
@@ -978,7 +1064,7 @@ const TechnicianProfile = () => {
                     setSelectModal({ ...selectModal, visible: false });
                   }}
                   style={{
-                    paddingVertical: 16,
+                    paddingVertical: 14,
                     borderBottomWidth:
                       idx === selectModal.options.length - 1 ? 0 : 1,
                     borderBottomColor: colors.border,
@@ -997,8 +1083,9 @@ const TechnicianProfile = () => {
               ))}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
+
     </View>
   );
 };
