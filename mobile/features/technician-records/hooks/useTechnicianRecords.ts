@@ -10,8 +10,8 @@ export type FilterType =
   | "Health"
   | "Notes";
 
-export function useTechnicianRecords() {
-  const queryData = useQueries();
+export function useTechnicianRecords(farmerId?: string) {
+  const queryData = useQueries(farmerId);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<FilterType>("All");

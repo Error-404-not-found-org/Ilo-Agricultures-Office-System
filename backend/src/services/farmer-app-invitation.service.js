@@ -349,6 +349,42 @@ export const cancelFarmerAppInvitation = async ({ farmer, now = new Date() }) =>
   }
 };
 
+export const revokePendingFarmerInvitationForEmailChange = async (
+  farmer,
+  now = new Date(),
+) => {
+  const snapshot = farmer?.farmerAppInvitation;
+  if (snapshot?.status !== "pending") return false;
+
+  const expiredByTime = deriveFarmerInvitationStatus(snapshot, now) !== "pending";
+  if (!snapshot.clerkInvitationId) {
+    // A time-expired invitation without a Clerk id has nothing left to revoke.
+    if (expiredByTime) return false;
+    throw new AppError("The Farmer invitation cannot be verified. Contact an Admin.", {
+      status: 409, code: "FARMER_INVITATION_UNVERIFIED",
+    });
+  }
+
+  let stillPendingInClerk;
+  try {
+    const invitations = await clerkClient.invitations.getInvitationList({
+      status: "pending",
+    });
+    stillPendingInClerk = (
+      Array.isArray(invitations) ? invitations : invitations?.data || []
+    ).some((item) => item.id === snapshot.clerkInvitationId);
+  } catch {
+    throw new AppError("The Farmer invitation could not be revoked. Try again later.", {
+      status: 503, code: "FARMER_INVITATION_REVOKE_FAILED",
+    });
+  }
+
+  if (stillPendingInClerk) {
+    await revokeFarmerInvitationOrFail(snapshot.clerkInvitationId);
+  }
+  return stillPendingInClerk;
+};
+
 export const createFarmerInvitationSnapshot = async ({ email, now = new Date() }) => {
   const normalized = normalizeEmail(email);
   if (!normalized) {

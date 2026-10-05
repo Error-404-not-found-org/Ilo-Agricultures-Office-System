@@ -216,4 +216,65 @@ describe("Admin assisted Farmer creation", () => {
     expect(onViewExistingFarmer).toHaveBeenCalledWith("farmer-existing");
     expect(axiosInstance.post).toHaveBeenCalledTimes(1);
   });
+
+  it("disables email editing when farmer has a connected or blocked app account", async () => {
+    renderModal({
+      farmer: {
+        _id: "farmer-connected",
+        name: "Maria Santos",
+        contact: "09171234567",
+        email: "maria@example.com",
+        appAccountStatus: "connected",
+        address: { city: "Oton", barangay: "Poblacion South", province: "Iloilo" },
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /Email address \(read-only\)/ })).toBeDisabled();
+    });
+    expect(screen.getByText(/Connected or blocked accounts cannot have their email edited here/)).toBeInTheDocument();
+  });
+
+  it("permits email editing for unclaimed farmers without an active connected account", async () => {
+    renderModal({
+      farmer: {
+        _id: "farmer-unclaimed",
+        name: "Maria Santos",
+        contact: "09171234567",
+        email: "maria@example.com",
+        appAccountStatus: "no_app_account",
+        profileClaimStatus: "unclaimed",
+        address: { city: "Oton", barangay: "Poblacion South", province: "Iloilo" },
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /Email address \(optional\)/ })).not.toBeDisabled();
+    });
+  });
+
+  it("validates email format before submitting when email is edited", async () => {
+    renderModal({
+      farmer: {
+        _id: "farmer-unclaimed",
+        name: "Maria Santos",
+        contact: "09171234567",
+        email: "",
+        appAccountStatus: "no_app_account",
+        profileClaimStatus: "unclaimed",
+        address: { city: "Oton", barangay: "Poblacion South", province: "Iloilo" },
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /Email address \(optional\)/ })).toHaveValue("");
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /Email address \(optional\)/ }), {
+      target: { value: "not-an-email" },
+    });
+    fireEvent.submit(document.getElementById("register-farmer-form"));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a valid email address.");
+    expect(axiosInstance.patch).not.toHaveBeenCalled();
+  });
 });

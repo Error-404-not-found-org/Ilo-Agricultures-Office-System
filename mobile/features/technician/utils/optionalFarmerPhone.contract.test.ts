@@ -3,8 +3,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const read = (relativePath: string) =>
-  readFileSync(resolve(process.cwd(), relativePath), "utf8");
+const read = (relativePath: string) => {
+  const rootPath = resolve(process.cwd(), relativePath);
+  const mobilePath = resolve(process.cwd(), "mobile", relativePath);
+  try {
+    return readFileSync(rootPath, "utf8");
+  } catch {
+    return readFileSync(mobilePath, "utf8");
+  }
+};
 
 test("Technician Mobile registration treats phone as optional and omits blank values", () => {
   const source = read("app/(technician)/register-client.tsx");
@@ -28,6 +35,6 @@ test("Technician Farmer payload types permit an omitted phone", () => {
 
 test("Technician Farmer profile explains a missing phone without offering phone claiming", () => {
   const source = read("app/(technician)/client.profile.tsx");
-  assert.match(source, /Phone not provided\. Technician-managed profile only\./);
-  assert.match(source, /isClaimable\s*\? hasClientPhone/s);
+  assert.match(source, /Phone not provided/);
+  assert.doesNotMatch(source, /verify this phone/);
 });

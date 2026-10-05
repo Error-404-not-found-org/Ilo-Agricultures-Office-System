@@ -2,7 +2,7 @@ import type { AxiosInstance } from "axios";
 
 export const getOfficialRecords = async (
   api: AxiosInstance,
-  params: { page?: number; limit?: number; type?: string; search?: string } = {},
+  params: { page?: number; limit?: number; type?: string; search?: string; farmerId?: string } = {},
 ) => {
   const response = await api.get("/animals/records", {
     params: { page: 1, limit: 25, ...params },

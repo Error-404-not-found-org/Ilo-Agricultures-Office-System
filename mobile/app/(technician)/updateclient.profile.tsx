@@ -64,7 +64,7 @@ const EditFarmerProfileSkeleton = ({ onBack }: { onBack: () => void }) => {
         <ScrollView
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
         >
           <Card style={{ padding: 20 }} className="mt-2 mb-6">
             <Skeleton width="54%" height={22} radius={6} />
@@ -89,7 +89,14 @@ const EditFarmerProfileSkeleton = ({ onBack }: { onBack: () => void }) => {
           </Card>
         </ScrollView>
 
-        <View style={{ paddingTop: 16, paddingBottom: 112 }}>
+        <View
+          style={{
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
           <Skeleton width="100%" height={54} radius={27} />
         </View>
       </View>
@@ -105,6 +112,8 @@ export default function UpdateClientProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [canEditEmail, setCanEditEmail] = useState(false);
+  const [accountStatus, setAccountStatus] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -153,6 +162,14 @@ export default function UpdateClientProfileScreen() {
         const addr = user.address || {};
         const parsedAddress = parseBarangayWithDistrict(addr.barangay || "");
 
+        const status = user.appAccountStatus;
+        const isClaimed = user.profileClaimStatus === "claimed";
+        const emailEditable =
+          !["connected", "blocked"].includes(status) && !isClaimed;
+
+        setCanEditEmail(emailEditable);
+        setAccountStatus(status || null);
+
         setFormData({
           name: user.name || "",
           email: user.email || "",
@@ -179,6 +196,14 @@ export default function UpdateClientProfileScreen() {
       !/^09\d{9}$/.test(formData.phoneNumber)
     ) {
       return toast.error("Phone number must be exactly 11 digits.");
+    }
+    const trimmedEmail = formData.email.trim();
+    if (
+      canEditEmail &&
+      trimmedEmail &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+    ) {
+      return toast.error("Enter a valid email address.");
     }
     if (!formData.barangay) {
       return toast.error("Barangay is required.");
@@ -256,7 +281,8 @@ export default function UpdateClientProfileScreen() {
         >
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 120 }}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 24 }}
           >
             <Card style={{ padding: 20 }} className="mt-2 mb-6">
               <Text variant="black" size={18} color="primary" className="mb-1">
@@ -288,14 +314,29 @@ export default function UpdateClientProfileScreen() {
               />
 
               <InputField
-                label="Email Address (Read-Only)"
+                label={
+                  canEditEmail
+                    ? "Email Address (Optional)"
+                    : "Email Address (Read-Only)"
+                }
                 value={formData.email}
                 onChangeText={(t: string) =>
                   setFormData({ ...formData, email: t })
                 }
-                placeholder="farmer@example.com"
+                placeholder={
+                  canEditEmail
+                    ? "e.g. farmer@example.com"
+                    : "No email on file"
+                }
                 keyboardType="email-address"
-                editable={false}
+                autoCapitalize="none"
+                editable={canEditEmail}
+                helperText={
+                  !canEditEmail &&
+                  (accountStatus === "connected" || accountStatus === "blocked")
+                    ? "This account is already connected or blocked. Use account recovery to change this email."
+                    : undefined
+                }
               />
             </Card>
 
@@ -434,18 +475,28 @@ export default function UpdateClientProfileScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* BOTTOM SAVE BUTTON */}
-        <View className="pt-4 pb-28">
+        {/* BOTTOM SAVE BUTTON (docked footer; SafeScreen supplies the bottom inset) */}
+        <View
+          style={{
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.background,
+          }}
+        >
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Save farmer profile updates"
+            accessibilityState={{ disabled: saving, busy: saving }}
             style={{
               backgroundColor: colors.primary,
-              shadowColor: colors.primary,
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
+              minHeight: 54,
+              opacity: saving ? 0.7 : 1,
             }}
-            className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
+            className="rounded-full py-4 items-center flex-row justify-center gap-2"
           >
             {saving ? (
               <ActivityIndicator color="white" size="small" />
@@ -554,6 +605,8 @@ const InputField = ({
   keyboardType = "default",
   maxLength,
   editable = true,
+  autoCapitalize = "sentences",
+  helperText,
 }: any) => {
   const { colors } = useTheme();
   return (
@@ -579,9 +632,19 @@ const InputField = ({
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
         maxLength={maxLength}
         editable={editable}
       />
+      {helperText ? (
+        <Text
+          variant="medium"
+          size={11}
+          style={{ color: colors.textMuted, marginTop: 4, marginLeft: 4 }}
+        >
+          {helperText}
+        </Text>
+      ) : null}
     </View>
   );
 };

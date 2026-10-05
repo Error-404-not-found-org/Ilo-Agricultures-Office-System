@@ -50,6 +50,7 @@ import {
 import { DISPATCH_CAPABILITIES } from "../domain/geographic/constants.js";
 import {
   getFarmerInvitationRedirectUrl,
+  normalizeFarmerEmail,
   normalizeFarmerPhone,
   resolveOrCreateAssistedFarmer,
 } from "../services/farmer-profile-resolution.service.js";
@@ -59,12 +60,18 @@ import {
   hasRealClerkLink,
   loadInvitableFarmer,
   resendFarmerAppInvitation,
+  revokePendingFarmerInvitationForEmailChange,
   sendFarmerAppInvitation,
 } from "../services/farmer-app-invitation.service.js";
 import { archiveFarmerAsTechnician } from "../services/technician-farmer-archive.service.js";
 import { archiveFarmerAsAdmin } from "../services/admin-farmer-archive.service.js";
 import { accountStatusClerkUsers } from "../services/account-status-clerk.service.js";
 import { AppError } from "../utils/app-error.js";
+import {
+  ACTIVE_AI_REQUEST_STATUSES,
+  ACTIVE_HEALTH_REQUEST_STATUSES,
+} from "../domain/status-vocabulary.js";
+import { buildAIRequestMutationOwnershipGuard } from "../policies/request.policy.js";
 import { linkFarmerProfileByPhone } from "../services/phone-farmer-link.service.js";
 import {
   clearPushTokenForUser,
@@ -1628,6 +1635,7 @@ export const getUserById = async (req, res) => {
     let loginHistory = [];
     let activityHistory = [];
     let fieldNotes = [];
+    let profileSummary = null;
     const isAdminRequester = req.user.role === "admin";
     const isTechnicianFarmerDetail =
       req.user.role === "technician" && user.role === "farmer";
@@ -1802,6 +1810,64 @@ export const getUserById = async (req, res) => {
         animals,
       };
 
+      if (isTechnicianFarmerDetail) {
+        const recordScope = { farmerId: id };
+        const aiRecordFilter = {
+          ...recordScope,
+          status: "done",
+          deletedAt: null,
+          ...buildAIRequestMutationOwnershipGuard({ technicianId: req.user._id }),
+        };
+        const pregnancyRecordFilter = {
+          ...recordScope,
+          deletedAt: null,
+          "confirmation.confirmedBy": req.user._id,
+        };
+        const calvingRecordFilter = {
+          ...recordScope,
+          deletedAt: null,
+          technicianId: req.user._id,
+        };
+        const healthRecordFilter = {
+          ...recordScope,
+          technicianId: req.user._id,
+          type: { $ne: "General Note" },
+        };
+        const [activeAI, activeHealth, ai, health, pregnancy, calving,
+          lastAI, lastHealth, lastPregnancy, lastCalving] = await Promise.all([
+          Insemination.countDocuments({
+            ...recordScope, deletedAt: null,
+            status: { $in: ACTIVE_AI_REQUEST_STATUSES },
+          }),
+          HealthRequest.countDocuments({
+            ...recordScope, deletedAt: null,
+            status: { $in: ACTIVE_HEALTH_REQUEST_STATUSES },
+          }),
+          Insemination.countDocuments(aiRecordFilter),
+          MedicalRecord.countDocuments(healthRecordFilter),
+          Pregnancy.countDocuments(pregnancyRecordFilter),
+          Calving.countDocuments(calvingRecordFilter),
+          Insemination.findOne({ ...aiRecordFilter, inseminationDate: { $type: "date" } })
+            .sort({ inseminationDate: -1 }).select("inseminationDate").lean(),
+          MedicalRecord.findOne({ ...healthRecordFilter, date: { $type: "date" } })
+            .sort({ date: -1 }).select("date").lean(),
+          Pregnancy.findOne({ ...pregnancyRecordFilter, "pregnancyDiagnosis.date": { $type: "date" } })
+            .sort({ "pregnancyDiagnosis.date": -1 }).select("pregnancyDiagnosis.date").lean(),
+          Calving.findOne({ ...calvingRecordFilter, date: { $type: "date" } })
+            .sort({ date: -1 }).select("date").lean(),
+        ]);
+        const dates = [lastAI?.inseminationDate, lastHealth?.date,
+          lastPregnancy?.pregnancyDiagnosis?.date, lastCalving?.date]
+          .filter((date) => date instanceof Date && !Number.isNaN(date.getTime()));
+        profileSummary = {
+          activeRequests: activeAI + activeHealth,
+          serviceRecords: { ai, health, pregnancy, calving },
+          lastServiceDate: dates.length
+            ? new Date(Math.max(...dates.map((date) => date.getTime())))
+            : null,
+        };
+      }
+
       assignedAnimals = animals;
 
       // Service History
@@ -1856,10 +1922,7 @@ export const getUserById = async (req, res) => {
           ...(isTechnicianFarmerDetail
             ? { technicianId: req.user._id }
             : {}),
-          $or: [
-            { farmerId: id },
-            { farmerName: { $regex: new RegExp(`^${user.name}$`, "i") } },
-          ],
+          farmerId: id,
           deletedAt: null,
         })
           .populate("technicianId", "name")
@@ -1884,6 +1947,7 @@ export const getUserById = async (req, res) => {
       loginHistory,
       activityHistory,
       fieldNotes,
+      ...(profileSummary ? { profileSummary } : {}),
       ...(isAdminRequester && user.role === "technician"
         ? {
             dispatchReadiness: evaluateTechnicianDispatchReadiness({
@@ -2941,12 +3005,87 @@ export const verifyPhoneOtp = async (req, res) => {
   }
 };
 
+const FARMER_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const FARMER_EMAIL_MAX_LENGTH = 254;
+const FARMER_EMAIL_EDITABLE_STATUSES = new Set([
+  "no_app_account",
+  "profile_only",
+  "invitation_sent",
+  "invitation_expired",
+]);
+
+/**
+ * Decide whether staff may change a Farmer's email and what the change implies.
+ * Performs validation and read-only lookups only; the caller applies the change
+ * (after revoking any live invitation) once every other validation has passed.
+ * Returns null when the submitted email equals the stored one, because existing
+ * clients always resend the email field.
+ */
+const planFarmerEmailChange = async (farmer, submittedEmail) => {
+  if (typeof submittedEmail !== "string") {
+    throw new AppError("Enter a valid email address.", {
+      status: 400,
+      code: "INVALID_EMAIL",
+    });
+  }
+
+  const nextEmail = normalizeFarmerEmail(submittedEmail);
+  const previousEmail = normalizeFarmerEmail(farmer.email);
+  if (nextEmail === previousEmail) return null;
+
+  const previousStatus = getFarmerAppAccountStatus(farmer);
+  if (!FARMER_EMAIL_EDITABLE_STATUSES.has(previousStatus)) {
+    throw new AppError(
+      previousStatus === "blocked"
+        ? "This Farmer's account is blocked, so the email cannot be changed here. Use account recovery instead."
+        : "This Farmer already has a connected app account, so the email cannot be changed here. Use account recovery instead.",
+      {
+        status: 409,
+        code: "FARMER_EMAIL_CHANGE_REQUIRES_ACCOUNT_RECOVERY",
+      },
+    );
+  }
+
+  if (
+    !nextEmail ||
+    nextEmail.length > FARMER_EMAIL_MAX_LENGTH ||
+    !FARMER_EMAIL_PATTERN.test(nextEmail)
+  ) {
+    throw new AppError(
+      nextEmail
+        ? "Enter a valid email address."
+        : "An existing email cannot be removed. Enter a valid email address instead.",
+      { status: 400, code: "INVALID_EMAIL" },
+    );
+  }
+
+  const escapedEmail = nextEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const duplicate = await User.findOne({
+    _id: { $ne: farmer._id },
+    $or: [
+      { normalizedEmail: nextEmail },
+      { email: { $regex: new RegExp(`^${escapedEmail}$`, "i") } },
+    ],
+  });
+  if (duplicate) {
+    throw new AppError("This email is already associated with another account.", {
+      status: 409,
+      code: "FARMER_EMAIL_ALREADY_IN_USE",
+    });
+  }
+
+  return { nextEmail, previousEmail, previousStatus };
+};
+
 export const updateFarmerProfileByTechnician = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, phoneNumber, rsbsaNumber, address, farmLocation } = req.body;
 
-    const user = await User.findById(id);
+    const farmerLookup = User.findById(id);
+    const user = await (
+      farmerLookup.select?.("+farmerAppInvitation.clerkInvitationId") ?? farmerLookup
+    );
     if (!user || user.deletedAt) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -2979,9 +3118,9 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
       if (trimmedName) user.name = trimmedName;
     }
 
-    if (email !== undefined && typeof email === "string") {
-      user.email = email.trim().toLowerCase();
-    }
+    const emailChange = email !== undefined
+      ? await planFarmerEmailChange(user, email)
+      : null;
 
     if (rsbsaNumber !== undefined && typeof rsbsaNumber === "string") {
       user.rsbsaNumber = rsbsaNumber.trim();
@@ -3115,14 +3254,55 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
       }
     }
 
+    let invitationRevoked = false;
+    if (emailChange) {
+      // Revoke first: if Clerk cannot confirm the revocation, nothing is saved
+      // and the old invitation stays the single source of truth.
+      invitationRevoked = await revokePendingFarmerInvitationForEmailChange(user);
+      user.email = emailChange.nextEmail;
+      user.normalizedEmail = emailChange.nextEmail;
+      user.farmerAppInvitation = undefined;
+    }
+
     await user.save();
+
+    const appAccountStatus = getFarmerAppAccountStatus(user);
+    if (emailChange) {
+      try {
+        await createAuditLog({
+          entityType: "User",
+          entityId: user._id,
+          action: "update_farmer_email",
+          actorId: req.user?._id,
+          before: {
+            email: emailChange.previousEmail || null,
+            appAccountStatus: emailChange.previousStatus,
+          },
+          after: {
+            email: emailChange.nextEmail,
+            appAccountStatus,
+            invitationRevoked,
+          },
+        });
+      } catch (auditError) {
+        console.error("[updateFarmerProfileByTechnician AUDIT ERROR]", auditError?.message);
+      }
+    }
 
     res.status(200).json({
       message: "Farmer profile successfully updated by technician",
       data: user,
+      appAccountStatus,
+      invitationRevoked,
     });
   } catch (error) {
     console.error("[updateFarmerProfileByTechnician ERROR]", error);
+    if (error?.code === 11000 && error.keyPattern?.normalizedEmail) {
+      return res.status(409).json({
+        message: "This email is already associated with another account.",
+        code: "FARMER_EMAIL_ALREADY_IN_USE",
+      });
+    }
     if (error.statusCode || error.status) {
       return res.status(error.statusCode || error.status).json({
         message: error.message,

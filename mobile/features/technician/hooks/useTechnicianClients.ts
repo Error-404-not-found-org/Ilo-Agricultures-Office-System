@@ -4,6 +4,8 @@ import {
   getAssignedFarmers,
   getFarmerDetail,
   archiveFarmerProfile,
+  cancelFarmerInvitation,
+  sendFarmerInvitation,
   updateFarmerProfile,
   registerFarmer,
   UpdateFarmerPayload,
@@ -56,11 +58,30 @@ export const useTechnicianClients = (id?: string) => {
     },
   });
 
+  const invitationMutation = useMutation({
+    mutationFn: (params: { farmerId: string; resend: boolean }) =>
+      sendFarmerInvitation(api, params.farmerId, params.resend),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.details(variables.farmerId) });
+    },
+  });
+
+  const cancelInvitationMutation = useMutation({
+    mutationFn: (farmerId: string) => cancelFarmerInvitation(api, farmerId),
+    onSuccess: (_, farmerId) => {
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.details(farmerId) });
+    },
+  });
+
   return {
     clientsQuery,
     clientDetailsQuery,
     updateClientMutation,
     registerClientMutation,
     archiveClientMutation,
+    invitationMutation,
+    cancelInvitationMutation,
   };
 };

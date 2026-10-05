@@ -3156,8 +3156,17 @@ export const createFieldNote = async (req, res) => {
 export const getTechnicianFieldNotes = async (req, res) => {
   try {
     const technicianId = req.user._id;
+    const farmerId = req.query?.farmerId;
+    if (farmerId && !mongoose.isValidObjectId(farmerId)) {
+      return res.status(400).json({ message: "Invalid farmer selection." });
+    }
+    if (farmerId) {
+      const farmer = await User.findOne({ _id: farmerId, role: "farmer", deletedAt: null }).select("_id");
+      if (!farmer) return res.status(404).json({ message: "Farmer not found." });
+    }
     const technicianNotes = await FieldNote.find({
       technicianId,
+      ...(farmerId ? { farmerId } : {}),
       deletedAt: null,
     })
       .populate("technicianId", "name")

@@ -59,6 +59,16 @@ const RegisterFarmerModal = ({
     return iloiloPsgc[selectedCity] || [];
   }, [formData.city, selectedDistrict]);
 
+  const canEditEmail = useMemo(() => {
+    if (!farmer) return true;
+    const status = farmer.appAccountStatus;
+    const isClaimed = farmer.profileClaimStatus === "claimed";
+    if (status === "connected" || status === "blocked" || isClaimed) {
+      return false;
+    }
+    return true;
+  }, [farmer]);
+
   const mutation = useMutation({
     mutationFn: async (data) => {
       const phoneNumber = data.phoneNumber.trim();
@@ -202,6 +212,9 @@ const RegisterFarmerModal = ({
     if (formData.city === "Iloilo City" && !selectedDistrict) {
       return setFormError("Please select the Iloilo City district.");
     }
+    if (canEditEmail && formData.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      return setFormError("Enter a valid email address.");
+    }
     setFormError("");
     mutation.mutate(formData);
   };
@@ -321,7 +334,23 @@ const RegisterFarmerModal = ({
             <Input id="farmer-first-name" label="First name" required value={formData.firstName} onChange={(event) => handleNameChange(event, "firstName")} maxLength={50} autoComplete="given-name" placeholder="e.g. Jane" />
             <Input id="farmer-last-name" label="Last name" required value={formData.lastName} onChange={(event) => handleNameChange(event, "lastName")} maxLength={50} autoComplete="family-name" placeholder="e.g. Doe" />
             <Input id="farmer-phone" label="Contact number (optional)" type="tel" value={formData.phoneNumber} onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); const value = event.target.value.replace(/[^0-9]/g, "").slice(0, 11); setFormData((prev) => ({ ...prev, phoneNumber: value })); }} pattern="09[0-9]{9}" maxLength={11} inputMode="numeric" autoComplete="tel" hint="Optional. Needed if the Farmer will use the BreedSmart mobile app." placeholder="e.g. 09123456789" />
-            <Input id="farmer-email" label="Email address (optional)" type="email" value={formData.email} hasError={isEmailError} onChange={(event) => { if (formError) setFormError(""); clearPossibleMatches(); setFormData((prev) => ({ ...prev, email: event.target.value })); }} autoComplete="email" placeholder="e.g. jane.doe@example.com" maxLength={100} />
+            <Input
+              id="farmer-email"
+              label={canEditEmail ? "Email address (optional)" : "Email address (read-only)"}
+              type="email"
+              value={formData.email}
+              hasError={isEmailError}
+              disabled={!canEditEmail}
+              onChange={(event) => {
+                if (formError) setFormError("");
+                clearPossibleMatches();
+                setFormData((prev) => ({ ...prev, email: event.target.value }));
+              }}
+              autoComplete="email"
+              placeholder={canEditEmail ? "e.g. jane.doe@example.com" : "No email on file"}
+              hint={!canEditEmail ? "Connected or blocked accounts cannot have their email edited here. Use account recovery instead." : ""}
+              maxLength={100}
+            />
           </div>
         </fieldset>
 

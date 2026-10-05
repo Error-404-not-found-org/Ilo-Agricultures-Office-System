@@ -8,12 +8,12 @@ export const recordsQueryKeys = {
   official: ["technician", "records", "official"] as const,
 };
 
-export const useTechnicianRecords = () => {
+export const useTechnicianRecords = (farmerId?: string) => {
   const api = useApi();
 
   const officialRecordsQuery = useInfiniteQuery({
-    queryKey: recordsQueryKeys.official,
-    queryFn: ({ pageParam }) => getOfficialRecords(api, { page: pageParam, limit: 25 }),
+    queryKey: [...recordsQueryKeys.official, farmerId || "all"],
+    queryFn: ({ pageParam }) => getOfficialRecords(api, { page: pageParam, limit: 25, farmerId }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,

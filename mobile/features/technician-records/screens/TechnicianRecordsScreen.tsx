@@ -47,9 +47,11 @@ const DetailRow = ({ label, value, highlightColor }: { label: string; value?: st
 export default function TechnicianRecordsScreen({
   defaultTab,
   showBackButton = true,
+  farmerId,
 }: {
   defaultTab?: string;
   showBackButton?: boolean;
+  farmerId?: string;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -94,7 +96,7 @@ export default function TechnicianRecordsScreen({
     clearDateRange,
     openDetails,
     exportCSV,
-  } = useTechnicianRecords();
+  } = useTechnicianRecords(farmerId);
 
   // ---- REPORT GENERATION STATE & METHODS ----
   const {
@@ -111,7 +113,7 @@ export default function TechnicianRecordsScreen({
     reportLoading,
     refetchReportData,
     changeReportDate,
-  } = useTechnicianReportData(activeSegment === "reports");
+  } = useTechnicianReportData(activeSegment === "reports" && !farmerId);
 
   const [filterModalOpen, setFilterModalOpen] = React.useState(false);
   // Temp filter states for report modal
@@ -127,10 +129,10 @@ export default function TechnicianRecordsScreen({
       <AppPageHeader
         title="Records"
         showBackButton={showBackButton}
-        onBack={() => safeBack("/(technician)/(tabs)/technician.dashboard")}
+        onBack={() => farmerId ? router.back() : safeBack("/(technician)/(tabs)/technician.dashboard")}
         variant={showBackButton ? "detail" : "top-level"}
         rightAction={
-          activeSegment === "browse" ? (
+          (farmerId || activeSegment === "browse") ? (
             <View style={{ flexDirection: "row", gap: 8 }}>
               <AppHeaderIconButton
                 onPress={exportCSV}
@@ -209,7 +211,7 @@ export default function TechnicianRecordsScreen({
               Browse Records
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
+          {!farmerId && <TouchableOpacity
             onPress={() => setActiveSegment("reports")}
             style={{
               flex: 1,
@@ -233,7 +235,7 @@ export default function TechnicianRecordsScreen({
             >
               Generate Report
             </Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
         </View>
       </View>
 
@@ -244,7 +246,7 @@ export default function TechnicianRecordsScreen({
           backgroundColor: colors.background,
         }}
       >
-        {activeSegment === "browse" ? (
+        {(farmerId || activeSegment === "browse") ? (
           <>
             <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
               <SearchBar

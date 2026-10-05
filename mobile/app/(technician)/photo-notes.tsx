@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -94,19 +94,21 @@ export default function PhotoNotesScreen() {
     }
   }, [params?.farmerId, params?.farmerName, params?.openEditor]);
 
-  const fetchFarmers = async () => {
+  const fetchFarmers = useCallback(async () => {
     try {
       const res = await api.get("/user?role=farmer");
       setFarmers(res.data || []);
     } catch (err) {
       console.error("Failed to load farmers", err);
     }
-  };
+  }, [api]);
 
-  const fetchNotes = async () => {
+  const fetchNotes = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get("/technician/photo-notes");
+      const res = await api.get("/technician/photo-notes", {
+        params: { farmerId: params.farmerId },
+      });
       setNotes(res.data || []);
     } catch (err) {
       console.error(err);
@@ -114,12 +116,12 @@ export default function PhotoNotesScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api, params.farmerId]);
 
   useEffect(() => {
-    fetchNotes();
-    fetchFarmers();
-  }, []);
+    void fetchNotes();
+    if (!params.farmerId) void fetchFarmers();
+  }, [fetchNotes, fetchFarmers, params.farmerId]);
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
     const result = await pickImageFromSource(source, { aspect: [4, 3], quality: 0.6 });
@@ -173,8 +175,8 @@ export default function PhotoNotesScreen() {
         title: newNote.title.trim(),
         description: newNote.description.trim(),
         imageUrl: newNote.image,
-        farmerId: newNote.farmerId || undefined,
-        farmerName: newNote.farmer,
+        farmerId: params.farmerId || newNote.farmerId || undefined,
+        farmerName: params.farmerName || newNote.farmer,
         taskId: params.taskId || undefined,
         animalId: params.animalId || undefined,
         latitude: newNote.latitude,
@@ -191,8 +193,8 @@ export default function PhotoNotesScreen() {
         title: "",
         description: "",
         image: "",
-        farmer: "",
-        farmerId: "",
+        farmer: params.farmerName || "",
+        farmerId: params.farmerId || "",
         latitude: "",
         longitude: "",
       });
@@ -541,7 +543,7 @@ export default function PhotoNotesScreen() {
                 fontSize: 12,
               }}
             >
-              {notes.length} Total Logs
+              {params.farmerId ? `${params.farmerName || "Farmer"} · ${notes.length} notes` : `${notes.length} Total Logs`}
             </Text>
           </View>
         </View>
@@ -908,10 +910,10 @@ export default function PhotoNotesScreen() {
                       marginLeft: 4,
                     }}
                   >
-                    FARMER NAME
+                    {params.farmerId ? "FARMER (FIXED)" : "FARMER NAME"}
                   </Text>
                   <TouchableOpacity
-                    disabled={Boolean(params.taskId)}
+                    disabled={Boolean(params.taskId || params.farmerId)}
                     onPress={() => {
                       setSearchFarmerQuery("");
                       setShowFarmerModal(true);
@@ -922,7 +924,7 @@ export default function PhotoNotesScreen() {
                       padding: 16,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      opacity: params.taskId ? 0.72 : 1,
+                      opacity: params.taskId || params.farmerId ? 0.72 : 1,
                       flexDirection: "row",
                       justifyContent: "space-between",
                       alignItems: "center",
@@ -949,7 +951,7 @@ export default function PhotoNotesScreen() {
                             color: newNote.farmer ? colors.textPrimary : colors.textMuted,
                           }}
                         >
-                          {newNote.farmer || "Select Farmer (Optional)"}
+                          {params.farmerName || newNote.farmer || "Select Farmer (Optional)"}
                         </Text>
                       </View>
                     </View>

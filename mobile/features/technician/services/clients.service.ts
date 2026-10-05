@@ -48,6 +48,36 @@ export const updateFarmerProfile = async (
   return response.data;
 };
 
+export interface FarmerInvitationResult {
+  message?: string;
+  appAccountStatus?: string;
+  invitationExpiresAt?: string;
+}
+
+export const sendFarmerInvitation = async (
+  api: AxiosInstance,
+  farmerId: string,
+  resend: boolean
+): Promise<FarmerInvitationResult> => {
+  const response = await api.post(
+    `/user/${farmerId}/app-invitation${resend ? "/resend" : ""}`
+  );
+  return response.data;
+};
+
+export interface FarmerCancelInvitationResult {
+  message?: string;
+  appAccountStatus?: string;
+}
+
+export const cancelFarmerInvitation = async (
+  api: AxiosInstance,
+  farmerId: string
+): Promise<FarmerCancelInvitationResult> => {
+  const response = await api.delete(`/user/${farmerId}/app-invitation`);
+  return response.data;
+};
+
 export const registerFarmer = async (
   api: AxiosInstance,
   payload: RegisterFarmerPayload
