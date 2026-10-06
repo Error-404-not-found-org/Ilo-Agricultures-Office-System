@@ -15,6 +15,7 @@ export default function FarmerLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="onboarding" />
       <Stack.Screen name="animal-details" />
       <Stack.Screen name="register-animal" />
       <Stack.Screen name="my-requests" />

@@ -1,5 +1,6 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useRootNavigationState, useSegments } from "expo-router";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -23,12 +24,20 @@ import {
   signOutFromSuspendedAccount,
   subscribeSuspendedAccount,
 } from "@/features/auth/utils/suspendedAccount";
+import { FarmerOnboardingContext } from "@/features/farmer-onboarding/FarmerOnboardingContext";
+import {
+  getFarmerOnboardingDestination,
+  getFarmerOnboardingHandoff,
+  hasSeenFarmerOnboarding,
+  markFarmerOnboardingSeen,
+} from "@/features/farmer-onboarding/utils/farmerOnboarding";
 
 interface AuthBootstrapGateProps {
   api: AxiosInstance;
   children: ReactNode;
   colors: {
     background: string;
+    textPrimary: string;
   };
   isDark: boolean;
   isLoaded: boolean;
@@ -57,6 +66,10 @@ export function AuthBootstrapGate({
     retryBootstrap,
   } = useBootstrapUser({ api, isSignedIn, userId });
   const [establishedOwnerId, setEstablishedOwnerId] = useState<string>();
+  const [farmerOnboarding, setFarmerOnboarding] = useState<{
+    farmerId: string;
+    seen: boolean;
+  } | null>(null);
   const [signOutError, setSignOutError] = useState(false);
   const isSuspended = useSyncExternalStore(
     subscribeSuspendedAccount,
@@ -78,6 +91,32 @@ export function AuthBootstrapGate({
       : false,
     isSuspended,
   });
+  const activeFarmerId = gateState === "authenticated" && dbUser?.role === "farmer" && dbUser.isVerified
+    ? dbUser._id
+    : undefined;
+  const onboardingSegments = segments as string[];
+  const isOnboardingRoute = onboardingSegments[0] === "(farmer)" && onboardingSegments[1] === "onboarding";
+  const farmerOnboardingHandoff = getFarmerOnboardingHandoff({
+    activeFarmerId,
+    onboarding: farmerOnboarding,
+    inFarmerGroup: onboardingSegments[0] === "(farmer)",
+    isOnboardingRoute,
+  });
+
+  useEffect(() => {
+    if (!activeFarmerId) return;
+    let active = true;
+    void hasSeenFarmerOnboarding(activeFarmerId, AsyncStorage).then((seen) => {
+      if (active) setFarmerOnboarding({ farmerId: activeFarmerId, seen });
+    });
+    return () => { active = false; };
+  }, [activeFarmerId]);
+
+  const completeFarmerOnboarding = async () => {
+    if (!activeFarmerId) return;
+    await markFarmerOnboardingSeen(activeFarmerId, AsyncStorage);
+    setFarmerOnboarding({ farmerId: activeFarmerId, seen: true });
+  };
 
   useEffect(() => {
     if (__DEV__ && isSuspended) console.info("[Auth diagnostic] Blocked account gate active", { isSignedIn });
@@ -159,6 +198,20 @@ export function AuthBootstrapGate({
           return;
         }
 
+        if (dbUser.role === "farmer") {
+          if (farmerOnboarding?.farmerId !== dbUser._id) return;
+          const onboardingDestination = getFarmerOnboardingDestination({
+            role: dbUser.role,
+            isVerified: dbUser.isVerified,
+            seen: farmerOnboarding.seen,
+            isOnboardingRoute,
+          });
+          if (onboardingDestination) {
+            router.replace(onboardingDestination as never);
+            return;
+          }
+        }
+
         const atRoot = routeSegments.length === 0 || routeSegments[0] === "";
         const wrongGroup =
           (inAdminGroup && dbUser.role !== "admin") ||
@@ -182,7 +235,9 @@ export function AuthBootstrapGate({
   }, [
     bootstrapError,
     dbUser,
+    farmerOnboarding,
     gateState,
+    isOnboardingRoute,
     isLoaded,
     isSignedIn,
     isSuspended,
@@ -238,7 +293,7 @@ export function AuthBootstrapGate({
             color: "#004D2E",
           }}
         >
-          Loading your profile...
+          Signing you in...
         </Text>
       </View>
     );
@@ -327,5 +382,25 @@ export function AuthBootstrapGate({
   }
 
   // Foreground revalidation leaves the existing navigator and form state untouched.
-  return children;
+  return (
+    <FarmerOnboardingContext.Provider value={{ complete: completeFarmerOnboarding }}>
+      {children}
+      {farmerOnboardingHandoff !== "none" && (
+        <View
+          style={{
+            position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
+            backgroundColor: colors.background,
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator size="large" color="#00643B" />
+          {farmerOnboardingHandoff === "loading-profile" && (
+            <Text style={{ marginTop: 12, fontFamily: "Outfit_600SemiBold", color: colors.textPrimary }}>
+              Loading your profile...
+            </Text>
+          )}
+        </View>
+      )}
+    </FarmerOnboardingContext.Provider>
+  );
 }
