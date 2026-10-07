@@ -19,6 +19,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
+import { buildMonthlyAccomplishmentRows } from "./monthlyAccomplishmentRows";
 import StatCard from "../../components/ui/StatCard";
 import SectionHeader from "../../components/ui/SectionHeader";
 import TimelineCard from "../../components/ui/TimelineCard";
@@ -407,48 +408,9 @@ export default function FieldReports() {
       const res = await axiosInstance.get(
         `/reports/monthly-accomplishment?month=${monthVal}&year=${yearVal}`
       );
-      let data = res.data || [];
-
       const targetBrgy = report.params?.barangay || "all";
-      if (targetBrgy !== "all") {
-        data = data.filter(item =>
-          item.farmer?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
-        );
-      }
-
-      if (!ensureExportableRows(data, toast, "No breeding accomplishment records match this report.")) return;
-
-      const headers = [
-        "Data", "No.", "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address", "Farmer",
-        "AI Date", "No. of AI", "Estrus", "Sire Breed", "Sire Code",
-        "PD Date", "PD Result",
-        "CD Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
-      ];
-
-      const rows = data.map((item, index) => [
-        item.type || "",
-        index + 1,
-        item.animal?.animalId || "—",
-        item.animal?.earTag || "—",
-        item.animal?.brand || "—",
-        item.animal?.species || "—",
-        item.animal?.breed || "—",
-        item.animal?.color || "—",
-        item.farmer?.address?.barangay || "—",
-        item.farmer?.name || "—",
-        item.date ? new Date(item.date).toLocaleDateString() : "—",
-        item.ai?.attempt || "—",
-        item.ai?.estrus || "—",
-        item.ai?.sireBreed || "—",
-        item.ai?.sireCode || "—",
-        item.pd?.date ? new Date(item.pd.date).toLocaleDateString() : "—",
-        item.pd?.result || "—",
-        item.cd?.date ? new Date(item.cd.date).toLocaleDateString() : "—",
-        item.cd?.count || "—",
-        item.cd?.calves?.[0]?.animalId || "—",
-        item.cd?.calves?.[0]?.sex || "—",
-        item.cd?.ease || "—"
-      ]);
+      const { headers, rows } = buildMonthlyAccomplishmentRows(res.data, targetBrgy);
+      if (!ensureExportableRows(rows, toast, "No breeding accomplishment records match this report.")) return;
 
       if (isPDF) {
         const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
@@ -459,26 +421,8 @@ export default function FieldReports() {
         doc.setFontSize(9);
         doc.text("MONTHLY ACCOMPLISHMENT REPORT", doc.internal.pageSize.width / 2, 19, { align: "center" });
 
-        const structuredHeaders = [
-          [
-            { content: "Data", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-            { content: "No.", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-            { content: "Animal Identification", colSpan: 7, styles: { halign: 'center' } },
-            { content: "Farmer", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-            { content: "Artificial Insemination", colSpan: 5, styles: { halign: 'center' } },
-            { content: "Pregnancy Diagnosis", colSpan: 2, styles: { halign: 'center' } },
-            { content: "Calf Drop", colSpan: 5, styles: { halign: 'center' } }
-          ],
-          [
-            "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address",
-            "Date", "No. of AI", "Estrus", "Sire Breed", "Sire Code",
-            "Date", "Result",
-            "Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
-          ]
-        ];
-
         doc.autoTable({
-          head: structuredHeaders,
+          head: [headers],
           body: rows,
           theme: "grid",
           styles: { fontSize: 5, cellPadding: 1 },

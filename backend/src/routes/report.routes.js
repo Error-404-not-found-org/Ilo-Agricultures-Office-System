@@ -4,6 +4,6 @@ import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.get("/monthly-accomplishment", protectedRoute, requireRole(["technician", "admin"]), getMonthlyAccomplishmentReport);
+router.get("/monthly-accomplishment", protectedRoute, requireRole(["technician"]), getMonthlyAccomplishmentReport);
 
 export default router;

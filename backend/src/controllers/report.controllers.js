@@ -5,6 +5,25 @@ import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { User } from "../models/user.model.js";
 import { getManilaMonthBoundsFor } from "../services/technician-workload-summary.service.js";
+import { buildAIRequestMutationOwnershipGuard } from "../policies/request.policy.js";
+
+const idOf = (value) => value?._id?.toString?.() ?? value?.toString?.() ?? null;
+const animalFields = (animal) => ({
+  animalId: animal?.animalId ?? null,
+  earTag: animal?.earTag ?? null,
+  species: animal?.species ?? null,
+  breed: animal?.breed ?? null,
+});
+const farmerFields = (farmer) => ({
+  farmerName: farmer?.name ?? null,
+  barangay: farmer?.address?.barangay ?? null,
+});
+const serviceFields = (record) => ({
+  recordId: idOf(record),
+  ...animalFields(record.animalId),
+  ...farmerFields(record.farmerId),
+});
+const sortByDate = (field) => (a, b) => new Date(a[field]) - new Date(b[field]);
 
 export const getMonthlyAccomplishmentReport = async (req, res) => {
   try {
@@ -16,98 +35,105 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
 
     const numericMonth = Number(month);
     const numericYear = Number(year);
+    if (!/^\d{1,2}$/.test(String(month)) || !/^\d{4}$/.test(String(year)) ||
+      !Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12 ||
+      !Number.isInteger(numericYear) || numericYear < 1900 || numericYear > 2100) {
+      return res.status(400).json({ message: "Month and Year must be valid calendar values." });
+    }
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({ message: "Only technicians can view monthly accomplishments." });
+    }
     const { start: startDate, end: endDate } = getManilaMonthBoundsFor(
       numericYear,
       numericMonth,
     );
 
-    // Fetch all related records for this month
+    const monthRange = { $gte: startDate, $lt: endDate };
+    const technicianId = req.user._id;
     const [inseminations, pregnancies, calvings] = await Promise.all([
       Insemination.find({
         deletedAt: null,
-        $or: [
-          { inseminationDate: { $gte: startDate, $lt: endDate } },
-          {
-            inseminationDate: { $in: [null] },
-            createdAt: { $gte: startDate, $lt: endDate },
-            status: 'done'
-          }
-        ]
-      }).populate('animalId').populate('farmerId').lean(),
+        status: "done",
+        inseminationDate: monthRange,
+        ...buildAIRequestMutationOwnershipGuard({ technicianId }),
+      })
+        .populate("animalId", "animalId earTag species breed")
+        .populate("farmerId", "name address.barangay")
+        .populate("technicianId", "name")
+        .lean(),
       
       Pregnancy.find({
         deletedAt: null,
-        "pregnancyDiagnosis.date": { $gte: startDate, $lt: endDate }
-      }).populate('animalId').populate('farmerId').lean(),
+        "confirmation.confirmedBy": technicianId,
+        "pregnancyDiagnosis.date": monthRange,
+      })
+        .populate("animalId", "animalId earTag species breed")
+        .populate("farmerId", "name address.barangay")
+        .populate("confirmation.confirmedBy", "name")
+        .populate("inseminationId", "attemptNumber")
+        .lean(),
       
       Calving.find({
         deletedAt: null,
-        date: { $gte: startDate, $lt: endDate }
-      }).populate('animalId').populate('farmerId').lean(),
+        technicianId,
+        date: monthRange,
+      })
+        .populate("animalId", "animalId earTag species breed")
+        .populate("farmerId", "name address.barangay")
+        .populate("technicianId", "name")
+        .populate("calves.animalId", "earTag")
+        .lean(),
     ]);
 
-    // MAP for grouping by Animal ID to merge events if they happen in the same month
-    const mergedData = new Map();
+    const artificialInsemination = inseminations.map((record) => ({
+      ...serviceFields(record),
+      serviceDate: record.inseminationDate,
+      attemptNumber: record.attemptNumber ?? null,
+      estrus: record.estrus ?? null,
+      sireBreed: record.sireBreed ?? null,
+      sireCode: record.sireCode ?? null,
+      semenDosesUsed: record.semenDosesUsed ?? null,
+      technicianName: record.technicianId?.name ?? null,
+      outcome: record.outcome ?? null,
+    })).sort(sortByDate("serviceDate"));
+    const pregnancyDiagnosis = pregnancies.map((record) => ({
+      ...serviceFields(record),
+      diagnosisDate: record.pregnancyDiagnosis?.date ?? null,
+      result: record.pregnancyDiagnosis?.result ?? null,
+      diagnosticMethod: record.confirmation?.methodCode ?? null,
+      linkedInseminationId: idOf(record.inseminationId),
+      linkedAttemptNumber: record.inseminationId?.attemptNumber ?? null,
+      expectedCalvingDate: record.targetCalvingDate ?? null,
+      technicianName: record.confirmation?.confirmedBy?.name ?? null,
+    })).sort(sortByDate("diagnosisDate"));
+    const calving = calvings.map((record) => ({
+      ...serviceFields(record),
+      calvingDate: record.date,
+      outcome: record.outcome ?? null,
+      calvingEase: record.calvingEase ?? null,
+      totalDelivered: record.totalDelivered ?? null,
+      livingCalfCount: record.livingCalfCount ?? null,
+      stillbornCount: record.stillbornCount ?? null,
+      calves: (record.calves || []).map((calf) => ({
+        animalId: idOf(calf.animalId),
+        earTag: calf.earTag || calf.animalId?.earTag || null,
+        sex: calf.sex ?? null,
+      })),
+      technicianName: record.technicianId?.name ?? null,
+    })).sort(sortByDate("calvingDate"));
 
-    const getOrCreateEntry = (animal, farmer, date) => {
-      const key = animal?._id?.toString() || Math.random().toString();
-      if (!mergedData.has(key)) {
-        mergedData.set(key, {
-          date: date,
-          animal: animal,
-          farmer: farmer,
-          ai: null,
-          pd: null,
-          cd: null,
-          type: []
-        });
-      }
-      return mergedData.get(key);
-    };
-
-    // Process Inseminations
-    inseminations.forEach(ins => {
-      const entry = getOrCreateEntry(ins.animalId, ins.farmerId, ins.inseminationDate || ins.createdAt);
-      entry.type.push('AI');
-      entry.ai = {
-        attempt: ins.attemptNumber,
-        estrus: ins.estrus === 'Natural' ? 'NH' : 'SH',
-        sireBreed: ins.sireBreed,
-        sireCode: ins.sireCode
-      };
+    res.status(200).json({
+      month: numericMonth,
+      year: numericYear,
+      counts: {
+        artificialInsemination: artificialInsemination.length,
+        pregnancyDiagnosis: pregnancyDiagnosis.length,
+        calving: calving.length,
+      },
+      artificialInsemination,
+      pregnancyDiagnosis,
+      calving,
     });
-
-    // Process Pregnancies
-    pregnancies.forEach(preg => {
-      const entry = getOrCreateEntry(preg.animalId, preg.farmerId, preg.pregnancyDiagnosis?.date || preg.createdAt);
-      entry.type.push('PD');
-      entry.pd = {
-        date: preg.pregnancyDiagnosis?.date,
-        result: preg.pregnancyDiagnosis?.result === 'Pregnant' ? 'Pregnant' : 'Empty'
-      };
-    });
-
-    // Process Calvings
-    calvings.forEach(calv => {
-      const entry = getOrCreateEntry(calv.animalId, calv.farmerId, calv.date);
-      entry.type.push('CD');
-      entry.cd = {
-        count: calv.numberOfCalves,
-        calves: calv.calves,
-        ease: calv.calvingEase
-      };
-    });
-
-    // Convert Map to Array and format the type string
-    const reportData = Array.from(mergedData.values()).map(entry => ({
-      ...entry,
-      type: [...new Set(entry.type)].join('+') // e.g., "AI+PD"
-    }));
-
-    // Sort by date
-    reportData.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    res.status(200).json(reportData);
   } catch (error) {
     console.error("[getMonthlyAccomplishmentReport ERROR]", error);
     res.status(500).json({ message: "Failed to generate report." });

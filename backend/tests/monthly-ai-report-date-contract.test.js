@@ -34,7 +34,7 @@ const invokeReport = async (month, year) => {
   let statusCode;
   let body;
   await getMonthlyAccomplishmentReport(
-    { query: { month: String(month), year: String(year) } },
+    { query: { month: String(month), year: String(year) }, user: { _id: technician._id, role: "technician" } },
     {
       status(code) {
         statusCode = code;
@@ -68,12 +68,13 @@ test("historical AI is reported only in its Manila service month", async () => {
   const september = await invokeReport(9, 2026);
 
   assert.equal(january.statusCode, 200);
-  assert.equal(january.body.length, 1);
+  assert.equal(january.body.artificialInsemination.length, 1);
+  assert.equal(january.body.artificialInsemination[0].recordId, String(record._id));
   assert.equal(september.statusCode, 200);
-  assert.equal(september.body.length, 0);
+  assert.equal(september.body.artificialInsemination.length, 0);
 });
 
-test("legacy completed AI without inseminationDate remains reportable by entry month", async () => {
+test("completed AI without inseminationDate is excluded despite entry month", async () => {
   const record = await Insemination.create({
     farmerId: farmer._id,
     animalId: animal._id,
@@ -88,5 +89,5 @@ test("legacy completed AI without inseminationDate remains reportable by entry m
 
   const september = await invokeReport(9, 2026);
   assert.equal(september.statusCode, 200);
-  assert.equal(september.body.length, 1);
+  assert.equal(september.body.artificialInsemination.length, 0);
 });
