@@ -8,6 +8,7 @@ import { Calving } from "../src/models/calving.model.js";
 import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { HealthRequest } from "../src/models/health-request.model.js";
+import { buildAIRequestMutationOwnershipGuard } from "../src/policies/request.policy.js";
 import {
   getAnimalHealthHistory,
   getAnimalRecords,
@@ -50,6 +51,84 @@ const responseRecorder = () => {
     },
   };
 };
+
+for (const [recordKind, Model, ownershipField] of [
+  ["insemination", Insemination, null],
+  ["pregnancy", Pregnancy, "confirmation.confirmedBy"],
+  ["calving", Calving, "technicianId"],
+  ["medical_record", MedicalRecord, "technicianId"],
+]) {
+  test(`Official ${recordKind} detail respects Technician list ownership while preserving Admin access`, async () => {
+    const originalAnimal = Animal.findOne;
+    const originalFindOne = Model.findOne;
+    const animal = { _id: "animal-scope", farmerId: "farmer-scope", earTag: "SCOPE-1" };
+    const record = {
+      _id: "record-scope",
+      animalId: animal,
+      farmerId: { _id: "farmer-scope", name: "Farmer" },
+      technicianId: { _id: "tech-owner", name: "Owner" },
+      approvedBy: { _id: "tech-owner", name: "Owner" },
+      confirmation: { confirmedBy: { _id: "tech-owner", name: "Owner" } },
+      status: "done",
+      outcome: "live_birth",
+      pregnancyDiagnosis: { result: "Pregnant" },
+      type: "Treatment",
+      date: new Date("2026-08-01T00:00:00.000Z"),
+    };
+    const seenScopes = [];
+    Animal.findOne = async () => animal;
+    Model.findOne = (scope) => {
+      seenScopes.push(scope);
+      const isAdminQuery = ownershipField
+        ? !Object.hasOwn(scope, ownershipField)
+        : !scope.$and && !scope.status;
+      const authorized = isAdminQuery || (ownershipField
+        ? scope[ownershipField] === "tech-owner"
+        : scope.status === "done" &&
+          JSON.stringify(scope.$and) === JSON.stringify(buildAIRequestMutationOwnershipGuard({ technicianId: "tech-owner" }).$and));
+      return queryResult(authorized ? record : null);
+    };
+
+    try {
+      for (const [role, id, expectedStatus] of [
+        ["technician", "tech-owner", 200],
+        ["technician", "tech-peer", 404],
+        ["admin", "admin-1", 200],
+      ]) {
+        const recorder = responseRecorder();
+        await getOfficialRecordDetail({
+          user: { _id: id, role },
+          params: { id: "animal-scope", recordKind, recordId: "record-scope" },
+        }, recorder.response);
+        assert.equal(recorder.statusCode, expectedStatus, `${recordKind}: ${role} ${id}`);
+        if (expectedStatus === 404) {
+          assert.equal(recorder.body.code, "OFFICIAL_RECORD_NOT_FOUND");
+          assert.equal(recorder.body.data, undefined);
+        }
+      }
+      const ownerScope = seenScopes[0];
+      const peerScope = seenScopes[1];
+      const adminScope = seenScopes[2];
+      if (ownershipField) {
+        assert.equal(ownerScope[ownershipField], "tech-owner");
+        assert.equal(peerScope[ownershipField], "tech-peer");
+        assert.equal(Object.hasOwn(adminScope, ownershipField), false);
+        if (recordKind === "medical_record") {
+          assert.deepEqual(ownerScope.type, { $ne: "General Note" });
+        }
+      } else {
+        assert.equal(ownerScope.status, "done");
+        assert.deepEqual(ownerScope.$and, buildAIRequestMutationOwnershipGuard({ technicianId: "tech-owner" }).$and);
+        assert.deepEqual(peerScope.$and, buildAIRequestMutationOwnershipGuard({ technicianId: "tech-peer" }).$and);
+        assert.equal(Object.hasOwn(adminScope, "status"), false);
+        assert.equal(Object.hasOwn(adminScope, "$and"), false);
+      }
+    } finally {
+      Animal.findOne = originalAnimal;
+      Model.findOne = originalFindOne;
+    }
+  });
+}
 
 test("AI follow-up mutations do not replace the completion timestamp", () => {
   const controller = readFileSync(

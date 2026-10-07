@@ -699,10 +699,17 @@ export const getOfficialRecordDetail = async (req, res) => {
 
     const animal = await getAccessibleAnimal(animalId, req.user);
     const scope = { _id: recordId, animalId: animal._id };
+    // Use the same record-level scope as the Technician official Records list.
+    const technicianFilters = req.user.role === "technician"
+      ? getOfficialRecordContext({ ...req, query: {} })
+      : null;
     let query;
 
     if (recordKind === "insemination") {
-      query = Insemination.findOne({ ...scope, deletedAt: null })
+      query = Insemination.findOne({
+        ...scope,
+        ...(technicianFilters?.inseminationFilter || { deletedAt: null }),
+      })
         .populate("technicianId approvedBy outcomeConfirmedBy", "name role")
         .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate(
@@ -714,17 +721,26 @@ export const getOfficialRecordDetail = async (req, res) => {
           "pregnancyDiagnosis confirmation targetCalvingDate",
         );
     } else if (recordKind === "pregnancy") {
-      query = Pregnancy.findOne({ ...scope, deletedAt: null })
+      query = Pregnancy.findOne({
+        ...scope,
+        ...(technicianFilters?.pregnancyFilter || { deletedAt: null }),
+      })
         .populate("confirmation.confirmedBy", "name role")
         .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate("inseminationId", "attemptNumber sireBreed sireCode");
     } else if (recordKind === "calving") {
-      query = Calving.findOne({ ...scope, deletedAt: null })
+      query = Calving.findOne({
+        ...scope,
+        ...(technicianFilters?.calvingFilter || { deletedAt: null }),
+      })
         .populate("technicianId", "name role")
         .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate("calves.animalId", "animalId earTag imageUrl");
     } else if (recordKind === "medical_record") {
-      query = MedicalRecord.findOne(scope)
+      query = MedicalRecord.findOne({
+        ...scope,
+        ...(technicianFilters?.medicalRecordFilter || {}),
+      })
         .populate("technicianId", "name role")
         .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate(
