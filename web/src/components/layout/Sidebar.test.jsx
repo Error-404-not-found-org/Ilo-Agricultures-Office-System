@@ -73,7 +73,6 @@ describe("Admin Sidebar navigation", () => {
       "/admin/support-tickets",
       "/admin/work-queue",
       "/admin/barangays",
-      "/admin/reports",
       "/admin/archived",
       "/admin/audit-logs",
       "/admin/settings",
@@ -96,7 +95,6 @@ describe("Admin Sidebar navigation", () => {
       "Insights",
       "Workload",
       "Barangays",
-      "Reports",
       "System",
       "Archived Records",
       "Audit Logs",
@@ -118,7 +116,8 @@ describe("Admin Sidebar navigation", () => {
     expect(navigation).toHaveTextContent("Barangays");
     expect(navigation).toHaveTextContent("Support");
     expect(navigation).toHaveTextContent("Insights");
-    expect(navigation).toHaveTextContent("Reports");
+    expect(within(navigation).queryByRole("link", { name: "Reports" }))
+      .not.toBeInTheDocument();
     expect(navigation).toHaveTextContent("Audit Logs");
     expect(navigation).toHaveTextContent("System");
     expect(navigation).toHaveTextContent("Settings");
@@ -296,7 +295,6 @@ describe("Admin Sidebar navigation", () => {
       "Users",
       "Requests",
       "Workload",
-      "Reports",
       "Audit Logs",
       "Settings",
     ];

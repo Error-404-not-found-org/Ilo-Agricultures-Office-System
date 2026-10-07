@@ -10,7 +10,6 @@ const normalizedAdminFiles = [
   "src/pages/admin/Dashboard.jsx",
   "src/pages/admin/Inseminations.jsx",
   "src/pages/admin/Livestock.jsx",
-  "src/pages/admin/Reports.jsx",
   "src/pages/admin/Settings.jsx",
   "src/pages/admin/SupportTickets.jsx",
   "src/pages/admin/TechnicianProfile.jsx",
@@ -54,9 +53,6 @@ describe("Admin semantic palette consistency", () => {
       read("src/components/dialogs/TechnicianInviteDialog.jsx"),
     ).toContain('className="btn btn-primary btn-sm"');
     expect(read("src/pages/admin/Settings.jsx")).toContain(
-      'className="btn btn-primary btn-sm"',
-    );
-    expect(read("src/pages/admin/Reports.jsx")).toContain(
       'className="btn btn-primary btn-sm"',
     );
   });

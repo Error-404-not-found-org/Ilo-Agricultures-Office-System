@@ -25,7 +25,6 @@ const LivestockProfile = lazy(() => import("./pages/admin/LivestockProfile"));
 const Inseminations = lazy(() => import("./pages/admin/Inseminations"));
 const Users = lazy(() => import("./pages/admin/Users"));
 const AdminSettings = lazy(() => import("./pages/admin/Settings"));
-const Reports = lazy(() => import("./pages/admin/Reports"));
 const BarangayInsights = lazy(() => import("./pages/admin/BarangayInsights"));
 const SupportTickets = lazy(() => import("./pages/admin/SupportTickets"));
 const AuditLogs = lazy(() => import("./pages/admin/AuditLogs"));
@@ -240,7 +239,6 @@ function App() {
               <Route path="inseminations" element={<Inseminations />} />
               <Route path="users" element={<Users />} />
               <Route path="settings" element={<AdminSettings />} />
-              <Route path="reports" element={<Reports />} />
               <Route path="barangays" element={<BarangayInsights />} />
               <Route path="support-tickets" element={<SupportTickets />} />
               <Route path="audit-logs" element={<AuditLogs />} />

@@ -24,7 +24,6 @@ export default function AdminLayout() {
       <Stack.Screen name="request-details" />
       <Stack.Screen name="technician-workload" />
       <Stack.Screen name="animal-details" />
-      <Stack.Screen name="reports" />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="support-tickets" />
       <Stack.Screen name="audit-logs" />

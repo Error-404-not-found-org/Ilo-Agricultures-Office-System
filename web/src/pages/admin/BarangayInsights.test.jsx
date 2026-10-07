@@ -157,14 +157,13 @@ describe("Barangay Insights factual table", () => {
     const summary = await screen.findByRole("region", {
       name: "Barangay summary",
     });
-    expect(within(summary).getByText("Total Barangays")).toBeInTheDocument();
-    expect(within(summary).getByText("Total Farmers")).toBeInTheDocument();
-    expect(within(summary).getByText("Total Animals")).toBeInTheDocument();
-    expect(
-      within(summary).getByText("Pending Health Requests"),
-    ).toBeInTheDocument();
+    expect(within(summary).getByText("Barangays with Records")).toBeInTheDocument();
+    expect(within(summary).getByText("Farmers")).toBeInTheDocument();
+    expect(within(summary).getByText("Animals")).toBeInTheDocument();
+    expect(within(summary).getByText("Pending Requests").parentElement).toHaveTextContent("6");
     expect(within(summary).getByText("15")).toBeInTheDocument();
     expect(within(summary).getByText("42")).toBeInTheDocument();
+    expect(summary.querySelectorAll(".border-l-4")).toHaveLength(4);
 
     const table = screen.getByRole("table");
     expect(table).toHaveClass("table-pin-rows", "min-w-180");
@@ -174,6 +173,7 @@ describe("Barangay Insights factual table", () => {
     expect(within(table).getByText("Animals")).toBeInTheDocument();
     expect(within(table).getByText("Pending Health")).toBeInTheDocument();
     expect(within(table).getByText("Pending AI")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View Summary for Poblacion East" })).toHaveClass("btn-info");
     expect(screen.queryByText("Healthy")).not.toBeInTheDocument();
     expect(screen.queryByText("Critical")).not.toBeInTheDocument();
     expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
@@ -281,6 +281,9 @@ describe("Barangay Insights factual table", () => {
       await screen.findByText("Failed to load barangay insights."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    axiosInstance.get.mockResolvedValueOnce({ data: [canonicalInsight] });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("Poblacion East");
     errorView.unmount();
 
     axiosInstance.get.mockResolvedValue({ data: { barangays: [] } });
@@ -290,5 +293,58 @@ describe("Barangay Insights factual table", () => {
         screen.getByText("Failed to load barangay insights."),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("opens a factual, KPI-only Barangay summary without operational handoffs", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [canonicalInsight] });
+    renderPage();
+    await screen.findByText("Poblacion East");
+    fireEvent.click(screen.getByRole("button", { name: "View Summary for Poblacion East" }));
+    const detail = screen.getByRole("region", { name: "Barangay detail" });
+    expect(within(detail).getByRole("heading", { name: "Poblacion East" })).toBeInTheDocument();
+    expect(within(detail).getByText("Oton")).toBeInTheDocument();
+    for (const [label, value] of [["Farmers", "12"], ["Animals", "34"], ["Pending AI", "3"], ["Pending Health", "2"]]) {
+      expect(within(detail).getByText(label).parentElement).toHaveTextContent(value);
+    }
+    expect(within(detail).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(detail).queryByText(/activity score|success rate|healthy|critical/i)).not.toBeInTheDocument();
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Back to Barangays" }));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
+  it("shows a factual zero in the Barangay summary", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [secondInsight] });
+    renderPage();
+    await screen.findByText("Abilay Norte");
+    fireEvent.click(screen.getByRole("button", { name: "View Summary for Abilay Norte" }));
+    const detail = screen.getByRole("region", { name: "Barangay detail" });
+    expect(within(detail).getByText("Pending Health").parentElement).toHaveTextContent("0");
+    expect(detail.querySelectorAll(".border-l-4")).toHaveLength(4);
+  });
+
+  it("does not invent a combined pending count when either request count is unavailable", async () => {
+    axiosInstance.get.mockResolvedValue({
+      data: [{ ...canonicalInsight, pendingAIRequests: null }],
+    });
+    renderPage();
+    const summary = await screen.findByRole("region", { name: "Barangay summary" });
+    await waitFor(() =>
+      expect(within(summary).getByText("Pending Requests").parentElement).toHaveTextContent("Not available"),
+    );
+  });
+
+  it("does not guess a missing municipality or display false zero totals on error", async () => {
+    axiosInstance.get.mockResolvedValueOnce({ data: [{ ...canonicalInsight, municipality: "", city: "", district: "District 1" }] });
+    const view = renderPage();
+    await screen.findByText("Poblacion East");
+    fireEvent.click(screen.getByRole("button", { name: "View Summary for Poblacion East" }));
+    expect(screen.getByText("Location not available")).toBeInTheDocument();
+    view.unmount();
+
+    axiosInstance.get.mockRejectedValueOnce(new Error("offline"));
+    renderPage();
+    await screen.findByText("Failed to load barangay insights.");
+    expect(within(screen.getByRole("region", { name: "Barangay summary" })).queryByText("0")).not.toBeInTheDocument();
   });
 });

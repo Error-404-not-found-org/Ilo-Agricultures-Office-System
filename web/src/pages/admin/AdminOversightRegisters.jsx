@@ -59,8 +59,8 @@ const configs = {
       "Diagnosis date",
       "Animal",
       "Farmer",
-      "Result",
-      "Expected calving",
+      "Diagnosis result",
+      "Expected calving date",
       "Cycle status",
     ],
     getRecords: (data) =>
@@ -71,15 +71,11 @@ const configs = {
           : [],
     rowKey: (record) => record._id,
     cells: (record) => [
-      formatDate(
-        record.pregnancyDiagnosis?.date ||
-          record.diagnosisDate ||
-          record.createdAt,
-      ),
+      formatDate(record.pregnancyDiagnosis?.date),
       animalCell(record),
       record.farmerId?.name || missing,
       <span key="result" className="badge badge-outline">
-        {record.pregnancyDiagnosis?.result || record.result || missing}
+        {record.pregnancyDiagnosis?.result || missing}
       </span>,
       formatDate(record.targetCalvingDate),
       record.cycleStatus || missing,
@@ -112,11 +108,9 @@ const configs = {
           : [],
     rowKey: (record) => record._id,
     cells: (record) => {
-      const calfCount =
-        record.numberOfCalves ??
-        (Array.isArray(record.calves) ? record.calves.length : null);
+      const calfCount = record.numberOfCalves ?? record.totalDelivered ?? null;
       return [
-        formatDate(record.date || record.calvingDate),
+        formatDate(record.date),
         animalCell(record),
         record.farmerId?.name || missing,
         <span key="outcome" className="badge badge-outline">
@@ -208,7 +202,7 @@ function OversightRegister({ type }) {
                     records.map((record) => (
                       <tr
                         key={config.rowKey(record)}
-                        className="hover:bg-base-300/60 transition-colors cursor-pointer"
+                        className="hover:bg-base-300/60 transition-colors"
                       >
                         {config.cells(record).map((cell, index) => (
                           <td key={config.headers[index]}>{cell}</td>

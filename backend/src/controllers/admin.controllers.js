@@ -403,6 +403,8 @@ export const getAllInseminations = async (req, res) => {
       Insemination.find(query)
         .populate("farmerId", "name email")
         .populate("animalId", "earTag species breed")
+        .populate("technicianId", "name")
+        .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -1214,7 +1216,7 @@ export const getBarangaysInsightsList = async (req, res) => {
           },
         },
         { $unwind: "$farmer" },
-        { $match: { "farmer.address.barangay": validBarangayMatch } },
+        { $match: { "farmer.deletedAt": null, "farmer.address.barangay": validBarangayMatch } },
         {
           $group: {
             _id: {
@@ -1268,7 +1270,7 @@ export const getBarangaysInsightsList = async (req, res) => {
           },
         },
         { $unwind: "$farmer" },
-        { $match: { "farmer.address.barangay": validBarangayMatch } },
+        { $match: { "farmer.deletedAt": null, "farmer.address.barangay": validBarangayMatch } },
         {
           $group: {
             _id: {
@@ -1294,7 +1296,7 @@ export const getBarangaysInsightsList = async (req, res) => {
           },
         },
         { $unwind: "$farmer" },
-        { $match: { "farmer.address.barangay": validBarangayMatch } },
+        { $match: { "farmer.deletedAt": null, "farmer.address.barangay": validBarangayMatch } },
         {
           $group: {
             _id: {

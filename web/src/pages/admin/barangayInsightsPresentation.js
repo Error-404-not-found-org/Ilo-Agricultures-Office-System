@@ -1,7 +1,7 @@
 const toNumericMetric = (value) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-export const mapBarangayInsight = (item = {}, getMunicipalityFallback) => {
+export const mapBarangayInsight = (item = {}) => {
   const name =
     typeof item.barangay === "string" && item.barangay.trim()
       ? item.barangay.trim()
@@ -9,11 +9,9 @@ export const mapBarangayInsight = (item = {}, getMunicipalityFallback) => {
 
   return {
     name,
-    municipality:
-      item.municipality ||
-      item.city ||
-      getMunicipalityFallback?.(name) ||
-      "Not available",
+    municipality: [item.municipality, item.city]
+      .find((value) => typeof value === "string" && value.trim())?.trim() || "",
+    district: typeof item.district === "string" ? item.district.trim() : "",
     farmersCount: toNumericMetric(item.farmersCount),
     animalsCount: toNumericMetric(item.animalsCount),
     pendingHealthRequests: toNumericMetric(item.pendingHealthRequests),

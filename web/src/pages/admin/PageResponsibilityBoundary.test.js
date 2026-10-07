@@ -4,6 +4,17 @@ import { describe, expect, it } from "vitest";
 const read = (path) => readFileSync(path, "utf8");
 
 describe("Admin page responsibility composition", () => {
+  it("keeps operational reporting in Technician routing, not Admin routing", () => {
+    const app = read("src/App.jsx");
+    const sidebar = read("src/components/layout/Sidebar.jsx");
+
+    expect(app).not.toContain('import("./pages/admin/Reports")');
+    expect(app).not.toContain('<Route path="reports" element={<Reports />} />');
+    expect(sidebar).not.toContain('path: "/admin/reports"');
+    expect(app).toContain('import("./pages/technician/Reports")');
+    expect(app).toContain('<Route path="reports" element={<TechnicianReports />} />');
+  });
+
   it("passes explicit roles into shared Requests and Livestock routes", () => {
     const app = read("src/App.jsx");
 

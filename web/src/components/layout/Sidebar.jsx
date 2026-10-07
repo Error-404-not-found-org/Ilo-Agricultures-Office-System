@@ -322,11 +322,6 @@ export default function Sidebar() {
         icon: <MapPin size={16} />,
         label: "Barangays",
       },
-      {
-        path: "/admin/reports",
-        icon: <FileText size={16} />,
-        label: "Reports",
-      },
       { type: "label", label: "System" },
       {
         path: "/admin/archived",

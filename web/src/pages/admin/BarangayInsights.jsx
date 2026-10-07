@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ClipboardList, HeartPulse, MapPin, PawPrint, Search, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import Topbar from "../../components/layout/Topbar";
+import { ui } from "../../components/ui/uiClasses";
 import axiosInstance from "../../lib/axios";
-import { MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
 import {
   formatBarangayMetric,
   getDefaultBarangaySort,
@@ -24,34 +24,10 @@ const SORTABLE_COLUMNS = [
   { key: "pendingAIRequests", label: "Pending AI", align: "text-right" },
 ];
 
-const getMunicipalityForBarangay = (brgyName) => {
-  if (!brgyName) return "Oton, Iloilo";
-
-  const cleanName = brgyName.split(" (")[0].trim().toLowerCase();
-
-  for (const [municipality, list] of Object.entries(MUNICIPALITY_BARANGAYS)) {
-    const found = list.some(
-      (barangay) =>
-        barangay.toLowerCase() === cleanName ||
-        barangay.toLowerCase().includes(cleanName),
-    );
-    if (found) return `${municipality}, Iloilo`;
-  }
-
-  if (brgyName.includes("(") && brgyName.includes(")")) {
-    const match = brgyName.match(/\(([^)]+)\)/);
-    if (match?.[1]) {
-      const district = match[1].trim();
-      return `${district.charAt(0).toUpperCase() + district.slice(1)}, Iloilo City`;
-    }
-  }
-
-  return "Oton, Iloilo";
-};
-
 export default function BarangayInsights() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState(null);
+  const [selectedBarangay, setSelectedBarangay] = useState(null);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin", "barangay-insights"],
     queryFn: async () => {
@@ -59,9 +35,7 @@ export default function BarangayInsights() {
       if (!Array.isArray(response.data)) {
         throw new Error("Invalid Barangay Insights response");
       }
-      return response.data.map((item) =>
-        mapBarangayInsight(item, getMunicipalityForBarangay),
-      );
+      return response.data.map(mapBarangayInsight);
     },
   });
 
@@ -79,12 +53,18 @@ export default function BarangayInsights() {
   }, [allBarangays, effectiveSort, search]);
 
   const summary = useMemo(
-    () => ({
-      barangays: allBarangays.length,
-      farmers: sumBarangayMetric(allBarangays, "farmersCount"),
-      animals: sumBarangayMetric(allBarangays, "animalsCount"),
-      pendingHealth: sumBarangayMetric(allBarangays, "pendingHealthRequests"),
-    }),
+    () => {
+      const pendingAI = sumBarangayMetric(allBarangays, "pendingAIRequests");
+      const pendingHealth = sumBarangayMetric(allBarangays, "pendingHealthRequests");
+      return {
+        barangays: allBarangays.length,
+        farmers: sumBarangayMetric(allBarangays, "farmersCount"),
+        animals: sumBarangayMetric(allBarangays, "animalsCount"),
+        pendingRequests: pendingAI === null || pendingHealth === null
+          ? null
+          : pendingAI + pendingHealth,
+      };
+    },
     [allBarangays],
   );
 
@@ -107,34 +87,49 @@ export default function BarangayInsights() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Barangay Insights"
-        subtitle="Municipal livestock, farmers, and service visibility by barangay"
+        title="Barangay Management"
+        subtitle="Registered Farmers, livestock, and pending service requests by barangay"
       />
 
       <main className="p-4 md:p-6 space-y-5 flex-1 min-h-0 pb-10">
-        <section
+        {selectedBarangay && !error ? (
+          <BarangayDetail
+            item={selectedBarangay}
+            onBack={() => setSelectedBarangay(null)}
+          />
+        ) : (
+          <>
+            <section
           aria-label="Barangay summary"
-          className="stats stats-vertical sm:stats-horizontal w-full border border-base-300 bg-base-100 shadow-sm"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
-          <SummaryStat
-            label="Total Barangays"
-            value={isLoading ? null : summary.barangays}
+          <MetricCard
+            label="Barangays with Records"
+            value={error ? null : summary.barangays}
             loading={isLoading}
+            icon={MapPin}
+            accent="primary"
           />
-          <SummaryStat
-            label="Total Farmers"
-            value={summary.farmers}
+          <MetricCard
+            label="Farmers"
+            value={error ? null : summary.farmers}
             loading={isLoading}
+            icon={Users}
+            accent="success"
           />
-          <SummaryStat
-            label="Total Animals"
-            value={summary.animals}
+          <MetricCard
+            label="Animals"
+            value={error ? null : summary.animals}
             loading={isLoading}
+            icon={PawPrint}
+            accent="info"
           />
-          <SummaryStat
-            label="Pending Health Requests"
-            value={summary.pendingHealth}
+          <MetricCard
+            label="Pending Requests"
+            value={error ? null : summary.pendingRequests}
             loading={isLoading}
+            icon={ClipboardList}
+            accent="warning"
           />
         </section>
 
@@ -148,7 +143,7 @@ export default function BarangayInsights() {
                 id="barangay-table-heading"
                 className="text-lg font-semibold text-base-content"
               >
-                Barangay comparison
+                Barangays
               </h2>
               <p className="mt-0.5 text-sm text-base-content/70">
                 Compare registered livestock and pending service requests.
@@ -200,6 +195,7 @@ export default function BarangayInsights() {
                         onSort={handleSort}
                       />
                     ))}
+                    <th scope="col">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -211,12 +207,13 @@ export default function BarangayInsights() {
                             <div className="skeleton h-5 w-full" />
                           </td>
                         ))}
+                        <td><div className="skeleton h-5 w-full" /></td>
                       </tr>
                     ))
                   ) : barangays.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={SORTABLE_COLUMNS.length}
+                        colSpan={SORTABLE_COLUMNS.length + 1}
                         className="py-10 text-center text-sm font-medium text-base-content/65"
                       >
                         {search.trim()
@@ -226,7 +223,7 @@ export default function BarangayInsights() {
                     </tr>
                   ) : (
                     barangays.map((item) => (
-                      <tr key={`${item.municipality}-${item.name}`}>
+                      <tr key={`${item.municipality}-${item.district}-${item.name}`}>
                         <th
                           scope="row"
                           className="font-semibold text-base-content"
@@ -237,6 +234,16 @@ export default function BarangayInsights() {
                         <MetricCell value={item.animalsCount} />
                         <MetricCell value={item.pendingHealthRequests} />
                         <MetricCell value={item.pendingAIRequests} />
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-info btn-sm"
+                            aria-label={`View Summary for ${item.name}`}
+                            onClick={() => setSelectedBarangay(item)}
+                          >
+                            View Summary
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -244,24 +251,65 @@ export default function BarangayInsights() {
               </table>
             </div>
           )}
-        </section>
+            </section>
+          </>
+        )}
       </main>
     </div>
   );
 }
 
-const SummaryStat = ({ label, value, loading }) => (
-  <div className="stat px-4 py-3.5">
-    <p className="stat-title text-sm font-medium text-base-content/70">
-      {label}
-    </p>
-    {loading ? (
-      <div className="skeleton mt-2 h-7 w-20" aria-label={`Loading ${label}`} />
-    ) : (
-      <p className="stat-value mt-1 text-2xl font-bold text-base-content">
-        {formatBarangayMetric(value)}
-      </p>
-    )}
+const BarangayDetail = ({ item, onBack }) => {
+  const location = item.municipality
+    ? [item.district, item.municipality].filter(Boolean).join(", ")
+    : "Location not available";
+  const metrics = [
+    ["Farmers", item.farmersCount, Users, "success"],
+    ["Animals", item.animalsCount, PawPrint, "info"],
+    ["Pending AI", item.pendingAIRequests, ClipboardList, "warning"],
+    ["Pending Health", item.pendingHealthRequests, HeartPulse, "primary"],
+  ];
+
+  return (
+    <section aria-label="Barangay detail" className="space-y-4">
+      <button type="button" onClick={onBack} className="btn btn-ghost btn-sm">
+        Back to Barangays
+      </button>
+      <div>
+        <h2 className="text-xl font-semibold text-base-content">{item.name}</h2>
+        <p className="mt-1 text-sm text-base-content/70">{location}</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {metrics.map(([label, value, icon, accent]) => (
+          <MetricCard key={label} label={label} value={value} icon={icon} accent={accent} />
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const accents = {
+  primary: { border: "border-primary", icon: "text-primary bg-primary/10" },
+  success: { border: "border-success", icon: "text-success bg-success/10" },
+  info: { border: "border-info", icon: "text-info bg-info/10" },
+  warning: { border: "border-warning", icon: "text-warning bg-warning/10" },
+};
+
+const MetricCard = ({ label, value, loading = false, icon: Icon, accent }) => (
+  <div className={`${ui.metricCard} border-0 border-l-4 ${accents[accent].border} shadow-sm`}>
+    <div className={`p-2.5 rounded-xl shrink-0 ${accents[accent].icon}`}>
+      <Icon size={16} aria-hidden="true" />
+    </div>
+    <div className="min-w-0">
+      {loading ? (
+        <div className="skeleton h-6 w-20" aria-label={`Loading ${label}`} />
+      ) : (
+        <div className="text-xl font-black text-base-content">{formatBarangayMetric(value)}</div>
+      )}
+      <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
+        {label}
+      </div>
+    </div>
   </div>
 );
 

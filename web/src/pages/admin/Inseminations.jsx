@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { TableRowSkeleton } from "../../components/ui/Skeleton";
+import Modal from "../../components/ui/Modal";
 import {
 
   Syringe,
@@ -16,6 +17,15 @@ import {
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import TableNameLink from "../../components/ui/TableNameLink";
+
+function RecordValue({ label, children }) {
+  return (
+    <div className="rounded-xl border border-base-200 bg-base-100 p-3">
+      <dt className="block text-[10px] font-semibold uppercase text-base-content/60">{label}</dt>
+      <dd className="mt-0.5 wrap-break-word text-xs font-bold text-base-content">{children}</dd>
+    </div>
+  );
+}
 
 export default function Inseminations() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -43,15 +53,16 @@ export default function Inseminations() {
     keepPreviousData: true,
   });
   const inseminations = useMemo(() => inseminationPage.inseminations || inseminationPage.data || [], [inseminationPage]);
-  const summary = useMemo(() => inseminationPage.summary || { pregnant: 0, pending: 0, failed: 0 }, [inseminationPage]);
+  const summary = useMemo(() => inseminationPage.summary || {}, [inseminationPage]);
 
   // ---- DYNAMIC DATA PROCESSING AND MAPPING ----
   const processedLogs = useMemo(() => {
     return inseminations.map(ins => {
-      const visitDate = ins.scheduledDate || ins.preferredDate || ins.createdAt;
+      const visitDate = ins.inseminationDate;
+      const parsedDate = visitDate ? new Date(visitDate) : null;
       return {
         id: ins._id,
-        date: new Date(visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        date: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not recorded",
         rawDate: visitDate,
         animalId: ins.animalId?._id || ins.animalId?.id || null,
         tag: ins.animalId?.earTag || "Not recorded",
@@ -59,9 +70,9 @@ export default function Inseminations() {
         sireBreed: ins.sireBreed || "Not recorded",
         sireCode: ins.sireCode || "Not recorded",
         estrus: ins.estrus || "Not recorded",
-        pdResult: ins.outcome || "Pending",
-        tech: ins.technicianId?.name || ins.approvedBy?.name || "Technician not recorded",
-        attempt: ins.attemptNumber ?? "Not recorded",
+        pdResult: ins.outcome || "Not recorded",
+        tech: ins.technicianId?.name || ins.approvedBy?.name || (ins.technicianId || ins.approvedBy ? "Name unavailable" : "Technician not recorded"),
+        attempt: ins.attemptNumber,
         comment: ins.comment || "",
         technicianNote: ins.technicianNote || ""
       };
@@ -97,7 +108,7 @@ export default function Inseminations() {
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : totalRecords}</div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Total AI Cycles Run
+                AI Records
               </div>
             </div>
           </div>
@@ -107,10 +118,10 @@ export default function Inseminations() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoading ? "..." : summary.pregnant}
+                {isLoading ? "..." : summary.pregnant ?? "Not available"}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Confirmed Pregnant
+                Pregnant Outcomes
               </div>
             </div>
           </div>
@@ -120,10 +131,10 @@ export default function Inseminations() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoading ? "..." : summary.pending}
+                {isLoading ? "..." : summary.pending ?? "Not available"}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Pending Checks
+                Pending Outcomes
               </div>
             </div>
           </div>
@@ -133,10 +144,10 @@ export default function Inseminations() {
             </div>
             <div>
               <div className="text-xl font-black">
-                {isLoading ? "..." : summary.failed}
+                {isLoading ? "..." : summary.failed ?? "Not available"}
               </div>
               <div className="text-[10px] font-bold uppercase text-base-content/80 tracking-wider">
-                Failed Cycles
+                Failed Outcomes
               </div>
             </div>
           </div>
@@ -188,9 +199,11 @@ export default function Inseminations() {
               }}
             >
               <option value="">All Cycle Outcomes</option>
-              <option value="Pending">Pending Check</option>
-              <option value="Pregnant">Pregnant (Verified)</option>
-              <option value="Empty">Failed Cycles</option>
+              <option value="Pending">Pending</option>
+              <option value="Pregnant">Pregnant</option>
+              <option value="Failed (Re-heat)">Failed (Re-heat)</option>
+              <option value="Failed (Aborted)">Failed (Aborted)</option>
+              <option value="Failed (Negative PD)">Failed (Negative PD)</option>
             </select>
 
             <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/80">
@@ -203,7 +216,7 @@ export default function Inseminations() {
               <thead>
                 <tr className="select-none border-b border-base-300 bg-base-200 text-[11px] font-bold uppercase tracking-wider text-base-content/80">
                   <th className="p-3.5 pl-5">Registry ID</th>
-                  <th className="p-3.5">Date Run</th>
+                  <th className="p-3.5">AI Service Date</th>
                   <th className="p-3.5">Livestock Tag</th>
                   <th className="p-3.5">Farmer Client</th>
                   <th className="p-3.5">Sire Genetics</th>
@@ -266,9 +279,11 @@ export default function Inseminations() {
                           className={`badge badge-sm badge-soft text-[10px] font-bold uppercase tracking-wider ${
                             l.pdResult === "Pregnant"
                               ? "badge-success"
-                              : l.pdResult === "Pending" || l.pdResult === "pending"
+                              : l.pdResult === "Pending"
                                 ? "badge-info"
-                                : "badge-error"
+                                : l.pdResult.startsWith("Failed")
+                                  ? "badge-error"
+                                  : "badge-neutral"
                           }`}
                         >
                           {l.pdResult}
@@ -342,106 +357,61 @@ export default function Inseminations() {
         </div>
       </main>
 
-      {/* Detail Modal Component */}
+      {/* Read-only record viewer */}
       {selectedLog && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedLog(null)}
+        <Modal
+          isOpen
+          onClose={() => setSelectedLog(null)}
+          title="Insemination Record"
+          subtitle="Read-only official service record"
+          icon={<Syringe size={20} className="text-primary" aria-hidden="true" />}
+          size="xl"
+          closeOnEscape
+          closeOnBackdropClick
+          actions={<button type="button" className="btn btn-sm" onClick={() => setSelectedLog(null)}>Close</button>}
         >
-          <div
-            className="card w-full max-w-md bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-base-300 pb-2">
-              <h3 className="text-sm font-black uppercase text-base-content/50">
-                Insemination Record Details
-              </h3>
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="btn btn-xs btn-ghost btn-circle text-base-content/50 hover:text-error"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="space-y-5">
-              {/* Service Overview */}
-              <div>
-                <h4 className="text-[10px] font-black text-primary uppercase tracking-wider mb-1.5 pb-1 border-b border-base-300/60">
-                  Service Overview
-                </h4>
-                <div className="divide-y divide-base-300/50 text-xs">
-
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Animal & Owner</span>
-                    <span className="font-bold text-primary">{selectedLog.tag} · {selectedLog.farmer}</span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Service Date</span>
-                    <span className="font-bold">{selectedLog.date}</span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Current Status</span>
-                    <span className="font-extrabold uppercase">{selectedLog.pdResult}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Genetics & Protocol */}
-              <div>
-                <h4 className="text-[10px] font-black text-success uppercase tracking-wider mb-1.5 pb-1 border-b border-base-300/60">
-                  Genetics & Protocol
-                </h4>
-                <div className="divide-y divide-base-300/50 text-xs">
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Sire Genetics</span>
-                    <span className="font-bold">{selectedLog.sireBreed} [{selectedLog.sireCode}]</span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Estrus Type</span>
-                    <span className="font-bold">{selectedLog.estrus}</span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Attempt Number</span>
-                    <span className="font-bold">Attempt #{selectedLog.attempt}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Field Reports */}
-              <div>
-                <h4 className="text-[10px] font-black text-info uppercase tracking-wider mb-1.5 pb-1 border-b border-base-300/60">
-                  Field Reports & Personnel
-                </h4>
-                <div className="divide-y divide-base-300/50 text-xs">
-                  <div className="flex justify-between py-2">
-                    <span className="text-base-content/70 font-semibold">Attending Tech</span>
-                    <span className="font-bold">{selectedLog.tech}</span>
-                  </div>
-                  <div className="flex flex-col gap-1.5 py-2.5">
-                    <span className="text-base-content/70 font-semibold">Technician Notes</span>
-                    <span className="font-medium text-base-content/90 italic bg-base-200 p-2.5 rounded-lg border border-base-300/50">
-                      {selectedLog.technicianNote || "No notes provided"}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1.5 py-2.5">
-                    <span className="text-base-content/70 font-semibold">Farmer Observations</span>
-                    <span className="font-medium text-base-content/90 italic bg-base-200 p-2.5 rounded-lg border border-base-300/50">
-                      {selectedLog.comment || "No observations reported"}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          <div className="space-y-5 py-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <section className="rounded-2xl border border-base-300 bg-base-200/50 p-4">
+                <h4 className="mb-2 text-[10px] font-extrabold uppercase tracking-widest text-primary">Animal Details</h4>
+                <p className="wrap-break-word text-sm font-bold text-base-content">{selectedLog.tag}</p>
+              </section>
+              <section className="rounded-2xl border border-base-300 bg-base-200/50 p-4">
+                <h4 className="mb-2 text-[10px] font-extrabold uppercase tracking-widest text-primary">Farmer</h4>
+                <p className="wrap-break-word text-sm font-bold text-base-content">{selectedLog.farmer}</p>
+              </section>
             </div>
 
-            <button
-              onClick={() => setSelectedLog(null)}
-              className="btn btn-sm w-full border-base-300 rounded-xl text-xs font-bold mt-2 cursor-pointer"
-            >
-              Close Inspection Panel
-            </button>
+            <section className="space-y-3 rounded-2xl border border-base-300 bg-base-200/50 p-4">
+              <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-primary">Official Service Details</h4>
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <RecordValue label="Service Date">{selectedLog.date}</RecordValue>
+                <RecordValue label="Outcome">{selectedLog.pdResult}</RecordValue>
+                <RecordValue label="Sire Breed">{selectedLog.sireBreed}</RecordValue>
+                <RecordValue label="Sire Code">{selectedLog.sireCode}</RecordValue>
+                <RecordValue label="Estrus Type">{selectedLog.estrus}</RecordValue>
+                <RecordValue label="Attempt Number">{selectedLog.attempt == null ? "Not recorded" : `Attempt #${selectedLog.attempt}`}</RecordValue>
+              </dl>
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-base-300 bg-base-200/50 p-4">
+              <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-primary">Technician / Notes</h4>
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <RecordValue label="Attending Tech">{selectedLog.tech}</RecordValue>
+              </dl>
+              <div className="space-y-2.5">
+                <div>
+                  <span className="mb-1 block text-[10px] font-semibold uppercase text-base-content/60">Technician Notes</span>
+                  <p className="rounded-xl border border-base-200 bg-base-100 p-3 text-xs font-medium leading-relaxed text-base-content">{selectedLog.technicianNote || "No notes provided"}</p>
+                </div>
+                <div>
+                  <span className="mb-1 block text-[10px] font-semibold uppercase text-base-content/60">Farmer Observations</span>
+                  <p className="rounded-xl border border-base-200 bg-base-100 p-3 text-xs font-medium leading-relaxed text-base-content">{selectedLog.comment || "No observations reported"}</p>
+                </div>
+              </div>
+            </section>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

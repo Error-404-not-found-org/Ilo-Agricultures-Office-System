@@ -28,7 +28,6 @@ const getTitleForPath = (path) => {
   if (/^\/admin\/users\/[^/]+$/.test(path)) return 'User Details | Admin';
   if (path.startsWith('/admin/users')) return 'User Management | Admin';
   if (path.startsWith('/admin/settings')) return 'Settings | Admin';
-  if (path.startsWith('/admin/reports')) return 'Reports | Admin';
 
   // Default
   if (path === '/') return 'Welcome | Iloilo Agriculture';
