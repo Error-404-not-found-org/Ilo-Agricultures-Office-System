@@ -539,10 +539,6 @@ export default function AiRequestDetailScreen() {
           ) : null}
         </View>
 
-        <RequestDetailCard title="What Happens Next">
-          <RequestDetailNotice message={nextStepMessage} />
-        </RequestDetailCard>
-
         {/* Progress Card */}
         <View
           className="mx-5 mt-5 p-4 border"
@@ -604,14 +600,51 @@ export default function AiRequestDetailScreen() {
                   : "Visit schedule"
             }
             value={visitSchedule || preferredDate || "Not scheduled yet"}
-            isLast={!inseminationDate}
+            isLast={!inseminationDate && !(visitSchedule && visitGuidance)}
           />
           {visitSchedule && visitGuidance ? (
-            <View className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
-              <RequestDetailField
-                label={visitGuidance.label}
-                value={visitGuidance.value}
-              />
+            <View
+              className="flex-row items-start py-3"
+              style={{
+                borderBottomWidth: !inseminationDate ? 0 : 1,
+                borderColor: colors.border,
+              }}
+            >
+              <View
+                className="w-9 h-9 rounded-xl items-center justify-center"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#F0FDF4",
+                }}
+              >
+                <AlertCircle
+                  size={17}
+                  color={colors.primary}
+                />
+              </View>
+              <View className="ml-3 flex-1">
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 9,
+                    letterSpacing: 0.7,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Preparation Before Visit
+                </Text>
+                <Text
+                  className="mt-1"
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 12,
+                    lineHeight: 17,
+                  }}
+                >
+                  {visitGuidance.value}
+                </Text>
+              </View>
             </View>
           ) : null}
           {inseminationDate ? (
