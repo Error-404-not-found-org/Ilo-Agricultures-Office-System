@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useTechnicianRecords as useQueries } from "@/features/technician/hooks/useTechnicianRecords";
-import { getDisplayDate, handleExportCSV } from "../utils/ledgerExport";
+import { getOfficialRecordDate } from "../utils/officialRecordDate";
 
 export type FilterType =
   | "All"
@@ -25,10 +25,6 @@ export function useTechnicianRecords(farmerId?: string) {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  // Modal State
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [detailsVisible, setDetailsVisible] = useState(false);
-
   const allRecords = useMemo(() => {
     const officialRecords =
       queryData.officialRecordsQuery.data?.pages.flatMap(
@@ -41,7 +37,7 @@ export function useTechnicianRecords(farmerId?: string) {
       const kind = String(record.recordKind || record.type || "record");
       const key = id
         ? `${kind}:${id}`
-        : `${kind}:${record.recordDate || record.createdAt || uniqueRecords.size}`;
+        : `${kind}:${uniqueRecords.size}`;
 
       if (!uniqueRecords.has(key)) uniqueRecords.set(key, record);
     });
@@ -63,8 +59,8 @@ export function useTechnicianRecords(farmerId?: string) {
       }))
       .sort(
         (a: any, b: any) =>
-          new Date(getDisplayDate(b) || 0).getTime() -
-          new Date(getDisplayDate(a) || 0).getTime(),
+          new Date(getOfficialRecordDate(b) || 0).getTime() -
+          new Date(getOfficialRecordDate(a) || 0).getTime(),
       );
   }, [queryData.officialRecordsQuery.data?.pages]);
 
@@ -88,7 +84,7 @@ export function useTechnicianRecords(farmerId?: string) {
 
       // 2. Filter by Date Range (Calendar Filter)
       if (startDate || endDate) {
-        const itemDateRaw = getDisplayDate(item);
+        const itemDateRaw = getOfficialRecordDate(item);
         if (!itemDateRaw) return false;
         const itemTime = new Date(itemDateRaw).getTime();
 
@@ -130,15 +126,6 @@ export function useTechnicianRecords(farmerId?: string) {
     setEndDate(null);
   };
 
-  const openDetails = (item: any) => {
-    setSelectedItem(item);
-    setDetailsVisible(true);
-  };
-
-  const exportCSV = async () => {
-    await handleExportCSV(filteredRecords);
-  };
-
   return {
     ...queryData,
     searchQuery,
@@ -155,15 +142,9 @@ export function useTechnicianRecords(farmerId?: string) {
     setShowStartPicker,
     showEndPicker,
     setShowEndPicker,
-    selectedItem,
-    setSelectedItem,
-    detailsVisible,
-    setDetailsVisible,
     allRecords,
     recordsTotal,
     filteredRecords,
     clearDateRange,
-    openDetails,
-    exportCSV,
   };
 }

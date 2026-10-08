@@ -34,7 +34,7 @@ const invokeReport = async (month, year) => {
   let statusCode;
   let body;
   await getMonthlyAccomplishmentReport(
-    { query: { month: String(month), year: String(year) }, user: { _id: technician._id, role: "technician" } },
+    { query: { month: String(month), year: String(year), serviceType: "ai" }, user: { _id: technician._id, role: "technician" } },
     {
       status(code) {
         statusCode = code;
@@ -68,10 +68,12 @@ test("historical AI is reported only in its Manila service month", async () => {
   const september = await invokeReport(9, 2026);
 
   assert.equal(january.statusCode, 200);
-  assert.equal(january.body.artificialInsemination.length, 1);
-  assert.equal(january.body.artificialInsemination[0].recordId, String(record._id));
+  assert.equal(january.body.count, 1);
+  assert.equal(january.body.records.length, 1);
+  assert.equal(january.body.records[0].recordId, String(record._id));
   assert.equal(september.statusCode, 200);
-  assert.equal(september.body.artificialInsemination.length, 0);
+  assert.equal(september.body.count, 0);
+  assert.equal(september.body.records.length, 0);
 });
 
 test("completed AI without inseminationDate is excluded despite entry month", async () => {
@@ -89,5 +91,6 @@ test("completed AI without inseminationDate is excluded despite entry month", as
 
   const september = await invokeReport(9, 2026);
   assert.equal(september.statusCode, 200);
-  assert.equal(september.body.artificialInsemination.length, 0);
+  assert.equal(september.body.count, 0);
+  assert.equal(september.body.records.length, 0);
 });

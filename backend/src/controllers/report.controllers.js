@@ -11,8 +11,10 @@ const idOf = (value) => value?._id?.toString?.() ?? value?.toString?.() ?? null;
 const animalFields = (animal) => ({
   animalId: animal?.animalId ?? null,
   earTag: animal?.earTag ?? null,
+  brand: animal?.brand ?? null,
   species: animal?.species ?? null,
   breed: animal?.breed ?? null,
+  color: animal?.color ?? null,
 });
 const farmerFields = (farmer) => ({
   farmerName: farmer?.name ?? null,
@@ -27,7 +29,7 @@ const sortByDate = (field) => (a, b) => new Date(a[field]) - new Date(b[field]);
 
 export const getMonthlyAccomplishmentReport = async (req, res) => {
   try {
-    const { month, year } = req.query;
+    const { month, year, serviceType } = req.query;
     
     if (!month || !year) {
       return res.status(400).json({ message: "Month and Year are required." });
@@ -43,6 +45,9 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
     if (req.user?.role !== "technician") {
       return res.status(403).json({ message: "Only technicians can view monthly accomplishments." });
     }
+    if (!["ai", "pregnancy", "calving"].includes(serviceType)) {
+      return res.status(400).json({ message: "Service type must be ai, pregnancy, or calving." });
+    }
     const { start: startDate, end: endDate } = getManilaMonthBoundsFor(
       numericYear,
       numericMonth,
@@ -50,64 +55,75 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
 
     const monthRange = { $gte: startDate, $lt: endDate };
     const technicianId = req.user._id;
-    const [inseminations, pregnancies, calvings] = await Promise.all([
-      Insemination.find({
-        deletedAt: null,
-        status: "done",
-        inseminationDate: monthRange,
-        ...buildAIRequestMutationOwnershipGuard({ technicianId }),
-      })
-        .populate("animalId", "animalId earTag species breed")
-        .populate("farmerId", "name address.barangay")
-        .populate("technicianId", "name")
-        .lean(),
-      
-      Pregnancy.find({
-        deletedAt: null,
-        "confirmation.confirmedBy": technicianId,
-        "pregnancyDiagnosis.date": monthRange,
-      })
-        .populate("animalId", "animalId earTag species breed")
-        .populate("farmerId", "name address.barangay")
-        .populate("confirmation.confirmedBy", "name")
-        .populate("inseminationId", "attemptNumber")
-        .lean(),
-      
-      Calving.find({
-        deletedAt: null,
-        technicianId,
-        date: monthRange,
-      })
-        .populate("animalId", "animalId earTag species breed")
-        .populate("farmerId", "name address.barangay")
-        .populate("technicianId", "name")
-        .populate("calves.animalId", "earTag")
-        .lean(),
-    ]);
-
-    const artificialInsemination = inseminations.map((record) => ({
-      ...serviceFields(record),
+    const aiOwnership = buildAIRequestMutationOwnershipGuard({ technicianId });
+    const aiFormFields = (record) => ({
+      recordId: idOf(record),
       serviceDate: record.inseminationDate,
       attemptNumber: record.attemptNumber ?? null,
       estrus: record.estrus ?? null,
       sireBreed: record.sireBreed ?? null,
       sireCode: record.sireCode ?? null,
+    });
+    const pdFormFields = (record) => ({
+      recordId: idOf(record),
+      diagnosisDate: record.pregnancyDiagnosis?.date ?? null,
+      result: record.pregnancyDiagnosis?.result ?? null,
+      linkedInseminationId: idOf(record.inseminationId),
+    });
+    const aiQuery = (filter) => Insemination.find({
+        deletedAt: null,
+        status: "done",
+        ...aiOwnership,
+        ...filter,
+      })
+        .populate("animalId", "animalId earTag brand species breed color")
+        .populate("farmerId", "name address.barangay")
+        .populate("technicianId", "name")
+        .lean();
+    const pdQuery = (filter) => Pregnancy.find({
+        deletedAt: null,
+        "confirmation.confirmedBy": technicianId,
+        ...filter,
+      })
+        .populate("animalId", "animalId earTag brand species breed color")
+        .populate("farmerId", "name address.barangay")
+        .populate("confirmation.confirmedBy", "name")
+        .populate("inseminationId", "attemptNumber")
+        .lean();
+    const calvingQuery = (filter) => Calving.find({
+        deletedAt: null,
+        technicianId,
+        ...filter,
+      })
+        .populate("animalId", "animalId earTag brand species breed color")
+        .populate("farmerId", "name address.barangay")
+        .populate("technicianId", "name")
+        .populate("calves.animalId", "earTag")
+        .lean();
+
+    const inseminations = serviceType === "ai" ? await aiQuery({ inseminationDate: monthRange }) : [];
+    const pregnancies = serviceType === "pregnancy" ? await pdQuery({ "pregnancyDiagnosis.date": monthRange }) : [];
+    const calvings = serviceType === "calving" ? await calvingQuery({ date: monthRange }) : [];
+
+    const artificialInsemination = inseminations.map((record) => ({
+      ...serviceFields(record),
+      ...aiFormFields(record),
       semenDosesUsed: record.semenDosesUsed ?? null,
       technicianName: record.technicianId?.name ?? null,
       outcome: record.outcome ?? null,
     })).sort(sortByDate("serviceDate"));
     const pregnancyDiagnosis = pregnancies.map((record) => ({
       ...serviceFields(record),
-      diagnosisDate: record.pregnancyDiagnosis?.date ?? null,
-      result: record.pregnancyDiagnosis?.result ?? null,
+      ...pdFormFields(record),
       diagnosticMethod: record.confirmation?.methodCode ?? null,
-      linkedInseminationId: idOf(record.inseminationId),
       linkedAttemptNumber: record.inseminationId?.attemptNumber ?? null,
       expectedCalvingDate: record.targetCalvingDate ?? null,
       technicianName: record.confirmation?.confirmedBy?.name ?? null,
     })).sort(sortByDate("diagnosisDate"));
     const calving = calvings.map((record) => ({
       ...serviceFields(record),
+      linkedPregnancyId: idOf(record.pregnancyId),
+      linkedInseminationId: idOf(record.inseminationId),
       calvingDate: record.date,
       outcome: record.outcome ?? null,
       calvingEase: record.calvingEase ?? null,
@@ -122,17 +138,66 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
       technicianName: record.technicianId?.name ?? null,
     })).sort(sortByDate("calvingDate"));
 
+    const contextPregnancyIds = [...new Set(calving.map((record) => record.linkedPregnancyId).filter(Boolean))];
+    const historicalPregnancies = contextPregnancyIds.length
+      ? await pdQuery({ _id: { $in: contextPregnancyIds } })
+      : [];
+    const contextPregnancyDiagnosis = historicalPregnancies
+      .filter((record) => record.pregnancyDiagnosis?.date)
+      .map(pdFormFields);
+    const contextAIIds = [...new Set([
+      ...pregnancyDiagnosis.map((record) => record.linkedInseminationId),
+      ...calving.map((record) => record.linkedInseminationId),
+      ...contextPregnancyDiagnosis.map((record) => record.linkedInseminationId),
+    ].filter(Boolean))];
+    const historicalInseminations = contextAIIds.length
+      ? await aiQuery({ _id: { $in: contextAIIds } })
+      : [];
+    const contextArtificialInsemination = historicalInseminations
+      .filter((record) => record.inseminationDate)
+      .map(aiFormFields);
+
+    const allowedAIIds = new Set(contextArtificialInsemination.map((record) => record.recordId));
+    const allowedPregnancyById = new Map(contextPregnancyDiagnosis.map((record) => [record.recordId, record]));
+    const records = serviceType === "ai" ? artificialInsemination
+      : serviceType === "pregnancy"
+        ? pregnancyDiagnosis.map((record) => ({
+          ...record,
+          linkedInseminationId: allowedAIIds.has(record.linkedInseminationId)
+            ? record.linkedInseminationId : null,
+          linkedAttemptNumber: allowedAIIds.has(record.linkedInseminationId)
+            ? record.linkedAttemptNumber : null,
+        }))
+        : calving.map((record) => {
+          const authorizedPregnancy = allowedPregnancyById.get(record.linkedPregnancyId);
+          const conflict = authorizedPregnancy?.linkedInseminationId && record.linkedInseminationId &&
+            authorizedPregnancy.linkedInseminationId !== record.linkedInseminationId;
+          return {
+            ...record,
+            linkedPregnancyId: conflict ? null : authorizedPregnancy?.recordId ?? null,
+            linkedInseminationId: conflict || !allowedAIIds.has(record.linkedInseminationId)
+              ? null : record.linkedInseminationId,
+          };
+        });
+    const usedAIIds = new Set(records.map((record) => record.linkedInseminationId).filter(Boolean));
+    const usedPregnancyIds = new Set(records.map((record) => record.linkedPregnancyId).filter(Boolean));
+
     res.status(200).json({
       month: numericMonth,
       year: numericYear,
-      counts: {
-        artificialInsemination: artificialInsemination.length,
-        pregnancyDiagnosis: pregnancyDiagnosis.length,
-        calving: calving.length,
+      serviceType,
+      count: records.length,
+      records,
+      context: {
+        artificialInsemination: contextArtificialInsemination.filter((record) => usedAIIds.has(record.recordId)),
+        pregnancyDiagnosis: contextPregnancyDiagnosis
+          .filter((record) => usedPregnancyIds.has(record.recordId))
+          .map((record) => ({
+            ...record,
+            linkedInseminationId: usedAIIds.has(record.linkedInseminationId)
+              ? record.linkedInseminationId : null,
+          })),
       },
-      artificialInsemination,
-      pregnancyDiagnosis,
-      calving,
     });
   } catch (error) {
     console.error("[getMonthlyAccomplishmentReport ERROR]", error);

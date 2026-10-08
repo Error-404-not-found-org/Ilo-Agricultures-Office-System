@@ -18,7 +18,6 @@ export default function TechnicianLayout() {
       
       {/* Other stack screens (hides tab bar natively) */}
       <Stack.Screen name="requests" />
-      <Stack.Screen name="technician.reports" />
       <Stack.Screen name="animal-details" />
       <Stack.Screen name="client.profile" />
       <Stack.Screen name="updateclient.profile" />

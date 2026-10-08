@@ -2,6 +2,6 @@ import { useLocalSearchParams } from "expo-router";
 import TechnicianRecordsScreen from "@/features/technician-records/screens/TechnicianRecordsScreen";
 
 export default function TechnicianRecordsRoute() {
-  const { tab, farmerId } = useLocalSearchParams<{ tab?: string; farmerId?: string }>();
-  return <TechnicianRecordsScreen defaultTab={tab} farmerId={farmerId} showBackButton={Boolean(farmerId)} />;
+  const { farmerId } = useLocalSearchParams<{ farmerId?: string }>();
+  return <TechnicianRecordsScreen farmerId={farmerId} showBackButton={Boolean(farmerId)} />;
 }

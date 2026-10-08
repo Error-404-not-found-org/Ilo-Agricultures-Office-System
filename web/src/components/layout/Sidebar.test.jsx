@@ -345,6 +345,14 @@ describe("Admin Sidebar navigation", () => {
   });
 });
 
+describe("Technician Reports navigation", () => {
+  it("exposes the monthly documents route only in Technician navigation", () => {
+    clerkMocks.role = "technician";
+    renderSidebar("/technician/records");
+    expect(screen.getByRole("link", { name: "Reports & Documents" })).toHaveAttribute("href", "/technician/reports");
+  });
+});
+
 
 describe("Technician Profile navigation", () => {
   it("keeps Profile and removes the separate Settings destination", () => {

@@ -64,6 +64,19 @@ test("a returning Farmer sees profile loading only during the dashboard handoff"
   assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: farmer, inFarmerGroup: true, isOnboardingRoute: false }), "none");
 });
 
+test("an authenticated returning Farmer can open shared notification routes without the profile handoff overlay", () => {
+  const farmer = { farmerId: "farmer-a", seen: true };
+  for (const routeSegment of ["notifications", "notification-details"]) {
+    assert.equal(getFarmerOnboardingHandoff({
+      activeFarmerId: "farmer-a",
+      onboarding: farmer,
+      inFarmerGroup: false,
+      isOnboardingRoute: false,
+      routeSegment,
+    }), "none");
+  }
+});
+
 test("finishing onboarding shows profile loading, but arriving at onboarding does not", () => {
   assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: { farmerId: "farmer-a", seen: false }, inFarmerGroup: true, isOnboardingRoute: true }), "none");
   assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: { farmerId: "farmer-a", seen: true }, inFarmerGroup: true, isOnboardingRoute: true }), "loading-profile");
@@ -74,4 +87,5 @@ test("account lookup and first-time onboarding navigation never claim the profil
   assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: null, inFarmerGroup: false, isOnboardingRoute: false }), "preparing");
   assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: { farmerId: "farmer-b", seen: true }, inFarmerGroup: false, isOnboardingRoute: false }), "preparing");
   assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: { farmerId: "farmer-a", seen: false }, inFarmerGroup: false, isOnboardingRoute: false }), "preparing");
+  assert.equal(getFarmerOnboardingHandoff({ activeFarmerId: "farmer-a", onboarding: { farmerId: "farmer-a", seen: false }, inFarmerGroup: false, isOnboardingRoute: false, routeSegment: "notifications" }), "preparing");
 });

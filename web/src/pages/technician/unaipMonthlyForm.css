@@ -1,0 +1,22 @@
+.unaip-form { background: #fff; color: #111; font: 10px Arial, sans-serif; padding: 18px; overflow-x: auto; }
+.unaip-topline, .unaip-heading { display: flex; justify-content: space-between; gap: 20px; }
+.unaip-heading { align-items: center; margin: 14px 0 10px; line-height: 1.45; }
+.unaip-heading > :last-child { text-align: center; flex: 1; font-size: 12px; }
+.unaip-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.unaip-table th, .unaip-table td { border: 1px solid #333; padding: 3px 2px; overflow-wrap: anywhere; vertical-align: top; }
+.unaip-table th { text-align: center; font-weight: 600; }
+.unaip-table tbody tr { height: 24px; }
+.unaip-footer { display: flex; justify-content: space-between; gap: 20px; margin-top: 16px; line-height: 1.5; }
+.unaip-signatures { display: flex; gap: 60px; flex-shrink: 0; }
+.unaip-signatures span { display: inline-block; margin-top: 20px; }
+#unaip-print-portal { display: none; }
+@media print {
+  @page { size: landscape; margin: 8mm; }
+  body.unaip-printing > #root { display: none !important; }
+  body.unaip-printing > #unaip-print-portal { display: block !important; }
+  .unaip-form { padding: 0; overflow: visible; font-size: 7px; }
+  .unaip-table th, .unaip-table td { padding: 2px 1px; }
+  .unaip-table tbody tr { height: 19px; }
+  .unaip-table thead { display: table-header-group; }
+  .unaip-table tr { break-inside: avoid; }
+}

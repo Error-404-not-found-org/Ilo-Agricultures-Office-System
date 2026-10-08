@@ -101,6 +101,7 @@ export function AuthBootstrapGate({
     onboarding: farmerOnboarding,
     inFarmerGroup: onboardingSegments[0] === "(farmer)",
     isOnboardingRoute,
+    routeSegment: onboardingSegments[0],
   });
 
   useEffect(() => {

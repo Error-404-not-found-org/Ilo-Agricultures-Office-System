@@ -504,7 +504,7 @@ export function TechnicianOfficialRecordContent({
   };
 
   const aiRows: (DisplayRow | null)[] = [
-    details.attemptNumber !== undefined
+    details.attemptNumber != null
       ? {
           label: "Attempt",
           value: `Attempt ${details.attemptNumber}`,

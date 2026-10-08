@@ -3,15 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
-  Download,
   Eye,
   FileText,
   Search,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
-import { sanitizeFileName } from "../../lib/reportExport";
 import Topbar from "../../components/layout/Topbar";
 import OfficialRecordDetailModal from "../../components/technician/OfficialRecordDetailModal";
 import UserAvatar from "../../components/ui/UserAvatar";
@@ -612,7 +609,6 @@ export default function TechnicianRecords() {
   const [searchInput, setSearchInput] = useState(
     searchParams.get("search") || "",
   );
-  const [isDownloading, setIsDownloading] = useState(false);
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const type = searchParams.get("type") || "all";
   const search = searchParams.get("search") || "";
@@ -718,37 +714,6 @@ export default function TechnicianRecords() {
     });
   };
 
-  const handleDownloadReport = async () => {
-    setIsDownloading(true);
-    try {
-      const response = await axiosInstance.get("/animals/records/export", {
-        params: {
-          ...(type !== "all" ? { type } : {}),
-          ...(search ? { search } : {}),
-          ...(fromDate ? { fromDate } : {}),
-          ...(toDate ? { toDate } : {}),
-        },
-        responseType: "blob",
-      });
-      const disposition = response.headers?.["content-disposition"] || "";
-      const fileName =
-        disposition.match(/filename="?([^";]+)"?/i)?.[1] ||
-        `BreedSmart-${type === "all" ? "Technician-Records" : `${getRecordTypeLabel(type).replace(/\s+/g, "-")}-Records`}-${fromDate?.slice(0, 10) || "all-dates"}.csv`;
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = sanitizeFileName(fileName).replace(/\.csv$/i, "") + ".csv";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Unable to download the records report. Please try again.");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
   const metrics = [
     { value: "all", label: "All Records", count: summary.all, borderClass: "border-l-primary" },
     { value: "insemination", label: "Insemination", count: summary.insemination, borderClass: "border-l-secondary" },
@@ -804,22 +769,7 @@ export default function TechnicianRecords() {
         <section className="card card-border bg-base-100 shadow-sm">
           <div className="card-body gap-4 p-4 md:p-5">
             <div className="flex flex-col gap-4">
-              <form
-                className="input w-full xl:max-w-md"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  updateParams({ search: searchInput.trim(), page: 1 });
-                }}
-              >
-                <Search size={16} className="text-base-content/45" />
-                <input
-                  type="search"
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Search animal, farmer, or record ID"
-                  aria-label="Search finished activity"
-                />
-              </form>
+              <div role="group" aria-label="Record filters" className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div className="flex flex-wrap items-end gap-2">
                 <label className="form-control w-full sm:w-48">
                   <span className="label-text mb-1 text-xs font-bold text-base-content/60">
@@ -911,15 +861,23 @@ export default function TechnicianRecords() {
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  className="btn btn-outline gap-2"
-                  disabled={isDownloading}
-                  onClick={handleDownloadReport}
-                >
-                  <Download size={15} aria-hidden="true" />
-                  {isDownloading ? "Preparing..." : "Download report"}
-                </button>
+              </div>
+              <form
+                className="input w-full xl:max-w-md"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  updateParams({ search: searchInput.trim(), page: 1 });
+                }}
+              >
+                <Search size={16} className="text-base-content/45" />
+                <input
+                  type="search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search animal, farmer, or record ID"
+                  aria-label="Search finished activity"
+                />
+              </form>
               </div>
               {hasActiveFilters && (
                 <div className="flex justify-end">

@@ -26,7 +26,7 @@ export default defineConfig({
           if (id.includes("@tanstack")) return "query-vendor";
           if (id.includes("jspdf")) return "pdf-vendor";
           if (id.includes("html2canvas")) return "canvas-vendor";
-          if (id.includes("xlsx")) return "spreadsheet-vendor";
+          if (id.includes("xlsx") || id.includes("exceljs")) return "spreadsheet-vendor";
           if (id.includes("leaflet") || id.includes("mapbox") || id.includes("chart")) {
             return "visualization-vendor";
           }
@@ -46,5 +46,6 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test/setup.js",
+    include: ["src/**/*.{test,spec}.{js,jsx,ts,tsx}"],
   }
 });

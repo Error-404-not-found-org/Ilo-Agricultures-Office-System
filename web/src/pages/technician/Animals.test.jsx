@@ -86,6 +86,15 @@ describe("Technician Animals Page", () => {
     expect(within(filter).queryByRole("option", { name: "Swine" })).not.toBeInTheDocument();
   });
 
+  it("keeps directory controls without a current-page export action", async () => {
+    renderPage();
+    await screen.findAllByText("#100DP");
+    expect(screen.getByRole("searchbox", { name: "Search animals" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter animals by species" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Register animal" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export this page" })).not.toBeInTheDocument();
+  });
+
   it("renders aggregate metrics from response.metrics rather than the one-row page", async () => {
     renderPage();
     await screen.findAllByText("#100DP");

@@ -46,22 +46,6 @@ test("Farmer and Technician official detail routes reject HealthRequest as a rec
   assert.doesNotMatch(technicianDetail, /^\s*"health_request",/m);
 });
 
-test("Technician Report Studio sources Health rows from official MedicalRecords", () => {
-  const service = source(
-    "mobile/features/technician-records/services/technicianRecords.service.ts",
-  );
-  const hook = source(
-    "mobile/features/technician-records/hooks/useTechnicianReportData.ts",
-  );
-
-  assert.match(service, /getHealthMedicalRecords/);
-  assert.match(service, /"\/animals\/records"/);
-  assert.match(service, /type: "health"/);
-  assert.doesNotMatch(service, /getHealthRequests|`\/health-request\?page=/);
-  assert.match(hook, /record\.recordKind !== "medical_record"/);
-  assert.doesNotMatch(hook, /sources\.healthRequests/);
-});
-
 test("Technician completed-work presentation defaults legacy Health to response history", () => {
   const workPresentation = source(
     "mobile/features/technician-requests/utils/requestWorkPresentation.ts",

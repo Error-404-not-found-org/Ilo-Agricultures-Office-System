@@ -1298,16 +1298,22 @@ export const getMyPregnancyChecks = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const query = {
+      deletedAt: null,
+      ...(req.user.role === "technician"
+        ? { "confirmation.confirmedBy": req.user._id }
+        : {}),
+    };
 
     const [records, total] = await Promise.all([
-      Pregnancy.find({ deletedAt: null })
+      Pregnancy.find(query)
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      Pregnancy.countDocuments({ deletedAt: null }),
+      Pregnancy.countDocuments(query),
     ]);
 
     res.status(200).json({
@@ -1327,9 +1333,13 @@ export const getMyCalvings = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const query = {
+      deletedAt: null,
+      ...(req.user.role === "technician" ? { technicianId: req.user._id } : {}),
+    };
 
     const [records, total] = await Promise.all([
-      Calving.find({ deletedAt: null })
+      Calving.find(query)
         .populate("farmerId", "name phoneNumber address")
         .populate(
           "animalId",
@@ -1343,7 +1353,7 @@ export const getMyCalvings = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean(),
-      Calving.countDocuments({ deletedAt: null }),
+      Calving.countDocuments(query),
     ]);
 
     res.status(200).json({

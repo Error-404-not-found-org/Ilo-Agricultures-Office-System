@@ -233,6 +233,16 @@ describe("Technician records", () => {
     expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
   });
 
+  it("places search beside the date filters on wide screens", async () => {
+    renderRecords();
+    await screen.findByRole("table", { name: "Technician finished activity" });
+
+    const toolbar = screen.getByRole("group", { name: "Record filters" });
+    expect(toolbar).toHaveClass("xl:flex-row");
+    expect(toolbar.children[0]).toContainElement(screen.getByRole("combobox", { name: "Date" }));
+    expect(toolbar.children[1]).toContainElement(screen.getByRole("searchbox", { name: "Search finished activity" }));
+  });
+
   it("loads AI filter columns correctly", async () => {
     renderRecords("/technician/records?type=insemination");
 
@@ -769,123 +779,12 @@ describe("Technician records", () => {
     expect(screen.getByTestId("location-search")).toHaveTextContent("month=2026-09&type=health");
   });
 
-  it("downloads the full report using the current period and service filter", async () => {
-    mocks.get.mockImplementation((url) => {
-      if (url === "/animals/records/export") {
-        return Promise.resolve({ data: new Blob(["csv"], { type: "text/csv" }) });
-      }
-      if (url === "/animals/records") {
-        return Promise.resolve({
-          data: {
-            data: records,
-            page: 1,
-            limit: 10,
-            total: 4,
-            totalPages: 1,
-            summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
-          },
-        });
-      }
-      return Promise.resolve({ data: { data: {} } });
-    });
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-
+  it("keeps Records focused on browsing without a report download action", async () => {
     renderRecords("/technician/records?month=2026-09");
-    await screen.findByRole("table", { name: "Technician finished activity" });
-    fireEvent.change(screen.getByLabelText("Filter records by type"), {
-      target: { value: "health" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
-
-    await waitFor(() =>
-      expect(mocks.get).toHaveBeenCalledWith("/animals/records/export", {
-        params: {
-          type: "health",
-          fromDate: "2026-09-01",
-          toDate: "2026-09-30",
-        },
-        responseType: "blob",
-      }),
-    );
-  });
-
-  it("exports all service types when the Records filter is All service types", async () => {
-    mocks.get.mockImplementation((url) => {
-      if (url === "/animals/records/export") {
-        return Promise.resolve({ data: new Blob(["csv"], { type: "text/csv" }) });
-      }
-      if (url === "/animals/records") {
-        return Promise.resolve({
-          data: {
-            data: records,
-            page: 1,
-            limit: 10,
-            total: 4,
-            totalPages: 1,
-            summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
-          },
-        });
-      }
-      return Promise.resolve({ data: { data: {} } });
-    });
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-
-    renderRecords("/technician/records?month=2026-09");
-    await screen.findByRole("table", { name: "Technician finished activity" });
-    expect(screen.getByLabelText("Filter records by type")).toHaveDisplayValue(
-      "All service types",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
-
-    await waitFor(() =>
-      expect(mocks.get).toHaveBeenCalledWith("/animals/records/export", {
-        params: {
-          fromDate: "2026-09-01",
-          toDate: "2026-09-30",
-        },
-        responseType: "blob",
-      }),
-    );
-  });
-
-  it("exports all matching records using the active Last 30 days preset", async () => {
-    const { fromDate, toDate } = resolveRecordsDateFilter(
-      new URLSearchParams("datePreset=last-30-days"),
-    );
-    mocks.get.mockImplementation((url) => {
-      if (url === "/animals/records/export") {
-        return Promise.resolve({ data: new Blob(["csv"], { type: "text/csv" }) });
-      }
-      return Promise.resolve({
-        data: {
-          data: records,
-          page: 1,
-          limit: 10,
-          total: 4,
-          totalPages: 1,
-          summary: { all: 4, insemination: 1, health: 1, pregnancy: 1, calving: 1 },
-        },
-      });
-    });
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-30-days");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-
-    renderRecords("/technician/records?datePreset=last-30-days&type=pregnancy");
-    await screen.findByRole("table", { name: "Technician finished activity" });
-    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
-
-    await waitFor(() =>
-      expect(mocks.get).toHaveBeenCalledWith("/animals/records/export", {
-        params: {
-          type: "pregnancy",
-          fromDate,
-          toDate,
-        },
-        responseType: "blob",
-      }),
-    );
+    expect(await screen.findByRole("table", { name: "Technician finished activity" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter records by type")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download report" })).not.toBeInTheDocument();
+    expect(mocks.get).not.toHaveBeenCalledWith("/animals/records/export", expect.anything());
   });
 });
 

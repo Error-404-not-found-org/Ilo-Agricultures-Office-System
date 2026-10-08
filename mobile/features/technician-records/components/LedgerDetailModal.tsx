@@ -4,7 +4,7 @@ import { X, MapPin, Calendar, Clock, Phone, ChevronRight } from "lucide-react-na
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
-import { getDisplayDate } from "../utils/ledgerExport";
+import { getOfficialRecordDate } from "../utils/officialRecordDate";
 
 const PRIMARY = "#00643B";
 
@@ -28,7 +28,7 @@ export function LedgerDetailModal({
   const farmer = item.farmerId || {};
   const animal = item.animalId || (item.animalIds && item.animalIds[0]) || {};
 
-  const dateRaw = getDisplayDate(item);
+  const dateRaw = getOfficialRecordDate(item);
   const date = dateRaw
     ? new Date(dateRaw).toLocaleDateString("en-US", {
         month: "long",
@@ -340,7 +340,7 @@ export function LedgerDetailModal({
                         fontSize: 12,
                       }}
                     >
-                      #{item.attemptNumber || 1}
+                      {item.attemptNumber == null ? "Not recorded" : `#${item.attemptNumber}`}
                     </Text>
                   </View>
                   <View
@@ -395,7 +395,7 @@ export function LedgerDetailModal({
                         fontSize: 12,
                       }}
                     >
-                      {item.pregnancyStatus || "Pending"}
+                      {item.pregnancyStatus || "Not recorded"}
                     </Text>
                   </View>
                 </View>

@@ -249,6 +249,11 @@ export default function Sidebar() {
         icon: <FileText size={16} />,
         label: "Records",
       },
+      {
+        path: "/technician/reports",
+        icon: <FileText size={16} />,
+        label: "Reports & Documents",
+      },
       { type: "label", label: "System" },
       {
         path: "/technician/profile",

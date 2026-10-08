@@ -9,7 +9,6 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Download,
   Edit,
   Eye,
   HeartPulse,
@@ -279,21 +278,6 @@ export default function AnimalRegistry() {
     },
   ];
 
-  const exportPage = () => {
-    const rows = animals.map((animal) => [animal.tag, animal.species, animal.breed, animal.gender, animal.farmer, animal.location, animal.reproductiveStatus, animal.lastAI]);
-    const csv = [["Animal tag", "Species", "Breed", "Sex", "Farmer", "Location", "Reproductive status", "Last AI"], ...rows]
-      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `BreedSmart_Animals_Page_${currentPage}_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className={ui.page}>
       <Topbar title="Animals" subtitle="Find an animal and open its complete service and breeding history" />
@@ -311,7 +295,6 @@ export default function AnimalRegistry() {
               <label className="input w-full xl:max-w-md"><Search size={16} className="text-base-content/45" /><input type="search" aria-label="Search animals" placeholder="Search animal tag, farmer, or species" value={searchQuery} onChange={(event) => updateParams({ search: event.target.value })} /></label>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => setIsRegisterLivestockOpen(true)}><Plus size={15} /> Register animal</button>
-                <button type="button" className="btn btn-sm" onClick={exportPage} disabled={isLoading || animals.length === 0}><Download size={15} /> Export this page</button>
                 <span className="text-sm font-medium text-base-content/70">{isFetching && !isLoading ? "Updating…" : `${totalItems} animal${totalItems === 1 ? "" : "s"}`}</span>
               </div>
             </div>

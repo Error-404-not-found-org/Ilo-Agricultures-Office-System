@@ -53,14 +53,17 @@ export function getFarmerOnboardingHandoff({
   onboarding,
   inFarmerGroup,
   isOnboardingRoute,
+  routeSegment,
 }: {
   activeFarmerId?: string;
   onboarding: { farmerId: string; seen: boolean } | null;
   inFarmerGroup: boolean;
   isOnboardingRoute: boolean;
+  routeSegment?: string;
 }): "none" | "preparing" | "loading-profile" {
   if (!activeFarmerId) return "none";
   if (onboarding?.farmerId !== activeFarmerId) return "preparing";
   if (!onboarding.seen) return isOnboardingRoute ? "none" : "preparing";
+  if (routeSegment === "notifications" || routeSegment === "notification-details") return "none";
   return isOnboardingRoute || !inFarmerGroup ? "loading-profile" : "none";
 }

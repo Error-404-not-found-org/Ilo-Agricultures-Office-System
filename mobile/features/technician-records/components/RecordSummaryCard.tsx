@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { StatusBadge } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
-import { getDisplayDate } from "../utils/ledgerExport";
+import { getOfficialRecordDate } from "../utils/officialRecordDate";
 
 interface RecordSummaryCardProps {
   item: any;
@@ -19,7 +19,7 @@ export function RecordSummaryCard({
 }: RecordSummaryCardProps) {
   const { colors } = useTheme();
   const presentation = getRecordPresentation(item, colors);
-  const dateValue = getDisplayDate(item);
+  const dateValue = getOfficialRecordDate(item);
   const date = dateValue
     ? new Date(dateValue).toLocaleDateString(undefined, {
         month: "short",
